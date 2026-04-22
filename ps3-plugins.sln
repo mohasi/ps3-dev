@@ -1,0 +1,31 @@
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-disc-mount", "simple-disc-mount\simple-disc-mount.vcxproj", "{0417CB38-3C70-412E-975F-1EB4D76F64E3}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-ftp", "simple-ftp\simple-ftp.vcxproj", "{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|PS3 = Debug|PS3
+		Release|PS3 = Release|PS3
+		SNC Debug|PS3 = SNC Debug|PS3
+		SNC Release|PS3 = SNC Release|PS3
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Debug|PS3.ActiveCfg = Debug|PS3
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Debug|PS3.Build.0 = Debug|PS3
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Release|PS3.ActiveCfg = Release|PS3
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Release|PS3.Build.0 = Release|PS3
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.SNC Debug|PS3.ActiveCfg = Release|PS3
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.SNC Release|PS3.ActiveCfg = Release|PS3
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Debug|PS3.ActiveCfg = Debug|PS3
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Debug|PS3.Build.0 = Debug|PS3
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Release|PS3.ActiveCfg = Release|PS3
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Release|PS3.Build.0 = Release|PS3
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.SNC Debug|PS3.ActiveCfg = Release|PS3
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.SNC Release|PS3.ActiveCfg = Release|PS3
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

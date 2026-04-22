@@ -1,0 +1,51 @@
+/* simple-ftp — minimal FTP server for PS3 VSH.
+ * Anonymous, binary-only, PASV-mode only. Listens on :21.
+ * See ftp.h for the server itself; this file is just the plugin entry. */
+
+#include <sys/prx.h>
+#include <sys/ppu_thread.h>
+#include <sys/timer.h>
+
+#include "dbg.h"
+#include "vsh.h"
+#include "ftp.h"
+
+SYS_MODULE_INFO(SimpleFtp, 0, 1, 1);
+SYS_MODULE_START(_start);
+
+static void pluginThread(uint64_t arg)
+{
+    (void)arg;
+    dbgLog("[ftp] plugin thread start\n");
+
+    /* Wait for XMB readiness so the network stack is up. 60s budget. */
+    int ticks = 0;
+    while (!isXmbReady()) {
+        sys_timer_sleep(1);
+        if (++ticks > 60) {
+            dbgLog("[ftp] xmb ready timeout\n");
+            sys_ppu_thread_exit(0);
+            return;
+        }
+    }
+    dbgLog("[ftp] xmb ready\n");
+
+    /* Hand control to the FTP listener thread. It owns the port 21 socket
+     * and spawns a session thread per accepted client. */
+    sys_ppu_thread_t tid;
+    sys_ppu_thread_create(&tid, ftpListenerThread, 0, 0x400, 0x1800,
+                          SYS_PPU_THREAD_CREATE_JOINABLE, "ftpd");
+
+    sys_ppu_thread_exit(0);
+}
+
+int _start(uint64_t arg)
+{
+    (void)arg;
+    dbgLog("[ftp] _start\n");
+
+    sys_ppu_thread_t tid;
+    sys_ppu_thread_create(&tid, pluginThread, 0, 0x400, 0x4000,
+                          SYS_PPU_THREAD_CREATE_JOINABLE, "sftp");
+    return SYS_PRX_RESIDENT;
+}

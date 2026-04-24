@@ -18,6 +18,15 @@ static void pluginThread(uint64_t arg)
     (void)arg;
     dbgLog("[ftp] plugin thread start\n");
 
+    /* Mount /dev_blind so FTP clients can write to /dev_flash via that
+     * mount point. webMAN-MOD exposes this as an "Enable /dev_blind on
+     * startup" option; we enable it unconditionally because the whole
+     * point of this plugin is unrestricted filesystem access. The mount
+     * syscall is idempotent-ish — a second call just returns an error,
+     * which we log for visibility but otherwise ignore. */
+    int64_t mrc = mountDevBlind();
+    dbgLog("[ftp] mount /dev_blind rc 0x%x\n", (int)mrc);
+
     /* Wait for XMB readiness so the network stack is up. 60s budget. */
     int ticks = 0;
     while (!isXmbReady()) {

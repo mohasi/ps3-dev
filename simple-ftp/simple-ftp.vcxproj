@@ -87,9 +87,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="prx.c" />
+    <ClCompile Include="..\common\printf.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\common\dbg.h" />
+    <ClInclude Include="..\common\printf.h" />
     <ClInclude Include="..\common\vsh.h" />
     <ClInclude Include="ftp.h" />
   </ItemGroup>

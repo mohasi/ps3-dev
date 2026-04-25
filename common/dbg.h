@@ -57,30 +57,37 @@ static inline int dbgFormatTimestamp(char *out)
 /* Append one timestamped line to /dev_hdd0/tmp/dbg.txt.
  * Variadic: plain string ("hello\n") or printf-style ("rc=0x%x\n", rc).
  * Full C99 printf minus floats (see common/printf.h).
- * Buffer is 1 KB on the stack — well above any real log line; if we ever
- * do dump something longer the excess is silently dropped. */
+ *
+ * Thread-safety: builds the timestamp + message into one stack buffer and
+ * issues a SINGLE cellFsWrite. With O_APPEND the kernel positions and writes
+ * atomically per call, so concurrent loggers from different threads/PRX's
+ * cannot interleave their timestamp/body halves on the same line.
+ *
+ * Buffer is 1 KB for the message (any extra is silently dropped) plus 22
+ * bytes for the timestamp. */
 static inline void dbgLog(const char *fmt, ...)
     __attribute__((format(printf, 1, 2)));
 
 static inline void dbgLog(const char *fmt, ...)
 {
-    char msg[1024];
+    char line[1024 + 24];
+
+    int tn = dbgFormatTimestamp(line);   /* writes up to 22 bytes, no NUL */
+
     va_list ap;
     va_start(ap, fmt);
-    int n = vsnprintf(msg, sizeof msg, fmt, ap);
+    int n = vsnprintf(line + tn, sizeof line - tn, fmt, ap);
     va_end(ap);
     if (n <= 0) return;
-    if (n >= (int)sizeof msg) n = (int)sizeof msg - 1;
+    int max = (int)sizeof line - tn - 1;
+    if (n > max) n = max;
 
     int fd;
     if (cellFsOpen(DBG_LOG, CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_APPEND,
                    &fd, NULL, 0) == CELL_FS_SUCCEEDED)
     {
         uint64_t written;
-        char ts[24];
-        int tn = dbgFormatTimestamp(ts);
-        if (tn > 0) cellFsWrite(fd, ts, tn, &written);
-        cellFsWrite(fd, msg, (uint64_t)n, &written);
+        cellFsWrite(fd, line, (uint64_t)(tn + n), &written);
         cellFsClose(fd);
     }
 }

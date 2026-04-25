@@ -22,6 +22,12 @@
     <ClInclude Include="..\common\vsh.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="cobra.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="http.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="xmb-inject.h">
       <Filter>Header Files</Filter>
     </ClInclude>

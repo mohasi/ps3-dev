@@ -1,10 +1,16 @@
 /* Simple Disc Mount — VSH plugin.
- * Adds "Mount Disc Image" below "Package Manager" in the XMB Games column
- * and populates a submenu listing every .iso in /dev_hdd0/PS3ISO. Items
- * currently use Sony's stock seg_dummy_items pattern (explore_plugin +
- * NotifyErrorNoExecute) as a placeholder — X-press shows "Cannot operate"
- * instead of doing anything. Real mount wiring will come via a
- * webrender_plugin Action() hook. */
+ *
+ * Adds "Mount Disc Image" below "Package Manager" in the XMB Games column,
+ * populating a submenu with every .iso in /dev_hdd0/PS3ISO. Items wake
+ * Sony's webrender_plugin with http://0:8947/mount/<name>, which our
+ * in-process HTTP listener catches and turns into a Cobra PS3 disc mount.
+ *
+ * Boot order on the plugin thread:
+ *   1. wait for XMB ready
+ *   2. auto-mount last ISO if sdm_last.txt remembers one
+ *   3. open /dev_blind, ensure xmlhost directories exist
+ *   4. regenerate sdm.xml (ISO list) and patch category_game.xml once
+ *   5. spawn the HTTP listener so X-press on items actually mounts */
 
 #include <sys/prx.h>
 #include <sys/ppu_thread.h>
@@ -12,10 +18,34 @@
 
 #include "dbg.h"
 #include "vsh.h"
+#include "file.h"
+#include "cobra.h"
 #include "xmb-inject.h"
+#include "http.h"
 
 SYS_MODULE_INFO(SimpleDiscMount, 0, 1, 1);
 SYS_MODULE_START(_start);
+
+static void autoMountLast(void)
+{
+    char path[SDM_PATH_MAX];
+
+    // read last mount path from file
+    if (readFile(pathLastMount, path, sizeof path) < 0) return;
+
+    // check iso still exists
+    if (!fileExists(path)) {
+        dbgLog("[sdm] auto-mount target missing: %s\n", path);
+        return;
+    }
+
+    // mount it
+    if (cobraMountIso(path) == 0) {
+        dbgLog("[sdm] auto-mounted: %s\n", path);
+    } else {
+        dbgLog("[sdm] auto-mount failed: %s\n", path);
+    }
+}
 
 static void pluginThread(uint64_t arg)
 {
@@ -33,6 +63,11 @@ static void pluginThread(uint64_t arg)
         }
     }
     dbgLog("[sdm] xmb ready\n");
+
+    /* Re-mount the last ISO before we touch XML so the fake-disc-insert
+     * event races in alongside the XMB's first paint — the BD icon tends to
+     * show up the moment the Games column settles. */
+    autoMountLast();
 
     mountDevBlind();
     dbgLog("[sdm] dev_blind mounted\n");
@@ -52,8 +87,13 @@ static void pluginThread(uint64_t arg)
     if (rc == PATCH_APPLIED) {
         sys_timer_sleep(10);
         dbgLog("[sdm] vshNotify\n");
-        vshNotify("Simple Disc Mount: menu installed.");
+        vshNotify("Simple disc mount plugin installed successfully!");
     }
+
+    /* Hand off to the HTTP listener. It owns :8947 (loopback) and turns
+     * incoming GET /mount/<name> into cobraMountIso calls. */
+    sys_ppu_thread_t hid;
+    sys_ppu_thread_create(&hid, httpListenerThread, 0, 0x400, 0x2000, SYS_PPU_THREAD_CREATE_JOINABLE, "sdmh");
 
     dbgLog("[sdm] done\n");
     sys_ppu_thread_exit(0);
@@ -65,7 +105,6 @@ int _start(uint64_t arg)
     dbgLog("[sdm] _start\n");
 
     sys_ppu_thread_t tid;
-    sys_ppu_thread_create(&tid, pluginThread, 0, 0x400, 0x4000,
-                          SYS_PPU_THREAD_CREATE_JOINABLE, "sdm");
+    sys_ppu_thread_create(&tid, pluginThread, 0, 0x400, 0x4000, SYS_PPU_THREAD_CREATE_JOINABLE, "sdm");
     return SYS_PRX_RESIDENT;
 }

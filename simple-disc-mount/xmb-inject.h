@@ -3,11 +3,10 @@
 /* Generates sdm.xml and patches category_game.xml to add "Mount Disc Image"
  * below "Package Manager" in the XMB Games column. Requires Cobra (EVILNAT). */
 
-#include <stdint.h>
-#include <cell/fs/cell_fs_file_api.h>
-#include <cell/fs/cell_fs_errno.h>
 #include "dbg.h"
 #include "vsh.h"
+#include "file.h"
+#include "string-utilities.h"
 
 /* Paths */
 static const char *pathIsoDir      = "/dev_hdd0/PS3ISO";
@@ -50,110 +49,6 @@ static int  nameOff[maxIsos];
 #define PATCH_APPLIED   1
 #define PATCH_EXISTS    2
 #define PATCH_FAILED   -1
-
-/* --- small string / FS helpers --- */
-
-static int strLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }
-
-static int strCmpICase(const char *a, const char *b)
-{
-    while (*a && *b) {
-        char ca = *a, cb = *b;
-        if (ca >= 'A' && ca <= 'Z') ca += 32;
-        if (cb >= 'A' && cb <= 'Z') cb += 32;
-        if (ca != cb) return (int)(unsigned char)ca - (int)(unsigned char)cb;
-        a++; b++;
-    }
-    return (int)(unsigned char)*a - (int)(unsigned char)*b;
-}
-
-static int endsWithICase(const char *s, const char *suf)
-{
-    int ls = strLen(s), lsuf = strLen(suf);
-    if (lsuf > ls) return 0;
-    return strCmpICase(s + ls - lsuf, suf) == 0;
-}
-
-static int findBytes(const char *hay, int hLen, const char *needle, int nLen)
-{
-    if (nLen == 0 || nLen > hLen) return -1;
-    for (int i = 0; i <= hLen - nLen; i++) {
-        int j = 0;
-        while (j < nLen && hay[i + j] == needle[j]) j++;
-        if (j == nLen) return i;
-    }
-    return -1;
-}
-
-static int makeDir(const char *path)
-{
-    int r = cellFsMkdir(path, CELL_FS_S_IFDIR | 0777);
-    return (r == CELL_FS_SUCCEEDED || r == (int)CELL_FS_EEXIST) ? 0 : r;
-}
-
-static int writeFile(const char *path, const char *data, uint64_t len)
-{
-    int fd;
-    if (cellFsOpen(path, CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_TRUNC,
-                   &fd, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
-    uint64_t written = 0;
-    int r = cellFsWrite(fd, data, len, &written);
-    cellFsClose(fd);
-    return (r == CELL_FS_SUCCEEDED && written == len) ? 0 : -1;
-}
-
-static int readFile(const char *path, char *buf, int cap)
-{
-    int fd;
-    if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
-    uint64_t got = 0;
-    int r = cellFsRead(fd, buf, (uint64_t)(cap - 1), &got);
-    cellFsClose(fd);
-    if (r != CELL_FS_SUCCEEDED) return -1;
-    buf[got] = '\0';
-    return (int)got;
-}
-
-static int fileExists(const char *path)
-{
-    CellFsStat st;
-    return cellFsStat(path, &st) == CELL_FS_SUCCEEDED;
-}
-
-static void appendStr(char *dst, int cap, int *off, const char *src)
-{
-    int o = *off;
-    for (int i = 0; src[i] && o < cap - 1; i++) dst[o++] = src[i];
-    *off = o;
-}
-
-static void appendXmlEscaped(char *dst, int cap, int *off, const char *src)
-{
-    int o = *off;
-    for (int i = 0; src[i] && o < cap - 8; i++) {
-        unsigned char c = (unsigned char)src[i];
-        const char *e = NULL;
-        if      (c == '&')  e = "&amp;";
-        else if (c == '<')  e = "&lt;";
-        else if (c == '>')  e = "&gt;";
-        else if (c == '"')  e = "&quot;";
-        else if (c == '\'') e = "&apos;";
-        if (e) while (*e && o < cap - 1) dst[o++] = *e++;
-        else   dst[o++] = (char)c;
-    }
-    *off = o;
-}
-
-/* Writes non-negative v as decimal into out. Returns chars written. */
-static int intToDec(int v, char *out)
-{
-    char tmp[12]; int t = 0;
-    if (v == 0) tmp[t++] = '0';
-    else while (v) { tmp[t++] = '0' + (v % 10); v /= 10; }
-    int n = t;
-    while (t--) *out++ = tmp[t];
-    return n;
-}
 
 /* --- sdm.xml generation --- */
 
@@ -217,10 +112,15 @@ static int buildSdmXml(char *buf, int cap)
     }
 
     /* Phase 3: emit Tables and Items in sorted order.
-     * Match Sony's seg_dummy_items pattern so items render properly and
-     * don't hang on X-press: explore_plugin + NotifyErrorNoExecute +
-     * bar_action=none. Replace with our own module once the
-     * webrender_plugin Action() hook is wired. */
+     *
+     * Each ISO becomes a module-action that, when X is pressed, wakes Sony's
+     * built-in webrender_plugin with the configured URL. webrender fires an
+     * HTTP GET at 127.0.0.1:8947 — our http.h listener catches that, parses
+     * the filename out of the path, and calls cobraMountIso(). Filename
+     * travels in the URL (percent-encoded) so the handler is stateless and
+     * the last mount can be persisted as a plain filename for auto-mount on
+     * reboot. Port 8947 is derived from fnv1a32("simple-disc-mount") — see
+     * http.h for the formula. */
     int itemsOff = 0;
     for (int i = 0; i < count; i++) {
         const char *name = namePool + nameOff[i];
@@ -238,9 +138,13 @@ static int buildSdmXml(char *buf, int cap)
         appendStr(buf, cap, &off,
             "</String></Pair>\n"
             "    <Pair key=\"icon_rsc\"><String>tex_disc</String></Pair>\n"
-            "    <Pair key=\"module_name\"><String>explore_plugin</String></Pair>\n"
-            "    <Pair key=\"module_action\"><String>NotifyErrorNoExecute</String></Pair>\n"
-            "    <Pair key=\"bar_action\"><String>none</String></Pair>\n"
+            "    <Pair key=\"module_name\"><String>webrender_plugin</String></Pair>\n"
+            "    <Pair key=\"module_action\"><String>http://0:8947/mount/");
+        appendUrlEnc(buf, cap, &off, pathIsoDir);
+        appendUrlEnc(buf, cap, &off, "/");
+        appendUrlEnc(buf, cap, &off, name);
+        appendStr(buf, cap, &off,
+            "</String></Pair>\n"
             "   </Table>\n");
 
         appendStr(itemsBuffer, itemsSize, &itemsOff,
@@ -252,6 +156,9 @@ static int buildSdmXml(char *buf, int cap)
     }
 
     if (count == 0) {
+        /* Empty-state item: keep Sony's stock "do nothing" pattern so X-press
+         * shows "Cannot operate" instead of trying to fire an HTTP action we
+         * don't want to handle. */
         appendStr(buf, cap, &off,
             "   <Table key=\"iso_none\">\n"
             "    <Pair key=\"title\"><String>(no .iso files in /dev_hdd0/PS3ISO)</String></Pair>\n"

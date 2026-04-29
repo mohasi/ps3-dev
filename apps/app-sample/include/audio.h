@@ -1,0 +1,62 @@
+// audio - multi-stream audio mixer with wav and ogg vorbis support
+#ifndef APP_SAMPLE_AUDIO_H
+#define APP_SAMPLE_AUDIO_H
+
+#include <stdint.h>
+#include <cell/audio.h>
+
+#define SFX_DEFAULT_VOLUME  1.0f
+#define SFX_DEFAULT_SPEED   1.0f
+#define SFX_LOOP    0
+
+#define SFX_MAX_STREAMS     8
+#define SFX_SAMPLE_RATE     48000
+#define SFX_BLOCK_SAMPLES   CELL_AUDIO_BLOCK_SAMPLES
+
+struct stb_vorbis;
+
+typedef enum {
+    SFX_MEMORY,
+    SFX_STREAM
+} SfxMode;
+
+typedef enum {
+    SFX_STATE_STOPPED,
+    SFX_STATE_PLAYING,
+    SFX_STATE_PAUSED
+} SfxState;
+
+typedef struct {
+    float volume;
+    float speed;
+    int loop;
+
+    SfxState state;
+    SfxMode mode;
+    int sampleRate;
+    int channels;
+
+    float *pcmData;
+    uint32_t pcmSamples;
+    double playPos;
+
+    struct stb_vorbis *vorbis;
+    uint8_t *vorbisFileData;
+    uint32_t vorbisFileSize;
+
+    int isOgg;
+} Audio;
+
+int   sfxInit(void);
+void  sfxTerm(void);
+Audio sfxLoad(const char *path, SfxMode mode);
+void  sfxFree(Audio *a);
+void  sfxPlay(Audio *a, float volume, float speed, int loop);
+void  sfxStop(Audio *a);
+void  sfxPause(Audio *a);
+void  sfxResume(Audio *a);
+void  sfxSetMasterVolume(float vol);
+void  sfxMasterVolumeUp(float amount);
+void  sfxMasterVolumeDown(float amount);
+
+#endif // APP_SAMPLE_AUDIO_H

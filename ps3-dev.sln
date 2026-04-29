@@ -4,6 +4,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-disc-mount", "plugin
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-ftp", "plugins\simple-ftp\simple-ftp.vcxproj", "{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "app-sample", "apps\app-sample\app-sample.vcxproj", "{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "apps", "apps", "{6350263B-0E33-4590-BA8A-8FD49451E9FA}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "plugins", "plugins", "{B7BFCCB7-7D58-4A90-9AFC-777EB79AB503}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|PS3 = Release|PS3
@@ -13,8 +19,15 @@ Global
 		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Release|PS3.Build.0 = Release|PS3
 		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Release|PS3.ActiveCfg = Release|PS3
 		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Release|PS3.Build.0 = Release|PS3
+		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}.Release|PS3.ActiveCfg = Release|PS3
+		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}.Release|PS3.Build.0 = Release|PS3
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A} = {6350263B-0E33-4590-BA8A-8FD49451E9FA}
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3} = {B7BFCCB7-7D58-4A90-9AFC-777EB79AB503}
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21} = {B7BFCCB7-7D58-4A90-9AFC-777EB79AB503}
 	EndGlobalSection
 EndGlobal

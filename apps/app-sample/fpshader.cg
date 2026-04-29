@@ -1,0 +1,12 @@
+// fragment shader - texture * vertex color
+uniform sampler2D tex : TEXUNIT0;
+
+void main
+(
+	float4 color : COLOR,
+	float2 texcoord : TEXCOORD0,
+	out float4 oColor : COLOR
+)
+{
+	oColor = tex2D(tex, texcoord) * color;
+}

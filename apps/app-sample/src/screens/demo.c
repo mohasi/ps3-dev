@@ -1,0 +1,113 @@
+// demo screen - showcases engine features
+#include "screens/demo.h"
+#include "gfx.h"
+#include "colors.h"
+#include "pad-input.h"
+#include "bars.h"
+#include "bouncing-box.h"
+#include "gradient-tri.h"
+#include "animated-sprite.h"
+#include "audio.h"
+#include "font.h"
+#include "anim.h"
+#include "overlays/sidepanel.h"
+
+static GfxTexture makoto;
+static Audio sfxMakoto;
+static Audio bgm;
+static Font pop;
+static Anims anims;
+static float circleX;
+static float colorT;
+static GfxTexture titleText;
+static GfxTexture wrapText;
+static GfxTexture ellipsisText;
+
+static void demoInit(void)
+{
+    initAnimatedSprite();
+
+    makoto = gfxLoadTexture("/dev_hdd0/game/APPSAMP01/USRDIR/makoto.png");
+
+    sfxMakoto = sfxLoad("/dev_hdd0/game/APPSAMP01/USRDIR/makoto.wav", SFX_MEMORY);
+    bgm = sfxLoad("/dev_hdd0/game/APPSAMP01/USRDIR/price.ogg", SFX_STREAM);
+
+    pop = fontOpenSystem(FONT_POP);
+
+    titleText = fontToTexture(TEXT_AUTOSIZE, TEXT_AUTOSIZE, "app-sample", &pop, 20, COLOR_WHITE, TEXT_NOWRAP);
+    wrapText = fontToTexture(350, TEXT_AUTOSIZE, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.", &pop, 14, COLOR_EMERALD_300, TEXT_WRAP);
+    ellipsisText = fontToTexture(200, TEXT_AUTOSIZE, "This long text gets cut off with an ellipsis at the end", &pop, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS);
+
+    sidepanel.init();
+
+    circleX = 1300.0f;
+    colorT = 0.0f;
+    animSet(&anims, &circleX, 1300.0f, 1800.0f, 2000, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
+    animSet(&anims, &colorT, 0.0f, 1.0f, 800, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
+}
+
+static void demoResume(void) {}
+
+static void demoUpdate(void)
+{
+    animUpdate(&anims);
+
+    if (pad.btn.cross == BTN_PRESSED)
+        sfxPlay(&sfxMakoto, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, SFX_LOOP);
+
+    if (pad.btn.start == BTN_PRESSED) {
+        if (bgm.state == SFX_STATE_PLAYING)
+            sfxStop(&bgm);
+        else
+            sfxPlay(&bgm, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 1);
+    }
+
+    if (pad.btn.up == BTN_PRESSED)
+        sfxMasterVolumeUp(0.1f);
+
+    if (pad.btn.down == BTN_PRESSED)
+        sfxMasterVolumeDown(0.1f);
+
+    if (pad.btn.select == BTN_PRESSED) {
+        if (sidepanel.status == OVERLAY_VISIBLE)
+            sidepanel.hide();
+        else
+            sidepanel.show();
+    }
+
+    moveBouncingBox();
+    updateAnimatedSprite();
+    sidepanel.update();
+}
+
+static void demoDraw(void)
+{
+    drawBars();
+    drawBouncingBox();
+    drawGradientTriangle();
+    drawAnimatedSprite(500, 100);
+    gfxDrawTexture(100, 400, makoto);
+    gfxDrawTexture(40, 170, titleText);
+    padDraw(40, 240, &pop, 14, COLOR_SKY_300);
+
+    gfxDrawTexture(500, 300, wrapText);
+    gfxDrawTexture(500, 380, ellipsisText);
+
+    uint32_t circleColor = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
+    gfxFillCircle((int)circleX, 130, 25, circleColor);
+
+    sidepanel.draw();
+}
+
+static void demoSuspend(void) {}
+
+static void demoTerm(void)
+{
+    sidepanel.term();
+    animCancelAll(&anims);
+    fontClose(&pop);
+    sfxFree(&sfxMakoto);
+    sfxFree(&bgm);
+}
+
+Screen demoScreen = { demoInit, demoResume, demoUpdate, demoDraw, demoSuspend, demoTerm };

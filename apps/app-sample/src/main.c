@@ -1,0 +1,58 @@
+#include <sys/process.h>
+#include <sysutil/sysutil_common.h>
+
+#include "gfx.h"
+#include "colors.h"
+#include "pad-input.h"
+#include "audio.h"
+#include "font.h"
+#include "screen.h"
+#include "screens/demo.h"
+#include "overlays/stats.h"
+
+SYS_PROCESS_PARAM(1001, 0x10000)
+
+static volatile int exitRequested = 0;
+
+static void exitCallback(uint64_t status, uint64_t param, void *userdata)
+{
+	(void)param; (void)userdata;
+	if (status == CELL_SYSUTIL_REQUEST_EXITGAME) exitRequested = 1;
+}
+
+int main(int argc, char **argv)
+{
+	(void)argc;
+	(void)argv;
+
+	cellSysutilRegisterCallback(0, exitCallback, NULL);
+
+	if (gfxInit(GFX_VSYNC_OFF) != 0) return 1;
+	if (sfxInit() != 0) return 1;
+	if (fontInit() != 0) return 1;
+	padInit();
+
+	stats.show();
+	changeScreen(&demoScreen);
+
+	while (!exitRequested) {
+		cellSysutilCheckCallback();
+		padUpdate();
+
+		currentScreen->update();
+		stats.update();
+
+		gfxBeginFrame();
+		gfxClear(COLOR_SLATE_900);
+		currentScreen->draw();
+		stats.draw();
+		gfxEndFrame();
+	}
+
+	changeScreen(NULL);
+	stats.term();
+	sfxTerm();
+	fontTerm();
+	gfxTerm();
+	return 0;
+}

@@ -45,8 +45,9 @@
       </ImportLibrary>
     </Link>
     <PostBuildEvent>
-      <Message>Signing PRX "$(ProjectDir)simple-disc-mount.sprx"</Message>
-      <Command>cd /d "$(SolutionDir)tools\scetool" &amp;&amp; scetool.exe -0 SELF -1 TRUE -s FALSE -2 0A -3 1070000052000001 -4 01000002 -5 APP -6 0003004000000000 -A 0001000000000000 --self-ctrl-flags 4000000000000000000000000000000000000000000000000000000000000002 -e "$(TargetPath)" "$(ProjectDir)simple-disc-mount.sprx" &amp;&amp; copy /y "$(ProjectDir)simple-disc-mount.sprx" "$(SolutionDir)out\simple-disc-mount.sprx"</Command>
+      <Message>Signing PRX to out/</Message>
+      <Command>if not exist "$(SolutionDir)out" mkdir "$(SolutionDir)out"
+cd /d "$(SolutionDir)tools\scetool" &amp;&amp; scetool.exe -0 SELF -1 TRUE -s FALSE -2 0A -3 1070000052000001 -4 01000002 -5 APP -6 0003004000000000 -A 0001000000000000 --self-ctrl-flags 4000000000000000000000000000000000000000000000000000000000000002 -e "$(TargetPath)" "$(SolutionDir)out\simple-disc-mount.sprx"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

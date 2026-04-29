@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="src\main.c" />
+    <ClCompile Include="src\gfx.c" />
+    <ClCompile Include="src\font.c" />
+    <ClCompile Include="src\audio.c" />
+    <ClCompile Include="src\screen.c" />
+    <ClCompile Include="src\pad-input.c" />
+    <ClCompile Include="src\overlays\fps.c" />
+    <ClCompile Include="src\screens\demo.c" />
+    <ClCompile Include="src\overlays\sidepanel.c" />
+    <ClCompile Include="src\demos\bars.c" />
+    <ClCompile Include="src\demos\bouncing-box.c" />
+    <ClCompile Include="src\demos\gradient-tri.c" />
+    <ClCompile Include="src\demos\animated-sprite.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\gfx.h" />
+    <ClInclude Include="include\font.h" />
+    <ClInclude Include="include\audio.h" />
+    <ClInclude Include="include\screen.h" />
+    <ClInclude Include="include\pad-input.h" />
+    <ClInclude Include="include\overlays\fps.h" />
+    <ClInclude Include="include\colors.h" />
+    <ClInclude Include="include\anim.h" />
+    <ClInclude Include="include\bars.h" />
+    <ClInclude Include="include\bouncing-box.h" />
+    <ClInclude Include="include\gradient-tri.h" />
+    <ClInclude Include="include\animated-sprite.h" />
+    <ClInclude Include="include\screens\demo.h" />
+    <ClInclude Include="include\overlay.h" />
+    <ClInclude Include="include\overlays\sidepanel.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="fpshader.cg" />
+    <CustomBuild Include="vpshader.cg" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app-sample.conf" />
+    <None Include="src\vorbis.c" />
+    <None Include="PARAM.SFO" />
+    <None Include="README.md" />
+    <None Include="res\makoto.png" />
+    <None Include="res\makoto.wav" />
+    <None Include="res\pattern.png" />
+    <None Include="res\price.ogg" />
+    <Image Include="ICON0.PNG" />
+  </ItemGroup>
+</Project>

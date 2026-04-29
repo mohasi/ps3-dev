@@ -1,6 +1,6 @@
 # ps3-dev
 
-Small collection ofPS3 Cobra/EVILNAT VSH plugins and apps, built with Sony's official SDK on FW 4.75.
+Small collection of PS3 Cobra/EVILNAT VSH plugins, built with Sony's official SDK on FW 4.75.
 
 ## Layout
 
@@ -8,10 +8,12 @@ Small collection ofPS3 Cobra/EVILNAT VSH plugins and apps, built with Sony's off
 ps3-dev/
 ├── common/              shared headers + VSH import stubs
 │   ├── dbg.h            dbgLog() — appends to /dev_hdd0/tmp/dbg.txt
-│   ├── vsh.h            vshNotify(), isXmbReady(), mountDevBlind() syscall
+│   ├── vsh.h            vshNotify(), isXmbReady(), mountDevBlind()
+│   ├── file.h           readFile(), writeFile(), fileExists(), makeDir()
+│   ├── string-utilities.h  strLen(), appendStr(), appendUrlEnc(), etc.
 │   └── lib/             libvshtask_export_stub.a, libvshmain_export_stub.a
 ├── tools/scetool/       PRX signing tool + keys, invoked by PostBuildEvent
-├── simple-disc-mount/   adds "Mount Disc Image" to the XMB Games column
+├── simple-disc-mount/   mounts ISOs from an XMB submenu
 └── simple-ftp/          anonymous, binary-only FTP server on port 21
 ```
 
@@ -21,12 +23,13 @@ include path, and link against `$(SolutionDir)common\lib\*.a`.
 ## Plugins
 
 ### simple-disc-mount
-Injects a submenu below "Package Manager" that lists every `.iso` in
-`/dev_hdd0/PS3ISO`. Activating an item currently shows Sony's stock "Cannot
-operate" dialog — real mount wiring will come via a `webrender_plugin`
-Action() hook.
+Adds a "Mount Disc Image" submenu below "Package Manager" in the XMB Games
+column, listing every `.iso` in `/dev_hdd0/PS3ISO`. Selecting an item mounts
+it as a virtual Blu-ray disc via Cobra syscalls. Uses Sony's `webrender_plugin`
+as an entry point to trigger the mount from the XMB menu. See
+`simple-disc-mount/README.md` for details.
 
 ### simple-ftp
 Minimal FTP server: PASV-only, binary-only, anonymous. Listens on :21 once
-XMB is ready. Up to 4 concurrent sessions. Full filesystem access (the
-console owner's FS is fair game).
+XMB is ready. Up to two concurrent sessions. Full filesystem access. See
+`simple-ftp/README.md` for details.

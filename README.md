@@ -13,12 +13,16 @@ ps3-dev/
 │   ├── string-utilities.h  strLen(), appendStr(), appendUrlEnc(), etc.
 │   └── lib/             libvshtask_export_stub.a, libvshmain_export_stub.a
 ├── tools/scetool/       PRX signing tool + keys, invoked by PostBuildEvent
-├── simple-disc-mount/   mounts ISOs from an XMB submenu
-└── simple-ftp/          anonymous, binary-only FTP server on port 21
+├── plugins/
+│   ├── simple-disc-mount/   mounts ISOs from an XMB submenu
+│   └── simple-ftp/          anonymous, binary-only FTP server on port 21
+├── out/                 build outputs (.sprx plugins, .pkg apps)
+└── README.md
 ```
 
 Both plugins pick up `common/` via `$(SolutionDir)common` in the vcxproj's
-include path, and link against `$(SolutionDir)common\lib\*.a`.
+include path, and link against `$(SolutionDir)common\lib\*.a`. Signed outputs
+are copied to `out/` by each project's PostBuildEvent.
 
 ## Plugins
 
@@ -27,9 +31,9 @@ Adds a "Mount Disc Image" submenu below "Package Manager" in the XMB Games
 column, listing every `.iso` in `/dev_hdd0/PS3ISO`. Selecting an item mounts
 it as a virtual Blu-ray disc via Cobra syscalls. Uses Sony's `webrender_plugin`
 as an entry point to trigger the mount from the XMB menu. See
-`simple-disc-mount/README.md` for details.
+`plugins/simple-disc-mount/README.md` for details.
 
 ### simple-ftp
 Minimal FTP server: PASV-only, binary-only, anonymous. Listens on :21 once
 XMB is ready. Up to two concurrent sessions. Full filesystem access. See
-`simple-ftp/README.md` for details.
+`plugins/simple-ftp/README.md` for details.

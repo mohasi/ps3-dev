@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // Returns length of a string.
 static int strLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }

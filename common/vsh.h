@@ -9,9 +9,9 @@ extern uint32_t vshmain_EB757101(void);
 #define vshNotify(msg)  vshtask_A02D46E7(0, (msg))
 #define isXmbReady()    (vshmain_EB757101() == 0)
 
-/* LV2 syscall 837 — mounts /dev_blind, the writable mirror of /dev_flash
+/* LV2 syscall 837 - mounts /dev_blind, the writable mirror of /dev_flash
  * exposed by Cobra CFW (always on under EVILNAT). The Sony SDK ships no
- * system_call_N() macro, so we emit `sc` directly with PPU LV2 ABI:
+ * system_call_N() macro, so we emit sc directly with PPU LV2 ABI:
  * r11 = syscall number, r3..r10 = args, result in r3. */
 static inline int64_t mountDevBlind(void)
 {

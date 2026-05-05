@@ -4,14 +4,39 @@ Static library for PS3 VSH plugins (PRX context). Compiled with `-fno-builtin-pr
 
 ## What it provides
 
-- **printf** — drop-in `snprintf`/`vsnprintf` that doesn't depend on libc (from `simple-ps3-lib/src/printf.c`)
+- **printf** — drop-in `snprintf`/`vsnprintf`/`sprintf` that doesn't depend on libc dynamic imports
+- **dbg** — timestamped file logging (`dbgLog`) via single atomic `cellFsWrite`
+- **file** — cellFs helpers (readFile, writeFile, fileExists, makeDir)
+- **string-utilities** — case-insensitive compare, URL encode/decode, XML escaping, byte search, int formatting
+- **vsh** — XMB readiness check, VSH notification, `/dev_blind` mount
 
 ## Usage
 
-Link with `-L"$(SolutionDir)libs\simple-ps3-prx-lib\bin\$(Configuration)" -lsimple-ps3-prx-lib` in your PRX project's additional linker options.
+1. Build `simple-ps3-prx-lib` first — produces `libsimple-ps3-prx-lib.a` in `bin/Release/`.
+2. In your plugin's vcxproj:
+   - Add `$(SolutionDir)libs\simple-ps3-prx-lib\include` to include directories.
+   - Place the `.a` **before** SDK stubs in `AdditionalDependencies` (link order matters — our printf symbols must resolve before `libc_stub.a`).
+3. Include headers as needed: `#include "dbg.h"`, `#include "file.h"`, etc.
 
-Include headers from `simple-ps3-lib/include/` as usual (`printf.h`, `dbg.h`, `vsh.h`, etc.).
+## Layout
+
+```
+simple-ps3-prx-lib/
+├── simple-ps3-prx-lib.vcxproj
+├── include/            # public headers
+│   ├── printf.h
+│   ├── dbg.h
+│   ├── file.h
+│   ├── string-utilities.h
+│   └── vsh.h
+└── src/                # implementation
+    └── printf.c        # Patrick Powell / Holger Weiss / Hector Martin port
+```
+
+## Link order
+
+Our `.a` must appear before `libc_stub.a` in the linker inputs. Both are archives; the linker resolves symbols left-to-right. If `libc_stub.a` comes first, its printf stubs win — those reference dynamic imports that don't exist in VSH context, causing silent PRX load failure.
 
 ## Design
 
-This lib compiles context-independent source files from `simple-ps3-lib` with PRX-safe flags. Files that are only safe in app context (gfx, font, audio, etc.) are never included here.
+This lib is fully independent of `simple-ps3-lib`. Header-only utilities (`dbg.h`, `file.h`, `string-utilities.h`, `vsh.h`) are `static inline`. The only compiled unit is `printf.c`. Both libs contain their own copy of `file.h` since it is context-neutral.

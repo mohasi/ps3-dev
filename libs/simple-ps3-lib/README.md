@@ -10,15 +10,16 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 - **pad-input** — controller polling with press/release/held state tracking
 - **screen** — stack-based screen lifecycle (init/resume/update/draw/suspend/term)
 - **overlay** — persistent UI layer type (init/show/hide/update/draw/term)
-- **anim** — header-only easing curves and animation containers
-- **colors** — header-only Tailwind color palette
+- **anim** — easing curves, color interpolation, and animation containers
+- **colors** — Tailwind color palette
+- **file** — cellFs helpers (readFile, readFileAlloc, writeFile, fileExists, makeDir)
 
 ## Usage
 
 1. Build `simple-ps3-lib` first — produces `libsimple-ps3-lib.a` in `bin/Release/`.
 2. In your app's vcxproj:
-   - Add `$(SolutionDir)common\simple-ps3-lib\include` to include directories.
-   - Link with `-L"$(SolutionDir)common\simple-ps3-lib\bin\$(Configuration)" -lsimple-ps3-lib` in additional linker options.
+   - Add `$(SolutionDir)libs\simple-ps3-lib\include` to include directories.
+   - Link with `-L"$(SolutionDir)libs\simple-ps3-lib\bin\$(Configuration)" -lsimple-ps3-lib` in additional linker options.
 3. Include headers as needed: `#include "gfx.h"`, `#include "font.h"`, etc.
 
 ## Layout
@@ -34,13 +35,15 @@ simple-ps3-lib/
 │   ├── screen.h
 │   ├── overlay.h
 │   ├── anim.h
-│   └── colors.h
+│   ├── colors.h
+│   └── file.h
 └── src/                # implementation
     ├── gfx.c
     ├── font.c
     ├── audio.c
     ├── pad-input.c
     ├── screen.c
+    ├── anim.c
     └── vorbis.c        # stb_vorbis, included by audio.c
 ```
 
@@ -48,3 +51,4 @@ simple-ps3-lib/
 
 - The renderer (`gfx.c`) expects compiled RSX shaders linked by the consuming app. The app provides `vpshader.cg` and `fpshader.cg` as custom build steps — the lib references them via `extern` symbols resolved at link time.
 - `vorbis.c` is stb_vorbis (public domain), `#include`d directly by `audio.c` — not compiled separately.
+- This lib is independent of `simple-ps3-prx-lib`. Both contain their own copy of `file.h` since it is context-neutral.

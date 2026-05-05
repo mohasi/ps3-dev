@@ -64,6 +64,13 @@ static void pluginThread(uint64_t arg)
     }
     dbgLog("[sdm] xmb ready\n");
 
+    /* Give the storage/BD subsystem time to finish initialising.
+     * isXmbReady() fires before the disc driver is fully up — mounting
+     * immediately leads to 80010516 ("game could not be started") because
+     * the system hasn't registered the virtual BD device yet. The manual
+     * XMB path works because the user navigates for several seconds first. */
+    sys_timer_sleep(5);
+
     /* Re-mount the last ISO before we touch XML so the fake-disc-insert
      * event races in alongside the XMB's first paint — the BD icon tends to
      * show up the moment the Games column settles. */

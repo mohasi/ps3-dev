@@ -1,29 +1,13 @@
 // animation - tween values over time with easing
-#ifndef APP_SAMPLE_ANIM_H
-#define APP_SAMPLE_ANIM_H
-
+#include "anim.h"
 #include <sys/sys_time.h>
-#include <stdint.h>
 #include <math.h>
 
 // ---------------------------------------------------------------------
 // easing curves
 // ---------------------------------------------------------------------
 
-typedef enum {
-    EASE_LINEAR,
-    EASE_IN_QUAD,
-    EASE_OUT_QUAD,
-    EASE_IN_OUT_QUAD,
-    EASE_IN_CUBIC,
-    EASE_OUT_CUBIC,
-    EASE_IN_OUT_CUBIC,
-    EASE_OUT_BACK,
-    EASE_OUT_BOUNCE,
-    EASE_OUT_ELASTIC
-} Easing;
-
-static inline float applyEasing(float t, Easing e)
+float applyEasing(float t, Easing e)
 {
     switch (e) {
     case EASE_LINEAR:
@@ -78,7 +62,7 @@ static inline float applyEasing(float t, Easing e)
 // color interpolation
 // ---------------------------------------------------------------------
 
-static inline uint32_t interpolateColor(uint32_t from, uint32_t to, float t)
+uint32_t interpolateColor(uint32_t from, uint32_t to, float t)
 {
     if (t <= 0.0f) return from;
     if (t >= 1.0f) return to;
@@ -101,43 +85,9 @@ static inline uint32_t interpolateColor(uint32_t from, uint32_t to, float t)
 // animation container
 // ---------------------------------------------------------------------
 
-#define ANIM_MAX 16
-
-typedef enum {
-    ANIM_ONCE,
-    ANIM_LOOP,
-    ANIM_PINGPONG
-} AnimRepeat;
-
-typedef struct { int id; } AnimHandle;
-typedef void (*AnimCallback)(AnimHandle self);
-
-static const AnimHandle ANIM_INVALID = { -1 };
-
-typedef struct {
-    int active;
-    int paused;
-    int id;
-    float *target;
-    float from;
-    float to;
-    uint64_t startUs;
-    uint64_t durationUs;
-    uint64_t pausedElapsed;
-    Easing easing;
-    AnimRepeat repeat;
-    AnimCallback onDone;
-    int forward;
-} AnimSlot;
-
-typedef struct {
-    AnimSlot slots[ANIM_MAX];
-    int nextId;
-} Anims;
-
-static inline AnimHandle animSet(Anims *a, float *target, float from, float to,
-                                 uint64_t ms, Easing easing, AnimRepeat repeat,
-                                 AnimCallback onDone)
+AnimHandle animSet(Anims *a, float *target, float from, float to,
+                   uint64_t ms, Easing easing, AnimRepeat repeat,
+                   AnimCallback onDone)
 {
     for (int i = 0; i < ANIM_MAX; i++) {
         if (!a->slots[i].active) {
@@ -163,7 +113,7 @@ static inline AnimHandle animSet(Anims *a, float *target, float from, float to,
     return ANIM_INVALID;
 }
 
-static inline void animCancel(Anims *a, AnimHandle handle)
+void animCancel(Anims *a, AnimHandle handle)
 {
     for (int i = 0; i < ANIM_MAX; i++) {
         if (a->slots[i].active && a->slots[i].id == handle.id) {
@@ -173,7 +123,7 @@ static inline void animCancel(Anims *a, AnimHandle handle)
     }
 }
 
-static inline int animDone(Anims *a, AnimHandle handle)
+int animDone(Anims *a, AnimHandle handle)
 {
     for (int i = 0; i < ANIM_MAX; i++) {
         if (a->slots[i].active && a->slots[i].id == handle.id)
@@ -182,13 +132,13 @@ static inline int animDone(Anims *a, AnimHandle handle)
     return 1;
 }
 
-static inline void animCancelAll(Anims *a)
+void animCancelAll(Anims *a)
 {
     for (int i = 0; i < ANIM_MAX; i++)
         a->slots[i].active = 0;
 }
 
-static inline void animPause(Anims *a)
+void animPause(Anims *a)
 {
     uint64_t now = sys_time_get_system_time();
     for (int i = 0; i < ANIM_MAX; i++) {
@@ -199,7 +149,7 @@ static inline void animPause(Anims *a)
     }
 }
 
-static inline void animResume(Anims *a)
+void animResume(Anims *a)
 {
     uint64_t now = sys_time_get_system_time();
     for (int i = 0; i < ANIM_MAX; i++) {
@@ -210,7 +160,7 @@ static inline void animResume(Anims *a)
     }
 }
 
-static inline void animUpdate(Anims *a)
+void animUpdate(Anims *a)
 {
     uint64_t now = sys_time_get_system_time();
     for (int i = 0; i < ANIM_MAX; i++) {
@@ -249,5 +199,3 @@ static inline void animUpdate(Anims *a)
         *a->slots[i].target = from + (to - from) * eased;
     }
 }
-
-#endif // APP_SAMPLE_ANIM_H

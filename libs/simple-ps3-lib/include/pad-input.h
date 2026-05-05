@@ -1,6 +1,6 @@
+#pragma once
+
 // pad input - reads controller state and displays it
-#ifndef APP_SAMPLE_PAD_INPUT_H
-#define APP_SAMPLE_PAD_INPUT_H
 
 #include "font.h"
 #include <stdint.h>
@@ -37,4 +37,4 @@ void padInit(void);
 void padUpdate(void);
 void padDraw(int x, int y, Font *f, int size, uint32_t color);
 
-#endif // APP_SAMPLE_PAD_INPUT_H
+

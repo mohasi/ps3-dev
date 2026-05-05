@@ -1,10 +1,10 @@
 // audio - multi-stream audio mixer with wav and ogg vorbis support
 #include "audio.h"
+#include "file.h"
 #include <cell/audio.h>
 #include <cell/sysmodule.h>
 #include <sys/ppu_thread.h>
 #include <sys/timer.h>
-#include <cell/cell_fs.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -56,34 +56,6 @@ static sys_ppu_thread_t gAudioThread;
 static volatile int gAudioRunning = 0;
 static CellAudioPortConfig gPortConfig;
 static uint32_t gPortNum;
-
-// ============================================================================
-// file i/o
-// ============================================================================
-
-static uint8_t *readFileBytes(const char *path, uint32_t *outSize) {
-    int fd;
-    if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_OK) return NULL;
-
-    CellFsStat st;
-    if (cellFsFstat(fd, &st) != CELL_OK) { cellFsClose(fd); return NULL; }
-
-    uint32_t size = (uint32_t)st.st_size;
-    uint8_t *buf = (uint8_t *)malloc(size);
-    if (!buf) { cellFsClose(fd); return NULL; }
-
-    uint64_t totalRead = 0;
-    while (totalRead < size) {
-        uint64_t r;
-        if (cellFsRead(fd, buf + totalRead, size - totalRead, &r) != CELL_OK || r == 0) break;
-        totalRead += r;
-    }
-    cellFsClose(fd);
-
-    if (totalRead != size) { free(buf); return NULL; }
-    *outSize = size;
-    return buf;
-}
 
 // ============================================================================
 // wav decode
@@ -349,7 +321,7 @@ Audio sfxLoad(const char *path, SfxMode mode) {
     a.mode   = mode;
 
     uint32_t fsz = 0;
-    uint8_t *fd = readFileBytes(path, &fsz);
+    uint8_t *fd = readFileAlloc(path, &fsz);
     if (!fd || fsz < 4) { if (fd) free(fd); return a; }
 
     a.isOgg = (fd[0] == 'O' && fd[1] == 'g' && fd[2] == 'g' && fd[3] == 'S');

@@ -1,8 +1,8 @@
+#pragma once
+
 // colors.h - named color palette based on tailwind css v4
 // format: 0xAARRGGBB (full alpha). pass raw values for unlisted colors.
 // 26 hues x 11 shades (50-950), plus black and white.
-#ifndef APP_SAMPLE_COLORS_H
-#define APP_SAMPLE_COLORS_H
 
 #include <stdint.h>
 
@@ -377,4 +377,4 @@ enum {
 #define COLOR_MIST    COLOR_MIST_500
 #define COLOR_OLIVE   COLOR_OLIVE_500
 
-#endif /* APP_SAMPLE_COLORS_H */
+

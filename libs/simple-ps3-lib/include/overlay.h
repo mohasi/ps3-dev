@@ -1,6 +1,6 @@
+#pragma once
+
 // overlay - lifecycle-managed UI layer drawn on top of a screen
-#ifndef APP_SAMPLE_OVERLAY_H
-#define APP_SAMPLE_OVERLAY_H
 
 typedef enum OverlayStatus {
     OVERLAY_TERMINATED,
@@ -19,4 +19,4 @@ typedef struct Overlay {
     OverlayStatus status;
 } Overlay;
 
-#endif // APP_SAMPLE_OVERLAY_H
+

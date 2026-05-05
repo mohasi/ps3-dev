@@ -1,6 +1,6 @@
+#pragma once
+
 // font - truetype font rendering via libfont/freetype
-#ifndef APP_SAMPLE_FONT_H
-#define APP_SAMPLE_FONT_H
 
 #include <cell/font.h>
 #include <stdint.h>
@@ -39,4 +39,4 @@ void  fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
 GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text,
                     Font *f, int size, uint32_t color, TextWrap wrap);
 
-#endif // APP_SAMPLE_FONT_H
+

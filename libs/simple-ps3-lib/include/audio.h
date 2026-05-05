@@ -1,6 +1,6 @@
+#pragma once
+
 // audio - multi-stream audio mixer with wav and ogg vorbis support
-#ifndef APP_SAMPLE_AUDIO_H
-#define APP_SAMPLE_AUDIO_H
 
 #include <stdint.h>
 #include <cell/audio.h>
@@ -59,4 +59,4 @@ void  sfxSetMasterVolume(float vol);
 void  sfxMasterVolumeUp(float amount);
 void  sfxMasterVolumeDown(float amount);
 
-#endif // APP_SAMPLE_AUDIO_H
+

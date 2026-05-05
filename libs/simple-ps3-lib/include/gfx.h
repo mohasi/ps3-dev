@@ -1,7 +1,7 @@
+#pragma once
+
 // 2D graphics over libgcm/RSX.
 // Color format: 0xAARRGGBB. Origin at top-left.
-#ifndef APP_SAMPLE_GFX_H
-#define APP_SAMPLE_GFX_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -49,4 +49,4 @@ void   gfxVramReset(size_t mark);
 size_t gfxVramUsed(void);
 size_t gfxVramUsedTemp(void);
 
-#endif /* APP_SAMPLE_GFX_H */
+

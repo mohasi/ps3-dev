@@ -8,6 +8,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}</ProjectGuid>
+    <ProjectName>app-sample</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
@@ -27,12 +28,13 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
     <ClCompile>
-      <AdditionalIncludeDirectories>include;$(SolutionDir)common;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-ps3-lib\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <OptimizationLevel>Level2</OptimizationLevel>
     </ClCompile>
     <Link>
       <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>-L"$(SolutionDir)libs\simple-ps3-lib\bin\$(Configuration)" -lsimple-ps3-lib</AdditionalOptions>
       <GccOutputFormat>ELFFile</GccOutputFormat>
     </Link>
     <PostBuildEvent>
@@ -50,11 +52,6 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
-    <ClCompile Include="src\gfx.c" />
-    <ClCompile Include="src\font.c" />
-    <ClCompile Include="src\audio.c" />
-    <ClCompile Include="src\screen.c" />
-    <ClCompile Include="src\pad-input.c" />
     <ClCompile Include="src\overlays\stats.c" />
     <ClCompile Include="src\screens\demo.c" />
     <ClCompile Include="src\overlays\sidepanel.c" />
@@ -64,20 +61,12 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
     <ClCompile Include="src\demos\animated-sprite.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\gfx.h" />
-    <ClInclude Include="include\font.h" />
-    <ClInclude Include="include\audio.h" />
-    <ClInclude Include="include\screen.h" />
-    <ClInclude Include="include\pad-input.h" />
     <ClInclude Include="include\overlays\stats.h" />
-    <ClInclude Include="include\colors.h" />
-    <ClInclude Include="include\anim.h" />
     <ClInclude Include="include\bars.h" />
     <ClInclude Include="include\bouncing-box.h" />
     <ClInclude Include="include\gradient-tri.h" />
     <ClInclude Include="include\animated-sprite.h" />
     <ClInclude Include="include\screens\demo.h" />
-    <ClInclude Include="include\overlay.h" />
     <ClInclude Include="include\overlays\sidepanel.h" />
   </ItemGroup>
   <ItemGroup>
@@ -98,14 +87,13 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
   </ItemGroup>
   <ItemGroup>
     <None Include="app-sample.conf" />
-    <None Include="src\vorbis.c" />
     <None Include="PARAM.SFO" />
     <None Include="README.md" />
     <None Include="res\makoto.png" />
     <None Include="res\makoto.wav" />
     <None Include="res\pattern.png" />
     <None Include="res\price.ogg" />
-    <Image Include="ICON0.PNG" />
+    <None Include="ICON0.PNG" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

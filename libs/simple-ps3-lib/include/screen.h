@@ -1,6 +1,6 @@
+#pragma once
+
 // screen - lifecycle-managed UI element
-#ifndef APP_SAMPLE_SCREEN_H
-#define APP_SAMPLE_SCREEN_H
 
 typedef enum ScreenStatus {
     SCREEN_TERMINATED,
@@ -26,4 +26,4 @@ void changeScreen(Screen *newScreen);
 void pushScreen(Screen *newScreen);
 void popScreen(void);
 
-#endif // APP_SAMPLE_SCREEN_H
+

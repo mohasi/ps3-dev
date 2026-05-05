@@ -1,10 +1,10 @@
 #pragma once
 
 // Returns length of a string.
-static int strLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }
+static inline int strLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 
 // Case-insensitive string comparison.
-static int strCmpICase(const char *a, const char *b)
+static inline int strCmpICase(const char *a, const char *b)
 {
     while (*a && *b) {
         char ca = *a, cb = *b;
@@ -17,7 +17,7 @@ static int strCmpICase(const char *a, const char *b)
 }
 
 // Returns 1 if s ends with suf (case-insensitive).
-static int endsWithICase(const char *s, const char *suf)
+static inline int endsWithICase(const char *s, const char *suf)
 {
     int ls = strLen(s), lsuf = strLen(suf);
     if (lsuf > ls) return 0;
@@ -25,7 +25,7 @@ static int endsWithICase(const char *s, const char *suf)
 }
 
 // Finds needle in hay. Returns offset or -1.
-static int findBytes(const char *hay, int hLen, const char *needle, int nLen)
+static inline int findBytes(const char *hay, int hLen, const char *needle, int nLen)
 {
     if (nLen == 0 || nLen > hLen) return -1;
     for (int i = 0; i <= hLen - nLen; i++) {
@@ -37,7 +37,7 @@ static int findBytes(const char *hay, int hLen, const char *needle, int nLen)
 }
 
 // Appends src to dst at *off, respecting cap.
-static void appendStr(char *dst, int cap, int *off, const char *src)
+static inline void appendStr(char *dst, int cap, int *off, const char *src)
 {
     int o = *off;
     for (int i = 0; src[i] && o < cap - 1; i++) dst[o++] = src[i];
@@ -45,7 +45,7 @@ static void appendStr(char *dst, int cap, int *off, const char *src)
 }
 
 // Appends src to dst with XML entity escaping.
-static void appendXmlEscaped(char *dst, int cap, int *off, const char *src)
+static inline void appendXmlEscaped(char *dst, int cap, int *off, const char *src)
 {
     int o = *off;
     for (int i = 0; src[i] && o < cap - 8; i++) {
@@ -63,7 +63,7 @@ static void appendXmlEscaped(char *dst, int cap, int *off, const char *src)
 }
 
 // Appends src percent-encoded (RFC 3986 unreserved set passes through).
-static void appendUrlEnc(char *dst, int cap, int *off, const char *src)
+static inline void appendUrlEnc(char *dst, int cap, int *off, const char *src)
 {
     static const char hex[] = "0123456789ABCDEF";
     int o = *off;
@@ -84,7 +84,7 @@ static void appendUrlEnc(char *dst, int cap, int *off, const char *src)
 }
 
 // Returns 0..15 for a hex character, or -1 on invalid.
-static int hexDigit(char c)
+static inline int hexDigit(char c)
 {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -94,7 +94,7 @@ static int hexDigit(char c)
 
 // Percent-decodes src into dst, NUL-terminating. Stops at space/'?'/'\r'/end.
 // Inverse of appendUrlEnc. Returns chars written, or -1 on bad %XX.
-static int urlDecode(const char *src, char *dst, int cap)
+static inline int urlDecode(const char *src, char *dst, int cap)
 {
     int o = 0;
     while (*src && *src != ' ' && *src != '?' && *src != '\r' && o < cap - 1) {
@@ -114,7 +114,7 @@ static int urlDecode(const char *src, char *dst, int cap)
 }
 
 // Writes non-negative int as decimal. Returns chars written.
-static int intToDec(int v, char *out)
+static inline int intToDec(int v, char *out)
 {
     char tmp[12]; int t = 0;
     if (v == 0) tmp[t++] = '0';

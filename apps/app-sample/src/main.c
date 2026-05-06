@@ -32,25 +32,25 @@ int main(int argc, char **argv)
 	if (fontInit() != 0) return 1;
 	padInit();
 
-	stats.show();
+	overlayShow(&stats);
 	changeScreen(&demoScreen);
 
 	while (!exitRequested) {
 		cellSysutilCheckCallback();
 		padUpdate();
 
-		currentScreen->update();
-		stats.update();
+		screenUpdate();
+		overlayUpdate(&stats);
 
 		gfxBeginFrame();
 		gfxClear(COLOR_SLATE_900);
-		currentScreen->draw();
-		stats.draw();
+		screenDraw();
+		overlayDraw(&stats);
 		gfxEndFrame();
 	}
 
 	changeScreen(NULL);
-	stats.term();
+	overlayTerm(&stats);
 	sfxTerm();
 	fontTerm();
 	gfxTerm();

@@ -26,4 +26,5 @@ void changeScreen(Screen *newScreen);
 void pushScreen(Screen *newScreen);
 void popScreen(void);
 
-
+static inline void screenUpdate(void) { if (currentScreen && currentScreen->update) currentScreen->update(); }
+static inline void screenDraw(void)   { if (currentScreen && currentScreen->draw) currentScreen->draw(); }

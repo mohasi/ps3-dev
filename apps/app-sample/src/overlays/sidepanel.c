@@ -18,7 +18,6 @@ static void init(void)
     font = fontOpenSystem(FONT_POP);
     titleText = fontToTexture(SIDEPANEL_WIDTH - 40, TEXT_AUTOSIZE, "Side Panel", &font, 20, COLOR_WHITE, TEXT_NOWRAP);
     bodyText = fontToTexture(SIDEPANEL_WIDTH - 40, TEXT_AUTOSIZE, "This panel slides in from the right. Press SELECT to close.", &font, 14, COLOR_SLATE_300, TEXT_WRAP);
-    sidepanel.status = OVERLAY_INITIALISED;
 }
 
 static void show(void)
@@ -44,13 +43,11 @@ static void hide(void)
 
 static void update(void)
 {
-    if (sidepanel.status != OVERLAY_VISIBLE) return;
     animUpdate(&anims);
 }
 
 static void draw(void)
 {
-    if (sidepanel.status != OVERLAY_VISIBLE) return;
     int px = (int)x;
     int sw = gfxScreenWidth();
     int sh = gfxScreenHeight();
@@ -68,4 +65,4 @@ static void term(void)
     sidepanel.status = OVERLAY_TERMINATED;
 }
 
-Overlay sidepanel = { init, show, hide, update, draw, term, OVERLAY_TERMINATED };
+Overlay sidepanel = { show, hide, update, draw, term, OVERLAY_TERMINATED };

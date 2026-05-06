@@ -46,7 +46,6 @@ static void init(void)
     lastTime = 0;
     frameCount = 0;
     fpsValue = 0;
-    stats.status = OVERLAY_INITIALISED;
 }
 
 static void show(void)
@@ -63,7 +62,6 @@ static void hide(void)
 
 static void update(void)
 {
-    if (stats.status != OVERLAY_VISIBLE) return;
     uint64_t now = sys_time_get_system_time();
     frameCount++;
     if (lastTime == 0) { lastTime = now; return; }
@@ -78,7 +76,6 @@ static void update(void)
 
 static void draw(void)
 {
-    if (stats.status != OVERLAY_VISIBLE) return;
     fontDraw(40, 215, TEXT_AUTOSIZE, TEXT_AUTOSIZE, buf, &font, 14, COLOR_AMBER_300, TEXT_NOWRAP);
 }
 
@@ -88,4 +85,4 @@ static void term(void)
     stats.status = OVERLAY_TERMINATED;
 }
 
-Overlay stats = { init, show, hide, update, draw, term, OVERLAY_TERMINATED };
+Overlay stats = { show, hide, update, draw, term, OVERLAY_TERMINATED };

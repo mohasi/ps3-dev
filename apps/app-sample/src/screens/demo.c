@@ -38,8 +38,6 @@ static void demoInit(void)
     wrapText = fontToTexture(350, TEXT_AUTOSIZE, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.", &pop, 14, COLOR_EMERALD_300, TEXT_WRAP);
     ellipsisText = fontToTexture(200, TEXT_AUTOSIZE, "This long text gets cut off with an ellipsis at the end", &pop, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS);
 
-    sidepanel.init();
-
     circleX = 1300.0f;
     colorT = 0.0f;
     animSet(&anims, &circleX, 1300.0f, 1800.0f, 2000, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
@@ -70,14 +68,14 @@ static void demoUpdate(void)
 
     if (pad.btn.select == BTN_PRESSED) {
         if (sidepanel.status == OVERLAY_VISIBLE)
-            sidepanel.hide();
+            overlayHide(&sidepanel);
         else
-            sidepanel.show();
+            overlayShow(&sidepanel);
     }
 
     moveBouncingBox();
     updateAnimatedSprite();
-    sidepanel.update();
+    overlayUpdate(&sidepanel);
 }
 
 static void demoDraw(void)
@@ -96,14 +94,14 @@ static void demoDraw(void)
     uint32_t circleColor = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
     gfxFillCircle((int)circleX, 130, 25, circleColor);
 
-    sidepanel.draw();
+    overlayDraw(&sidepanel);
 }
 
 static void demoSuspend(void) {}
 
 static void demoTerm(void)
 {
-    sidepanel.term();
+    overlayTerm(&sidepanel);
     animCancelAll(&anims);
     fontClose(&pop);
     sfxFree(&sfxMakoto);

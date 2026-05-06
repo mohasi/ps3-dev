@@ -49,6 +49,7 @@
     <ClInclude Include="include\anim.h" />
     <ClInclude Include="include\colors.h" />
     <ClInclude Include="include\file.h" />
+    <ClInclude Include="include\app.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="src\vorbis.c" />

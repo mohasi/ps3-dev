@@ -1,6 +1,6 @@
 #include <sys/process.h>
-#include <sysutil/sysutil_common.h>
 
+#include "app.h"
 #include "gfx.h"
 #include "colors.h"
 #include "pad-input.h"
@@ -10,22 +10,17 @@
 #include "screens/demo.h"
 #include "overlays/stats.h"
 
-SYS_PROCESS_PARAM(1001, 0x10000)
+#define PROCESS_PRIORITY_DEFAULT 1001
+#define PROCESS_STACK_SIZE_64KB  0x10000
 
-static volatile int exitRequested = 0;
-
-static void exitCallback(uint64_t status, uint64_t param, void *userdata)
-{
-	(void)param; (void)userdata;
-	if (status == CELL_SYSUTIL_REQUEST_EXITGAME) exitRequested = 1;
-}
+SYS_PROCESS_PARAM(PROCESS_PRIORITY_DEFAULT, PROCESS_STACK_SIZE_64KB)
 
 int main(int argc, char **argv)
 {
 	(void)argc;
 	(void)argv;
 
-	cellSysutilRegisterCallback(0, exitCallback, NULL);
+	appRegisterExitCallback();
 
 	if (gfxInit(GFX_VSYNC_OFF) != 0) return 1;
 	if (sfxInit() != 0) return 1;
@@ -35,8 +30,8 @@ int main(int argc, char **argv)
 	overlayShow(&stats);
 	changeScreen(&demoScreen);
 
-	while (!exitRequested) {
-		cellSysutilCheckCallback();
+	while (!appExitRequested) {
+		appPoll();
 		padUpdate();
 
 		screenUpdate();

@@ -76,7 +76,7 @@ static void update(void)
 
 static void draw(void)
 {
-    fontDraw(40, 215, TEXT_AUTOSIZE, TEXT_AUTOSIZE, buf, &font, 14, COLOR_AMBER_300, TEXT_NOWRAP);
+    fontDraw(15, 5, TEXT_AUTOSIZE, TEXT_AUTOSIZE, buf, &font, 14, COLOR_AMBER_300, TEXT_NOWRAP);
 }
 
 static void term(void)

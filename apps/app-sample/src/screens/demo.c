@@ -11,6 +11,7 @@
 #include "font.h"
 #include "anim.h"
 #include "overlays/sidepanel.h"
+#include "screens/palette.h"
 
 static GfxTexture makoto;
 static Audio sfxMakoto;
@@ -38,13 +39,18 @@ static void demoInit(void)
     wrapText = fontToTexture(350, TEXT_AUTOSIZE, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.", &pop, 14, COLOR_EMERALD_300, TEXT_WRAP);
     ellipsisText = fontToTexture(200, TEXT_AUTOSIZE, "This long text gets cut off with an ellipsis at the end", &pop, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS);
 
-    circleX = 1300.0f;
+    circleX = 800.0f;
     colorT = 0.0f;
-    animSet(&anims, &circleX, 1300.0f, 1800.0f, 2000, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
+    animSet(&anims, &circleX, 800.0f, 1800.0f, 2000, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
     animSet(&anims, &colorT, 0.0f, 1.0f, 800, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
 }
 
-static void demoResume(void) {}
+static void demoResume(void)
+{
+    sfxResume(&sfxMakoto);
+    sfxResume(&bgm);
+    animResume(&anims);
+}
 
 static void demoUpdate(void)
 {
@@ -65,6 +71,11 @@ static void demoUpdate(void)
 
     if (pad.btn.down == BTN_PRESSED)
         sfxMasterVolumeDown(0.1f);
+
+    if (pad.btn.right == BTN_PRESSED) {
+        pushScreen(&paletteScreen);
+        return;
+    }
 
     if (pad.btn.select == BTN_PRESSED) {
         if (sidepanel.status == OVERLAY_VISIBLE)
@@ -97,7 +108,12 @@ static void demoDraw(void)
     overlayDraw(&sidepanel);
 }
 
-static void demoSuspend(void) {}
+static void demoSuspend(void)
+{
+    sfxPause(&sfxMakoto);
+    sfxPause(&bgm);
+    animPause(&anims);
+}
 
 static void demoTerm(void)
 {
@@ -108,4 +124,4 @@ static void demoTerm(void)
     sfxFree(&bgm);
 }
 
-Screen demoScreen = { demoInit, demoResume, demoUpdate, demoDraw, demoSuspend, demoTerm };
+Screen demoScreen = { demoInit, demoResume, demoUpdate, demoDraw, demoSuspend, demoTerm, SCREEN_TERMINATED };

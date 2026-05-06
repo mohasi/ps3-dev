@@ -54,6 +54,7 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\overlays\stats.c" />
     <ClCompile Include="src\screens\demo.c" />
+    <ClCompile Include="src\screens\palette.c" />
     <ClCompile Include="src\overlays\sidepanel.c" />
     <ClCompile Include="src\demos\bars.c" />
     <ClCompile Include="src\demos\bouncing-box.c" />
@@ -67,6 +68,7 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
     <ClInclude Include="include\gradient-tri.h" />
     <ClInclude Include="include\animated-sprite.h" />
     <ClInclude Include="include\screens\demo.h" />
+    <ClInclude Include="include\screens\palette.h" />
     <ClInclude Include="include\overlays\sidepanel.h" />
   </ItemGroup>
   <ItemGroup>

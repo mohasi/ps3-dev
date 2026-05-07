@@ -487,7 +487,7 @@ static void flushBatch(void)
 
 void gfxDrawSprite(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter)
 {
-	if (!initialized) return;
+	if (!initialized || tex.w == 0 || tex.h == 0) return;
 
 	int texPitch = (tex.w * 4 + 63) & ~63;
 

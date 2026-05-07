@@ -34,9 +34,5 @@ Font  fontOpenFile(const char *path);
 void  fontClose(Font *f);
 float fontMeasureText(Font *f, int size, const char *text);
 float fontMeasureChar(Font *f, int size, uint32_t code);
-void  fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
-               Font *f, int size, uint32_t color, TextWrap wrap);
-GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text,
-                    Font *f, int size, uint32_t color, TextWrap wrap);
-
-
+void  fontDraw(int x, int y, int width, int height, const char *text, Font *f, int size, uint32_t color, TextWrap wrap);
+GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int size, uint32_t color, TextWrap wrap);

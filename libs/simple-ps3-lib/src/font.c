@@ -161,8 +161,7 @@ float fontMeasureChar(Font *f, int size, uint32_t code)
     return fsize;
 }
 
-void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
-              Font *f, int size, uint32_t color, TextWrap wrap)
+void fontDraw(int x, int y, int width, int height, const char *text, Font *f, int size, uint32_t color, TextWrap wrap)
 {
     if (!f->open || !text || !text[0]) return;
 
@@ -176,7 +175,7 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
     float baseY = layout.baseLineY;
 
     int lineCount = 1;
-    if (wrap == TEXT_WRAP && maxWidth > 0) {
+    if (wrap == TEXT_WRAP && width > 0) {
         float px = 0.0f;
         const uint8_t *sp = (const uint8_t *)text;
         while (*sp) {
@@ -201,7 +200,7 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
                         wordW += fsize;
                     wp++;
                 }
-                if (px + adv + wordW > (float)maxWidth && px > 0.0f) {
+                if (px + adv + wordW > (float)width && px > 0.0f) {
                     lineCount++;
                     px = 0.0f;
                     sp++;
@@ -213,9 +212,9 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
         }
     }
 
-    int surfW = (maxWidth > 0) ? maxWidth : FONT_MAX_RENDER_W;
+    int surfW = (width > 0) ? width : FONT_MAX_RENDER_W;
     int surfH = (int)(lineH * lineCount + fsize);
-    if (maxHeight > 0 && surfH > maxHeight) surfH = maxHeight;
+    if (height > 0 && surfH > height) surfH = height;
 
     int bufSize = surfW * surfH * 4;
     uint8_t *buf = (uint8_t *)malloc(bufSize);
@@ -237,7 +236,7 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
     uint8_t cb = color & 0xFF;
 
     float ellipsisW = 0.0f;
-    if (wrap == TEXT_NOWRAP_ELLIPSIS && maxWidth > 0) {
+    if (wrap == TEXT_NOWRAP_ELLIPSIS && width > 0) {
         for (int i = 0; i < 3; i++)
             ellipsisW += fontMeasureChar(f, size, '.');
         cellFontSetScalePixel(&f->font, fsize, fsize);
@@ -251,7 +250,7 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
             if (wrap == TEXT_WRAP) {
                 penX = 0.0f;
                 penY += lineH;
-                if (maxHeight > 0 && penY + lineH > (float)surfH) break;
+                if (height > 0 && penY + lineH > (float)surfH) break;
             }
             p++;
             continue;
@@ -262,7 +261,7 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
         if (cellFontGetCharGlyphMetrics(&f->font, code, &metrics) == CELL_OK)
             advance = metrics.Horizontal.advance;
 
-        if (maxWidth > 0) {
+        if (width > 0) {
             if (wrap == TEXT_WRAP) {
                 if (code == ' ') {
                     float wordW = 0.0f;
@@ -275,16 +274,16 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
                             wordW += fsize;
                         wp++;
                     }
-                    if (penX + advance + wordW > (float)maxWidth && penX > 0.0f) {
+                    if (penX + advance + wordW > (float)width && penX > 0.0f) {
                         penX = 0.0f;
                         penY += lineH;
-                        if (maxHeight > 0 && penY + lineH > (float)surfH) break;
+                        if (height > 0 && penY + lineH > (float)surfH) break;
                         p++;
                         continue;
                     }
                 }
             } else if (wrap == TEXT_NOWRAP_ELLIPSIS) {
-                if (penX + advance > (float)maxWidth - ellipsisW && *(p + 1)) {
+                if (penX + advance > (float)width - ellipsisW && *(p + 1)) {
                     for (int i = 0; i < 3; i++) {
                         CellFontImageTransInfo ti;
                         CellFontGlyphMetrics dm;
@@ -305,7 +304,7 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
                     break;
                 }
             } else {
-                if (penX + advance > (float)maxWidth) break;
+                if (penX + advance > (float)width) break;
             }
         }
 
@@ -357,7 +356,7 @@ void fontDraw(int x, int y, int maxWidth, int maxHeight, const char *text,
     free(buf);
 }
 
-GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text, Font *f, int size, uint32_t color, TextWrap wrap)
+GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int size, uint32_t color, TextWrap wrap)
 {
     GfxTexture result = { 0, 0, 0 };
 
@@ -373,7 +372,7 @@ GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text, Font *f,
     float baseY = layout.baseLineY;
 
     int lineCount = 1;
-    if (wrap == TEXT_WRAP && maxWidth > 0) {
+    if (wrap == TEXT_WRAP && width > 0) {
         float px = 0.0f;
         const uint8_t *sp = (const uint8_t *)text;
         while (*sp) {
@@ -390,16 +389,16 @@ GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text, Font *f,
                     else wordW += fsize;
                     wp++;
                 }
-                if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineCount++; px = 0.0f; sp++; continue; }
+                if (px + adv + wordW > (float)width && px > 0.0f) { lineCount++; px = 0.0f; sp++; continue; }
             }
             px += adv;
             sp++;
         }
     }
 
-    int surfW = (maxWidth > 0) ? maxWidth : FONT_MAX_RENDER_W;
+    int surfW = (width > 0) ? width : FONT_MAX_RENDER_W;
     int surfH = (int)(lineH * lineCount + fsize);
-    if (maxHeight > 0 && surfH > maxHeight) surfH = maxHeight;
+    if (height > 0 && surfH > height) surfH = height;
 
     int bufSize = surfW * surfH * 4;
     uint8_t *buf = (uint8_t *)malloc(bufSize);
@@ -421,7 +420,7 @@ GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text, Font *f,
     uint8_t cb = color & 0xFF;
 
     float ellipsisW = 0.0f;
-    if (wrap == TEXT_NOWRAP_ELLIPSIS && maxWidth > 0) {
+    if (wrap == TEXT_NOWRAP_ELLIPSIS && width > 0) {
         for (int i = 0; i < 3; i++) ellipsisW += fontMeasureChar(f, size, '.');
         cellFontSetScalePixel(&f->font, fsize, fsize);
         cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
@@ -431,7 +430,7 @@ GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text, Font *f,
         uint32_t code = *p;
 
         if (code == '\n') {
-            if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; if (maxHeight > 0 && penY + lineH > (float)surfH) break; }
+            if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; if (height > 0 && penY + lineH > (float)surfH) break; }
             p++; continue;
         }
 
@@ -439,7 +438,7 @@ GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text, Font *f,
         float advance = fsize;
         if (cellFontGetCharGlyphMetrics(&f->font, code, &metrics) == CELL_OK) advance = metrics.Horizontal.advance;
 
-        if (maxWidth > 0) {
+        if (width > 0) {
             if (wrap == TEXT_WRAP) {
                 if (code == ' ') {
                     float wordW = 0.0f;
@@ -450,10 +449,10 @@ GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text, Font *f,
                         else wordW += fsize;
                         wp++;
                     }
-                    if (penX + advance + wordW > (float)maxWidth && penX > 0.0f) { penX = 0.0f; penY += lineH; if (maxHeight > 0 && penY + lineH > (float)surfH) break; p++; continue; }
+                    if (penX + advance + wordW > (float)width && penX > 0.0f) { penX = 0.0f; penY += lineH; if (height > 0 && penY + lineH > (float)surfH) break; p++; continue; }
                 }
             } else if (wrap == TEXT_NOWRAP_ELLIPSIS) {
-                if (penX + advance > (float)maxWidth - ellipsisW && *(p + 1)) {
+                if (penX + advance > (float)width - ellipsisW && *(p + 1)) {
                     for (int i = 0; i < 3; i++) {
                         CellFontImageTransInfo ti;
                         CellFontGlyphMetrics dm;
@@ -473,7 +472,7 @@ GfxTexture fontToTexture(int maxWidth, int maxHeight, const char *text, Font *f,
                     break;
                 }
             } else {
-                if (penX + advance > (float)maxWidth) break;
+                if (penX + advance > (float)width) break;
             }
         }
 

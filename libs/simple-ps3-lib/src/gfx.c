@@ -374,6 +374,8 @@ void gfxFillRectangle(int x, int y, int w, int h, uint32_t argb)
 	batchVertCount += 6;
 }
 
+// vertices are in pixel coords (origin top-left), matching gfxFillRectangle etc.
+// converted to clip space [-1,1] internally before submission to RSX.
 void gfxDrawTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32_t c1, float x2, float y2, uint32_t c2)
 {
 	if (!initialized) return;
@@ -387,11 +389,41 @@ void gfxDrawTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32
 	}
 	if (batchVertCount + 3 > MAX_VERTS) return;
 
+	float invW = 2.0f / (float)screenW;
+	float invH = 2.0f / (float)screenH;
+	float nx0 = x0 * invW - 1.0f, ny0 = 1.0f - y0 * invH;
+	float nx1 = x1 * invW - 1.0f, ny1 = 1.0f - y1 * invH;
+	float nx2 = x2 * invW - 1.0f, ny2 = 1.0f - y2 * invH;
+
 	GfxVertex *v = &batchVerts[backBuffer][batchVertCount];
-	v[0] = (GfxVertex){ x0, y0, 0.0f, argbToRgba(c0), 0.0f, 0.0f };
-	v[1] = (GfxVertex){ x1, y1, 0.0f, argbToRgba(c1), 0.0f, 0.0f };
-	v[2] = (GfxVertex){ x2, y2, 0.0f, argbToRgba(c2), 0.0f, 0.0f };
+	v[0] = (GfxVertex){ nx0, ny0, 0.0f, argbToRgba(c0), 0.0f, 0.0f };
+	v[1] = (GfxVertex){ nx1, ny1, 0.0f, argbToRgba(c1), 0.0f, 0.0f };
+	v[2] = (GfxVertex){ nx2, ny2, 0.0f, argbToRgba(c2), 0.0f, 0.0f };
 	batchVertCount += 3;
+}
+
+// thick line via two triangles: builds a quad oriented along the line, expanded
+// by thickness/2 in the perpendicular direction. degenerate (zero-length) lines
+// are skipped.
+void gfxDrawLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb)
+{
+	if (!initialized || thickness <= 0) return;
+	float dx = (float)(x1 - x0);
+	float dy = (float)(y1 - y0);
+	float len = sqrtf(dx * dx + dy * dy);
+	if (len <= 0.0f) return;
+
+	float t  = (float)thickness * 0.5f;
+	float px = -dy / len * t;
+	float py =  dx / len * t;
+
+	float ax = (float)x0 + px, ay = (float)y0 + py;
+	float bx = (float)x0 - px, by = (float)y0 - py;
+	float cx = (float)x1 + px, cy = (float)y1 + py;
+	float dx2 = (float)x1 - px, dy2 = (float)y1 - py;
+
+	gfxDrawTriangle(ax, ay, argb, bx, by, argb, cx, cy, argb);
+	gfxDrawTriangle(bx, by, argb, dx2, dy2, argb, cx, cy, argb);
 }
 
 void gfxFillCircle(int cx, int cy, int radius, uint32_t argb)
@@ -435,6 +467,32 @@ void gfxFillCircle(int cx, int cy, int radius, uint32_t argb)
 		prevY = curY;
 	}
 	batchVertCount += segments * 3;
+}
+
+// rounded rectangle = three axis-aligned rects + four corner circles. radius is
+// clamped to half the shortest side; radius<=0 falls through to gfxFillRectangle.
+void gfxFillRoundedRectangle(int x, int y, int w, int h, int radius, uint32_t argb)
+{
+	if (!initialized || w <= 0 || h <= 0) return;
+	if (radius <= 0) {
+		gfxFillRectangle(x, y, w, h, argb);
+		return;
+	}
+	int maxR = (w < h ? w : h) / 2;
+	int r = radius > maxR ? maxR : radius;
+
+	// middle band (full width, between the rounded ends)
+	gfxFillRectangle(x,         y + r,         w,         h - 2 * r, argb);
+	// top edge between corners
+	gfxFillRectangle(x + r,     y,             w - 2 * r, r,         argb);
+	// bottom edge between corners
+	gfxFillRectangle(x + r,     y + h - r,     w - 2 * r, r,         argb);
+
+	// four corner discs centred so each touches exactly two outer edges
+	gfxFillCircle(x + r,         y + r,         r, argb);
+	gfxFillCircle(x + w - r,     y + r,         r, argb);
+	gfxFillCircle(x + r,         y + h - r,     r, argb);
+	gfxFillCircle(x + w - r,     y + h - r,     r, argb);
 }
 
 static void flushBatch(void)

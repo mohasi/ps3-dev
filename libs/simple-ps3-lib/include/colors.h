@@ -7,8 +7,9 @@
 #include <stdint.h>
 
 enum {
-    COLOR_BLACK = 0xFF000000,
-    COLOR_WHITE = 0xFFFFFFFF,
+    COLOR_TRANSPARENT = 0x00000000,
+    COLOR_BLACK       = 0xFF000000,
+    COLOR_WHITE       = 0xFFFFFFFF,
 
     // red
     COLOR_RED_50  = 0xFFFEF2F2,

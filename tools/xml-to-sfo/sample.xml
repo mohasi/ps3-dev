@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sample PARAM.SFO source for a PS3 HDD game (CATEGORY=HG).
+  Well-known keys don't need type= or maxlength= — the tool fills them in.
+  See README.md and https://www.psdevwiki.com/ps3/PARAM.SFO for details.
+-->
+<paramsfo>
+  <!-- format: XX.YY, e.g. 01.00 for initial release, 01.01 for first patch -->
+  <param key="APP_VER">01.00</param>
+
+  <!-- bitfield flags, 0 for defaults. common flags (OR together):
+       0x08 = xmb in-game forced, 0x10 = xmb in-game disabled,
+       0x20 = xmb background music, 0x80 = ps vita remote play,
+       0x800000 = move controller enabled. see psdevwiki for full list -->
+  <param key="ATTRIBUTE">0</param>
+
+  <!-- 1 = bootable, 0 = not bootable, 2 = bootable software mode -->
+  <param key="BOOTABLE">1</param>
+
+  <!-- 2-letter category code:
+       HG = hdd game, GD = game data, SD = save data,
+       HM = home, AP/AM/AV/AT = app photo/music/video/tv,
+       1P = ps1 classic, 2P = ps2 classic, MN = minis, DG = disc game -->
+  <param key="CATEGORY">HG</param>
+
+  <!-- license text shown under "about this game" — omit if LICENSE flag
+       disabled via ATTRIBUTE 0x400000 -->
+  <param key="LICENSE">Homebrew. Not affiliated with Sony Computer Entertainment Inc.</param>
+
+  <!-- parental control level 0-11. 0 = disabled, 1 = least restrictive -->
+  <param key="PARENTAL_LEVEL">0</param>
+
+  <!-- minimum firmware required, format XX.YYYY, e.g. 04.7500 -->
+  <param key="PS3_SYSTEM_VER">04.7500</param>
+
+  <!-- video mode bitfield (OR together):
+       1 = 480 4:3, 2 = 576 4:3, 4 = 720p, 8 = 1080,
+       16 = 480 16:9, 32 = 576 16:9, 63 = all -->
+  <param key="RESOLUTION">63</param>
+
+  <!-- audio mode bitfield (OR together):
+       1 = lpcm 2.0, 4 = lpcm 5.1, 16 = lpcm 7.1,
+       256 = dolby 5.1, 512 = dts 5.1, 279 = all lpcm + dolby -->
+  <param key="SOUND_FORMAT">279</param>
+
+  <!-- game title shown on xmb, up to 128 bytes utf8 -->
+  <param key="TITLE">Sample App</param>
+
+  <!-- 9-char title id: ABCD12345
+       B=ps3 blu-ray, N=network (psn), S=cd/dvd;
+       L=licensed, C=copyrighted;
+       region: U=usa, E=europe, J=japan, A=asia, K=korea, H=hongkong -->
+  <param key="TITLE_ID">SAMPLE001</param>
+
+  <!-- disc/package revision, format XX.YY -->
+  <param key="VERSION">01.00</param>
+</paramsfo>

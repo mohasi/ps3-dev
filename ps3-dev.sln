@@ -1,3 +1,4 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-disc-mount", "plugins\simple-disc-mount\simple-disc-mount.vcxproj", "{0417CB38-3C70-412E-975F-1EB4D76F64E3}"
@@ -25,30 +26,50 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "plugins", "plugins", "{B7BF
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "libs", "libs", "{8C1D3F5E-2A4B-4D6C-9E7F-1B3A5C7D9E2F}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "xml-to-sfo", "tools\xml-to-sfo\xml-to-sfo.csproj", "{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Release|Mixed Platforms = Release|Mixed Platforms
 		Release|PS3 = Release|PS3
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Release|Mixed Platforms.ActiveCfg = Release|PS3
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Release|Mixed Platforms.Build.0 = Release|PS3
 		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Release|PS3.ActiveCfg = Release|PS3
 		{0417CB38-3C70-412E-975F-1EB4D76F64E3}.Release|PS3.Build.0 = Release|PS3
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Release|Mixed Platforms.ActiveCfg = Release|PS3
+		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Release|Mixed Platforms.Build.0 = Release|PS3
 		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Release|PS3.ActiveCfg = Release|PS3
 		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}.Release|PS3.Build.0 = Release|PS3
+		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}.Release|Mixed Platforms.ActiveCfg = Release|PS3
+		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}.Release|Mixed Platforms.Build.0 = Release|PS3
 		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}.Release|PS3.ActiveCfg = Release|PS3
 		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}.Release|PS3.Build.0 = Release|PS3
+		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A}.Release|Mixed Platforms.ActiveCfg = Release|PS3
+		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A}.Release|Mixed Platforms.Build.0 = Release|PS3
 		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A}.Release|PS3.ActiveCfg = Release|PS3
 		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A}.Release|PS3.Build.0 = Release|PS3
+		{E5A8B2C1-3D4F-5E6A-7B8C-9D0E1F2A3B4C}.Release|Mixed Platforms.ActiveCfg = Release|PS3
+		{E5A8B2C1-3D4F-5E6A-7B8C-9D0E1F2A3B4C}.Release|Mixed Platforms.Build.0 = Release|PS3
 		{E5A8B2C1-3D4F-5E6A-7B8C-9D0E1F2A3B4C}.Release|PS3.ActiveCfg = Release|PS3
 		{E5A8B2C1-3D4F-5E6A-7B8C-9D0E1F2A3B4C}.Release|PS3.Build.0 = Release|PS3
+		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}.Release|PS3.ActiveCfg = Release|Any CPU
+		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}.Release|PS3.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A} = {6350263B-0E33-4590-BA8A-8FD49451E9FA}
-		{0417CB38-3C70-412E-975F-1EB4D76F64E3} = {B7BFCCB7-7D58-4A90-9AFC-777EB79AB503}
 		{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21} = {B7BFCCB7-7D58-4A90-9AFC-777EB79AB503}
-		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A} = {8C1D3F5E-2A4B-4D6C-9E7F-1B3A5C7D9E2F}
+		{0417CB38-3C70-412E-975F-1EB4D76F64E3} = {B7BFCCB7-7D58-4A90-9AFC-777EB79AB503}
+		{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A} = {6350263B-0E33-4590-BA8A-8FD49451E9FA}
 		{E5A8B2C1-3D4F-5E6A-7B8C-9D0E1F2A3B4C} = {8C1D3F5E-2A4B-4D6C-9E7F-1B3A5C7D9E2F}
+		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A} = {8C1D3F5E-2A4B-4D6C-9E7F-1B3A5C7D9E2F}
+		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 	EndGlobalSection
 EndGlobal

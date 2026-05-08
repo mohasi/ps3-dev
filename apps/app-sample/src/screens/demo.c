@@ -35,9 +35,9 @@ static void demoInit(void)
 
     pop = fontOpenSystem(FONT_POP);
 
-    titleText = fontToTexture(TEXT_AUTOSIZE, TEXT_AUTOSIZE, "app-sample", &pop, 20, COLOR_WHITE, TEXT_NOWRAP);
-    wrapText = fontToTexture(350, TEXT_AUTOSIZE, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.", &pop, 14, COLOR_EMERALD_300, TEXT_WRAP);
-    ellipsisText = fontToTexture(200, TEXT_AUTOSIZE, "This long text gets cut off with an ellipsis at the end", &pop, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS);
+    titleText = fontToTexture(AUTO, AUTO, "app-sample", &pop, 20, COLOR_WHITE, TEXT_NOWRAP);
+    wrapText = fontToTexture(350, AUTO, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.", &pop, 14, COLOR_EMERALD_300, TEXT_WRAP);
+    ellipsisText = fontToTexture(200, AUTO, "This long text gets cut off with an ellipsis at the end", &pop, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS);
 
     circleX = 800.0f;
     colorT = 0.0f;

@@ -26,7 +26,7 @@ void breadcrumbInit(Breadcrumb *b, Font *font, int x, int y, int w, int h, uint3
 static void rebuild(Breadcrumb *b)
 {
     for (int i = 0; i < b->depth; i++) {
-        b->segTex[i] = fontToTexture(b->w, TEXT_AUTOSIZE, b->segments[i], b->font, b->fontSize, b->textColor, TEXT_NOWRAP);
+        b->segTex[i] = fontToTexture(b->w, AUTO, b->segments[i], b->font, b->fontSize, b->textColor, TEXT_NOWRAP);
     }
     b->dirty = 0;
 }

@@ -16,8 +16,8 @@ static GfxTexture bodyText;
 static void init(void)
 {
     font = fontOpenSystem(FONT_POP);
-    titleText = fontToTexture(SIDEPANEL_WIDTH - 40, TEXT_AUTOSIZE, "Side Panel", &font, 20, COLOR_WHITE, TEXT_NOWRAP);
-    bodyText = fontToTexture(SIDEPANEL_WIDTH - 40, TEXT_AUTOSIZE, "This panel slides in from the right. Press SELECT to close.", &font, 14, COLOR_SLATE_300, TEXT_WRAP);
+    titleText = fontToTexture(SIDEPANEL_WIDTH - 40, AUTO, "Side Panel", &font, 20, COLOR_WHITE, TEXT_NOWRAP);
+    bodyText = fontToTexture(SIDEPANEL_WIDTH - 40, AUTO, "This panel slides in from the right. Press SELECT to close.", &font, 14, COLOR_SLATE_300, TEXT_WRAP);
 }
 
 static void show(void)

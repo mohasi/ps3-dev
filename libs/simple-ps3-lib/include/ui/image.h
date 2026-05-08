@@ -4,8 +4,6 @@
 
 #include "gfx.h"
 
-#define IMAGE_AUTOSIZE 0
-
 typedef struct {
     GfxTexture tex;
     GfxFilter filter;

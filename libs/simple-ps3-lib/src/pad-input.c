@@ -69,7 +69,7 @@ static void padAppendInt(int *pos, int v)
 void padDraw(int x, int y, Font *f, int size, uint32_t color)
 {
     if (padCurrent.len == 0) {
-        fontDraw(x, y, TEXT_AUTOSIZE, TEXT_AUTOSIZE, "pad: none", f, size, color, TEXT_NOWRAP);
+        fontDraw(x, y, AUTO, AUTO, "pad: none", f, size, color, TEXT_NOWRAP);
         return;
     }
 
@@ -91,7 +91,7 @@ void padDraw(int x, int y, Font *f, int size, uint32_t color)
     if (pad.btn.select)   { padBuf[pos++]=' '; padBuf[pos++]='S'; padBuf[pos++]='E'; }
     if (pos == 4) { padBuf[pos++] = ' '; padBuf[pos++] = '-'; }
     padBuf[pos] = 0;
-    fontDraw(x, y, TEXT_AUTOSIZE, TEXT_AUTOSIZE, padBuf, f, size, color, TEXT_NOWRAP);
+    fontDraw(x, y, AUTO, AUTO, padBuf, f, size, color, TEXT_NOWRAP);
 
     pos = 0;
     padBuf[pos++]='L'; padBuf[pos++]=':';
@@ -99,5 +99,5 @@ void padDraw(int x, int y, Font *f, int size, uint32_t color)
     padBuf[pos++]=' '; padBuf[pos++]='R'; padBuf[pos++]=':';
     padAppendInt(&pos, pad.rStick.x); padBuf[pos++]=','; padAppendInt(&pos, pad.rStick.y);
     padBuf[pos] = 0;
-    fontDraw(x, y + size + 2, TEXT_AUTOSIZE, TEXT_AUTOSIZE, padBuf, f, size, color, TEXT_NOWRAP);
+    fontDraw(x, y + size + 2, AUTO, AUTO, padBuf, f, size, color, TEXT_NOWRAP);
 }

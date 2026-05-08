@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define AUTO 0
+
 typedef enum {
     GFX_FILTER_NEAREST = 0, // sharp, pixelated - good for pixel art and sprites
     GFX_FILTER_LINEAR  = 1  // smooth, blended - good for text and photos

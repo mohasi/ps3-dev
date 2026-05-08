@@ -102,7 +102,7 @@ static const uint32_t palette[] = {
 static void paletteInit(void)
 {
     font = fontOpenSystem(FONT_POP);
-    titleText = fontToTexture(300, TEXT_AUTOSIZE, "Colors", &font, 32, COLOR_WHITE, TEXT_NOWRAP);
+    titleText = fontToTexture(300, AUTO, "Colors", &font, 32, COLOR_WHITE, TEXT_NOWRAP);
 }
 
 static void paletteResume(void) {}

@@ -25,8 +25,6 @@ typedef enum {
     TEXT_NOWRAP_ELLIPSIS
 } TextWrap;
 
-#define TEXT_AUTOSIZE 0
-
 int   fontInit(void);
 void  fontTerm(void);
 Font  fontOpenSystem(int type);

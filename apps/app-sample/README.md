@@ -45,8 +45,8 @@ app-sample/
 
 ## Identity
 
-- TITLE_ID: `APPSAMP01`
-- Content_ID: `UP0001-APPSAMP01_00-APPSAMPLEHBREW01`
+- TITLE_ID: `APPSMP001`
+- Content_ID: `UP0001-APPSMP001_00-APPSAMPLEHBREW01`
 
 ## Architecture
 

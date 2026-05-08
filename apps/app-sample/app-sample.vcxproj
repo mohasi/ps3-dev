@@ -37,6 +37,10 @@
       <AdditionalOptions>-L"$(SolutionDir)libs\simple-ps3-lib\bin\$(Configuration)" -lsimple-ps3-lib</AdditionalOptions>
       <GccOutputFormat>ELFFile</GccOutputFormat>
     </Link>
+    <PreBuildEvent>
+      <Message>Generating PARAM.SFO from XML</Message>
+      <Command>"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
+    </PreBuildEvent>
     <PostBuildEvent>
       <Message>Packaging $(MSBuildProjectName).pkg</Message>
       <Command>cd /d "$(ProjectDir)"
@@ -74,6 +78,7 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
   <ItemGroup>
     <None Include="app-sample.conf" />
     <None Include="PARAM.SFO" />
+    <None Include="PARAM.SFO.xml" />
     <None Include="README.md" />
     <None Include="res\makoto.png" />
     <None Include="res\makoto.wav" />

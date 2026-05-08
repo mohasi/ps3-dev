@@ -3,7 +3,7 @@
 #include "gfx.h"
 #include "colors.h"
 
-#define SPRITE_PATH "/dev_hdd0/game/APPSAMP01/USRDIR/pattern.png"
+#define SPRITE_PATH "/dev_hdd0/game/APPSMP001/USRDIR/pattern.png"
 #define SPRITE_FRAME_SIZE 32
 #define SPRITE_FRAME_COUNT 23
 #define SPRITE_ANIM_SPEED 6

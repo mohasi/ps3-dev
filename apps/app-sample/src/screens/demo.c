@@ -28,10 +28,10 @@ static void demoInit(void)
 {
     initAnimatedSprite();
 
-    makoto = gfxLoadTexture("/dev_hdd0/game/APPSAMP01/USRDIR/makoto.png");
+    makoto = gfxLoadTexture("/dev_hdd0/game/APPSMP001/USRDIR/makoto.png");
 
-    sfxMakoto = sfxLoad("/dev_hdd0/game/APPSAMP01/USRDIR/makoto.wav", SFX_MEMORY);
-    bgm = sfxLoad("/dev_hdd0/game/APPSAMP01/USRDIR/price.ogg", SFX_STREAM);
+    sfxMakoto = sfxLoad("/dev_hdd0/game/APPSMP001/USRDIR/makoto.wav", SFX_MEMORY);
+    bgm = sfxLoad("/dev_hdd0/game/APPSMP001/USRDIR/price.ogg", SFX_STREAM);
 
     pop = fontOpenSystem(FONT_POP);
 

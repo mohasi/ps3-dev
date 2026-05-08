@@ -35,7 +35,7 @@ void drawAnimatedSprite(int x, int y)
         float frameH = (float)SPRITE_FRAME_SIZE / (float)spriteTex.h;
         float v0 = frameH * spriteFrame;
         float v1 = v0 + frameH;
-        gfxDrawSprite(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, spriteTex, 0.0f, v0, 1.0f, v1, COLOR_WHITE, GFX_FILTER_NEAREST);
+        gfxDrawTexture(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, spriteTex, 0.0f, v0, 1.0f, v1, COLOR_WHITE, GFX_FILTER_NEAREST);
     } else {
         gfxFillRectangle(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, COLOR_RED);
     }

@@ -1,4 +1,4 @@
-# app-sample
+﻿# app-sample
 
 PS3 homebrew demo showcasing engine features. Sony official SDK 4.75, targets EVILNAT 4.93 CFW.
 
@@ -62,3 +62,8 @@ Navigation via `changeScreen`, `pushScreen`, `popScreen`.
 Status: `OVERLAY_TERMINATED`, `OVERLAY_INITIALISED`, `OVERLAY_VISIBLE`, `OVERLAY_HIDDEN`.
 Each overlay guards its own `update`/`draw` based on status - callers invoke unconditionally.
 Parent screens own overlays as local state and manage their lifecycle manually.
+
+
+## Dependencies
+
+- **simple-ps3-lib** - provides the renderer, shader compilation, font, audio, input, screen/overlay lifecycle, animation, and UI components. Shader sources (vpshader.cg, fpshader.cg) live in the library and are compiled there.

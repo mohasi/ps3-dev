@@ -543,7 +543,7 @@ static void flushBatch(void)
 	batchFlushStart = batchVertCount;
 }
 
-void gfxDrawSprite(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter)
+void gfxDrawTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter)
 {
 	if (!initialized || tex.w == 0 || tex.h == 0) return;
 
@@ -577,11 +577,6 @@ void gfxDrawSprite(int x, int y, int w, int h, GfxTexture tex, float u0, float v
 	v[5] = (GfxVertex){ cx0, cy1, 0.0f, rgba, u0, v1 };
 
 	batchVertCount += 6;
-}
-
-void gfxDrawTexture(int x, int y, GfxTexture tex)
-{
-	gfxDrawSprite(x, y, tex.w, tex.h, tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 }
 
 void gfxEndFrame(void)

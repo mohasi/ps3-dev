@@ -116,7 +116,7 @@ static void paletteUpdate(void)
 
 static void paletteDraw(void)
 {
-    gfxDrawTexture(GRID_X, 20, titleText);
+    gfxDrawTexture(GRID_X, 20, titleText.w, titleText.h, titleText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 
     for (int hue = 0; hue < HUE_COUNT; hue++) {
         for (int shade = 0; shade < SHADES_PER_HUE; shade++) {

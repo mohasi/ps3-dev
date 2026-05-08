@@ -349,7 +349,7 @@ void fontDraw(int x, int y, int width, int height, const char *text, Font *f, in
         tex.offset = gfxUploadTexture(buf, drawW, drawH, surfW * 4, VRAM_TEMP);
 
         if (tex.offset != 0) {
-            gfxDrawSprite(x, y, drawW, drawH, tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+            gfxDrawTexture(x, y, drawW, drawH, tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
         }
     }
 

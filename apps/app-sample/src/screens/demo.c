@@ -95,12 +95,12 @@ static void demoDraw(void)
     drawBouncingBox();
     drawGradientTriangle();
     drawAnimatedSprite(500, 100);
-    gfxDrawTexture(100, 400, makoto);
-    gfxDrawTexture(40, 170, titleText);
+    gfxDrawTexture(100, 400, makoto.w, makoto.h, makoto, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(40, 170, titleText.w, titleText.h, titleText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
     padDraw(40, 240, &pop, 14, COLOR_SKY_300);
 
-    gfxDrawTexture(500, 300, wrapText);
-    gfxDrawTexture(500, 380, ellipsisText);
+    gfxDrawTexture(500, 300, wrapText.w, wrapText.h, wrapText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(500, 380, ellipsisText.w, ellipsisText.h, ellipsisText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 
     uint32_t circleColor = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
     gfxFillCircle((int)circleX, 130, 25, circleColor);

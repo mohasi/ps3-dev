@@ -54,8 +54,8 @@ static void draw(void)
 
     gfxFillRectangle(px, 0, sw - px, sh, COLOR_SLATE_800);
 
-    gfxDrawTexture(px + 20, 30, titleText);
-    gfxDrawTexture(px + 20, 70, bodyText);
+    gfxDrawTexture(px + 20, 30, titleText.w, titleText.h, titleText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(px + 20, 70, bodyText.w, bodyText.h, bodyText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 }
 
 static void term(void)

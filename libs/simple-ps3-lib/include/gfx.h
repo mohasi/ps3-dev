@@ -36,8 +36,7 @@ void gfxFillRoundedRectangle(int x, int y, int w, int h, int radius, uint32_t ar
 void gfxFillCircle(int cx, int cy, int radius, uint32_t argb);
 void gfxDrawTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32_t c1, float x2, float y2, uint32_t c2);
 void gfxDrawLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb);
-void gfxDrawSprite(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter);
-void gfxDrawTexture(int x, int y, GfxTexture tex);
+void gfxDrawTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter);
 void gfxEndFrame(void);
 
 GfxTexture gfxLoadTexture(const char *path);

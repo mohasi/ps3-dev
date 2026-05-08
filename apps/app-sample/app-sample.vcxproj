@@ -72,22 +72,6 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
     <ClInclude Include="include\overlays\sidepanel.h" />
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="fpshader.cg">
-      <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">cd /d "$(IntDir)."
-"$(SCE_PS3_ROOT)\host-win32\Cg\bin\sce-cgc" -quiet -profile sce_fp_rsx -o "%(Filename).fpo" "%(FullPath)"
-"$(SCE_PS3_ROOT)\host-win32\ppu\bin\ppu-lv2-objcopy" -I binary -O elf64-powerpc-celloslv2 -B powerpc "%(Filename).fpo" "%(Filename).ppu.o"</Command>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">$(IntDir)%(Filename).ppu.o;%(Outputs)</Outputs>
-    </CustomBuild>
-    <CustomBuild Include="vpshader.cg">
-      <FileType>Document</FileType>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">cd /d "$(IntDir)."
-"$(SCE_PS3_ROOT)\host-win32\Cg\bin\sce-cgc" -quiet -profile sce_vp_rsx -o "%(Filename).vpo" "%(FullPath)"
-"$(SCE_PS3_ROOT)\host-win32\ppu\bin\ppu-lv2-objcopy" -I binary -O elf64-powerpc-celloslv2 -B powerpc "%(Filename).vpo" "%(Filename).ppu.o"</Command>
-      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">$(IntDir)%(Filename).ppu.o;%(Outputs)</Outputs>
-    </CustomBuild>
-  </ItemGroup>
-  <ItemGroup>
     <None Include="app-sample.conf" />
     <None Include="PARAM.SFO" />
     <None Include="README.md" />

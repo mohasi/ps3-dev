@@ -1,8 +1,7 @@
 #pragma once
 
-// pad input - reads controller state and displays it
+// pad - reads controller state
 
-#include "font.h"
 #include <stdint.h>
 
 // button state per frame
@@ -35,6 +34,5 @@ extern PadState pad;
 
 void padInit(void);
 void padUpdate(void);
-void padDraw(int x, int y, Font *f, int size, uint32_t color);
 
 

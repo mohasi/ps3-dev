@@ -3,7 +3,7 @@
 #include "gfx.h"
 #include "colors.h"
 #include "font.h"
-#include "pad-input.h"
+#include "pad.h"
 
 static Font font;
 static GfxTexture titleText;

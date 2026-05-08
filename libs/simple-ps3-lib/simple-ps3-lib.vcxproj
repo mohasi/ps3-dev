@@ -39,7 +39,7 @@
     <ClCompile Include="src\gfx.c" />
     <ClCompile Include="src\font.c" />
     <ClCompile Include="src\audio.c" />
-    <ClCompile Include="src\pad-input.c" />
+    <ClCompile Include="src\pad.c" />
     <ClCompile Include="src\screen.c" />
     <ClCompile Include="src\anim.c" />
     <ClCompile Include="src\ui\label.c" />
@@ -49,7 +49,7 @@
     <ClInclude Include="include\gfx.h" />
     <ClInclude Include="include\font.h" />
     <ClInclude Include="include\audio.h" />
-    <ClInclude Include="include\pad-input.h" />
+    <ClInclude Include="include\pad.h" />
     <ClInclude Include="include\screen.h" />
     <ClInclude Include="include\overlay.h" />
     <ClInclude Include="include\anim.h" />

@@ -3,7 +3,7 @@
 #include "app.h"
 #include "gfx.h"
 #include "colors.h"
-#include "pad-input.h"
+#include "pad.h"
 #include "audio.h"
 #include "font.h"
 #include "screen.h"

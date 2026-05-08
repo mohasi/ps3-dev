@@ -1,5 +1,5 @@
-// pad input - implementation
-#include "pad-input.h"
+// pad - implementation
+#include "pad.h"
 #include <cell/pad.h>
 #include <string.h>
 
@@ -8,7 +8,6 @@ PadState pad;
 static CellPadData padCurrent;
 static uint16_t padPrevD1 = 0;
 static uint16_t padPrevD2 = 0;
-static char padBuf[64];
 
 static uint8_t btnState(int held, int wasHeld)
 {
@@ -56,48 +55,4 @@ void padUpdate(void)
 
     padPrevD1 = d1;
     padPrevD2 = d2;
-}
-
-static void padAppendInt(int *pos, int v)
-{
-    if (v < 0) { padBuf[(*pos)++] = '-'; v = -v; }
-    if (v >= 100) { padBuf[(*pos)++] = '0' + (v / 100); v %= 100; padBuf[(*pos)++] = '0' + (v / 10); v %= 10; }
-    else if (v >= 10) { padBuf[(*pos)++] = '0' + (v / 10); v %= 10; }
-    padBuf[(*pos)++] = '0' + v;
-}
-
-void padDraw(int x, int y, Font *f, int size, uint32_t color)
-{
-    if (padCurrent.len == 0) {
-        fontDraw(x, y, AUTO, AUTO, "pad: none", f, size, color, TEXT_NOWRAP);
-        return;
-    }
-
-    int pos = 0;
-    padBuf[pos++] = 'B'; padBuf[pos++] = 'T'; padBuf[pos++] = 'N'; padBuf[pos++] = ':';
-    if (pad.btn.up)       { padBuf[pos++] = ' '; padBuf[pos++] = 'U'; }
-    if (pad.btn.down)     { padBuf[pos++] = ' '; padBuf[pos++] = 'D'; }
-    if (pad.btn.left)     { padBuf[pos++] = ' '; padBuf[pos++] = 'L'; }
-    if (pad.btn.right)    { padBuf[pos++] = ' '; padBuf[pos++] = 'R'; }
-    if (pad.btn.cross)    { padBuf[pos++] = ' '; padBuf[pos++] = 'X'; }
-    if (pad.btn.circle)   { padBuf[pos++] = ' '; padBuf[pos++] = 'O'; }
-    if (pad.btn.square)   { padBuf[pos++]=' '; padBuf[pos++]='S'; padBuf[pos++]='Q'; }
-    if (pad.btn.triangle) { padBuf[pos++]=' '; padBuf[pos++]='T'; padBuf[pos++]='R'; }
-    if (pad.btn.l1)       { padBuf[pos++]=' '; padBuf[pos++]='L'; padBuf[pos++]='1'; }
-    if (pad.btn.r1)       { padBuf[pos++]=' '; padBuf[pos++]='R'; padBuf[pos++]='1'; }
-    if (pad.btn.l2)       { padBuf[pos++]=' '; padBuf[pos++]='L'; padBuf[pos++]='2'; }
-    if (pad.btn.r2)       { padBuf[pos++]=' '; padBuf[pos++]='R'; padBuf[pos++]='2'; }
-    if (pad.btn.start)    { padBuf[pos++]=' '; padBuf[pos++]='S'; padBuf[pos++]='T'; }
-    if (pad.btn.select)   { padBuf[pos++]=' '; padBuf[pos++]='S'; padBuf[pos++]='E'; }
-    if (pos == 4) { padBuf[pos++] = ' '; padBuf[pos++] = '-'; }
-    padBuf[pos] = 0;
-    fontDraw(x, y, AUTO, AUTO, padBuf, f, size, color, TEXT_NOWRAP);
-
-    pos = 0;
-    padBuf[pos++]='L'; padBuf[pos++]=':';
-    padAppendInt(&pos, pad.lStick.x); padBuf[pos++]=','; padAppendInt(&pos, pad.lStick.y);
-    padBuf[pos++]=' '; padBuf[pos++]='R'; padBuf[pos++]=':';
-    padAppendInt(&pos, pad.rStick.x); padBuf[pos++]=','; padAppendInt(&pos, pad.rStick.y);
-    padBuf[pos] = 0;
-    fontDraw(x, y + size + 2, AUTO, AUTO, padBuf, f, size, color, TEXT_NOWRAP);
 }

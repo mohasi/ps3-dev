@@ -35,6 +35,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "file-manager", "apps\file-m
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "xml-to-sfo", "tools\xml-to-sfo\xml-to-sfo.csproj", "{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "xml-to-c", "tools\xml-to-c\xml-to-c.csproj", "{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Mixed Platforms = Release|Mixed Platforms
@@ -65,6 +67,10 @@ Global
 		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}.Release|PS3.ActiveCfg = Release|Any CPU
 		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}.Release|PS3.Build.0 = Release|Any CPU
+		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|PS3.ActiveCfg = Release|Any CPU
+		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|PS3.Build.0 = Release|Any CPU
 		{B6F5E8C3-9D4A-4F2B-A1E5-3C8D7E2B9F5A}.Release|Mixed Platforms.ActiveCfg = Release|PS3
 		{B6F5E8C3-9D4A-4F2B-A1E5-3C8D7E2B9F5A}.Release|Mixed Platforms.Build.0 = Release|PS3
 		{B6F5E8C3-9D4A-4F2B-A1E5-3C8D7E2B9F5A}.Release|PS3.ActiveCfg = Release|PS3
@@ -81,5 +87,6 @@ Global
 		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A} = {8C1D3F5E-2A4B-4D6C-9E7F-1B3A5C7D9E2F}
 		{B6F5E8C3-9D4A-4F2B-A1E5-3C8D7E2B9F5A} = {6350263B-0E33-4590-BA8A-8FD49451E9FA}
 		{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 	EndGlobalSection
 EndGlobal

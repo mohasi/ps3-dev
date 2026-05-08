@@ -673,13 +673,14 @@ GfxTexture gfxLoadTexture(const char *path)
 	ret = cellPngDecReadHeader(mainHandle, subHandle, &info);
 	if (ret != CELL_OK) { cellPngDecClose(mainHandle, subHandle); cellPngDecDestroy(mainHandle); return result; }
 
-	// set decode params — output as ARGB, 8-bit, preserve source alpha
+	// set decode params — output as ARGB, 8-bit
+	int hasAlpha = (info.colorSpace == CELL_PNGDEC_RGBA || info.colorSpace == CELL_PNGDEC_GRAYSCALE_ALPHA);
 	inParam.commandPtr = NULL;
 	inParam.outputMode = CELL_PNGDEC_TOP_TO_BOTTOM;
 	inParam.outputColorSpace = CELL_PNGDEC_ARGB;
 	inParam.outputBitDepth = 8;
 	inParam.outputPackFlag = CELL_PNGDEC_1BYTE_PER_1PIXEL;
-	inParam.outputAlphaSelect = CELL_PNGDEC_STREAM_ALPHA;
+	inParam.outputAlphaSelect = hasAlpha ? CELL_PNGDEC_STREAM_ALPHA : CELL_PNGDEC_FIX_ALPHA;
 	inParam.outputColorAlpha = 0xff;
 
 	ret = cellPngDecSetParameter(mainHandle, subHandle, &inParam, &outParam);

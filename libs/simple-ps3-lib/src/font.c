@@ -349,7 +349,7 @@ void fontDraw(int x, int y, int width, int height, const char *text, Font *f, in
         tex.offset = gfxUploadTexture(buf, drawW, drawH, surfW * 4, VRAM_TEMP);
 
         if (tex.offset != 0) {
-            gfxDrawTexture(x, y, drawW, drawH, tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+            gfxDrawTexture(x, y - (int)baseY - 4, drawW, drawH, tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
         }
     }
 
@@ -499,12 +499,15 @@ GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int s
         p++;
     }
 
+    // skip the blank rows above the glyphs (baseY offset)
+    int skip = (int)baseY + 4;
     int drawW = maxX;
-    int drawH = surfH;
+    int drawH = surfH - skip;
     if (drawW > 0 && drawH > 0) {
+        uint8_t *cropped = buf + skip * surfW * 4;
         result.w = drawW;
         result.h = drawH;
-        result.offset = gfxUploadTexture(buf, drawW, drawH, surfW * 4, VRAM_PERM);
+        result.offset = gfxUploadTexture(cropped, drawW, drawH, surfW * 4, VRAM_PERM);
     }
 
     free(buf);

@@ -60,7 +60,7 @@ void breadcrumbDraw(Breadcrumb *b)
     // background with border (single SDF draw)
     gfxFillRoundedRectangle(b->x, b->y, b->w, b->h, b->borderRadius, b->bgColor, b->borderThickness, b->borderColor);
 
-    int centerY = b->y + b->h / 2;
+    int centerY = b->y + (b->h + 1) / 2;
     int chevronSize = b->fontSize / 4;
 
     // draw segments with chevron separators
@@ -77,7 +77,7 @@ void breadcrumbDraw(Breadcrumb *b)
 
         // draw segment text
         if (b->segTex[i].w > 0) {
-            int textY = centerY - b->segTex[i].h / 2 - 10;
+            int textY = centerY - b->segTex[i].h / 2;
             gfxDrawTexture(cx, textY, b->segTex[i].w, b->segTex[i].h, b->segTex[i], 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
             cx += b->segTex[i].w + b->chevronGap;
         }

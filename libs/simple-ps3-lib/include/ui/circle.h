@@ -23,14 +23,5 @@ static inline void circleInit(Circle *c, int cx, int cy, int radius, uint32_t fi
 
 static inline void circleDraw(Circle *c)
 {
-    int t = c->borderThickness;
-    if (t > 0)
-    {
-        gfxFillCircle(c->cx, c->cy, c->radius, c->borderColor);
-        gfxFillCircle(c->cx, c->cy, c->radius - t, c->fill);
-    }
-    else
-    {
-        gfxFillCircle(c->cx, c->cy, c->radius, c->fill);
-    }
+    gfxFillCircle(c->cx, c->cy, c->radius, c->fill, c->borderThickness, c->borderColor);
 }

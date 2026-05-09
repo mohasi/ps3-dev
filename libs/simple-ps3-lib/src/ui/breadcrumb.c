@@ -57,12 +57,8 @@ void breadcrumbDraw(Breadcrumb *b)
 {
     if (b->dirty) rebuild(b);
 
-    // background with border
-    int t = b->borderThickness;
-    if (t > 0) {
-        gfxFillRoundedRectangle(b->x - t, b->y - t, b->w + t * 2, b->h + t * 2, b->borderRadius, b->borderColor);
-    }
-    gfxFillRoundedRectangle(b->x, b->y, b->w, b->h, b->borderRadius, b->bgColor);
+    // background with border (single SDF draw)
+    gfxFillRoundedRectangle(b->x, b->y, b->w, b->h, b->borderRadius, b->bgColor, b->borderThickness, b->borderColor);
 
     int centerY = b->y + b->h / 2;
     int chevronSize = b->fontSize / 4;

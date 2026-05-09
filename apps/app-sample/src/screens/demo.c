@@ -106,7 +106,7 @@ static void demoDraw(void)
     gfxDrawTexture(500, 380, ellipsisText.w, ellipsisText.h, ellipsisText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 
     uint32_t circleColor = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
-    gfxFillCircle((int)circleX, 130, 25, circleColor);
+    gfxFillCircle((int)circleX, 130, 25, circleColor, NO_BORDER);
 
     overlayDraw(&sidepanel);
 }

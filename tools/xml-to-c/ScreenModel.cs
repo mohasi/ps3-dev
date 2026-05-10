@@ -103,14 +103,11 @@ namespace XmlToC
 
     internal sealed class BreadcrumbElement : Element
     {
-        public int X, Y, Width, Height;
+        public int X, Y;
         public string FontRef;
-        public string BgColor;
-        public string BorderColor;
         public string TextColor;
-        public string ChevronColor;
-        public int BorderRadius;
-        public int BorderThickness;
+        public string ChevronTextureRef;
+        public int ChevronSrcX, ChevronSrcY, ChevronSrcW, ChevronSrcH;
         public int FontSize;
         public List<BreadcrumbSegment> Segments = new List<BreadcrumbSegment>();
     }

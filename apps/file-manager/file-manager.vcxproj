@@ -68,7 +68,7 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
     <None Include="PARAM.SFO" />
     <None Include="PARAM.SFO.xml" />
     <None Include="res\background.png" />
-    <None Include="res\icons.png" />
+    <None Include="res\spritesheet.png" />
     <None Include="ICON0.PNG" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -236,13 +236,10 @@ namespace XmlToC
                 sb.Append("    breadcrumbInit(&").Append(bread.Id).Append(", &")
                   .Append(bread.FontRef).Append(", ")
                   .Append(I(bread.X)).Append(", ").Append(I(bread.Y)).Append(", ")
-                  .Append(I(bread.Width)).Append(", ").Append(I(bread.Height)).Append(", ")
-                  .Append(bread.BgColor ?? "COLOR_SLATE_800").Append(", ")
-                  .Append(bread.BorderThickness > 0 && bread.BorderColor != null ? bread.BorderColor : "COLOR_TRANSPARENT").Append(", ")
                   .Append(bread.TextColor ?? "COLOR_WHITE").Append(", ")
-                  .Append(bread.ChevronColor ?? "COLOR_SLATE_400").Append(", ")
-                  .Append(I(bread.BorderRadius)).Append(", ")
-                  .Append(I(bread.BorderThickness)).Append(", ")
+                  .Append(bread.ChevronTextureRef ?? "(GfxTexture){0}").Append(", ")
+                  .Append(I(bread.ChevronSrcX)).Append(", ").Append(I(bread.ChevronSrcY)).Append(", ")
+                  .Append(I(bread.ChevronSrcW)).Append(", ").Append(I(bread.ChevronSrcH)).Append(", ")
                   .Append(I(bread.FontSize)).Append(");\n");
                 foreach (var seg in bread.Segments)
                     sb.Append("    breadcrumbPush(&").Append(bread.Id).Append(", ").Append(EscapeC(seg.Text)).Append(");\n");

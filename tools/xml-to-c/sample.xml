@@ -4,36 +4,20 @@
 	<!-- resources -->
 	<Font id="pop" type="FONT_POP"/>
 	<Texture id="bg" path="/dev_hdd0/game/FILEMGR01/USRDIR/background.png"/>
-	<Texture id="icons" path="/dev_hdd0/game/FILEMGR01/USRDIR/icons.png"/>
+	<Texture id="spritesheet" path="/dev_hdd0/game/FILEMGR01/USRDIR/spritesheet.png"/>
 
 	<!-- background -->
-	<Image id="background" texture-id="bg" xy="0,0" wh="1920,1080" filter="linear"/>
-
-	<!-- logo & title -->
-	<Image id="logo" texture-id="icons" xy="42,20" src-xy="10,132" src-wh="68,57"/>
-	<Label id="title"
-		   xy="140,5"
-		   wh="auto"
-		   content="PS3 File Manager"
-		   font-id="pop"
-		   size="30"
-		   color="COLOR_WHITE"
-		   wrap="nowrap"/>
+	<Image id="background" texture-id="bg" xy="0,0" filter="linear"/>
 
 	<!-- breadcrumb -->
-	<Breadcrumb id="breadcrumb"
-				xy="40,100"
-				wh="1840,43"
-				font-id="pop"
-				font-size="18"
-				border-color="0x161C2C"
-				corner-radius="5"
-				border-thickness="2"
-				bg-color="0x010B1C"
-				text-color="COLOR_WHITE"
-				chevron-color="0x404653">
-		<segment text="dev_hdd0" />
-		<segment text="GAMES" />
-		<segment text="My Game" />
-	</Breadcrumb>
+	<Breadcrumb id="breadcrumb" xy="48,112"
+            font-id="pop" font-size="18"
+            text-color="COLOR_WHITE"
+            chevron-texture-id="spritesheet"
+            chevron-src-xy="0,0"
+			chevron-src-wh="7,12">
+    <Segment text="dev_hdd0" />
+    <Segment text="GAMES" />
+    <Segment text="My Game" />
+</Breadcrumb>
 </screen>

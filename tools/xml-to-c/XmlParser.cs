@@ -324,7 +324,7 @@ namespace XmlToC
                 Size    = ParseInt(el, "size"),
                 Color   = ParseColor(el, "color"),
                 FontRef = RequireAttr(el, "font-id"),
-                Content = OptAttr(el, "content") ?? "",
+                Content = OptAttr(el, "text") ?? "",
                 Wrap    = wrap
             };
         }
@@ -332,7 +332,6 @@ namespace XmlToC
         private static BreadcrumbElement ParseBreadcrumb(XElement el)
         {
             int bx, by; ParseIntPair(el, "xy", out bx, out by);
-            int bw, bh; ParseIntPair(el, "wh", out bw, out bh);
 
             var b = new BreadcrumbElement
             {
@@ -341,24 +340,23 @@ namespace XmlToC
                 Name         = OptAttr(el, "name"),
                 X            = bx,
                 Y            = by,
-                Width        = bw,
-                Height       = bh,
                 FontRef         = RequireAttr(el, "font-id"),
                 FontSize        = ParseAutoOrInt(el, "font-size", 16),
-                BorderRadius    = ParseAutoOrInt(el, "corner-radius", 6),
-                BorderThickness = ParseAutoOrInt(el, "border-thickness", 0),
-                BgColor         = OptAttr(el, "bg-color"),
-                BorderColor     = OptAttr(el, "border-color"),
                 TextColor       = OptAttr(el, "text-color"),
-                ChevronColor    = OptAttr(el, "chevron-color")
+                ChevronTextureRef = OptAttr(el, "chevron-texture-id")
             };
 
-            if (b.BgColor != null) { ValidateColor(el, "bg-color", b.BgColor); b.BgColor = NormalizeColor(b.BgColor); }
-            if (b.BorderColor != null) { ValidateColor(el, "border-color", b.BorderColor); b.BorderColor = NormalizeColor(b.BorderColor); }
-            if (b.TextColor != null) { ValidateColor(el, "text-color", b.TextColor); b.TextColor = NormalizeColor(b.TextColor); }
-            if (b.ChevronColor != null) { ValidateColor(el, "chevron-color", b.ChevronColor); b.ChevronColor = NormalizeColor(b.ChevronColor); }
+            if (b.ChevronTextureRef != null)
+            {
+                int cx, cy; ParseIntPair(el, "chevron-src-xy", out cx, out cy);
+                int cw, ch; ParseIntPair(el, "chevron-src-wh", out cw, out ch);
+                b.ChevronSrcX = cx; b.ChevronSrcY = cy;
+                b.ChevronSrcW = cw; b.ChevronSrcH = ch;
+            }
 
-            foreach (var child in el.Elements("segment"))
+            if (b.TextColor != null) { ValidateColor(el, "text-color", b.TextColor); b.TextColor = NormalizeColor(b.TextColor); }
+
+            foreach (var child in el.Elements("Segment"))
             {
                 b.Segments.Add(new BreadcrumbSegment { Text = RequireAttr(child, "text") });
             }

@@ -8,26 +8,23 @@
 
 #define BREADCRUMB_MAX_DEPTH 16
 #define BREADCRUMB_MAX_NAME  64
+#define BREADCRUMB_CHEVRON_GAP 14
 
 typedef struct {
     char segments[BREADCRUMB_MAX_DEPTH][BREADCRUMB_MAX_NAME];
     GfxTexture segTex[BREADCRUMB_MAX_DEPTH];
+    GfxTexture chevronTex;
+    float chevronU0, chevronV0, chevronU1, chevronV1;
+    int chevronW, chevronH;
     int depth;
-    int x, y, w, h;
-    int padding;
+    int x, y;
     int fontSize;
-    int chevronGap;
-    uint32_t bgColor;
-    uint32_t borderColor;
     uint32_t textColor;
-    uint32_t chevronColor;
-    int borderRadius;
-    int borderThickness;
     Font *font;
     int dirty;
 } Breadcrumb;
 
-void breadcrumbInit(Breadcrumb *b, Font *font, int x, int y, int w, int h, uint32_t bgColor, uint32_t borderColor, uint32_t textColor, uint32_t chevronColor, int borderRadius, int borderThickness, int fontSize);
+void breadcrumbInit(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, int chevronSrcX, int chevronSrcY, int chevronSrcW, int chevronSrcH, int fontSize);
 void breadcrumbPush(Breadcrumb *b, const char *name);
 void breadcrumbPop(Breadcrumb *b);
 void breadcrumbClear(Breadcrumb *b);

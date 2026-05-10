@@ -28,8 +28,6 @@ typedef struct {
 	float x, y, z;
 	uint32_t rgba;
 	float u, v;
-	float sdfParams[4];  // halfW, halfH, radius, borderThickness (0 = texture mode)
-	float sdfBorder[4];  // border color as normalized rgba
 } GfxVertex;
 
 static int       initialized = 0;
@@ -49,8 +47,6 @@ static GfxVertex *batchVerts[FRAME_COUNT];
 static uint32_t   batchOffset[FRAME_COUNT];
 static uint32_t   batchColOffset[FRAME_COUNT];
 static uint32_t   batchUvOffset[FRAME_COUNT];
-static uint32_t   batchSdfParamsOffset[FRAME_COUNT];
-static uint32_t   batchSdfBorderOffset[FRAME_COUNT];
 static int        batchVertCount = 0;
 static int        batchFlushStart = 0;
 
@@ -66,8 +62,6 @@ static uint32_t  shaderFpOffset;
 static uint32_t  shaderPosIdx;
 static uint32_t  shaderColIdx;
 static uint32_t  shaderUvIdx;
-static uint32_t  shaderSdfParamsIdx;
-static uint32_t  shaderSdfBorderIdx;
 static uint32_t  shaderTexUnit;
 
 // 1x1 white texture for color-only draws
@@ -264,13 +258,9 @@ int gfxInit(GfxVsync vsync)
 	CGparameter posParam = cellGcmCgGetNamedParameter(shaderVp, "position");
 	CGparameter colParam = cellGcmCgGetNamedParameter(shaderVp, "color");
 	CGparameter uvParam  = cellGcmCgGetNamedParameter(shaderVp, "texcoord");
-	CGparameter sdfPParam = cellGcmCgGetNamedParameter(shaderVp, "sdfParams");
-	CGparameter sdfBParam = cellGcmCgGetNamedParameter(shaderVp, "sdfBorder");
 	shaderPosIdx = cellGcmCgGetParameterResource(shaderVp, posParam) - CG_ATTR0;
 	shaderColIdx = cellGcmCgGetParameterResource(shaderVp, colParam) - CG_ATTR0;
 	shaderUvIdx  = cellGcmCgGetParameterResource(shaderVp, uvParam)  - CG_ATTR0;
-	shaderSdfParamsIdx = cellGcmCgGetParameterResource(shaderVp, sdfPParam) - CG_ATTR0;
-	shaderSdfBorderIdx = cellGcmCgGetParameterResource(shaderVp, sdfBParam) - CG_ATTR0;
 
 	CGparameter texParam = cellGcmCgGetNamedParameter(shaderFp, "tex");
 	shaderTexUnit = cellGcmCgGetParameterResource(shaderFp, texParam) - CG_TEXUNIT0;
@@ -288,8 +278,6 @@ int gfxInit(GfxVsync vsync)
 		cellGcmAddressToOffset(&batchVerts[i][0].x, &batchOffset[i]);
 		cellGcmAddressToOffset(&batchVerts[i][0].rgba, &batchColOffset[i]);
 		cellGcmAddressToOffset(&batchVerts[i][0].u, &batchUvOffset[i]);
-		cellGcmAddressToOffset(&batchVerts[i][0].sdfParams[0], &batchSdfParamsOffset[i]);
-		cellGcmAddressToOffset(&batchVerts[i][0].sdfBorder[0], &batchSdfBorderOffset[i]);
 	}
 
 	printf("[gfx] ready: %d x %d, pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, framePitch, vramPermUsed, vramSize);
@@ -365,15 +353,6 @@ static void ensureWhiteTex(void)
 	}
 }
 
-// extract normalized r,g,b,a from a packed RGBA value (post-argbToRgba)
-static void rgbaToFloats(uint32_t rgba, float *out)
-{
-	out[0] = (float)((rgba >> 24) & 0xFF) / 255.0f;
-	out[1] = (float)((rgba >> 16) & 0xFF) / 255.0f;
-	out[2] = (float)((rgba >> 8)  & 0xFF) / 255.0f;
-	out[3] = (float)((rgba)       & 0xFF) / 255.0f;
-}
-
 void gfxFillRectangle(int x, int y, int w, int h, uint32_t argb)
 {
 	if (!initialized) return;
@@ -445,48 +424,34 @@ void gfxDrawLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb)
 	gfxDrawTriangle(bx, by, argb, dx2, dy2, argb, cx, cy, argb);
 }
 
-// emit a quad whose shape is evaluated per-pixel by the SDF fragment shader.
-// u,v carry the pixel offset from shape center; sdfParams carry the shape description.
-static void emitSdfQuad(int x, int y, int w, int h, float halfW, float halfH, float radius, float border, uint32_t fillRgba, uint32_t borderArgb)
-{
-	ensureWhiteTex();
-	if (batchVertCount + 6 > MAX_VERTS) return;
+#define CIRCLE_SEGMENTS 24
 
-	float cx0 = toClipX(x),     cy0 = toClipY(y);
-	float cx1 = toClipX(x + w), cy1 = toClipY(y + h);
-
-	float sp[4] = { halfW, halfH, radius, border };
-	float sb[4];
-	rgbaToFloats(argbToRgba(borderArgb), sb);
-
-	GfxVertex *v = &batchVerts[backBuffer][batchVertCount];
-	v[0] = (GfxVertex){ cx0, cy0, 0, fillRgba, -halfW, -halfH, {sp[0],sp[1],sp[2],sp[3]}, {sb[0],sb[1],sb[2],sb[3]} };
-	v[1] = (GfxVertex){ cx1, cy0, 0, fillRgba,  halfW, -halfH, {sp[0],sp[1],sp[2],sp[3]}, {sb[0],sb[1],sb[2],sb[3]} };
-	v[2] = (GfxVertex){ cx0, cy1, 0, fillRgba, -halfW,  halfH, {sp[0],sp[1],sp[2],sp[3]}, {sb[0],sb[1],sb[2],sb[3]} };
-	v[3] = (GfxVertex){ cx1, cy0, 0, fillRgba,  halfW, -halfH, {sp[0],sp[1],sp[2],sp[3]}, {sb[0],sb[1],sb[2],sb[3]} };
-	v[4] = (GfxVertex){ cx1, cy1, 0, fillRgba,  halfW,  halfH, {sp[0],sp[1],sp[2],sp[3]}, {sb[0],sb[1],sb[2],sb[3]} };
-	v[5] = (GfxVertex){ cx0, cy1, 0, fillRgba, -halfW,  halfH, {sp[0],sp[1],sp[2],sp[3]}, {sb[0],sb[1],sb[2],sb[3]} };
-	batchVertCount += 6;
-}
-
-void gfxFillCircle(int cx, int cy, int r, uint32_t argb, int borderThickness, uint32_t borderArgb)
+void gfxFillCircle(int cx, int cy, int r, uint32_t argb)
 {
 	if (!initialized || r <= 0) return;
-	float rf = (float)r;
-	emitSdfQuad(cx - r, cy - r, r * 2, r * 2, rf, rf, rf, (float)borderThickness, argbToRgba(argb), borderArgb);
-}
+	ensureWhiteTex();
+	if (batchVertCount + CIRCLE_SEGMENTS * 3 > MAX_VERTS) return;
 
-// single SDF quad for a rounded (or sharp) rectangle with optional border.
-void gfxFillRoundedRectangle(int x, int y, int w, int h, int radius, uint32_t argb, int borderThickness, uint32_t borderArgb)
-{
-	if (!initialized || w <= 0 || h <= 0) return;
-	if (radius <= 0 && borderThickness <= 0) {
-		gfxFillRectangle(x, y, w, h, argb);
-		return;
+	uint32_t rgba = argbToRgba(argb);
+	float fcx = toClipX(cx);
+	float fcy = toClipY(cy);
+	float step = 6.2831853f / (float)CIRCLE_SEGMENTS;
+	float prevX = toClipX(cx + r);
+	float prevY = fcy;
+
+	GfxVertex *v = &batchVerts[backBuffer][batchVertCount];
+	for (int i = 1; i <= CIRCLE_SEGMENTS; ++i) {
+		float angle = step * (float)i;
+		float nx = toClipX(cx + (int)(cosf(angle) * (float)r));
+		float ny = toClipY(cy + (int)(sinf(angle) * (float)r));
+		v[0] = (GfxVertex){ fcx, fcy, 0.0f, rgba, 0.0f, 0.0f };
+		v[1] = (GfxVertex){ prevX, prevY, 0.0f, rgba, 0.0f, 0.0f };
+		v[2] = (GfxVertex){ nx, ny, 0.0f, rgba, 0.0f, 0.0f };
+		v += 3;
+		prevX = nx;
+		prevY = ny;
 	}
-	int maxR = (w < h ? w : h) / 2;
-	if (radius > maxR) radius = maxR;
-	emitSdfQuad(x, y, w, h, (float)w * 0.5f, (float)h * 0.5f, (float)radius, (float)borderThickness, argbToRgba(argb), borderArgb);
+	batchVertCount += CIRCLE_SEGMENTS * 3;
 }
 
 static void flushBatch(void)
@@ -502,8 +467,6 @@ static void flushBatch(void)
 	cellGcmSetVertexDataArray(CTX, shaderPosIdx, 0, sizeof(GfxVertex), 3, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, batchOffset[backBuffer] + startByte);
 	cellGcmSetVertexDataArray(CTX, shaderColIdx, 0, sizeof(GfxVertex), 4, CELL_GCM_VERTEX_UB, CELL_GCM_LOCATION_LOCAL, batchColOffset[backBuffer] + startByte);
 	cellGcmSetVertexDataArray(CTX, shaderUvIdx, 0, sizeof(GfxVertex), 2, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, batchUvOffset[backBuffer] + startByte);
-	cellGcmSetVertexDataArray(CTX, shaderSdfParamsIdx, 0, sizeof(GfxVertex), 4, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, batchSdfParamsOffset[backBuffer] + startByte);
-	cellGcmSetVertexDataArray(CTX, shaderSdfBorderIdx, 0, sizeof(GfxVertex), 4, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, batchSdfBorderOffset[backBuffer] + startByte);
 
 	// bind current batch texture
 	CellGcmTexture tex;

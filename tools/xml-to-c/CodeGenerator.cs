@@ -157,10 +157,7 @@ namespace XmlToC
                 sb.Append("    rectangleInit(&").Append(rect.Id).Append(", ")
                   .Append(I(rect.X)).Append(", ").Append(I(rect.Y)).Append(", ")
                   .Append(I(rect.Width)).Append(", ").Append(I(rect.Height)).Append(", ")
-                  .Append(I(rect.Radius)).Append(", ")
-                  .Append(rect.Fill).Append(", ")
-                  .Append(I(rect.BorderThickness)).Append(", ")
-                  .Append(rect.BorderThickness > 0 && rect.BorderColor != null ? rect.BorderColor : "COLOR_TRANSPARENT").Append(");\n");
+                  .Append(rect.Fill).Append(");\n");
                 return;
             }
 
@@ -170,9 +167,7 @@ namespace XmlToC
                 sb.Append("    circleInit(&").Append(circle.Id).Append(", ")
                   .Append(I(circle.Cx)).Append(", ").Append(I(circle.Cy)).Append(", ")
                   .Append(I(circle.Radius)).Append(", ")
-                  .Append(circle.Fill).Append(", ")
-                  .Append(I(circle.BorderThickness)).Append(", ")
-                  .Append(circle.BorderThickness > 0 && circle.BorderColor != null ? circle.BorderColor : "COLOR_TRANSPARENT").Append(");\n");
+                  .Append(circle.Fill).Append(");\n");
                 return;
             }
 
@@ -183,9 +178,7 @@ namespace XmlToC
                   .Append(F(tri.X0)).Append(", ").Append(F(tri.Y0)).Append(", ")
                   .Append(F(tri.X1)).Append(", ").Append(F(tri.Y1)).Append(", ")
                   .Append(F(tri.X2)).Append(", ").Append(F(tri.Y2)).Append(", ")
-                  .Append(tri.Fill).Append(", ")
-                  .Append(I(tri.BorderThickness)).Append(", ")
-                  .Append(tri.BorderThickness > 0 && tri.BorderColor != null ? tri.BorderColor : "COLOR_TRANSPARENT").Append(");\n");
+                  .Append(tri.Fill).Append(");\n");
                 return;
             }
 

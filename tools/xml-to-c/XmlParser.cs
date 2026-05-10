@@ -190,8 +190,6 @@ namespace XmlToC
         {
             int x, y; ParseIntPair(el, "xy", out x, out y);
             int w, h; ParseIntPair(el, "wh", out w, out h);
-            string bc = OptAttr(el, "border-color");
-            if (bc != null) { ValidateColor(el, "border-color", bc); bc = NormalizeColor(bc); }
             return new RectangleElement
             {
                 Kind            = ElementKind.Rectangle,
@@ -201,18 +199,13 @@ namespace XmlToC
                 Y               = y,
                 Width           = w,
                 Height          = h,
-                Radius          = ParseAutoOrInt(el, "corner-radius", 0),
                 Fill            = ParseColor(el, "fill"),
-                BorderThickness = ParseAutoOrInt(el, "border-thickness", 0),
-                BorderColor     = bc
             };
         }
 
         private static CircleElement ParseCircle(XElement el)
         {
             int cx, cy; ParseIntPair(el, "xy", out cx, out cy);
-            string bc = OptAttr(el, "border-color");
-            if (bc != null) { ValidateColor(el, "border-color", bc); bc = NormalizeColor(bc); }
             return new CircleElement
             {
                 Kind            = ElementKind.Circle,
@@ -222,8 +215,6 @@ namespace XmlToC
                 Cy              = cy,
                 Radius          = ParseInt(el, "radius"),
                 Fill            = ParseColor(el, "fill"),
-                BorderThickness = ParseAutoOrInt(el, "border-thickness", 0),
-                BorderColor     = bc
             };
         }
 
@@ -232,8 +223,6 @@ namespace XmlToC
             float x0, y0; ParseFloatPair(el, "p0", out x0, out y0);
             float x1, y1; ParseFloatPair(el, "p1", out x1, out y1);
             float x2, y2; ParseFloatPair(el, "p2", out x2, out y2);
-            string bc = OptAttr(el, "border-color");
-            if (bc != null) { ValidateColor(el, "border-color", bc); bc = NormalizeColor(bc); }
             return new TriangleElement
             {
                 Kind            = ElementKind.Triangle,
@@ -246,8 +235,6 @@ namespace XmlToC
                 X2              = x2,
                 Y2              = y2,
                 Fill            = ParseColor(el, "fill"),
-                BorderThickness = ParseAutoOrInt(el, "border-thickness", 0),
-                BorderColor     = bc
             };
         }
 

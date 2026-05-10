@@ -47,26 +47,19 @@ namespace XmlToC
     internal sealed class RectangleElement : Element
     {
         public int X, Y, Width, Height;
-        public int Radius;            // 0 -> sharp corners, >0 -> rounded
         public string Fill;
-        public int BorderThickness;   // 0 -> no border
-        public string BorderColor;    // null -> COLOR_TRANSPARENT
     }
 
     internal sealed class CircleElement : Element
     {
         public int Cx, Cy, Radius;
         public string Fill;
-        public int BorderThickness;
-        public string BorderColor;
     }
 
     internal sealed class TriangleElement : Element
     {
         public float X0, Y0, X1, Y1, X2, Y2;
         public string Fill;
-        public int BorderThickness;
-        public string BorderColor;
     }
 
     internal sealed class LineElement : Element

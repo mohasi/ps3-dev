@@ -1,42 +1,12 @@
-// fragment shader
-// sdfParams.x == 0: texture mode (sample tex * color)
-// sdfParams.x  > 0: SDF shape mode (rounded rect / circle with optional border)
-//   sdfParams = (halfW, halfH, cornerRadius, borderThickness)
-//   sdfBorder = normalized border color (r, g, b, a)
-//   texcoord  = pixel offset from shape center
+// fragment shader - samples texture and multiplies by vertex color
 uniform sampler2D tex : TEXUNIT0;
-
-float roundedBoxSdf(float2 p, float2 half, float r)
-{
-	float2 q = abs(p) - half + float2(r, r);
-	return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-}
 
 void main
 (
 	float4 color : COLOR,
 	float2 uv : TEXCOORD0,
-	float4 sdfParams : TEXCOORD1,
-	float4 sdfBorder : TEXCOORD2,
 	out float4 oColor : COLOR
 )
 {
-	if (sdfParams.x <= 0.0) {
-		oColor = tex2D(tex, uv) * color;
-		return;
-	}
-
-	float dist  = roundedBoxSdf(uv, sdfParams.xy, sdfParams.z);
-	float outer = 1.0 - smoothstep(-0.5, 0.5, dist);
-
-	if (sdfParams.w > 0.0) {
-		float2 innerHalf = sdfParams.xy - float2(sdfParams.w, sdfParams.w);
-		float innerR = max(sdfParams.z - sdfParams.w, 0.0);
-		float inner  = 1.0 - smoothstep(-0.5, 0.5, roundedBoxSdf(uv, innerHalf, innerR));
-		oColor = color * (outer * inner) + sdfBorder * (outer * (1.0 - inner));
-		oColor.a = outer * (color.a * inner + sdfBorder.a * (1.0 - inner));
-	} else {
-		oColor = color;
-		oColor.a = color.a * outer;
-	}
+	oColor = tex2D(tex, uv) * color;
 }

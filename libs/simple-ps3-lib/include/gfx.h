@@ -7,8 +7,6 @@
 #include <stddef.h>
 
 #define AUTO 0
-#define NO_BORDER    0, 0
-#define NO_ROUNDING  0
 
 typedef enum {
     GFX_FILTER_NEAREST = 0, // sharp, pixelated - good for pixel art and sprites
@@ -36,8 +34,7 @@ void gfxTerm(void);
 void gfxBeginFrame(void);
 void gfxClear(uint32_t argb);
 void gfxFillRectangle(int x, int y, int w, int h, uint32_t argb);
-void gfxFillRoundedRectangle(int x, int y, int w, int h, int radius, uint32_t argb, int borderThickness, uint32_t borderArgb);
-void gfxFillCircle(int cx, int cy, int radius, uint32_t argb, int borderThickness, uint32_t borderArgb);
+void gfxFillCircle(int cx, int cy, int radius, uint32_t argb);
 void gfxDrawTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32_t c1, float x2, float y2, uint32_t c2);
 void gfxDrawLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb);
 void gfxDrawTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter);

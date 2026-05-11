@@ -21,6 +21,7 @@ typedef enum {
 typedef struct {
     uint32_t offset;
     int w, h;
+    int pitch; // vram row stride in bytes (may be wider than w*4 due to alignment or slot reuse)
 } GfxTexture;
 
 int  gfxInit(GfxVsync vsync);

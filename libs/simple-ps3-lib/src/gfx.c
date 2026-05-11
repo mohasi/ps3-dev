@@ -290,6 +290,7 @@ void gfxBeginFrame(void)
 
 	cellGcmSetScissor(CTX, 0, 0, screenW, screenH);
 	cellGcmSetDepthTestEnable(CTX, CELL_GCM_FALSE);
+	cellGcmSetFragmentProgramGammaEnable(CTX, CELL_GCM_TRUE);
 
 	batchVertCount = 0;
 	batchFlushStart = 0;
@@ -484,15 +485,13 @@ void gfxDrawTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
 {
 	if (!initialized || tex.w == 0 || tex.h == 0) return;
 
-	int texPitch = (tex.w * 4 + 63) & ~63;
-
 	// flush if texture or filter mode changes
 	if (tex.offset != batchTexOffset || filter != batchTexLinear) {
 		flushBatch();
 		batchTexOffset = tex.offset;
 		batchTexW = tex.w;
 		batchTexH = tex.h;
-		batchTexPitch = texPitch;
+		batchTexPitch = tex.pitch;
 		batchTexLinear = filter;
 	}
 
@@ -649,6 +648,7 @@ GfxTexture gfxLoadTexture(const char *path)
 	cellGcmAddressToOffset(pixels, &result.offset);
 	result.w = (int)w;
 	result.h = (int)h;
+	result.pitch = (int)alignedPitch;
 	return result;
 }
 

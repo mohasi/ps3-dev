@@ -313,7 +313,6 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
 
     if (*outW <= 0 || *outH <= 0) { free(buf); return NULL; }
 
-    // shift the buffer up to skip the top margin
     uint8_t *cropped = buf + skip * surfW * 4;
     memmove(buf, cropped, (*outH) * surfW * 4);
 
@@ -343,11 +342,13 @@ void fontRender(TextTexture *tt, Font *f, int size, const char *text, uint32_t c
         gfxUpdateTexture(tt->tex.offset, buf, drawW, drawH, surfW * 4, tt->slotW, tt->slotH);
         tt->tex.w = drawW;
         tt->tex.h = drawH;
+        tt->tex.pitch = (tt->slotW * 4 + 63) & ~63;
     } else {
         // allocate a new (larger) slot
         tt->tex.offset = gfxUploadTexture(buf, drawW, drawH, surfW * 4);
         tt->tex.w = drawW;
         tt->tex.h = drawH;
+        tt->tex.pitch = (drawW * 4 + 63) & ~63;
         tt->slotW = drawW;
         tt->slotH = drawH;
     }

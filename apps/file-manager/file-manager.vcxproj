@@ -33,7 +33,7 @@
       <OptimizationLevel>Level2</OptimizationLevel>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>-L"$(SolutionDir)libs\simple-ps3-lib\bin\$(Configuration)" -lsimple-ps3-lib</AdditionalOptions>
       <GccOutputFormat>ELFFile</GccOutputFormat>
     </Link>

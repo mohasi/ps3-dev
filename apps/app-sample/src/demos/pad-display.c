@@ -47,6 +47,8 @@ void drawPadDisplay(void)
     if (pad.btn.r2)       { buf[pos++]=' '; buf[pos++]='R'; buf[pos++]='2'; }
     if (pad.btn.start)    { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='T'; }
     if (pad.btn.select)   { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='E'; }
+    if (pad.btn.l3)       { buf[pos++]=' '; buf[pos++]='L'; buf[pos++]='3'; }
+    if (pad.btn.r3)       { buf[pos++]=' '; buf[pos++]='R'; buf[pos++]='3'; }
     if (pos == 4) { buf[pos++] = ' '; buf[pos++] = '-'; }
     buf[pos] = 0;
     renderFont(&ttButtons, padFont, padSize, buf, padColor, AUTO, TEXT_NOWRAP);

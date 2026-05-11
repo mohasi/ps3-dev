@@ -39,8 +39,7 @@ static uint32_t  backBuffer = 0;
 
 static uint8_t  *vramBase = 0;
 static size_t    vramSize = 0;
-static size_t    vramPermUsed = 0;  // persistent, grows up
-static size_t    vramTempUsed = 0;  // how far down temp has gone this frame
+static size_t    vramUsed = 0;
 
 // double-buffered vertex batch (write one while GPU reads the other)
 static GfxVertex *batchVerts[FRAME_COUNT];
@@ -76,37 +75,18 @@ static int      batchTexLinear = 0;
 
 static void flushBatch(void);
 
-static void *vramAllocPersistent(size_t size, size_t alignment)
+void *vramAlloc(size_t size, size_t alignment)
 {
-	size_t base = (size_t)vramBase + vramPermUsed;
+	size_t base = (size_t)vramBase + vramUsed;
 	size_t aligned = (base + alignment - 1) & ~(alignment - 1);
 	size_t newUsed = (aligned - (size_t)vramBase) + size;
 
-	if (newUsed + vramTempUsed > vramSize) {
-		printf("[gfx] vramAllocPersistent: out of VRAM\n");
+	if (newUsed > vramSize) {
+		printf("[gfx] vramAlloc: out of VRAM\n");
 		return 0;
 	}
-	vramPermUsed = newUsed;
+	vramUsed = newUsed;
 	return (void *)aligned;
-}
-
-static void *vramAllocTemp(size_t size, size_t alignment)
-{
-	size_t tempNeeded = vramTempUsed + size + alignment;
-	if (tempNeeded > vramSize - vramPermUsed) {
-		printf("[gfx] vramAllocTemp: out of VRAM\n");
-		return 0;
-	}
-	size_t top = (size_t)vramBase + vramSize - vramTempUsed;
-	size_t aligned = (top - size) & ~(alignment - 1);
-	vramTempUsed = (size_t)vramBase + vramSize - aligned;
-	return (void *)aligned;
-}
-
-void *vramAlloc(size_t size, size_t alignment, VramLifetime lifetime)
-{
-	if (lifetime == VRAM_TEMP) return vramAllocTemp(size, alignment);
-	return vramAllocPersistent(size, alignment);
 }
 
 static void waitFlip(void)
@@ -207,14 +187,14 @@ int gfxInit(GfxVsync vsync)
 	cellGcmGetConfiguration(&config);
 	vramBase = (uint8_t *)config.localAddress;
 	vramSize = (size_t)config.localSize;
-	vramPermUsed = 0;
+	vramUsed = 0;
 
 	// allocate frame buffers in vram
 	uint32_t bufferHeight = cellGcmAlign(CELL_GCM_ZCULL_ALIGN_HEIGHT, screenH);
 	uint32_t colorSize    = framePitch * bufferHeight;
 
 	for (int i = 0; i < FRAME_COUNT; ++i) {
-		void *addr = vramAlloc(colorSize, CELL_GCM_TILE_ALIGN_OFFSET, VRAM_PERM);
+		void *addr = vramAlloc(colorSize, CELL_GCM_TILE_ALIGN_OFFSET);
 		if (!addr) {
 			return -1;
 		}
@@ -250,7 +230,7 @@ int gfxInit(GfxVsync vsync)
 	uint32_t fpSize;
 	cellGcmCgGetUCode(shaderFp, &fpUcode, &fpSize);
 
-	shaderFpUcode = vramAlloc(fpSize, 64, VRAM_PERM);
+	shaderFpUcode = vramAlloc(fpSize, 64);
 	if (!shaderFpUcode) return -1;
 	memcpy(shaderFpUcode, fpUcode, fpSize);
 	cellGcmAddressToOffset(shaderFpUcode, &shaderFpOffset);
@@ -266,21 +246,21 @@ int gfxInit(GfxVsync vsync)
 	shaderTexUnit = cellGcmCgGetParameterResource(shaderFp, texParam) - CG_TEXUNIT0;
 
 	// 1x1 white texture (64-byte pitch minimum for RSX)
-	uint32_t *whitePix = (uint32_t *)vramAlloc(64, 64, VRAM_PERM);
+	uint32_t *whitePix = (uint32_t *)vramAlloc(64, 64);
 	if (!whitePix) return -1;
 	*whitePix = COLOR_WHITE;
 	cellGcmAddressToOffset(whitePix, &whiteTexOffset);
 
 	// allocate quad batch buffer in vram
 	for (int i = 0; i < FRAME_COUNT; ++i) {
-		batchVerts[i] = (GfxVertex *)vramAlloc(MAX_VERTS * sizeof(GfxVertex), 128, VRAM_PERM);
+		batchVerts[i] = (GfxVertex *)vramAlloc(MAX_VERTS * sizeof(GfxVertex), 128);
 		if (!batchVerts[i]) return -1;
 		cellGcmAddressToOffset(&batchVerts[i][0].x, &batchOffset[i]);
 		cellGcmAddressToOffset(&batchVerts[i][0].rgba, &batchColOffset[i]);
 		cellGcmAddressToOffset(&batchVerts[i][0].u, &batchUvOffset[i]);
 	}
 
-	printf("[gfx] ready: %d x %d, pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, framePitch, vramPermUsed, vramSize);
+	printf("[gfx] ready: %d x %d, pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, framePitch, vramUsed, vramSize);
 	return 0;
 }
 
@@ -318,8 +298,6 @@ void gfxBeginFrame(void)
 	batchTexH = 1;
 	batchTexPitch = 64;
 	batchTexLinear = 0;
-
-	vramTempUsed = 0;
 }
 
 void gfxClear(uint32_t argb)
@@ -561,17 +539,12 @@ int gfxScreenHeight(void) { return screenH; }
 
 void gfxVramReset(size_t mark)
 {
-	vramPermUsed = mark;
+	vramUsed = mark;
 }
 
 size_t gfxVramUsed(void)
 {
-	return vramPermUsed;
-}
-
-size_t gfxVramUsedTemp(void)
-{
-	return vramTempUsed;
+	return vramUsed;
 }
 
 // pngdec callbacks
@@ -663,7 +636,7 @@ GfxTexture gfxLoadTexture(const char *path)
 	// copy to VRAM with 64-byte aligned pitch
 	uint32_t alignedPitch = (stride + 63) & ~63;
 	uint32_t size = alignedPitch * h;
-	void *pixels = vramAlloc(size, 64, VRAM_PERM);
+	void *pixels = vramAlloc(size, 64);
 	if (!pixels) { free(tempBuf); return result; }
 
 	uint8_t *dst = (uint8_t *)pixels;
@@ -679,11 +652,11 @@ GfxTexture gfxLoadTexture(const char *path)
 	return result;
 }
 
-uint32_t gfxUploadTexture(const void *rgba, int w, int h, int srcPitch, VramLifetime lifetime)
+uint32_t gfxUploadTexture(const void *rgba, int w, int h, int srcPitch)
 {
 	uint32_t alignedPitch = ((uint32_t)(w * 4) + 63) & ~63;
 	uint32_t size = alignedPitch * (uint32_t)h;
-	void *pixels = vramAlloc(size, 64, lifetime);
+	void *pixels = vramAlloc(size, 64);
 	if (!pixels) return 0;
 
 	uint8_t *dst = (uint8_t *)pixels;
@@ -695,4 +668,25 @@ uint32_t gfxUploadTexture(const void *rgba, int w, int h, int srcPitch, VramLife
 	uint32_t offset;
 	cellGcmAddressToOffset(pixels, &offset);
 	return offset;
+}
+
+void gfxUpdateTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH)
+{
+	uint32_t alignedPitch = ((uint32_t)(slotW * 4) + 63) & ~63;
+	uint8_t *dst = (uint8_t *)vramBase + offset;
+	const uint8_t *src = (const uint8_t *)rgba;
+	uint32_t rowBytes = (uint32_t)(w * 4);
+
+	// copy content rows, clearing any right-margin padding
+	for (int row = 0; row < h; ++row) {
+		uint8_t *rowDst = dst + row * alignedPitch;
+		memcpy(rowDst, src + row * srcPitch, rowBytes);
+		if (rowBytes < alignedPitch)
+			memset(rowDst + rowBytes, 0, alignedPitch - rowBytes);
+	}
+
+	// clear any bottom rows beyond the new content
+	if (h < slotH) {
+		memset(dst + h * alignedPitch, 0, alignedPitch * (uint32_t)(slotH - h));
+	}
 }

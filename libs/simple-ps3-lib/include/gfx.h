@@ -18,11 +18,6 @@ typedef enum {
     GFX_VSYNC_ON  = 1  // locked to display refresh
 } GfxVsync;
 
-typedef enum {
-    VRAM_PERM = 0, // lives until screen terms
-    VRAM_TEMP = 1  // reset every frame
-} VramLifetime;
-
 typedef struct {
     uint32_t offset;
     int w, h;
@@ -41,14 +36,13 @@ void gfxDrawTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
 void gfxEndFrame(void);
 
 GfxTexture gfxLoadTexture(const char *path);
-uint32_t   gfxUploadTexture(const void *rgba, int w, int h, int srcPitch, VramLifetime lifetime);
+uint32_t   gfxUploadTexture(const void *rgba, int w, int h, int srcPitch);
+void       gfxUpdateTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH);
 
 int gfxScreenWidth(void);
 int gfxScreenHeight(void);
 
-void  *vramAlloc(size_t size, size_t alignment, VramLifetime lifetime);
-void   gfxVramReset(size_t mark);
-size_t gfxVramUsed(void);
-size_t gfxVramUsedTemp(void);
-
+void      *vramAlloc(size_t size, size_t alignment);
+void       gfxVramReset(size_t mark);
+size_t     gfxVramUsed(void);
 

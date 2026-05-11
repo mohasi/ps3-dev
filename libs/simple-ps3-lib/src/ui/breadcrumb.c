@@ -23,7 +23,7 @@ void breadcrumbInit(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor,
 static void rebuild(Breadcrumb *b)
 {
     for (int i = 0; i < b->depth; i++) {
-        b->segTex[i] = fontToTexture(AUTO, AUTO, b->segments[i], b->font, b->fontSize, b->textColor, TEXT_NOWRAP);
+        fontRender(&b->segTex[i], b->font, b->fontSize, b->segments[i], b->textColor, AUTO, TEXT_NOWRAP);
     }
     b->dirty = 0;
 }
@@ -58,14 +58,14 @@ void breadcrumbDraw(Breadcrumb *b)
 
     for (int i = 0; i < b->depth; i++) {
         if (i > 0 && b->chevronW > 0) {
-            int chevronY = b->y + (b->segTex[0].h - b->chevronH) / 2;
+            int chevronY = b->y + (b->segTex[0].tex.h - b->chevronH) / 2;
             gfxDrawTexture(cx, chevronY, b->chevronW, b->chevronH, b->chevronTex, b->chevronU0, b->chevronV0, b->chevronU1, b->chevronV1, COLOR_WHITE, GFX_FILTER_LINEAR);
             cx += b->chevronW + BREADCRUMB_CHEVRON_GAP;
         }
 
-        if (b->segTex[i].w > 0) {
-            gfxDrawTexture(cx, b->y, b->segTex[i].w, b->segTex[i].h, b->segTex[i], 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-            cx += b->segTex[i].w + BREADCRUMB_CHEVRON_GAP;
+        if (b->segTex[i].tex.w > 0) {
+            gfxDrawTexture(cx, b->y, b->segTex[i].tex.w, b->segTex[i].tex.h, b->segTex[i].tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+            cx += b->segTex[i].tex.w + BREADCRUMB_CHEVRON_GAP;
         }
     }
 }

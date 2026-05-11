@@ -9,7 +9,7 @@
 #define LABEL_MAX_TEXT 256
 
 typedef struct {
-    GfxTexture tex;
+    TextTexture tt;
     Font *font;
     int x, y;
     int width, height;

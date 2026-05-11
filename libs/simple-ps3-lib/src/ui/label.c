@@ -13,9 +13,6 @@ void labelInit(Label *l, Font *font, int x, int y, int width, int height, int si
     l->color = color;
     l->wrap = wrap;
     l->text[0] = '\0';
-    l->tex.w = 0;
-    l->tex.h = 0;
-    l->tex.offset = 0;
 }
 
 void labelSetText(Label *l, const char *text)
@@ -25,12 +22,11 @@ void labelSetText(Label *l, const char *text)
     strncpy(l->text, text, LABEL_MAX_TEXT - 1);
     l->text[LABEL_MAX_TEXT - 1] = '\0';
 
-    // re-render texture
-    l->tex = fontToTexture(l->width, l->height, l->text, l->font, l->size, l->color, l->wrap);
+    fontRender(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
 }
 
 void labelDraw(Label *l)
 {
-    if (l->tex.w > 0)
-        gfxDrawTexture(l->x, l->y, l->tex.w, l->tex.h, l->tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    if (l->tt.tex.w > 0)
+        gfxDrawTexture(l->x, l->y, l->tt.tex.w, l->tt.tex.h, l->tt.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 }

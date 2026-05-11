@@ -4,20 +4,23 @@
 #include "colors.h"
 #include "font.h"
 #include "anim.h"
+#include <string.h>
 
 #define SIDEPANEL_WIDTH 400
 
 static float x;
 static Anims anims;
 static Font font;
-static GfxTexture titleText;
-static GfxTexture bodyText;
+static TextTexture titleText;
+static TextTexture bodyText;
 
 static void init(void)
 {
     font = fontOpenSystem(FONT_POP);
-    titleText = fontToTexture(SIDEPANEL_WIDTH - 40, AUTO, "Side Panel", &font, 20, COLOR_WHITE, TEXT_NOWRAP);
-    bodyText = fontToTexture(SIDEPANEL_WIDTH - 40, AUTO, "This panel slides in from the right. Press SELECT to close.", &font, 14, COLOR_SLATE_300, TEXT_WRAP);
+    memset(&titleText, 0, sizeof(titleText));
+    memset(&bodyText, 0, sizeof(bodyText));
+    fontRender(&titleText, &font, 20, "Side Panel", COLOR_WHITE, SIDEPANEL_WIDTH - 40, TEXT_NOWRAP);
+    fontRender(&bodyText, &font, 14, "This panel slides in from the right. Press SELECT to close.", COLOR_SLATE_300, SIDEPANEL_WIDTH - 40, TEXT_WRAP);
 }
 
 static void show(void)
@@ -54,8 +57,8 @@ static void draw(void)
 
     gfxFillRectangle(px, 0, sw - px, sh, COLOR_SLATE_800);
 
-    gfxDrawTexture(px + 20, 30, titleText.w, titleText.h, titleText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-    gfxDrawTexture(px + 20, 70, bodyText.w, bodyText.h, bodyText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(px + 20, 30, titleText.tex.w, titleText.tex.h, titleText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(px + 20, 70, bodyText.tex.w, bodyText.tex.h, bodyText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 }
 
 static void term(void)

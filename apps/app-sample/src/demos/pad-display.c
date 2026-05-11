@@ -3,11 +3,14 @@
 #include "pad.h"
 #include "font.h"
 #include "gfx.h"
+#include "colors.h"
 
 static Font *padFont;
 static int padX, padY, padSize;
 static uint32_t padColor;
 static char buf[64];
+static TextTexture ttButtons;
+static TextTexture ttSticks;
 
 static void appendInt(int *pos, int v)
 {
@@ -46,7 +49,9 @@ void drawPadDisplay(void)
     if (pad.btn.select)   { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='E'; }
     if (pos == 4) { buf[pos++] = ' '; buf[pos++] = '-'; }
     buf[pos] = 0;
-    fontDraw(padX, padY, AUTO, AUTO, buf, padFont, padSize, padColor, TEXT_NOWRAP);
+    fontRender(&ttButtons, padFont, padSize, buf, padColor, AUTO, TEXT_NOWRAP);
+    if (ttButtons.tex.w > 0)
+        gfxDrawTexture(padX, padY, ttButtons.tex.w, ttButtons.tex.h, ttButtons.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 
     pos = 0;
     buf[pos++]='L'; buf[pos++]=':';
@@ -54,5 +59,7 @@ void drawPadDisplay(void)
     buf[pos++]=' '; buf[pos++]='R'; buf[pos++]=':';
     appendInt(&pos, pad.rStick.x); buf[pos++]=','; appendInt(&pos, pad.rStick.y);
     buf[pos] = 0;
-    fontDraw(padX, padY + padSize + 2, AUTO, AUTO, buf, padFont, padSize, padColor, TEXT_NOWRAP);
+    fontRender(&ttSticks, padFont, padSize, buf, padColor, AUTO, TEXT_NOWRAP);
+    if (ttSticks.tex.w > 0)
+        gfxDrawTexture(padX, padY + padSize + 2, ttSticks.tex.w, ttSticks.tex.h, ttSticks.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 }

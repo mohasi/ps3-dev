@@ -22,7 +22,7 @@ static void homeInit(void)
     imageInit(&background, bg, 0, 0, AUTO, AUTO, AUTO, AUTO, AUTO, AUTO, GFX_FILTER_LINEAR);
 
     // breadcrumb
-    breadcrumbInit(&breadcrumb, &pop, 48, 112, COLOR_WHITE, spritesheet, 0, 0, 7, 12, 18);
+    breadcrumbInit(&breadcrumb, &pop, 75, 130, COLOR_WHITE, spritesheet, 0, 0, 7, 12, 20);
     breadcrumbPush(&breadcrumb, "dev_hdd0");
     breadcrumbPush(&breadcrumb, "GAMES");
     breadcrumbPush(&breadcrumb, "My Game");

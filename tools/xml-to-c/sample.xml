@@ -10,8 +10,8 @@
 	<Image id="background" texture-id="bg" xy="0,0" filter="linear"/>
 
 	<!-- breadcrumb -->
-	<Breadcrumb id="breadcrumb" xy="48,112"
-            font-id="pop" font-size="18"
+	<Breadcrumb id="breadcrumb" xy="75,130"
+            font-id="pop" font-size="20"
             text-color="COLOR_WHITE"
             chevron-texture-id="spritesheet"
             chevron-src-xy="0,0"

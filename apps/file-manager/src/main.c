@@ -35,7 +35,6 @@ int main(int argc, char **argv)
 		screenUpdate();
 
 		gfxBeginFrame();
-		gfxClear(COLOR_BLACK);
 		screenDraw();
 		gfxEndFrame();
 	}

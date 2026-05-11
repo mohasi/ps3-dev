@@ -12,7 +12,7 @@
 
 typedef struct {
     char segments[BREADCRUMB_MAX_DEPTH][BREADCRUMB_MAX_NAME];
-    GfxTexture segTex[BREADCRUMB_MAX_DEPTH];
+    TextTexture segTex[BREADCRUMB_MAX_DEPTH];
     GfxTexture chevronTex;
     float chevronU0, chevronV0, chevronU1, chevronV1;
     int chevronW, chevronH;

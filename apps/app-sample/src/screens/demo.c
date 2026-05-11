@@ -21,9 +21,9 @@ static Font pop;
 static Anims anims;
 static float circleX;
 static float colorT;
-static GfxTexture titleText;
-static GfxTexture wrapText;
-static GfxTexture ellipsisText;
+static TextTexture titleText;
+static TextTexture wrapText;
+static TextTexture ellipsisText;
 
 static void demoInit(void)
 {
@@ -36,9 +36,9 @@ static void demoInit(void)
 
     pop = fontOpenSystem(FONT_POP);
 
-    titleText = fontToTexture(AUTO, AUTO, "app-sample", &pop, 20, COLOR_WHITE, TEXT_NOWRAP);
-    wrapText = fontToTexture(350, AUTO, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.", &pop, 14, COLOR_EMERALD_300, TEXT_WRAP);
-    ellipsisText = fontToTexture(200, AUTO, "This long text gets cut off with an ellipsis at the end", &pop, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS);
+    fontRender(&titleText, &pop, 20, "app-sample", COLOR_WHITE, AUTO, TEXT_NOWRAP);
+    fontRender(&wrapText, &pop, 14, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.", COLOR_EMERALD_300, 350, TEXT_WRAP);
+    fontRender(&ellipsisText, &pop, 14, "This long text gets cut off with an ellipsis at the end", COLOR_AMBER_300, 200, TEXT_NOWRAP_ELLIPSIS);
 
     initPadDisplay(&pop, 40, 240, 14, COLOR_SKY_300);
 
@@ -99,11 +99,11 @@ static void demoDraw(void)
     drawGradientTriangle();
     drawAnimatedSprite(500, 100);
     gfxDrawTexture(100, 400, makoto.w, makoto.h, makoto, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-    gfxDrawTexture(40, 170, titleText.w, titleText.h, titleText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(40, 170, titleText.tex.w, titleText.tex.h, titleText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
     drawPadDisplay();
 
-    gfxDrawTexture(500, 300, wrapText.w, wrapText.h, wrapText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-    gfxDrawTexture(500, 380, ellipsisText.w, ellipsisText.h, ellipsisText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(500, 300, wrapText.tex.w, wrapText.tex.h, wrapText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(500, 380, ellipsisText.tex.w, ellipsisText.tex.h, ellipsisText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 
     uint32_t circleColor = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
     gfxFillCircle((int)circleX, 130, 25, circleColor);

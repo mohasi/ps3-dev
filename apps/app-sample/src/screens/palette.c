@@ -4,9 +4,10 @@
 #include "colors.h"
 #include "font.h"
 #include "pad.h"
+#include <string.h>
 
 static Font font;
-static GfxTexture titleText;
+static TextTexture titleText;
 
 // all 286 colors: 26 hues x 11 shades (50..950)
 static const uint32_t palette[] = {
@@ -102,7 +103,8 @@ static const uint32_t palette[] = {
 static void paletteInit(void)
 {
     font = fontOpenSystem(FONT_POP);
-    titleText = fontToTexture(300, AUTO, "Colors", &font, 32, COLOR_WHITE, TEXT_NOWRAP);
+    memset(&titleText, 0, sizeof(titleText));
+    fontRender(&titleText, &font, 32, "Colors", COLOR_WHITE, 300, TEXT_NOWRAP);
 }
 
 static void paletteResume(void) {}
@@ -116,7 +118,7 @@ static void paletteUpdate(void)
 
 static void paletteDraw(void)
 {
-    gfxDrawTexture(GRID_X, 20, titleText.w, titleText.h, titleText, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    gfxDrawTexture(GRID_X, 20, titleText.tex.w, titleText.tex.h, titleText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 
     for (int hue = 0; hue < HUE_COUNT; hue++) {
         for (int shade = 0; shade < SHADES_PER_HUE; shade++) {

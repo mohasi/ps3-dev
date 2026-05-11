@@ -161,9 +161,12 @@ float fontMeasureChar(Font *f, int size, uint32_t code)
     return fsize;
 }
 
-void fontDraw(int x, int y, int width, int height, const char *text, Font *f, int size, uint32_t color, TextWrap wrap)
+// rasterizes text into a CPU buffer. returns the actual content dimensions
+// via outW/outH. surfW is the buffer row width (may be larger than content).
+// caller must free the returned buffer.
+static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, int *outW, int *outH, int *outSurfW)
 {
-    if (!f->open || !text || !text[0]) return;
+    *outW = *outH = *outSurfW = 0;
 
     float fsize = (float)size;
     cellFontSetScalePixel(&f->font, fsize, fsize);
@@ -174,205 +177,9 @@ void fontDraw(int x, int y, int width, int height, const char *text, Font *f, in
     float lineH = layout.lineHeight;
     float baseY = layout.baseLineY;
 
+    // count lines for height calculation
     int lineCount = 1;
-    if (wrap == TEXT_WRAP && width > 0) {
-        float px = 0.0f;
-        const uint8_t *sp = (const uint8_t *)text;
-        while (*sp) {
-            if (*sp == '\n') {
-                lineCount++;
-                px = 0.0f;
-                sp++;
-                continue;
-            }
-            CellFontGlyphMetrics sm;
-            float adv = fsize;
-            if (cellFontGetCharGlyphMetrics(&f->font, *sp, &sm) == CELL_OK)
-                adv = sm.Horizontal.advance;
-            if (*sp == ' ') {
-                float wordW = 0.0f;
-                const uint8_t *wp = sp + 1;
-                while (*wp && *wp != ' ' && *wp != '\n') {
-                    CellFontGlyphMetrics wm;
-                    if (cellFontGetCharGlyphMetrics(&f->font, *wp, &wm) == CELL_OK)
-                        wordW += wm.Horizontal.advance;
-                    else
-                        wordW += fsize;
-                    wp++;
-                }
-                if (px + adv + wordW > (float)width && px > 0.0f) {
-                    lineCount++;
-                    px = 0.0f;
-                    sp++;
-                    continue;
-                }
-            }
-            px += adv;
-            sp++;
-        }
-    }
-
-    int surfW = (width > 0) ? width : FONT_MAX_RENDER_W;
-    int surfH = (int)(lineH * lineCount + fsize);
-    if (height > 0 && surfH > height) surfH = height;
-
-    int bufSize = surfW * surfH * 4;
-    uint8_t *buf = (uint8_t *)malloc(bufSize);
-    if (!buf) return;
-    memset(buf, 0, bufSize);
-
-    CellFontRenderSurface surf;
-    cellFontRenderSurfaceInit(&surf, buf, surfW * 4, 4, surfW, surfH);
-    cellFontRenderSurfaceSetScissor(&surf, 0, 0, surfW, surfH);
-    cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
-
-    float penX = 0.0f;
-    float penY = baseY;
-    int maxX = 0;
-    const uint8_t *p = (const uint8_t *)text;
-
-    uint8_t cr = (color >> 16) & 0xFF;
-    uint8_t cg = (color >> 8) & 0xFF;
-    uint8_t cb = color & 0xFF;
-
-    float ellipsisW = 0.0f;
-    if (wrap == TEXT_NOWRAP_ELLIPSIS && width > 0) {
-        for (int i = 0; i < 3; i++)
-            ellipsisW += fontMeasureChar(f, size, '.');
-        cellFontSetScalePixel(&f->font, fsize, fsize);
-        cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
-    }
-
-    while (*p) {
-        uint32_t code = *p;
-
-        if (code == '\n') {
-            if (wrap == TEXT_WRAP) {
-                penX = 0.0f;
-                penY += lineH;
-                if (height > 0 && penY + lineH > (float)surfH) break;
-            }
-            p++;
-            continue;
-        }
-
-        CellFontGlyphMetrics metrics;
-        float advance = fsize;
-        if (cellFontGetCharGlyphMetrics(&f->font, code, &metrics) == CELL_OK)
-            advance = metrics.Horizontal.advance;
-
-        if (width > 0) {
-            if (wrap == TEXT_WRAP) {
-                if (code == ' ') {
-                    float wordW = 0.0f;
-                    const uint8_t *wp = p + 1;
-                    while (*wp && *wp != ' ' && *wp != '\n') {
-                        CellFontGlyphMetrics wm;
-                        if (cellFontGetCharGlyphMetrics(&f->font, *wp, &wm) == CELL_OK)
-                            wordW += wm.Horizontal.advance;
-                        else
-                            wordW += fsize;
-                        wp++;
-                    }
-                    if (penX + advance + wordW > (float)width && penX > 0.0f) {
-                        penX = 0.0f;
-                        penY += lineH;
-                        if (height > 0 && penY + lineH > (float)surfH) break;
-                        p++;
-                        continue;
-                    }
-                }
-            } else if (wrap == TEXT_NOWRAP_ELLIPSIS) {
-                if (penX + advance > (float)width - ellipsisW && *(p + 1)) {
-                    for (int i = 0; i < 3; i++) {
-                        CellFontImageTransInfo ti;
-                        CellFontGlyphMetrics dm;
-                        if (cellFontRenderCharGlyphImage(&f->font, '.', &surf, penX, penY, &dm, &ti) == CELL_OK) {
-                            uint8_t *img = ti.Image;
-                            for (int iy = 0; iy < ti.imageHeight; iy++) {
-                                uint8_t *dst = ((uint8_t *)ti.Surface) + ti.surfWidthByte * iy;
-                                for (int ix = 0; ix < ti.imageWidth; ix++) {
-                                    uint8_t a = img[iy * ti.imageWidthByte + ix];
-                                    if (a) { dst[ix*4]=a; dst[ix*4+1]=cr; dst[ix*4+2]=cg; dst[ix*4+3]=cb; }
-                                }
-                            }
-                            penX += dm.Horizontal.advance;
-                        }
-                    }
-                    int endX = (int)(penX + 0.5f);
-                    if (endX > maxX) maxX = endX;
-                    break;
-                }
-            } else {
-                if (penX + advance > (float)width) break;
-            }
-        }
-
-        CellFontImageTransInfo transInfo;
-        int ret = cellFontRenderCharGlyphImage(&f->font, code, &surf, penX, penY, &metrics, &transInfo);
-        if (ret == CELL_OK) {
-            uint8_t *img = transInfo.Image;
-            int imgW = transInfo.imageWidth;
-            int imgH = transInfo.imageHeight;
-            int imgBW = transInfo.imageWidthByte;
-            int surfBW = transInfo.surfWidthByte;
-
-            for (int iy = 0; iy < imgH; iy++) {
-                uint8_t *dst = ((uint8_t *)transInfo.Surface) + surfBW * iy;
-                for (int ix = 0; ix < imgW; ix++) {
-                    uint8_t a = img[iy * imgBW + ix];
-                    if (a) {
-                        dst[ix * 4 + 0] = a;
-                        dst[ix * 4 + 1] = cr;
-                        dst[ix * 4 + 2] = cg;
-                        dst[ix * 4 + 3] = cb;
-                    }
-                }
-            }
-
-            penX += metrics.Horizontal.advance;
-            int endX = (int)(penX + 0.5f);
-            if (endX > maxX) maxX = endX;
-        } else {
-            penX += fsize;
-        }
-
-        p++;
-    }
-
-    int drawW = maxX;
-    int drawH = surfH;
-    if (drawW > 0 && drawH > 0) {
-        GfxTexture tex;
-        tex.w = drawW;
-        tex.h = drawH;
-        tex.offset = gfxUploadTexture(buf, drawW, drawH, surfW * 4, VRAM_TEMP);
-
-        if (tex.offset != 0) {
-            gfxDrawTexture(x, y - (int)baseY - 4, drawW, drawH, tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-        }
-    }
-
-    free(buf);
-}
-
-GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int size, uint32_t color, TextWrap wrap)
-{
-    GfxTexture result = { 0, 0, 0 };
-
-    if (!f->open || !text || !text[0]) return result;
-
-    float fsize = (float)size;
-    cellFontSetScalePixel(&f->font, fsize, fsize);
-    cellFontBindRenderer(&f->font, &fontRenderer);
-
-    CellFontHorizontalLayout layout;
-    cellFontGetHorizontalLayout(&f->font, &layout);
-    float lineH = layout.lineHeight;
-    float baseY = layout.baseLineY;
-
-    int lineCount = 1;
-    if (wrap == TEXT_WRAP && width > 0) {
+    if (wrap == TEXT_WRAP && maxWidth > 0) {
         float px = 0.0f;
         const uint8_t *sp = (const uint8_t *)text;
         while (*sp) {
@@ -389,20 +196,19 @@ GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int s
                     else wordW += fsize;
                     wp++;
                 }
-                if (px + adv + wordW > (float)width && px > 0.0f) { lineCount++; px = 0.0f; sp++; continue; }
+                if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineCount++; px = 0.0f; sp++; continue; }
             }
             px += adv;
             sp++;
         }
     }
 
-    int surfW = (width > 0) ? width : FONT_MAX_RENDER_W;
+    int surfW = (maxWidth > 0) ? maxWidth : FONT_MAX_RENDER_W;
     int surfH = (int)(lineH * lineCount + fsize);
-    if (height > 0 && surfH > height) surfH = height;
 
     int bufSize = surfW * surfH * 4;
     uint8_t *buf = (uint8_t *)malloc(bufSize);
-    if (!buf) return result;
+    if (!buf) return NULL;
     memset(buf, 0, bufSize);
 
     CellFontRenderSurface surf;
@@ -420,7 +226,7 @@ GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int s
     uint8_t cb = color & 0xFF;
 
     float ellipsisW = 0.0f;
-    if (wrap == TEXT_NOWRAP_ELLIPSIS && width > 0) {
+    if (wrap == TEXT_NOWRAP_ELLIPSIS && maxWidth > 0) {
         for (int i = 0; i < 3; i++) ellipsisW += fontMeasureChar(f, size, '.');
         cellFontSetScalePixel(&f->font, fsize, fsize);
         cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
@@ -430,7 +236,7 @@ GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int s
         uint32_t code = *p;
 
         if (code == '\n') {
-            if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; if (height > 0 && penY + lineH > (float)surfH) break; }
+            if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; if (penY + lineH > (float)surfH) break; }
             p++; continue;
         }
 
@@ -438,7 +244,7 @@ GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int s
         float advance = fsize;
         if (cellFontGetCharGlyphMetrics(&f->font, code, &metrics) == CELL_OK) advance = metrics.Horizontal.advance;
 
-        if (width > 0) {
+        if (maxWidth > 0) {
             if (wrap == TEXT_WRAP) {
                 if (code == ' ') {
                     float wordW = 0.0f;
@@ -449,10 +255,10 @@ GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int s
                         else wordW += fsize;
                         wp++;
                     }
-                    if (penX + advance + wordW > (float)width && penX > 0.0f) { penX = 0.0f; penY += lineH; if (height > 0 && penY + lineH > (float)surfH) break; p++; continue; }
+                    if (penX + advance + wordW > (float)maxWidth && penX > 0.0f) { penX = 0.0f; penY += lineH; if (penY + lineH > (float)surfH) break; p++; continue; }
                 }
             } else if (wrap == TEXT_NOWRAP_ELLIPSIS) {
-                if (penX + advance > (float)width - ellipsisW && *(p + 1)) {
+                if (penX + advance > (float)maxWidth - ellipsisW && *(p + 1)) {
                     for (int i = 0; i < 3; i++) {
                         CellFontImageTransInfo ti;
                         CellFontGlyphMetrics dm;
@@ -472,7 +278,7 @@ GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int s
                     break;
                 }
             } else {
-                if (penX + advance > (float)width) break;
+                if (penX + advance > (float)maxWidth) break;
             }
         }
 
@@ -499,17 +305,52 @@ GfxTexture fontToTexture(int width, int height, const char *text, Font *f, int s
         p++;
     }
 
-    // skip the blank rows above the glyphs (baseY offset)
+    // crop blank rows above glyphs
     int skip = (int)baseY + 4;
-    int drawW = maxX;
-    int drawH = surfH - skip;
-    if (drawW > 0 && drawH > 0) {
-        uint8_t *cropped = buf + skip * surfW * 4;
-        result.w = drawW;
-        result.h = drawH;
-        result.offset = gfxUploadTexture(cropped, drawW, drawH, surfW * 4, VRAM_PERM);
+    *outW = maxX;
+    *outH = surfH - skip;
+    *outSurfW = surfW;
+
+    if (*outW <= 0 || *outH <= 0) { free(buf); return NULL; }
+
+    // shift the buffer up to skip the top margin
+    uint8_t *cropped = buf + skip * surfW * 4;
+    memmove(buf, cropped, (*outH) * surfW * 4);
+
+    return buf;
+}
+
+void fontRender(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap)
+{
+    if (!f->open || !text || !text[0]) {
+        tt->tex.w = 0;
+        tt->tex.h = 0;
+        return;
+    }
+
+    int drawW, drawH, surfW;
+    uint8_t *buf = rasterize(f, size, text, color, maxWidth, wrap, &drawW, &drawH, &surfW);
+    if (!buf) {
+        tt->tex.w = 0;
+        tt->tex.h = 0;
+        return;
+    }
+
+    // can we reuse the existing VRAM slot?
+    int slotValid = tt->tex.offset != 0 && tt->tex.offset < gfxVramUsed();
+    if (slotValid && drawW <= tt->slotW && drawH <= tt->slotH) {
+        // overwrite in place — gfxUpdateTexture clears stale pixels
+        gfxUpdateTexture(tt->tex.offset, buf, drawW, drawH, surfW * 4, tt->slotW, tt->slotH);
+        tt->tex.w = drawW;
+        tt->tex.h = drawH;
+    } else {
+        // allocate a new (larger) slot
+        tt->tex.offset = gfxUploadTexture(buf, drawW, drawH, surfW * 4);
+        tt->tex.w = drawW;
+        tt->tex.h = drawH;
+        tt->slotW = drawW;
+        tt->slotH = drawH;
     }
 
     free(buf);
-    return result;
 }

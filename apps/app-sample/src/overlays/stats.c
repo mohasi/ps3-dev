@@ -3,13 +3,16 @@
 #include "font.h"
 #include "gfx.h"
 #include "colors.h"
+#include <string.h>
 #include <sys/sys_time.h>
 
 static uint64_t lastTime = 0;
 static int frameCount = 0;
 static int fpsValue = 0;
-static char buf[80] = "FPS: 0 | VRAM: 0 (perm) 0 (per-frame)";
+static char buf[80] = "FPS: 0 | VRAM: 0";
+static char lastBuf[80] = "";
 static Font font;
+static TextTexture tt;
 
 static void appendInt(char *dst, int *pos, size_t v)
 {
@@ -32,11 +35,6 @@ static void buildBuf(void)
     buf[pos++]=' '; buf[pos++]='|'; buf[pos++]=' ';
     buf[pos++]='V'; buf[pos++]='R'; buf[pos++]='A'; buf[pos++]='M'; buf[pos++]=':'; buf[pos++]=' ';
     appendInt(buf, &pos, gfxVramUsed());
-    buf[pos++]=' '; buf[pos++]='('; buf[pos++]='p'; buf[pos++]='e'; buf[pos++]='r'; buf[pos++]='m'; buf[pos++]=')';
-    buf[pos++]=' ';
-    appendInt(buf, &pos, gfxVramUsedTemp());
-    buf[pos++]=' '; buf[pos++]='('; buf[pos++]='p'; buf[pos++]='e'; buf[pos++]='r';
-    buf[pos++]='-'; buf[pos++]='f'; buf[pos++]='r'; buf[pos++]='a'; buf[pos++]='m'; buf[pos++]='e'; buf[pos++]=')';
     buf[pos] = 0;
 }
 
@@ -71,12 +69,17 @@ static void update(void)
         frameCount = 0;
         lastTime = now;
         buildBuf();
+        if (strcmp(buf, lastBuf) != 0) {
+            fontRender(&tt, &font, 14, buf, COLOR_AMBER_300, AUTO, TEXT_NOWRAP);
+            strncpy(lastBuf, buf, sizeof(lastBuf));
+        }
     }
 }
 
 static void draw(void)
 {
-    fontDraw(5, -10, AUTO, AUTO, buf, &font, 14, COLOR_AMBER_300, TEXT_NOWRAP);
+    if (tt.tex.w > 0)
+        gfxDrawTexture(5, 5, tt.tex.w, tt.tex.h, tt.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
 }
 
 static void term(void)

@@ -47,6 +47,8 @@ void padUpdate(void)
     pad.btn.right    = btnState(d1 & CELL_PAD_CTRL_RIGHT,    padPrevD1 & CELL_PAD_CTRL_RIGHT);
     pad.btn.start    = btnState(d1 & CELL_PAD_CTRL_START,    padPrevD1 & CELL_PAD_CTRL_START);
     pad.btn.select   = btnState(d1 & CELL_PAD_CTRL_SELECT,   padPrevD1 & CELL_PAD_CTRL_SELECT);
+    pad.btn.l3       = btnState(d1 & CELL_PAD_CTRL_L3,       padPrevD1 & CELL_PAD_CTRL_L3);
+    pad.btn.r3       = btnState(d1 & CELL_PAD_CTRL_R3,       padPrevD1 & CELL_PAD_CTRL_R3);
 
     pad.lStick.x = padCurrent.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X] - 128;
     pad.lStick.y = padCurrent.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y] - 128;

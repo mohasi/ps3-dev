@@ -18,6 +18,7 @@ typedef struct {
 	uint8_t l1, r1, l2, r2;
 	uint8_t up, down, left, right;
 	uint8_t start, select;
+	uint8_t l3, r3;
 } Buttons;
 
 typedef struct {

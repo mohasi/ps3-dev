@@ -3,44 +3,15 @@
 #include "colors.h"
 #include "font.h"
 #include "ui/image.h"
-#include "ui/label.h"
 #include "ui/breadcrumb.h"
-#include "timer.h"
-#include <cell/rtc.h>
+#include "widgets/clock-widget.h"
+#include "widgets/free-space-widget.h"
 
 static Font pop;
 static GfxTexture bg;
 static GfxTexture spritesheet;
 static Image background;
 static Breadcrumb breadcrumb;
-static Label timeLabel;
-static Timer clockTimer;
-
-static void refreshClock(void *ctx)
-{
-    (void)ctx;
-    CellRtcDateTime dt;
-    cellRtcGetCurrentClockLocalTime(&dt);
-
-    char buf[16];
-    int p = 0;
-    buf[p++] = '0' + (dt.day / 10);
-    buf[p++] = '0' + (dt.day % 10);
-    buf[p++] = '/';
-    buf[p++] = '0' + (dt.month / 10);
-    buf[p++] = '0' + (dt.month % 10);
-    buf[p++] = ' ';
-    buf[p++] = ' ';
-    buf[p++] = ' ';
-    buf[p++] = '0' + (dt.hour / 10);
-    buf[p++] = '0' + (dt.hour % 10);
-    buf[p++] = ':';
-    buf[p++] = '0' + (dt.minute / 10);
-    buf[p++] = '0' + (dt.minute % 10);
-    buf[p] = '\0';
-
-    setLabelText(&timeLabel, buf);
-}
 
 static void homeInit(void)
 {
@@ -58,29 +29,25 @@ static void homeInit(void)
     pushBreadcrumb(&breadcrumb, "GAMES");
     pushBreadcrumb(&breadcrumb, "My Game");
 
-    // clock
-    initLabel(&timeLabel, &pop, 1675, 55, AUTO, AUTO, 21, COLOR_WHITE, TEXT_NOWRAP, NULL);
-    initTimer(&clockTimer, 1000000, refreshClock, NULL);
-    refreshClock(NULL);
+    // widgets
+    initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
+    initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
 }
 
 static void homeResume(void) {}
 
 static void homeUpdate(void)
 {
-    updateTimer(&clockTimer);
+    updateClockWidget();
+    updateFreeSpaceWidget();
 }
 
 static void homeDraw(void)
 {
-    // background
     drawImage(&background);
-
-    // breadcrumb
     drawBreadcrumb(&breadcrumb);
-
-    // clock
-    drawLabel(&timeLabel);
+    drawClockWidget();
+    drawFreeSpaceWidget();
 }
 
 static void homeSuspend(void) {}

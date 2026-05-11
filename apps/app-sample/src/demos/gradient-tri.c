@@ -5,7 +5,7 @@
 
 void drawGradientTriangle(void)
 {
-    gfxDrawTriangle(
+    drawGfxTriangle(
         1248.0f, 864.0f, COLOR_RED,
         1824.0f, 864.0f, COLOR_GREEN,
         1536.0f, 432.0f, COLOR_BLUE

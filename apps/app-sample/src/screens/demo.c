@@ -10,6 +10,8 @@
 #include "animated-sprite.h"
 #include "audio.h"
 #include "font.h"
+#include "ui/label.h"
+#include "ui/circle.h"
 #include "anim.h"
 #include "overlays/sidepanel.h"
 #include "screens/palette.h"
@@ -21,59 +23,64 @@ static Font pop;
 static Anims anims;
 static float circleX;
 static float colorT;
-static TextTexture titleText;
-static TextTexture wrapText;
-static TextTexture ellipsisText;
+static Circle circle;
+static Label titleText;
+static Label wrapText;
+static Label ellipsisText;
 
 static void demoInit(void)
 {
     initAnimatedSprite();
+    initBars();
+    initBouncingBox();
 
-    makoto = gfxLoadTexture("/dev_hdd0/game/APPSMP001/USRDIR/makoto.png");
+    makoto = loadGfxTexture("/dev_hdd0/game/APPSMP001/USRDIR/makoto.png");
 
-    sfxMakoto = sfxLoad("/dev_hdd0/game/APPSMP001/USRDIR/makoto.wav", SFX_MEMORY);
-    bgm = sfxLoad("/dev_hdd0/game/APPSMP001/USRDIR/price.ogg", SFX_STREAM);
+    sfxMakoto = loadSfx("/dev_hdd0/game/APPSMP001/USRDIR/makoto.wav", SFX_MEMORY);
+    bgm = loadSfx("/dev_hdd0/game/APPSMP001/USRDIR/price.ogg", SFX_STREAM);
 
-    pop = fontOpenSystem(FONT_POP);
+    pop = openSystemFont(FONT_POP);
 
-    fontRender(&titleText, &pop, 20, "app-sample", COLOR_WHITE, AUTO, TEXT_NOWRAP);
-    fontRender(&wrapText, &pop, 14, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.", COLOR_EMERALD_300, 350, TEXT_WRAP);
-    fontRender(&ellipsisText, &pop, 14, "This long text gets cut off with an ellipsis at the end", COLOR_AMBER_300, 200, TEXT_NOWRAP_ELLIPSIS);
+    initLabel(&titleText, &pop, 40, 170, AUTO, AUTO, 20, COLOR_WHITE, TEXT_NOWRAP, "app-sample");
+    initLabel(&wrapText, &pop, 500, 300, 350, AUTO, 14, COLOR_EMERALD_300, TEXT_WRAP, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.");
+    initLabel(&ellipsisText, &pop, 500, 380, 200, AUTO, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS, "This long text gets cut off with an ellipsis at the end");
+
+    initCircle(&circle, 800, 130, 25, COLOR_WHITE);
 
     initPadDisplay(&pop, 40, 240, 14, COLOR_SKY_300);
 
     circleX = 800.0f;
     colorT = 0.0f;
-    animSet(&anims, &circleX, 800.0f, 1800.0f, 2000, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
-    animSet(&anims, &colorT, 0.0f, 1.0f, 800, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
+    setAnim(&anims, &circleX, 800.0f, 1800.0f, 2000, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
+    setAnim(&anims, &colorT, 0.0f, 1.0f, 800, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
 }
 
 static void demoResume(void)
 {
-    sfxResume(&sfxMakoto);
-    sfxResume(&bgm);
-    animResume(&anims);
+    resumeSfx(&sfxMakoto);
+    resumeSfx(&bgm);
+    resumeAnim(&anims);
 }
 
 static void demoUpdate(void)
 {
-    animUpdate(&anims);
+    updateAnim(&anims);
 
     if (pad.btn.cross == BTN_PRESSED)
-        sfxPlay(&sfxMakoto, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, SFX_LOOP);
+        playSfx(&sfxMakoto, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, SFX_LOOP);
 
     if (pad.btn.start == BTN_PRESSED) {
         if (bgm.state == SFX_STATE_PLAYING)
-            sfxStop(&bgm);
+            stopSfx(&bgm);
         else
-            sfxPlay(&bgm, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 1);
+            playSfx(&bgm, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 1);
     }
 
     if (pad.btn.up == BTN_PRESSED)
-        sfxMasterVolumeUp(0.1f);
+        raiseSfxMasterVolume(0.1f);
 
     if (pad.btn.down == BTN_PRESSED)
-        sfxMasterVolumeDown(0.1f);
+        lowerSfxMasterVolume(0.1f);
 
     if (pad.btn.right == BTN_PRESSED) {
         pushScreen(&paletteScreen);
@@ -87,7 +94,7 @@ static void demoUpdate(void)
             overlayShow(&sidepanel);
     }
 
-    moveBouncingBox();
+    updateBouncingBox();
     updateAnimatedSprite();
     overlayUpdate(&sidepanel);
 }
@@ -98,33 +105,34 @@ static void demoDraw(void)
     drawBouncingBox();
     drawGradientTriangle();
     drawAnimatedSprite(500, 100);
-    gfxDrawTexture(100, 400, makoto.w, makoto.h, makoto, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-    gfxDrawTexture(40, 170, titleText.tex.w, titleText.tex.h, titleText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    drawGfxTexture(100, 400, makoto.w, makoto.h, makoto, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    drawLabel(&titleText);
     drawPadDisplay();
 
-    gfxDrawTexture(500, 300, wrapText.tex.w, wrapText.tex.h, wrapText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-    gfxDrawTexture(500, 380, ellipsisText.tex.w, ellipsisText.tex.h, ellipsisText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    drawLabel(&wrapText);
+    drawLabel(&ellipsisText);
 
-    uint32_t circleColor = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
-    gfxFillCircle((int)circleX, 130, 25, circleColor);
+    moveCircle(&circle, (int)circleX, circle.cy);
+    circle.fill = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
+    drawCircle(&circle);
 
     overlayDraw(&sidepanel);
 }
 
 static void demoSuspend(void)
 {
-    sfxPause(&sfxMakoto);
-    sfxPause(&bgm);
-    animPause(&anims);
+    pauseSfx(&sfxMakoto);
+    pauseSfx(&bgm);
+    pauseAnim(&anims);
 }
 
 static void demoTerm(void)
 {
     overlayTerm(&sidepanel);
-    animCancelAll(&anims);
-    fontClose(&pop);
-    sfxFree(&sfxMakoto);
-    sfxFree(&bgm);
+    cancelAllAnims(&anims);
+    closeFont(&pop);
+    freeSfx(&sfxMakoto);
+    freeSfx(&bgm);
 }
 
 Screen demoScreen = { demoInit, demoResume, demoUpdate, demoDraw, demoSuspend, demoTerm, SCREEN_TERMINATED };

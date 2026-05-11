@@ -10,7 +10,7 @@ typedef struct {
     uint32_t color;
 } Line;
 
-static inline void lineInit(Line *l, int x0, int y0, int x1, int y1, int thickness, uint32_t color)
+static inline void initLine(Line *l, int x0, int y0, int x1, int y1, int thickness, uint32_t color)
 {
     l->x0 = x0; l->y0 = y0;
     l->x1 = x1; l->y1 = y1;
@@ -18,7 +18,13 @@ static inline void lineInit(Line *l, int x0, int y0, int x1, int y1, int thickne
     l->color = color;
 }
 
-static inline void lineDraw(Line *l)
+static inline void moveLine(Line *l, int x0, int y0, int x1, int y1)
 {
-    gfxDrawLine(l->x0, l->y0, l->x1, l->y1, l->thickness, l->color);
+    l->x0 = x0; l->y0 = y0;
+    l->x1 = x1; l->y1 = y1;
+}
+
+static inline void drawLine(Line *l)
+{
+    drawGfxLine(l->x0, l->y0, l->x1, l->y1, l->thickness, l->color);
 }

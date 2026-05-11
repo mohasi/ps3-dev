@@ -24,26 +24,26 @@ typedef struct {
     int pitch; // vram row stride in bytes (may be wider than w*4 due to alignment or slot reuse)
 } GfxTexture;
 
-int  gfxInit(GfxVsync vsync);
-void gfxTerm(void);
+int  initGfx(GfxVsync vsync);
+void termGfx(void);
 
-void gfxBeginFrame(void);
-void gfxClear(uint32_t argb);
-void gfxFillRectangle(int x, int y, int w, int h, uint32_t argb);
-void gfxFillCircle(int cx, int cy, int radius, uint32_t argb);
-void gfxDrawTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32_t c1, float x2, float y2, uint32_t c2);
-void gfxDrawLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb);
-void gfxDrawTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter);
-void gfxEndFrame(void);
+void beginGfxFrame(void);
+void clearGfx(uint32_t argb);
+void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb);
+void fillGfxCircle(int cx, int cy, int radius, uint32_t argb);
+void drawGfxTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32_t c1, float x2, float y2, uint32_t c2);
+void drawGfxLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb);
+void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter);
+void endGfxFrame(void);
 
-GfxTexture gfxLoadTexture(const char *path);
-uint32_t   gfxUploadTexture(const void *rgba, int w, int h, int srcPitch);
-void       gfxUpdateTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH);
+GfxTexture loadGfxTexture(const char *path);
+uint32_t   uploadGfxTexture(const void *rgba, int w, int h, int srcPitch);
+void       updateGfxTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH);
 
-int gfxScreenWidth(void);
-int gfxScreenHeight(void);
+int getGfxScreenWidth(void);
+int getGfxScreenHeight(void);
 
 void      *vramAlloc(size_t size, size_t alignment);
-void       gfxVramReset(size_t mark);
-size_t     gfxVramUsed(void);
+void       resetGfxVram(size_t mark);
+size_t     getUsedGfxVram(void);
 

@@ -8,7 +8,7 @@
 #include "font.h"
 #include "screen.h"
 #include "screens/demo.h"
-#include "overlays/stats.h"
+#include "ui/stats.h"
 
 #define PROCESS_PRIORITY_DEFAULT 1001
 #define PROCESS_STACK_SIZE_64KB  0x10000
@@ -22,32 +22,31 @@ int main(int argc, char **argv)
 
 	appRegisterExitCallback();
 
-	if (gfxInit(GFX_VSYNC_OFF) != 0) return 1;
-	if (sfxInit() != 0) return 1;
-	if (fontInit() != 0) return 1;
-	padInit();
+	if (initGfx(GFX_VSYNC_OFF) != 0) return 1;
+	if (initSfx() != 0) return 1;
+	if (initFont() != 0) return 1;
+	initPad();
 
-	overlayShow(&stats);
+	initStats(5, 5, 14, COLOR_AMBER_300);
+
 	changeScreen(&demoScreen);
 
 	while (!appExitRequested) {
 		appPoll();
-		padUpdate();
+		updatePad();
 
 		screenUpdate();
-		overlayUpdate(&stats);
 
-		gfxBeginFrame();
-		gfxClear(COLOR_SLATE_900);
+		beginGfxFrame();
+		clearGfx(COLOR_SLATE_900);
 		screenDraw();
-		overlayDraw(&stats);
-		gfxEndFrame();
+		drawStats();
+		endGfxFrame();
 	}
 
 	changeScreen(NULL);
-	overlayTerm(&stats);
-	sfxTerm();
-	fontTerm();
-	gfxTerm();
+	termSfx();
+	termFont();
+	termGfx();
 	return 0;
 }

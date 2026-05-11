@@ -20,11 +20,11 @@ void changeScreen(Screen *newScreen)
     if (currentScreen) currentScreen->status = SCREEN_TERMINATED;
     if (screenDepth > 0) {
         screenDepth--;
-        gfxVramReset(vramMarks[screenDepth]);
+        resetGfxVram(vramMarks[screenDepth]);
     }
     currentScreen = newScreen;
     if (currentScreen) {
-        vramMarks[screenDepth] = gfxVramUsed();
+        vramMarks[screenDepth] = getUsedGfxVram();
         screenStack[screenDepth++] = currentScreen;
         if (currentScreen->init) currentScreen->init();
         currentScreen->status = SCREEN_ACTIVE;
@@ -39,7 +39,7 @@ void pushScreen(Screen *newScreen)
     if (currentScreen && currentScreen->suspend) currentScreen->suspend();
     if (currentScreen) currentScreen->status = SCREEN_SUSPENDED;
     currentScreen = newScreen;
-    vramMarks[screenDepth] = gfxVramUsed();
+    vramMarks[screenDepth] = getUsedGfxVram();
     screenStack[screenDepth++] = currentScreen;
     if (currentScreen->init) currentScreen->init();
     currentScreen->status = SCREEN_ACTIVE;
@@ -51,7 +51,7 @@ void popScreen(void)
     if (currentScreen->term) currentScreen->term();
     currentScreen->status = SCREEN_TERMINATED;
     screenDepth--;
-    gfxVramReset(vramMarks[screenDepth]);
+    resetGfxVram(vramMarks[screenDepth]);
     if (screenDepth > 0) {
         currentScreen = screenStack[screenDepth - 1];
         if (currentScreen->resume) currentScreen->resume();

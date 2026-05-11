@@ -44,6 +44,7 @@
     <ClCompile Include="src\anim.c" />
     <ClCompile Include="src\ui\label.c" />
     <ClCompile Include="src\ui\breadcrumb.c" />
+    <ClCompile Include="src\ui\stats.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\gfx.h" />
@@ -59,6 +60,7 @@
     <ClInclude Include="include\ui\image.h" />
     <ClInclude Include="include\ui\label.h" />
     <ClInclude Include="include\ui\breadcrumb.h" />
+    <ClInclude Include="include\ui\stats.h" />
     <ClInclude Include="include\ui\rectangle.h" />
     <ClInclude Include="include\ui\circle.h" />
     <ClInclude Include="include\ui\triangle.h" />

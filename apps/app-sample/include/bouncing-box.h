@@ -2,7 +2,6 @@
 
 // bouncing box - basic movement and collision exercise
 
-void moveBouncingBox(void);
+void initBouncingBox(void);
+void updateBouncingBox(void);
 void drawBouncingBox(void);
-
-

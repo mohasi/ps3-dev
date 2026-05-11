@@ -18,7 +18,7 @@ static void  fontFree(void *obj, void *p) { (void)obj; free(p); }
 static void *fontRealloc(void *obj, void *p, uint32_t size) { (void)obj; return realloc(p, size); }
 static void *fontCalloc(void *obj, uint32_t n, uint32_t sz) { (void)obj; return calloc(n, sz); }
 
-int fontInit(void)
+int initFont(void)
 {
     if (fontInited) return 0;
 
@@ -53,7 +53,7 @@ int fontInit(void)
     return 0;
 }
 
-void fontTerm(void)
+void termFont(void)
 {
     if (!fontInited) return;
     cellFontDestroyRenderer(&fontRenderer);
@@ -65,12 +65,12 @@ void fontTerm(void)
     fontInited = 0;
 }
 
-Font fontOpenSystem(int type)
+Font openSystemFont(int type)
 {
     Font f;
     memset(&f, 0, sizeof(f));
 
-    if (!fontInited) fontInit();
+    if (!fontInited) initFont();
 
     int fontType;
     switch (type) {
@@ -93,12 +93,12 @@ Font fontOpenSystem(int type)
     return f;
 }
 
-Font fontOpenFile(const char *path)
+Font openFontFile(const char *path)
 {
     Font f;
     memset(&f, 0, sizeof(f));
 
-    if (!fontInited) fontInit();
+    if (!fontInited) initFont();
 
     int fd;
     if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_FS_SUCCEEDED) return f;
@@ -124,7 +124,7 @@ Font fontOpenFile(const char *path)
     return f;
 }
 
-void fontClose(Font *f)
+void closeFont(Font *f)
 {
     if (f->open) {
         cellFontCloseFont(&f->font);
@@ -132,7 +132,7 @@ void fontClose(Font *f)
     }
 }
 
-float fontMeasureText(Font *f, int size, const char *text)
+float measureFontText(Font *f, int size, const char *text)
 {
     if (!f->open || !text) return 0.0f;
     float fsize = (float)size;
@@ -151,7 +151,7 @@ float fontMeasureText(Font *f, int size, const char *text)
     return w;
 }
 
-float fontMeasureChar(Font *f, int size, uint32_t code)
+float measureFontChar(Font *f, int size, uint32_t code)
 {
     float fsize = (float)size;
     cellFontSetScalePixel(&f->font, fsize, fsize);
@@ -227,7 +227,7 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
 
     float ellipsisW = 0.0f;
     if (wrap == TEXT_NOWRAP_ELLIPSIS && maxWidth > 0) {
-        for (int i = 0; i < 3; i++) ellipsisW += fontMeasureChar(f, size, '.');
+        for (int i = 0; i < 3; i++) ellipsisW += measureFontChar(f, size, '.');
         cellFontSetScalePixel(&f->font, fsize, fsize);
         cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
     }
@@ -319,7 +319,7 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
     return buf;
 }
 
-void fontRender(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap)
+void renderFont(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap)
 {
     if (!f->open || !text || !text[0]) {
         tt->tex.w = 0;
@@ -336,16 +336,16 @@ void fontRender(TextTexture *tt, Font *f, int size, const char *text, uint32_t c
     }
 
     // can we reuse the existing VRAM slot?
-    int slotValid = tt->tex.offset != 0 && tt->tex.offset < gfxVramUsed();
+    int slotValid = tt->tex.offset != 0 && tt->tex.offset < getUsedGfxVram();
     if (slotValid && drawW <= tt->slotW && drawH <= tt->slotH) {
-        // overwrite in place — gfxUpdateTexture clears stale pixels
-        gfxUpdateTexture(tt->tex.offset, buf, drawW, drawH, surfW * 4, tt->slotW, tt->slotH);
+        // overwrite in place -- updateGfxTexture clears stale pixels
+        updateGfxTexture(tt->tex.offset, buf, drawW, drawH, surfW * 4, tt->slotW, tt->slotH);
         tt->tex.w = drawW;
         tt->tex.h = drawH;
         tt->tex.pitch = (tt->slotW * 4 + 63) & ~63;
     } else {
         // allocate a new (larger) slot
-        tt->tex.offset = gfxUploadTexture(buf, drawW, drawH, surfW * 4);
+        tt->tex.offset = uploadGfxTexture(buf, drawW, drawH, surfW * 4);
         tt->tex.w = drawW;
         tt->tex.h = drawH;
         tt->tex.pitch = (drawW * 4 + 63) & ~63;

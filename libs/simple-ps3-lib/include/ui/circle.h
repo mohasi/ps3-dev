@@ -9,7 +9,7 @@ typedef struct {
     uint32_t fill;
 } Circle;
 
-static inline void circleInit(Circle *c, int cx, int cy, int radius, uint32_t fill)
+static inline void initCircle(Circle *c, int cx, int cy, int radius, uint32_t fill)
 {
     c->cx = cx;
     c->cy = cy;
@@ -17,7 +17,13 @@ static inline void circleInit(Circle *c, int cx, int cy, int radius, uint32_t fi
     c->fill = fill;
 }
 
-static inline void circleDraw(Circle *c)
+static inline void moveCircle(Circle *c, int cx, int cy)
 {
-    gfxFillCircle(c->cx, c->cy, c->radius, c->fill);
+    c->cx = cx;
+    c->cy = cy;
+}
+
+static inline void drawCircle(Circle *c)
+{
+    fillGfxCircle(c->cx, c->cy, c->radius, c->fill);
 }

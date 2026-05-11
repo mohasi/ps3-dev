@@ -17,13 +17,13 @@ static uint8_t btnState(int held, int wasHeld)
     return BTN_UP;
 }
 
-void padInit(void)
+void initPad(void)
 {
     cellPadInit(1);
     memset(&pad, 0, sizeof(pad));
 }
 
-void padUpdate(void)
+void updatePad(void)
 {
     CellPadData tmp;
     if (cellPadGetData(0, &tmp) == CELL_OK && tmp.len > 0) {

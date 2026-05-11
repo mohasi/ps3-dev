@@ -33,7 +33,7 @@ typedef struct {
 
 extern PadState pad;
 
-void padInit(void);
-void padUpdate(void);
+void initPad(void);
+void updatePad(void);
 
 

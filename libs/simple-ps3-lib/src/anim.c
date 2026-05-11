@@ -85,7 +85,7 @@ uint32_t interpolateColor(uint32_t from, uint32_t to, float t)
 // animation container
 // ---------------------------------------------------------------------
 
-AnimHandle animSet(Anims *a, float *target, float from, float to,
+AnimHandle setAnim(Anims *a, float *target, float from, float to,
                    uint64_t ms, Easing easing, AnimRepeat repeat,
                    AnimCallback onDone)
 {
@@ -113,7 +113,7 @@ AnimHandle animSet(Anims *a, float *target, float from, float to,
     return ANIM_INVALID;
 }
 
-void animCancel(Anims *a, AnimHandle handle)
+void cancelAnim(Anims *a, AnimHandle handle)
 {
     for (int i = 0; i < ANIM_MAX; i++) {
         if (a->slots[i].active && a->slots[i].id == handle.id) {
@@ -123,7 +123,7 @@ void animCancel(Anims *a, AnimHandle handle)
     }
 }
 
-int animDone(Anims *a, AnimHandle handle)
+int isAnimDone(Anims *a, AnimHandle handle)
 {
     for (int i = 0; i < ANIM_MAX; i++) {
         if (a->slots[i].active && a->slots[i].id == handle.id)
@@ -132,13 +132,13 @@ int animDone(Anims *a, AnimHandle handle)
     return 1;
 }
 
-void animCancelAll(Anims *a)
+void cancelAllAnims(Anims *a)
 {
     for (int i = 0; i < ANIM_MAX; i++)
         a->slots[i].active = 0;
 }
 
-void animPause(Anims *a)
+void pauseAnim(Anims *a)
 {
     uint64_t now = sys_time_get_system_time();
     for (int i = 0; i < ANIM_MAX; i++) {
@@ -149,7 +149,7 @@ void animPause(Anims *a)
     }
 }
 
-void animResume(Anims *a)
+void resumeAnim(Anims *a)
 {
     uint64_t now = sys_time_get_system_time();
     for (int i = 0; i < ANIM_MAX; i++) {
@@ -160,7 +160,7 @@ void animResume(Anims *a)
     }
 }
 
-void animUpdate(Anims *a)
+void updateAnim(Anims *a)
 {
     uint64_t now = sys_time_get_system_time();
     for (int i = 0; i < ANIM_MAX; i++) {

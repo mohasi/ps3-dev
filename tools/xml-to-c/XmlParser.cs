@@ -311,7 +311,7 @@ namespace XmlToC
                 Size    = ParseInt(el, "size"),
                 Color   = ParseColor(el, "color"),
                 FontRef = RequireAttr(el, "font-id"),
-                Content = OptAttr(el, "text") ?? "",
+                Text = OptAttr(el, "text") ?? "",
                 Wrap    = wrap
             };
         }

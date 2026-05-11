@@ -47,16 +47,16 @@ typedef struct {
     int isOgg;
 } Audio;
 
-int   sfxInit(void);
-void  sfxTerm(void);
-Audio sfxLoad(const char *path, SfxMode mode);
-void  sfxFree(Audio *a);
-void  sfxPlay(Audio *a, float volume, float speed, int loop);
-void  sfxStop(Audio *a);
-void  sfxPause(Audio *a);
-void  sfxResume(Audio *a);
-void  sfxSetMasterVolume(float vol);
-void  sfxMasterVolumeUp(float amount);
-void  sfxMasterVolumeDown(float amount);
+int   initSfx(void);
+void  termSfx(void);
+Audio loadSfx(const char *path, SfxMode mode);
+void  freeSfx(Audio *a);
+void  playSfx(Audio *a, float volume, float speed, int loop);
+void  stopSfx(Audio *a);
+void  pauseSfx(Audio *a);
+void  resumeSfx(Audio *a);
+void  setSfxMasterVolume(float vol);
+void  raiseSfxMasterVolume(float amount);
+void  lowerSfxMasterVolume(float amount);
 
 

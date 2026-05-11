@@ -85,7 +85,7 @@ namespace XmlToC
         public int Size;
         public string Color;
         public string FontRef;     // name of a <font> element
-        public string Content;     // initial text (may be empty)
+        public string Text;       // initial text (may be empty)
         public string Wrap;        // TEXT_WRAP / TEXT_NOWRAP / TEXT_NOWRAP_ELLIPSIS
     }
 

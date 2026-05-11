@@ -11,10 +11,12 @@ namespace XmlToC
 
     internal static class CodeGenerator
     {
+        private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
+
         public static void Emit(ScreenModel m, string cPath, string hPath)
         {
-            File.WriteAllText(hPath, BuildHeader(m), Encoding.UTF8);
-            File.WriteAllText(cPath, BuildSource(m, hPath), Encoding.UTF8);
+            File.WriteAllText(hPath, BuildHeader(m), Utf8NoBom);
+            File.WriteAllText(cPath, BuildSource(m, hPath), Utf8NoBom);
         }
 
         private static string BuildHeader(ScreenModel m)
@@ -88,13 +90,13 @@ namespace XmlToC
             {
                 EmitComments(sb, f.LeadingComments, "    ", first);
                 first = false;
-                sb.Append("    ").Append(f.Id).Append(" = fontOpenSystem(").Append(f.SystemType).Append(");\n");
+                sb.Append("    ").Append(f.Id).Append(" = openSystemFont(").Append(f.SystemType).Append(");\n");
             }
             foreach (var t in m.Textures)
             {
                 EmitComments(sb, t.LeadingComments, "    ", first);
                 first = false;
-                sb.Append("    ").Append(t.Id).Append(" = gfxLoadTexture(").Append(EscapeC(t.Path)).Append(");\n");
+                sb.Append("    ").Append(t.Id).Append(" = loadGfxTexture(").Append(EscapeC(t.Path)).Append(");\n");
             }
             foreach (var el in m.Drawables)
             {
@@ -113,7 +115,7 @@ namespace XmlToC
             bool firstDraw = true;
             if (!string.IsNullOrEmpty(m.Fill))
             {
-                sb.Append("    gfxClear(").Append(m.Fill).Append(");\n");
+                sb.Append("    clearGfx(").Append(m.Fill).Append(");\n");
                 firstDraw = false;
             }
             foreach (var el in m.Drawables)
@@ -130,9 +132,9 @@ namespace XmlToC
             // term
             sb.Append("static void ").Append(m.Name).Append("Term(void)\n{\n");
             foreach (var b in m.Drawables.OfType<BreadcrumbElement>())
-                sb.Append("    breadcrumbTerm(&").Append(b.Id).Append(");\n");
+                sb.Append("    termBreadcrumb(&").Append(b.Id).Append(");\n");
             foreach (var f in m.Fonts)
-                sb.Append("    fontClose(&").Append(f.Id).Append(");\n");
+                sb.Append("    closeFont(&").Append(f.Id).Append(");\n");
             sb.Append("}\n\n");
 
             // screen struct
@@ -154,7 +156,7 @@ namespace XmlToC
             var rect = el as RectangleElement;
             if (rect != null)
             {
-                sb.Append("    rectangleInit(&").Append(rect.Id).Append(", ")
+                sb.Append("    initRectangle(&").Append(rect.Id).Append(", ")
                   .Append(I(rect.X)).Append(", ").Append(I(rect.Y)).Append(", ")
                   .Append(I(rect.Width)).Append(", ").Append(I(rect.Height)).Append(", ")
                   .Append(rect.Fill).Append(");\n");
@@ -164,7 +166,7 @@ namespace XmlToC
             var circle = el as CircleElement;
             if (circle != null)
             {
-                sb.Append("    circleInit(&").Append(circle.Id).Append(", ")
+                sb.Append("    initCircle(&").Append(circle.Id).Append(", ")
                   .Append(I(circle.Cx)).Append(", ").Append(I(circle.Cy)).Append(", ")
                   .Append(I(circle.Radius)).Append(", ")
                   .Append(circle.Fill).Append(");\n");
@@ -174,7 +176,7 @@ namespace XmlToC
             var tri = el as TriangleElement;
             if (tri != null)
             {
-                sb.Append("    triangleInit(&").Append(tri.Id).Append(", ")
+                sb.Append("    initTriangle(&").Append(tri.Id).Append(", ")
                   .Append(F(tri.X0)).Append(", ").Append(F(tri.Y0)).Append(", ")
                   .Append(F(tri.X1)).Append(", ").Append(F(tri.Y1)).Append(", ")
                   .Append(F(tri.X2)).Append(", ").Append(F(tri.Y2)).Append(", ")
@@ -185,7 +187,7 @@ namespace XmlToC
             var line = el as LineElement;
             if (line != null)
             {
-                sb.Append("    lineInit(&").Append(line.Id).Append(", ")
+                sb.Append("    initLine(&").Append(line.Id).Append(", ")
                   .Append(I(line.X0)).Append(", ").Append(I(line.Y0)).Append(", ")
                   .Append(I(line.X1)).Append(", ").Append(I(line.Y1)).Append(", ")
                   .Append(I(line.Thickness)).Append(", ")
@@ -196,23 +198,23 @@ namespace XmlToC
             var label = el as LabelElement;
             if (label != null)
             {
-                sb.Append("    labelInit(&").Append(label.Id).Append(", &")
+                sb.Append("    initLabel(&").Append(label.Id).Append(", &")
                   .Append(label.FontRef).Append(", ")
                   .Append(I(label.X)).Append(", ").Append(I(label.Y)).Append(", ")
                   .Append(EmitAuto(label.Width)).Append(", ")
                   .Append(EmitAuto(label.Height)).Append(", ")
                   .Append(I(label.Size)).Append(", ")
                   .Append(label.Color).Append(", ")
-                  .Append(label.Wrap).Append(");\n");
-                if (!string.IsNullOrEmpty(label.Content))
-                    sb.Append("    labelSetText(&").Append(label.Id).Append(", ").Append(EscapeC(label.Content)).Append(");\n");
+                  .Append(label.Wrap).Append(", ")
+                  .Append(!string.IsNullOrEmpty(label.Text) ? EscapeC(label.Text) : "NULL")
+                  .Append(");\n");
                 return;
             }
 
             var img = el as ImageElement;
             if (img != null)
             {
-                sb.Append("    imageInit(&").Append(img.Id).Append(", ")
+                sb.Append("    initImage(&").Append(img.Id).Append(", ")
                   .Append(img.TextureRef).Append(", ")
                   .Append(I(img.X)).Append(", ").Append(I(img.Y)).Append(", ")
                   .Append(EmitAuto(img.Width)).Append(", ")
@@ -226,7 +228,7 @@ namespace XmlToC
             var bread = el as BreadcrumbElement;
             if (bread != null)
             {
-                sb.Append("    breadcrumbInit(&").Append(bread.Id).Append(", &")
+                sb.Append("    initBreadcrumb(&").Append(bread.Id).Append(", &")
                   .Append(bread.FontRef).Append(", ")
                   .Append(I(bread.X)).Append(", ").Append(I(bread.Y)).Append(", ")
                   .Append(bread.TextColor ?? "COLOR_WHITE").Append(", ")
@@ -235,7 +237,7 @@ namespace XmlToC
                   .Append(I(bread.ChevronSrcW)).Append(", ").Append(I(bread.ChevronSrcH)).Append(", ")
                   .Append(I(bread.FontSize)).Append(");\n");
                 foreach (var seg in bread.Segments)
-                    sb.Append("    breadcrumbPush(&").Append(bread.Id).Append(", ").Append(EscapeC(seg.Text)).Append(");\n");
+                    sb.Append("    pushBreadcrumb(&").Append(bread.Id).Append(", ").Append(EscapeC(seg.Text)).Append(");\n");
                 return;
             }
         }
@@ -244,13 +246,13 @@ namespace XmlToC
 
         private static void EmitDraw(StringBuilder sb, Element el)
         {
-            var rect   = el as RectangleElement; if (rect   != null) { sb.Append("    rectangleDraw(&").Append(rect.Id);   EndCall(sb, Comment(rect));   return; }
-            var circle = el as CircleElement;    if (circle != null) { sb.Append("    circleDraw(&").Append(circle.Id);    EndCall(sb, Comment(circle)); return; }
-            var tri    = el as TriangleElement;  if (tri    != null) { sb.Append("    triangleDraw(&").Append(tri.Id);     EndCall(sb, Comment(tri));    return; }
-            var line   = el as LineElement;      if (line   != null) { sb.Append("    lineDraw(&").Append(line.Id);        EndCall(sb, Comment(line));   return; }
-            var image  = el as ImageElement;     if (image  != null) { sb.Append("    imageDraw(&").Append(image.Id);      EndCall(sb, Comment(image));  return; }
-            var label  = el as LabelElement;     if (label  != null) { sb.Append("    labelDraw(&").Append(label.Id);      EndCall(sb, Comment(label));  return; }
-            var bread  = el as BreadcrumbElement; if (bread != null) { sb.Append("    breadcrumbDraw(&").Append(bread.Id); EndCall(sb, Comment(bread));  return; }
+            var rect   = el as RectangleElement; if (rect   != null) { sb.Append("    drawRectangle(&").Append(rect.Id);   EndCall(sb, Comment(rect));   return; }
+            var circle = el as CircleElement;    if (circle != null) { sb.Append("    drawCircle(&").Append(circle.Id);    EndCall(sb, Comment(circle)); return; }
+            var tri    = el as TriangleElement;  if (tri    != null) { sb.Append("    drawTriangle(&").Append(tri.Id);     EndCall(sb, Comment(tri));    return; }
+            var line   = el as LineElement;      if (line   != null) { sb.Append("    drawLine(&").Append(line.Id);        EndCall(sb, Comment(line));   return; }
+            var image  = el as ImageElement;     if (image  != null) { sb.Append("    drawImage(&").Append(image.Id);      EndCall(sb, Comment(image));  return; }
+            var label  = el as LabelElement;     if (label  != null) { sb.Append("    drawLabel(&").Append(label.Id);      EndCall(sb, Comment(label));  return; }
+            var bread  = el as BreadcrumbElement; if (bread != null) { sb.Append("    drawBreadcrumb(&").Append(bread.Id); EndCall(sb, Comment(bread));  return; }
         }
 
         // returns the display name for trailing comments (only if name is set)

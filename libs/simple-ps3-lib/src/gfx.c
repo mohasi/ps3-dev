@@ -131,7 +131,7 @@ static void setRenderTarget(void)
 	cellGcmSetSurface(CTX, &sf);
 }
 
-int gfxInit(GfxVsync vsync)
+int initGfx(GfxVsync vsync)
 {
 	int ret;
 
@@ -264,7 +264,7 @@ int gfxInit(GfxVsync vsync)
 	return 0;
 }
 
-void gfxTerm(void)
+void termGfx(void)
 {
 	if (!initialized) {
 		return;
@@ -275,7 +275,7 @@ void gfxTerm(void)
 	initialized = 0;
 }
 
-void gfxBeginFrame(void)
+void beginGfxFrame(void)
 {
 	if (!initialized) return;
 
@@ -301,7 +301,7 @@ void gfxBeginFrame(void)
 	batchTexLinear = 0;
 }
 
-void gfxClear(uint32_t argb)
+void clearGfx(uint32_t argb)
 {
 	if (!initialized) return;
 	cellGcmSetScissor(CTX, 0, 0, screenW, screenH);
@@ -332,7 +332,7 @@ static void ensureWhiteTex(void)
 	}
 }
 
-void gfxFillRectangle(int x, int y, int w, int h, uint32_t argb)
+void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb)
 {
 	if (!initialized) return;
 	ensureWhiteTex();
@@ -360,7 +360,7 @@ void gfxFillRectangle(int x, int y, int w, int h, uint32_t argb)
 }
 
 // vertices are in pixel coords (origin top-left), converted to clip space internally.
-void gfxDrawTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32_t c1, float x2, float y2, uint32_t c2)
+void drawGfxTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32_t c1, float x2, float y2, uint32_t c2)
 {
 	if (!initialized) return;
 	ensureWhiteTex();
@@ -382,7 +382,7 @@ void gfxDrawTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32
 // thick line via two triangles: builds a quad oriented along the line, expanded
 // by thickness/2 in the perpendicular direction. degenerate (zero-length) lines
 // are skipped.
-void gfxDrawLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb)
+void drawGfxLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb)
 {
 	if (!initialized || thickness <= 0) return;
 	float dx = (float)(x1 - x0);
@@ -399,13 +399,13 @@ void gfxDrawLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb)
 	float cx = (float)x1 + px, cy = (float)y1 + py;
 	float dx2 = (float)x1 - px, dy2 = (float)y1 - py;
 
-	gfxDrawTriangle(ax, ay, argb, bx, by, argb, cx, cy, argb);
-	gfxDrawTriangle(bx, by, argb, dx2, dy2, argb, cx, cy, argb);
+	drawGfxTriangle(ax, ay, argb, bx, by, argb, cx, cy, argb);
+	drawGfxTriangle(bx, by, argb, dx2, dy2, argb, cx, cy, argb);
 }
 
 #define CIRCLE_SEGMENTS 24
 
-void gfxFillCircle(int cx, int cy, int r, uint32_t argb)
+void fillGfxCircle(int cx, int cy, int r, uint32_t argb)
 {
 	if (!initialized || r <= 0) return;
 	ensureWhiteTex();
@@ -481,7 +481,7 @@ static void flushBatch(void)
 	batchFlushStart = batchVertCount;
 }
 
-void gfxDrawTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter)
+void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter)
 {
 	if (!initialized || tex.w == 0 || tex.h == 0) return;
 
@@ -515,7 +515,7 @@ void gfxDrawTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
 	batchVertCount += 6;
 }
 
-void gfxEndFrame(void)
+void endGfxFrame(void)
 {
 	if (!initialized) return;
 
@@ -533,15 +533,15 @@ void gfxEndFrame(void)
 	backBuffer = (backBuffer + 1) % FRAME_COUNT;
 }
 
-int gfxScreenWidth(void)  { return screenW; }
-int gfxScreenHeight(void) { return screenH; }
+int getGfxScreenWidth(void)  { return screenW; }
+int getGfxScreenHeight(void) { return screenH; }
 
-void gfxVramReset(size_t mark)
+void resetGfxVram(size_t mark)
 {
 	vramUsed = mark;
 }
 
-size_t gfxVramUsed(void)
+size_t getUsedGfxVram(void)
 {
 	return vramUsed;
 }
@@ -560,7 +560,7 @@ static int32_t pngFree(void *ptr, void *arg)
 	return 0;
 }
 
-GfxTexture gfxLoadTexture(const char *path)
+GfxTexture loadGfxTexture(const char *path)
 {
 	GfxTexture result = { 0, 0, 0 };
 	CellPngDecMainHandle mainHandle;
@@ -604,7 +604,7 @@ GfxTexture gfxLoadTexture(const char *path)
 	ret = cellPngDecReadHeader(mainHandle, subHandle, &info);
 	if (ret != CELL_OK) { cellPngDecClose(mainHandle, subHandle); cellPngDecDestroy(mainHandle); return result; }
 
-	// set decode params — output as ARGB, 8-bit
+	// set decode params -- output as ARGB, 8-bit
 	int hasAlpha = (info.colorSpace == CELL_PNGDEC_RGBA || info.colorSpace == CELL_PNGDEC_GRAYSCALE_ALPHA);
 	inParam.commandPtr = NULL;
 	inParam.outputMode = CELL_PNGDEC_TOP_TO_BOTTOM;
@@ -652,7 +652,7 @@ GfxTexture gfxLoadTexture(const char *path)
 	return result;
 }
 
-uint32_t gfxUploadTexture(const void *rgba, int w, int h, int srcPitch)
+uint32_t uploadGfxTexture(const void *rgba, int w, int h, int srcPitch)
 {
 	uint32_t alignedPitch = ((uint32_t)(w * 4) + 63) & ~63;
 	uint32_t size = alignedPitch * (uint32_t)h;
@@ -670,7 +670,7 @@ uint32_t gfxUploadTexture(const void *rgba, int w, int h, int srcPitch)
 	return offset;
 }
 
-void gfxUpdateTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH)
+void updateGfxTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH)
 {
 	uint32_t alignedPitch = ((uint32_t)(slotW * 4) + 63) & ~63;
 	uint8_t *dst = (uint8_t *)vramBase + offset;

@@ -11,7 +11,7 @@ typedef struct {
     float u0, v0, u1, v1;
 } Image;
 
-static inline void imageInit(Image *img, GfxTexture tex, int x, int y, int w, int h, int texX, int texY, int texW, int texH, GfxFilter filter)
+static inline void initImage(Image *img, GfxTexture tex, int x, int y, int w, int h, int texX, int texY, int texW, int texH, GfxFilter filter)
 {
     img->tex = tex;
     img->filter = filter;
@@ -34,7 +34,13 @@ static inline void imageInit(Image *img, GfxTexture tex, int x, int y, int w, in
     }
 }
 
-static inline void imageDraw(Image *img)
+static inline void moveImage(Image *img, int x, int y)
 {
-    gfxDrawTexture(img->x, img->y, img->w, img->h, img->tex, img->u0, img->v0, img->u1, img->v1, 0xFFFFFFFF, img->filter);
+    img->x = x;
+    img->y = y;
+}
+
+static inline void drawImage(Image *img)
+{
+    drawGfxTexture(img->x, img->y, img->w, img->h, img->tex, img->u0, img->v0, img->u1, img->v1, 0xFFFFFFFF, img->filter);
 }

@@ -272,7 +272,7 @@ static void audioMixerThread(uint64_t arg) {
 // init / term
 // ============================================================================
 
-int sfxInit(void) {
+int initSfx(void) {
     cellSysmoduleLoadModule(CELL_SYSMODULE_AUDIO);
 
     CellAudioPortParam p;
@@ -296,7 +296,7 @@ int sfxInit(void) {
     return 0;
 }
 
-void sfxTerm(void) {
+void termSfx(void) {
     gAudioRunning = 0;
     uint64_t ec;
     sys_ppu_thread_join(gAudioThread, &ec);
@@ -311,7 +311,7 @@ void sfxTerm(void) {
 // load / free
 // ============================================================================
 
-Audio sfxLoad(const char *path, SfxMode mode) {
+Audio loadSfx(const char *path, SfxMode mode) {
     Audio a;
     memset(&a, 0, sizeof(a));
     a.volume = SFX_DEFAULT_VOLUME;
@@ -384,8 +384,8 @@ Audio sfxLoad(const char *path, SfxMode mode) {
     return a;
 }
 
-void sfxFree(Audio *a) {
-    sfxStop(a);
+void freeSfx(Audio *a) {
+    stopSfx(a);
     if (a->pcmData)        { free(a->pcmData);        a->pcmData = NULL; }
     if (a->vorbis)         { stb_vorbis_close(a->vorbis); a->vorbis = NULL; }
     if (a->vorbisFileData) { free(a->vorbisFileData);  a->vorbisFileData = NULL; }
@@ -395,7 +395,7 @@ void sfxFree(Audio *a) {
 // playback control
 // ============================================================================
 
-void sfxPlay(Audio *a, float volume, float speed, int loop) {
+void playSfx(Audio *a, float volume, float speed, int loop) {
     a->volume = volume;
     a->speed  = speed;
     a->loop   = loop;
@@ -411,7 +411,7 @@ void sfxPlay(Audio *a, float volume, float speed, int loop) {
         gStreams[gStreamCount++] = a;
 }
 
-void sfxStop(Audio *a) {
+void stopSfx(Audio *a) {
     a->state = SFX_STATE_STOPPED;
     a->playPos = 0.0;
 
@@ -425,26 +425,26 @@ void sfxStop(Audio *a) {
     }
 }
 
-void sfxPause(Audio *a) {
+void pauseSfx(Audio *a) {
     if (a->state == SFX_STATE_PLAYING)
         a->state = SFX_STATE_PAUSED;
 }
 
-void sfxResume(Audio *a) {
+void resumeSfx(Audio *a) {
     if (a->state == SFX_STATE_PAUSED)
         a->state = SFX_STATE_PLAYING;
 }
 
-void sfxSetMasterVolume(float vol) {
+void setSfxMasterVolume(float vol) {
     if (vol < 0.0f) vol = 0.0f;
     if (vol > 1.0f) vol = 1.0f;
     gMasterVolume = vol;
 }
 
-void sfxMasterVolumeUp(float amount) {
-    sfxSetMasterVolume(gMasterVolume + amount);
+void raiseSfxMasterVolume(float amount) {
+    setSfxMasterVolume(gMasterVolume + amount);
 }
 
-void sfxMasterVolumeDown(float amount) {
-    sfxSetMasterVolume(gMasterVolume - amount);
+void lowerSfxMasterVolume(float amount) {
+    setSfxMasterVolume(gMasterVolume - amount);
 }

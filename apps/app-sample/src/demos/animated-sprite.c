@@ -14,7 +14,7 @@ static int spriteTick = 0;
 
 void initAnimatedSprite(void)
 {
-    spriteTex = gfxLoadTexture(SPRITE_PATH);
+    spriteTex = loadGfxTexture(SPRITE_PATH);
 }
 
 void updateAnimatedSprite(void)
@@ -35,8 +35,8 @@ void drawAnimatedSprite(int x, int y)
         float frameH = (float)SPRITE_FRAME_SIZE / (float)spriteTex.h;
         float v0 = frameH * spriteFrame;
         float v1 = v0 + frameH;
-        gfxDrawTexture(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, spriteTex, 0.0f, v0, 1.0f, v1, COLOR_WHITE, GFX_FILTER_NEAREST);
+        drawGfxTexture(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, spriteTex, 0.0f, v0, 1.0f, v1, COLOR_WHITE, GFX_FILTER_NEAREST);
     } else {
-        gfxFillRectangle(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, COLOR_RED);
+        fillGfxRectangle(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, COLOR_RED);
     }
 }

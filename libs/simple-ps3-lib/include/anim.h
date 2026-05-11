@@ -67,12 +67,12 @@ typedef struct {
     int nextId;
 } Anims;
 
-AnimHandle animSet(Anims *a, float *target, float from, float to,
+AnimHandle setAnim(Anims *a, float *target, float from, float to,
                    uint64_t ms, Easing easing, AnimRepeat repeat,
                    AnimCallback onDone);
-void animCancel(Anims *a, AnimHandle handle);
-int  animDone(Anims *a, AnimHandle handle);
-void animCancelAll(Anims *a);
-void animPause(Anims *a);
-void animResume(Anims *a);
-void animUpdate(Anims *a);
+void cancelAnim(Anims *a, AnimHandle handle);
+int  isAnimDone(Anims *a, AnimHandle handle);
+void cancelAllAnims(Anims *a);
+void pauseAnim(Anims *a);
+void resumeAnim(Anims *a);
+void updateAnim(Anims *a);

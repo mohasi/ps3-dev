@@ -19,6 +19,7 @@ typedef struct {
     char text[LABEL_MAX_TEXT];
 } Label;
 
-void labelInit(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color, TextWrap wrap);
-void labelSetText(Label *l, const char *text);
-void labelDraw(Label *l);
+void initLabel(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color, TextWrap wrap, const char *text);
+void setLabelText(Label *l, const char *text);
+void moveLabel(Label *l, int x, int y);
+void drawLabel(Label *l);

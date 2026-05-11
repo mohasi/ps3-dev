@@ -56,7 +56,6 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
-    <ClCompile Include="src\overlays\stats.c" />
     <ClCompile Include="src\screens\demo.c" />
     <ClCompile Include="src\screens\palette.c" />
     <ClCompile Include="src\overlays\sidepanel.c" />
@@ -67,7 +66,6 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
     <ClCompile Include="src\demos\pad-display.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\overlays\stats.h" />
     <ClInclude Include="include\bars.h" />
     <ClInclude Include="include\bouncing-box.h" />
     <ClInclude Include="include\gradient-tri.h" />

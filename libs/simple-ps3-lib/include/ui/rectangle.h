@@ -9,7 +9,7 @@ typedef struct {
     uint32_t fill;
 } Rectangle;
 
-static inline void rectangleInit(Rectangle *r, int x, int y, int w, int h, uint32_t fill)
+static inline void initRectangle(Rectangle *r, int x, int y, int w, int h, uint32_t fill)
 {
     r->x = x;
     r->y = y;
@@ -18,7 +18,13 @@ static inline void rectangleInit(Rectangle *r, int x, int y, int w, int h, uint3
     r->fill = fill;
 }
 
-static inline void rectangleDraw(Rectangle *r)
+static inline void moveRectangle(Rectangle *r, int x, int y)
 {
-    gfxFillRectangle(r->x, r->y, r->w, r->h, r->fill);
+    r->x = x;
+    r->y = y;
+}
+
+static inline void drawRectangle(Rectangle *r)
+{
+    fillGfxRectangle(r->x, r->y, r->w, r->h, r->fill);
 }

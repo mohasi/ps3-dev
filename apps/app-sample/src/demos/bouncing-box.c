@@ -2,24 +2,30 @@
 #include "bouncing-box.h"
 #include "gfx.h"
 #include "colors.h"
+#include "ui/rectangle.h"
 
 #define BOUNCING_BOX_SIZE 60
 
-static int bbX = 100, bbY = 80;
+static Rectangle box;
 static int bbDx = 3, bbDy = 2;
 
-void moveBouncingBox(void)
+void initBouncingBox(void)
 {
-    int sw = gfxScreenWidth();
-    int sh = gfxScreenHeight();
+    initRectangle(&box, 100, 80, BOUNCING_BOX_SIZE, BOUNCING_BOX_SIZE, COLOR_WHITE);
+}
 
-    bbX += bbDx;
-    bbY += bbDy;
-    if (bbX <= 0 || bbX + BOUNCING_BOX_SIZE >= sw) bbDx = -bbDx;
-    if (bbY <= 0 || bbY + BOUNCING_BOX_SIZE >= sh) bbDy = -bbDy;
+void updateBouncingBox(void)
+{
+    int sw = getGfxScreenWidth();
+    int sh = getGfxScreenHeight();
+
+    box.x += bbDx;
+    box.y += bbDy;
+    if (box.x <= 0 || box.x + BOUNCING_BOX_SIZE >= sw) bbDx = -bbDx;
+    if (box.y <= 0 || box.y + BOUNCING_BOX_SIZE >= sh) bbDy = -bbDy;
 }
 
 void drawBouncingBox(void)
 {
-    gfxFillRectangle(bbX, bbY, BOUNCING_BOX_SIZE, BOUNCING_BOX_SIZE, COLOR_WHITE);
+    drawRectangle(&box);
 }

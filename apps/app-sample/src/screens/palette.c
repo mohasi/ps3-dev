@@ -3,11 +3,11 @@
 #include "gfx.h"
 #include "colors.h"
 #include "font.h"
+#include "ui/label.h"
 #include "pad.h"
-#include <string.h>
 
 static Font font;
-static TextTexture titleText;
+static Label titleText;
 
 // all 286 colors: 26 hues x 11 shades (50..950)
 static const uint32_t palette[] = {
@@ -102,9 +102,8 @@ static const uint32_t palette[] = {
 
 static void paletteInit(void)
 {
-    font = fontOpenSystem(FONT_POP);
-    memset(&titleText, 0, sizeof(titleText));
-    fontRender(&titleText, &font, 32, "Colors", COLOR_WHITE, 300, TEXT_NOWRAP);
+    font = openSystemFont(FONT_POP);
+    initLabel(&titleText, &font, GRID_X, 20, 300, AUTO, 32, COLOR_WHITE, TEXT_NOWRAP, "Colors");
 }
 
 static void paletteResume(void) {}
@@ -118,14 +117,14 @@ static void paletteUpdate(void)
 
 static void paletteDraw(void)
 {
-    gfxDrawTexture(GRID_X, 20, titleText.tex.w, titleText.tex.h, titleText.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    drawLabel(&titleText);
 
     for (int hue = 0; hue < HUE_COUNT; hue++) {
         for (int shade = 0; shade < SHADES_PER_HUE; shade++) {
             int idx = hue * SHADES_PER_HUE + shade;
             int px = GRID_X + hue * (CELL_SIZE + CELL_GAP);
             int py = GRID_Y + shade * (CELL_SIZE + CELL_GAP);
-            gfxFillRectangle(px, py, CELL_SIZE, CELL_SIZE, palette[idx]);
+            fillGfxRectangle(px, py, CELL_SIZE, CELL_SIZE, palette[idx]);
         }
     }
 }
@@ -134,7 +133,7 @@ static void paletteSuspend(void) {}
 
 static void paletteTerm(void)
 {
-    fontClose(&font);
+    closeFont(&font);
 }
 
 Screen paletteScreen = { paletteInit, paletteResume, paletteUpdate, paletteDraw, paletteSuspend, paletteTerm, SCREEN_TERMINATED };

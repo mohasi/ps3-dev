@@ -1,9 +1,16 @@
 // timer - polling interval timer with callback
 #include "timer.h"
 #include <sys/sys_time.h>
+#include <cell/sysmodule.h>
+
+static int rtcLoaded = 0;
 
 void initTimer(Timer *t, uint64_t intervalUs, TimerCallback callback, void *ctx)
 {
+    if (!rtcLoaded) {
+        cellSysmoduleLoadModule(CELL_SYSMODULE_RTC);
+        rtcLoaded = 1;
+    }
     t->intervalUs = intervalUs;
     t->callback = callback;
     t->ctx = ctx;

@@ -15,6 +15,7 @@ namespace SpritePacker
                 string outputDir = null;
                 string name = null;
                 string headerPath = null;
+                string prefix = null;
 
                 int i = 0;
                 while (i < args.Length)
@@ -22,6 +23,7 @@ namespace SpritePacker
                     if (args[i] == "-o" && i + 1 < args.Length) { outputDir = args[++i]; }
                     else if (args[i] == "-n" && i + 1 < args.Length) { name = args[++i]; }
                     else if (args[i] == "-h" && i + 1 < args.Length) { headerPath = args[++i]; }
+                    else if (args[i] == "-p" && i + 1 < args.Length) { prefix = args[++i]; }
                     else if (inputDir == null) { inputDir = args[i]; }
                     else
                     {
@@ -51,8 +53,9 @@ namespace SpritePacker
                 string headerDir = headerPath ?? outputDir;
                 if (!Directory.Exists(headerDir)) Directory.CreateDirectory(headerDir);
 
+                string headerFileName = prefix != null ? prefix + "-regions.h" : "sprite-regions.h";
                 string sheetPath = Path.Combine(outputDir, name + ".png");
-                headerPath = Path.Combine(headerDir, "sprite-regions.h");
+                headerPath = Path.Combine(headerDir, headerFileName);
 
                 List<Sprite> sprites = SpriteLoader.Load(inputDir);
                 if (sprites.Count == 0)
@@ -64,7 +67,7 @@ namespace SpritePacker
                 Size sheetSize = Packer.Pack(sprites);
 
                 SheetWriter.Write(sprites, sheetSize.Width, sheetSize.Height, sheetPath);
-                HeaderWriter.Write(sprites, headerPath);
+                HeaderWriter.Write(sprites, headerPath, prefix);
 
                 Console.WriteLine("packed {0} sprites into {1}x{2}", sprites.Count, sheetSize.Width, sheetSize.Height);
                 Console.WriteLine("  sheet  -> " + sheetPath);

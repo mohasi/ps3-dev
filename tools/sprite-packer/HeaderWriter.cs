@@ -7,9 +7,10 @@ namespace SpritePacker
     // generates a C header with named sprite region definitions
     internal static class HeaderWriter
     {
-        public static void Write(List<Sprite> sprites, string path)
+        public static void Write(List<Sprite> sprites, string path, string prefix = null)
         {
-            string name = "spriteRegions";
+            string pfx = prefix ?? "sprite";
+            string name = pfx + "Regions";
             string guard = ToGuardName(Path.GetFileName(path));
 
             StringBuilder sb = new StringBuilder();
@@ -21,11 +22,12 @@ namespace SpritePacker
             sb.Append("\r\n");
 
             // enum
-            sb.Append("enum SpriteId {\r\n");
+            string enumPrefix = pfx.ToUpperInvariant() + "_";
+            sb.AppendFormat("enum {0}Id {{\r\n", Capitalize(pfx));
             for (int i = 0; i < sprites.Count; i++)
             {
                 string comma = i < sprites.Count - 1 ? "," : "";
-                sb.AppendFormat("    {0}{1}\r\n", ToEnumName(sprites[i].Name), comma);
+                sb.AppendFormat("    {0}{1}\r\n", ToEnumName(sprites[i].Name, enumPrefix), comma);
             }
             sb.Append("};\r\n");
             sb.Append("\r\n");
@@ -35,12 +37,12 @@ namespace SpritePacker
             int maxNameLen = 0;
             foreach (Sprite s in sprites)
             {
-                int len = ToEnumName(s.Name).Length;
+                int len = ToEnumName(s.Name, enumPrefix).Length;
                 if (len > maxNameLen) maxNameLen = len;
             }
             foreach (Sprite s in sprites)
             {
-                string enumName = ToEnumName(s.Name);
+                string enumName = ToEnumName(s.Name, enumPrefix);
                 sb.AppendFormat("    [{0}]{1} = {{ {2,4}, {3,4}, {4,4}, {5,4} }},\r\n",
                     enumName,
                     new string(' ', maxNameLen - enumName.Length),
@@ -48,14 +50,14 @@ namespace SpritePacker
             }
             sb.Append("};\r\n");
             sb.Append("\r\n");
-            sb.Append("#define SPRITE_FULL ((SpriteRegion){0})\r\n");
+            sb.AppendFormat("#define {0}FULL ((SpriteRegion){{0}})\r\n", enumPrefix);
 
             File.WriteAllText(path, sb.ToString());
         }
 
-        private static string ToEnumName(string fileName)
+        private static string ToEnumName(string fileName, string prefix)
         {
-            StringBuilder sb = new StringBuilder("SPRITE_");
+            StringBuilder sb = new StringBuilder(prefix);
             foreach (char c in fileName.ToUpperInvariant())
             {
                 if (c >= 'A' && c <= 'Z') sb.Append(c);
@@ -65,9 +67,15 @@ namespace SpritePacker
             return sb.ToString();
         }
 
+        private static string Capitalize(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            return char.ToUpperInvariant(s[0]) + s.Substring(1);
+        }
+
         private static string ToGuardName(string fileName)
         {
-            return ToEnumName(fileName).Replace("SPRITE_", "") + "_H";
+            return ToEnumName(fileName, "").Replace("_", "") + "_H";
         }
     }
 }

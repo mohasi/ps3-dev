@@ -35,12 +35,7 @@
       <AdditionalOptions>-mprx -zgenprx -zgenstub %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>$(SolutionDir)libs\simple-ps3-prx-lib\bin\$(Configuration)\libsimple-ps3-prx-lib.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\libm.a;$(SCE_PS3_ROOT)\target\ppu\lib\libio_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libc_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshtask_export_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <PostBuildEvent>
-      <Message>Signing PRX to out/</Message>
-      <Command>if not exist "$(SolutionDir)out" mkdir "$(SolutionDir)out"
-cd /d "$(SolutionDir)tools\scetool" &amp;&amp; scetool.exe -0 SELF -1 TRUE -s FALSE -2 0A -3 1070000052000001 -4 01000002 -5 APP -6 0003004000000000 -A 0001000000000000 --self-ctrl-flags 4000000000000000000000000000000000000000000000000000000000000002 -e "$(TargetPath)" "$(SolutionDir)out\simple-disc-mount.sprx"</Command>
-    </PostBuildEvent>
-  </ItemDefinitionGroup>
+    </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\prx.c" />
   </ItemGroup>
@@ -54,4 +49,5 @@ cd /d "$(SolutionDir)tools\scetool" &amp;&amp; scetool.exe -0 SELF -1 TRUE -s FA
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\ps3.targets" />
+  <Import Project="$(SolutionDir)common\prx.targets" />
 </Project>

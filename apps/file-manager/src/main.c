@@ -1,6 +1,7 @@
 #include <sys/process.h>
 
 #include "app.h"
+#include "file.h"
 #include "gfx.h"
 #include "colors.h"
 #include "pad.h"
@@ -21,6 +22,7 @@ int main(int argc, char **argv)
 	(void)argv;
 
 	appRegisterExitCallback();
+	mountDevBlind();
 
 	if (initGfx(GFX_VSYNC_OFF) != 0) return 1;
 	if (initSfx() != 0) return 1;

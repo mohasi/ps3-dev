@@ -60,12 +60,15 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
     <ClCompile Include="src\overlays\sidepanel.c" />
     <ClCompile Include="src\widgets\clock-widget.c" />
     <ClCompile Include="src\widgets\free-space-widget.c" />
+    <ClCompile Include="src\widgets\file-list.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\screens\home.h" />
     <ClInclude Include="include\overlays\sidepanel.h" />
     <ClInclude Include="include\widgets\clock-widget.h" />
     <ClInclude Include="include\widgets\free-space-widget.h" />
+    <ClInclude Include="include\widgets\file-list.h" />
+    <ClInclude Include="include\sprites.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="file-manager.conf" />

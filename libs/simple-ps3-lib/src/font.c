@@ -132,6 +132,28 @@ void closeFont(Font *f)
     }
 }
 
+// decodes one utf-8 codepoint, advances *pp past it. returns codepoint.
+static uint32_t decodeUtf8(const uint8_t **pp)
+{
+    const uint8_t *p = *pp;
+    uint32_t c = *p;
+    if (c < 0x80) { (*pp)++; return c; }
+    if ((c & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80) {
+        *pp += 2;
+        return ((c & 0x1F) << 6) | (p[1] & 0x3F);
+    }
+    if ((c & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80) {
+        *pp += 3;
+        return ((c & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
+    }
+    if ((c & 0xF8) == 0xF0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80 && (p[3] & 0xC0) == 0x80) {
+        *pp += 4;
+        return ((c & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
+    }
+    (*pp)++;
+    return c;
+}
+
 float measureFontText(Font *f, int size, const char *text)
 {
     if (!f->open || !text) return 0.0f;
@@ -141,12 +163,12 @@ float measureFontText(Font *f, int size, const char *text)
     float w = 0.0f;
     const uint8_t *p = (const uint8_t *)text;
     while (*p) {
+        uint32_t code = decodeUtf8(&p);
         CellFontGlyphMetrics metrics;
-        if (cellFontGetCharGlyphMetrics(&f->font, *p, &metrics) == CELL_OK)
+        if (cellFontGetCharGlyphMetrics(&f->font, code, &metrics) == CELL_OK)
             w += metrics.Horizontal.advance;
         else
             w += fsize;
-        p++;
     }
     return w;
 }
@@ -184,27 +206,27 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
         const uint8_t *sp = (const uint8_t *)text;
         while (*sp) {
             if (*sp == '\n') { lineCount++; px = 0.0f; sp++; continue; }
+            uint32_t sc = decodeUtf8(&sp);
             CellFontGlyphMetrics sm;
             float adv = fsize;
-            if (cellFontGetCharGlyphMetrics(&f->font, *sp, &sm) == CELL_OK) adv = sm.Horizontal.advance;
-            if (*sp == ' ') {
+            if (cellFontGetCharGlyphMetrics(&f->font, sc, &sm) == CELL_OK) adv = sm.Horizontal.advance;
+            if (sc == ' ') {
                 float wordW = 0.0f;
-                const uint8_t *wp = sp + 1;
+                const uint8_t *wp = sp;
                 while (*wp && *wp != ' ' && *wp != '\n') {
+                    uint32_t wc = decodeUtf8(&wp);
                     CellFontGlyphMetrics wm;
-                    if (cellFontGetCharGlyphMetrics(&f->font, *wp, &wm) == CELL_OK) wordW += wm.Horizontal.advance;
+                    if (cellFontGetCharGlyphMetrics(&f->font, wc, &wm) == CELL_OK) wordW += wm.Horizontal.advance;
                     else wordW += fsize;
-                    wp++;
                 }
-                if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineCount++; px = 0.0f; sp++; continue; }
+                if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineCount++; px = 0.0f; continue; }
             }
             px += adv;
-            sp++;
         }
     }
 
     int surfW = (maxWidth > 0) ? maxWidth : FONT_MAX_RENDER_W;
-    int surfH = (int)(lineH * lineCount + fsize);
+    int surfH = (int)(lineH * lineCount + fsize) + 4;
 
     int bufSize = surfW * surfH * 4;
     uint8_t *buf = (uint8_t *)malloc(bufSize);
@@ -233,11 +255,11 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
     }
 
     while (*p) {
-        uint32_t code = *p;
+        uint32_t code = decodeUtf8(&p);
 
         if (code == '\n') {
             if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; if (penY + lineH > (float)surfH) break; }
-            p++; continue;
+            continue;
         }
 
         CellFontGlyphMetrics metrics;
@@ -248,17 +270,17 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
             if (wrap == TEXT_WRAP) {
                 if (code == ' ') {
                     float wordW = 0.0f;
-                    const uint8_t *wp = p + 1;
+                    const uint8_t *wp = p;
                     while (*wp && *wp != ' ' && *wp != '\n') {
+                        uint32_t wc = decodeUtf8(&wp);
                         CellFontGlyphMetrics wm;
-                        if (cellFontGetCharGlyphMetrics(&f->font, *wp, &wm) == CELL_OK) wordW += wm.Horizontal.advance;
+                        if (cellFontGetCharGlyphMetrics(&f->font, wc, &wm) == CELL_OK) wordW += wm.Horizontal.advance;
                         else wordW += fsize;
-                        wp++;
                     }
-                    if (penX + advance + wordW > (float)maxWidth && penX > 0.0f) { penX = 0.0f; penY += lineH; if (penY + lineH > (float)surfH) break; p++; continue; }
+                    if (penX + advance + wordW > (float)maxWidth && penX > 0.0f) { penX = 0.0f; penY += lineH; if (penY + lineH > (float)surfH) break; continue; }
                 }
             } else if (wrap == TEXT_NOWRAP_ELLIPSIS) {
-                if (penX + advance > (float)maxWidth - ellipsisW && *(p + 1)) {
+                if (penX + advance > (float)maxWidth - ellipsisW && *p) {
                     for (int i = 0; i < 3; i++) {
                         CellFontImageTransInfo ti;
                         CellFontGlyphMetrics dm;
@@ -302,7 +324,6 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
         } else {
             penX += fsize;
         }
-        p++;
     }
 
     // crop blank rows above glyphs

@@ -11,19 +11,19 @@ typedef struct {
     float u0, v0, u1, v1;
 } Image;
 
-static inline void initImage(Image *img, GfxTexture tex, int x, int y, int w, int h, int texX, int texY, int texW, int texH, GfxFilter filter)
+static inline void initImage(Image *img, GfxTexture tex, int x, int y, int w, int h, SpriteRegion src, GfxFilter filter)
 {
     img->tex = tex;
     img->filter = filter;
     img->x = x;
     img->y = y;
-    if (texW > 0 && texH > 0) {
-        img->w = w > 0 ? w : texW;
-        img->h = h > 0 ? h : texH;
-        img->u0 = (float)texX / (float)tex.w;
-        img->v0 = (float)texY / (float)tex.h;
-        img->u1 = (float)(texX + texW) / (float)tex.w;
-        img->v1 = (float)(texY + texH) / (float)tex.h;
+    if (src.w > 0 && src.h > 0) {
+        img->w = w > 0 ? w : src.w;
+        img->h = h > 0 ? h : src.h;
+        img->u0 = (float)src.x / (float)tex.w;
+        img->v0 = (float)src.y / (float)tex.h;
+        img->u1 = (float)(src.x + src.w) / (float)tex.w;
+        img->v1 = (float)(src.y + src.h) / (float)tex.h;
     } else {
         img->w = w > 0 ? w : tex.w;
         img->h = h > 0 ? h : tex.h;

@@ -24,9 +24,7 @@ typedef struct {
     int dirty;
 } Breadcrumb;
 
-void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, int chevronSrcX, int chevronSrcY, int chevronSrcW, int chevronSrcH, int fontSize);
-void pushBreadcrumb(Breadcrumb *b, const char *name);
-void popBreadcrumb(Breadcrumb *b);
-void clearBreadcrumb(Breadcrumb *b);
+void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, SpriteRegion chevronSrc, int fontSize);
+void setBreadcrumbPath(Breadcrumb *b, const char *path);
 void drawBreadcrumb(Breadcrumb *b);
 void termBreadcrumb(Breadcrumb *b);

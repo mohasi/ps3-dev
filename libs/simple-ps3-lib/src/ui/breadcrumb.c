@@ -3,7 +3,7 @@
 #include "colors.h"
 #include <string.h>
 
-void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, int chevronSrcX, int chevronSrcY, int chevronSrcW, int chevronSrcH, int fontSize)
+void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, SpriteRegion chevronSrc, int fontSize)
 {
     memset(b, 0, sizeof(*b));
     b->font = font;
@@ -12,12 +12,13 @@ void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor,
     b->fontSize = fontSize;
     b->textColor = textColor;
     b->chevronTex = chevronTex;
-    b->chevronW = chevronSrcW;
-    b->chevronH = chevronSrcH;
-    b->chevronU0 = (float)chevronSrcX / (float)chevronTex.w;
-    b->chevronV0 = (float)chevronSrcY / (float)chevronTex.h;
-    b->chevronU1 = (float)(chevronSrcX + chevronSrcW) / (float)chevronTex.w;
-    b->chevronV1 = (float)(chevronSrcY + chevronSrcH) / (float)chevronTex.h;
+    b->chevronW = chevronSrc.w;
+    b->chevronH = chevronSrc.h;
+    b->chevronU0 = (float)chevronSrc.x / (float)chevronTex.w;
+    b->chevronV0 = (float)chevronSrc.y / (float)chevronTex.h;
+    b->chevronU1 = (float)(chevronSrc.x + chevronSrc.w) / (float)chevronTex.w;
+    b->chevronV1 = (float)(chevronSrc.y + chevronSrc.h) / (float)chevronTex.h;
+    setBreadcrumbPath(b, "/");
 }
 
 static void rebuild(Breadcrumb *b)
@@ -28,25 +29,47 @@ static void rebuild(Breadcrumb *b)
     b->dirty = 0;
 }
 
-void pushBreadcrumb(Breadcrumb *b, const char *name)
-{
-    if (b->depth >= BREADCRUMB_MAX_DEPTH) return;
-    strncpy(b->segments[b->depth], name, BREADCRUMB_MAX_NAME - 1);
-    b->segments[b->depth][BREADCRUMB_MAX_NAME - 1] = '\0';
-    b->depth++;
-    b->dirty = 1;
-}
-
-void popBreadcrumb(Breadcrumb *b)
-{
-    if (b->depth <= 0) return;
-    b->depth--;
-    b->dirty = 1;
-}
-
-void clearBreadcrumb(Breadcrumb *b)
+void setBreadcrumbPath(Breadcrumb *b, const char *path)
 {
     b->depth = 0;
+
+    char buf[512];
+    strncpy(buf, path, 511);
+    buf[511] = '\0';
+
+    char *p = buf;
+    if (*p == '/') p++;
+
+    // first segment: prepend / to form e.g. "/dev_hdd0"
+    if (*p && b->depth < BREADCRUMB_MAX_DEPTH) {
+        char *slash = p;
+        while (*slash && *slash != '/') slash++;
+        char saved = *slash;
+        *slash = '\0';
+        b->segments[0][0] = '/';
+        strncpy(b->segments[0] + 1, p, BREADCRUMB_MAX_NAME - 2);
+        b->segments[0][BREADCRUMB_MAX_NAME - 1] = '\0';
+        b->depth = 1;
+        p = saved ? slash + 1 : slash;
+    } else {
+        strncpy(b->segments[0], "/", BREADCRUMB_MAX_NAME - 1);
+        b->segments[0][BREADCRUMB_MAX_NAME - 1] = '\0';
+        b->depth = 1;
+    }
+
+    while (*p && b->depth < BREADCRUMB_MAX_DEPTH) {
+        char *slash = p;
+        while (*slash && *slash != '/') slash++;
+        char saved = *slash;
+        *slash = '\0';
+        if (p[0] != '\0') {
+            strncpy(b->segments[b->depth], p, BREADCRUMB_MAX_NAME - 1);
+            b->segments[b->depth][BREADCRUMB_MAX_NAME - 1] = '\0';
+            b->depth++;
+        }
+        if (saved) p = slash + 1;
+        else break;
+    }
     b->dirty = 1;
 }
 

@@ -2,6 +2,7 @@
 #include "widgets/free-space-widget.h"
 #include "ui/label.h"
 #include "timer.h"
+#include "file.h"
 #include <cell/cell_fs.h>
 
 static Label label;
@@ -17,10 +18,7 @@ static void refresh(void *ctx)
     uint64_t freeGB = (uint64_t)blockSize * freeBlocks / (1024 * 1024 * 1024);
 
     char buf[8];
-    int p = 0;
-    if (freeGB >= 100) { buf[p++] = '0' + (freeGB / 100); freeGB %= 100; buf[p++] = '0' + (freeGB / 10); freeGB %= 10; }
-    else if (freeGB >= 10) { buf[p++] = '0' + (freeGB / 10); freeGB %= 10; }
-    buf[p++] = '0' + freeGB;
+    int p = intToStr((int)freeGB, buf);
     buf[p++] = ' ';
     buf[p++] = 'G';
     buf[p++] = 'B';

@@ -6,6 +6,9 @@
 #include "ui/breadcrumb.h"
 #include "widgets/clock-widget.h"
 #include "widgets/free-space-widget.h"
+#include "widgets/file-list.h"
+#include "sprites.h"
+#include <string.h>
 
 static Font pop;
 static GfxTexture bg;
@@ -21,17 +24,17 @@ static void homeInit(void)
     spritesheet = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/spritesheet.png");
 
     // background
-    initImage(&background, bg, 0, 0, AUTO, AUTO, AUTO, AUTO, AUTO, AUTO, GFX_FILTER_LINEAR);
+    initImage(&background, bg, 0, 0, AUTO, AUTO, SPRITE_FULL, GFX_FILTER_LINEAR);
 
     // breadcrumb
-    initBreadcrumb(&breadcrumb, &pop, 75, 130, COLOR_WHITE, spritesheet, 0, 0, 7, 12, 20);
-    pushBreadcrumb(&breadcrumb, "dev_hdd0");
-    pushBreadcrumb(&breadcrumb, "GAMES");
-    pushBreadcrumb(&breadcrumb, "My Game");
+    initBreadcrumb(&breadcrumb, &pop, 75, 130, COLOR_WHITE, spritesheet, sprites[SPRITE_CHEVRON], 20);
 
     // widgets
     initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
     initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
+
+    // file list
+    initFileList(&pop, spritesheet, 183, 244, 1200, 74, 24, COLOR_WHITE, &breadcrumb);
 }
 
 static void homeResume(void) {}
@@ -40,6 +43,7 @@ static void homeUpdate(void)
 {
     updateClockWidget();
     updateFreeSpaceWidget();
+    updateFileList();
 }
 
 static void homeDraw(void)
@@ -48,12 +52,14 @@ static void homeDraw(void)
     drawBreadcrumb(&breadcrumb);
     drawClockWidget();
     drawFreeSpaceWidget();
+    drawFileList();
 }
 
 static void homeSuspend(void) {}
 
 static void homeTerm(void)
 {
+    termFileList();
     termBreadcrumb(&breadcrumb);
     closeFont(&pop);
 }

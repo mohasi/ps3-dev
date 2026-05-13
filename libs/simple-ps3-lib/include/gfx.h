@@ -24,6 +24,10 @@ typedef struct {
     int pitch; // vram row stride in bytes (may be wider than w*4 due to alignment or slot reuse)
 } GfxTexture;
 
+typedef struct {
+    int x, y, w, h;
+} SpriteRegion;
+
 int  initGfx(GfxVsync vsync);
 void termGfx(void);
 

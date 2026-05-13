@@ -29,7 +29,6 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
     <ClCompile>
       <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-ps3-prx-lib\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <OptimizationLevel>Level2</OptimizationLevel>
       <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
@@ -52,4 +51,5 @@ cd /d "$(SolutionDir)tools\scetool" &amp;&amp; scetool.exe -0 SELF -1 TRUE -s FA
     <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)common\ps3.targets" />
 </Project>

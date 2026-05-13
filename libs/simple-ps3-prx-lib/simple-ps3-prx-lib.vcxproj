@@ -28,7 +28,6 @@
     <ClCompile>
       <AdditionalIncludeDirectories>include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <OptimizationLevel>Level2</OptimizationLevel>
       <AdditionalOptions>-fno-builtin-printf -fno-builtin-sprintf -fno-builtin-snprintf -fno-builtin-vsnprintf -nodefaultlibs</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -46,4 +45,5 @@
     <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)common\ps3.targets" />
 </Project>

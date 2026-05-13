@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- shared compiler defaults -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <OptimizationLevel>Level2</OptimizationLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <WarningLevel>EnableAllWarnings</WarningLevel>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <!-- shared clean: wipe bin and obj contents so stale artifacts don't linger -->
+  <Target Name="CustomClean" AfterTargets="Clean">
+    <ItemGroup>
+      <BinFiles Include="$(OutDir)**\*" />
+      <ObjFiles Include="$(IntDir)**\*" Exclude="$(IntDir)*.log" />
+    </ItemGroup>
+    <Delete Files="@(BinFiles)" ContinueOnError="true" />
+    <Delete Files="@(ObjFiles)" ContinueOnError="true" />
+    <RemoveDir Directories="$(OutDir)" ContinueOnError="true" />
+  </Target>
+</Project>

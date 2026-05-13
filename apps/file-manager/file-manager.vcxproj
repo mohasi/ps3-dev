@@ -30,7 +30,6 @@
     <ClCompile>
       <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-ps3-lib\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <OptimizationLevel>Level2</OptimizationLevel>
     </ClCompile>
     <Link>
       <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;%(AdditionalDependencies)</AdditionalDependencies>
@@ -38,21 +37,10 @@
       <GccOutputFormat>ELFFile</GccOutputFormat>
     </Link>
     <PreBuildEvent>
-      <Message>Generating PARAM.SFO from XML</Message>
-      <Command>"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
+      <Message>Packing sprites and generating PARAM.SFO</Message>
+      <Command>"$(SolutionDir)tools\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
+    "$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
     </PreBuildEvent>
-    <PostBuildEvent>
-      <Message>Packaging $(MSBuildProjectName).pkg</Message>
-      <Command>cd /d "$(ProjectDir)"
-if not exist "$(OutDir)USRDIR" mkdir "$(OutDir)USRDIR"
-"$(SCE_PS3_ROOT)\host-win32\bin\make_fself_npdrm.exe" "$(TargetPath)" "$(OutDir)USRDIR\EBOOT.BIN"
-xcopy /Y /E "$(ProjectDir)res\*" "$(OutDir)USRDIR\"
-copy /Y PARAM.SFO "$(OutDir)PARAM.SFO"
-copy /Y ICON0.PNG "$(OutDir)ICON0.PNG"
-"$(SCE_PS3_ROOT)\host-win32\bin\make_package_npdrm.exe" $(MSBuildProjectName).conf "$(OutDir)."
-if not exist "$(SolutionDir)out" mkdir "$(SolutionDir)out"
-move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -68,15 +56,18 @@ move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
     <ClInclude Include="include\widgets\clock-widget.h" />
     <ClInclude Include="include\widgets\free-space-widget.h" />
     <ClInclude Include="include\widgets\file-list.h" />
-    <ClInclude Include="include\sprites.h" />
+    <ClInclude Include="include\sprite-regions.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="file-manager.conf" />
     <None Include="PARAM.SFO" />
     <None Include="PARAM.SFO.xml" />
     <None Include="res\background.png" />
-    <None Include="res\spritesheet.png" />
+    <None Include="res\sprites.png" />
+    <None Include="sprites\**" />
     <None Include="ICON0.PNG" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)common\npdrm.targets" />
+  <Import Project="$(SolutionDir)common\ps3.targets" />
 </Project>

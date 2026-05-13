@@ -4,7 +4,7 @@
 #include "ui/image.h"
 #include "ui/slice.h"
 #include "ui/breadcrumb.h"
-#include "sprites.h"
+#include "sprite-regions.h"
 #include "file.h"
 #include "pad.h"
 #include <string.h>
@@ -22,6 +22,14 @@ typedef enum {
     FILE_TYPE_FOLDER,
     FILE_TYPE_TEXT,
     FILE_TYPE_AUDIO,
+    FILE_TYPE_VIDEO,
+    FILE_TYPE_IMAGE,
+    FILE_TYPE_EXECUTABLE,
+    FILE_TYPE_COMPRESSED,
+    FILE_TYPE_DISC_ISO,
+    FILE_TYPE_PACKAGE,
+    FILE_TYPE_DOCUMENT,
+    FILE_TYPE_DATABASE,
     FILE_TYPE_GENERIC
 } FileType;
 
@@ -53,10 +61,7 @@ static int holdRepeats;  // how many repeats have fired during current hold
 
 static Image checkboxes[FILE_LIST_PAGE_SIZE];
 static Image checkedBoxes[FILE_LIST_PAGE_SIZE];
-static Image folderIcon;
-static Image genericFileIcon;
-static Image textFileIcon;
-static Image audioFileIcon;
+static Image fileIcons[12];
 static Slice separators[FILE_LIST_PAGE_SIZE];
 static Slice hover;
 static Breadcrumb *breadcrumb;
@@ -65,21 +70,61 @@ static FileType classifyFileType(const char *name, int isDir)
 {
     if (isDir) return FILE_TYPE_FOLDER;
     const char *ext = getExtension(name);
-    if (ext) {
-        static const char *textExts[] = {
-            "txt", "xml", "json", "ini", "cfg", "conf", "log",
-            "md", "csv", "htm", "html", "yaml", "yml", NULL
-        };
-        for (int i = 0; textExts[i]; i++) {
-            if (compareStringNoCase(ext, textExts[i]) == 0) return FILE_TYPE_TEXT;
-        }
-        static const char *audioExts[] = {
-            "mp3", "wav", "flac", "ogg", "aac", "wma", "at3", "m4a", NULL
-        };
-        for (int i = 0; audioExts[i]; i++) {
-            if (compareStringNoCase(ext, audioExts[i]) == 0) return FILE_TYPE_AUDIO;
-        }
-    }
+    if (!ext) return FILE_TYPE_GENERIC;
+
+    // extension lists per type
+    static const char *textExts[] = {
+        "txt", "xml", "json", "ini", "cfg", "conf", "log",
+        "md", "csv", "htm", "html", "yaml", "yml", NULL
+    };
+    static const char *audioExts[] = {
+        "mp3", "wav", "flac", "ogg", "aac", "wma", "at3", "m4a", NULL
+    };
+    static const char *videoExts[] = {
+        "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", NULL
+    };
+    static const char *imageExts[] = {
+        "png", "jpg", "jpeg", "bmp", "gif", "tga", "tiff", NULL
+    };
+    static const char *execExts[] = {
+        "self", "elf", "bin", "sprx", "prx", NULL
+    };
+    static const char *compressedExts[] = {
+        "zip", "rar", "7z", "tar", "gz", "bz2", NULL
+    };
+    static const char *discExts[] = {
+        "iso", "cso", "img", NULL
+    };
+    static const char *packageExts[] = {
+        "pkg", NULL
+    };
+    static const char *documentExts[] = {
+        "pdf", "doc", "docx", "rtf", "xls", "xlsx", "ppt", "pptx", NULL
+    };
+    static const char *databaseExts[] = {
+        "db", "sqlite", NULL
+    };
+
+    // match extension against each group
+    struct { const char **exts; FileType type; } groups[] = {
+        { textExts,       FILE_TYPE_TEXT },
+        { audioExts,      FILE_TYPE_AUDIO },
+        { videoExts,      FILE_TYPE_VIDEO },
+        { imageExts,      FILE_TYPE_IMAGE },
+        { execExts,       FILE_TYPE_EXECUTABLE },
+        { compressedExts, FILE_TYPE_COMPRESSED },
+        { discExts,       FILE_TYPE_DISC_ISO },
+        { packageExts,    FILE_TYPE_PACKAGE },
+        { documentExts,   FILE_TYPE_DOCUMENT },
+        { databaseExts,   FILE_TYPE_DATABASE },
+        { NULL,           FILE_TYPE_GENERIC }
+    };
+
+    for (int g = 0; groups[g].exts; g++)
+        for (int i = 0; groups[g].exts[i]; i++)
+            if (compareStringNoCase(ext, groups[g].exts[i]) == 0)
+                return groups[g].type;
+
     return FILE_TYPE_GENERIC;
 }
 
@@ -178,8 +223,27 @@ static void rebuildLabels(void)
     for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
         int idx = scrollOffset + i;
         if (idx < entryCount) {
+            // name
             setLabelText(&labels[i], entries[idx].name);
-            setLabelText(&typeLabels[i], entries[idx].type == FILE_TYPE_FOLDER ? "Folder" : "File");
+
+            // type label
+            static const char *typeNames[12] = {
+                [FILE_TYPE_FOLDER]     = "Folder",
+                [FILE_TYPE_TEXT]       = "Text",
+                [FILE_TYPE_AUDIO]      = "Audio",
+                [FILE_TYPE_VIDEO]      = "Video",
+                [FILE_TYPE_IMAGE]      = "Image",
+                [FILE_TYPE_EXECUTABLE] = "Executable",
+                [FILE_TYPE_COMPRESSED] = "Archive",
+                [FILE_TYPE_DISC_ISO]   = "Disc Image",
+                [FILE_TYPE_PACKAGE]    = "Package",
+                [FILE_TYPE_DOCUMENT]   = "Document",
+                [FILE_TYPE_DATABASE]   = "Database",
+                [FILE_TYPE_GENERIC]    = "File",
+            };
+            setLabelText(&typeLabels[i], typeNames[entries[idx].type]);
+
+            // size
             if (entries[idx].type == FILE_TYPE_FOLDER) {
                 setLabelText(&sizeLabels[i], "\xe2\x80\x94"); // em dash (U+2014)
             } else {
@@ -199,6 +263,7 @@ static void rebuildLabels(void)
 
 void initFileList(Font *font, GfxTexture spritesheet, int x, int y, int maxWidth, int rowHeight, int fontSize, uint32_t color, Breadcrumb *bc)
 {
+    // state
     breadcrumb = bc;
     listY = y;
     listRowHeight = rowHeight;
@@ -210,15 +275,29 @@ void initFileList(Font *font, GfxTexture spritesheet, int x, int y, int maxWidth
     labelsStale = 1;
     historyDepth = 0;
 
-    initSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, sprites[SPRITE_HOVER], 8);
+    // hover and counter
+    initSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HOVER], 8);
     initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
 
-    // type icons (single instances, repositioned per row at draw time)
-    initImage(&folderIcon, spritesheet, 120, 0, 40, 34, sprites[SPRITE_FOLDER_ICON], GFX_FILTER_LINEAR);
-    initImage(&genericFileIcon, spritesheet, 120, 0, 34, 43, sprites[SPRITE_GENERIC_FILE_ICON], GFX_FILTER_LINEAR);
-    initImage(&textFileIcon, spritesheet, 120, 0, 34, 43, sprites[SPRITE_TEXT_FILE_ICON], GFX_FILTER_LINEAR);
-    initImage(&audioFileIcon, spritesheet, 120, 0, 34, 43, sprites[SPRITE_AUDIO_FILE_ICON], GFX_FILTER_LINEAR);
+    // file type icons (one per type, repositioned per row at draw time)
+    static const int typeToSprite[12] = {
+        [FILE_TYPE_FOLDER]     = SPRITE_FOLDER,
+        [FILE_TYPE_TEXT]       = SPRITE_TEXT,
+        [FILE_TYPE_AUDIO]      = SPRITE_AUDIO,
+        [FILE_TYPE_VIDEO]      = SPRITE_VIDEO,
+        [FILE_TYPE_IMAGE]      = SPRITE_IMAGE,
+        [FILE_TYPE_EXECUTABLE] = SPRITE_EXECUTABLE,
+        [FILE_TYPE_COMPRESSED] = SPRITE_COMPRESSED,
+        [FILE_TYPE_DISC_ISO]   = SPRITE_DISC_ISO,
+        [FILE_TYPE_PACKAGE]    = SPRITE_PACKAGE,
+        [FILE_TYPE_DOCUMENT]   = SPRITE_DOCUMENT,
+        [FILE_TYPE_DATABASE]   = SPRITE_DATABASE,
+        [FILE_TYPE_GENERIC]    = SPRITE_GENERIC,
+    };
+    for (int t = 0; t < 12; t++)
+        initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[typeToSprite[t]], GFX_FILTER_LINEAR);
 
+    // per-row labels, checkboxes, separators
     for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
         int ry = y + i * rowHeight;
         int cy = ry + (rowHeight - 25) / 2;
@@ -226,9 +305,9 @@ void initFileList(Font *font, GfxTexture spritesheet, int x, int y, int maxWidth
         initLabel(&labels[i], font, x, ry + 25, maxWidth, AUTO, fontSize, color, TEXT_NOWRAP_ELLIPSIS, NULL);
         initLabel(&sizeLabels[i], font, 1467, ry + 25, 200, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
         initLabel(&typeLabels[i], font, 1722, ry + 25, 150, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-        initImage(&checkboxes[i], spritesheet, 71, cy, 25, 25, sprites[SPRITE_CHECKBOX], GFX_FILTER_LINEAR);
-        initImage(&checkedBoxes[i], spritesheet, 71, cy, 25, 25, sprites[SPRITE_CHECKBOX_CHECKED], GFX_FILTER_LINEAR);
-        initSlice(&separators[i], spritesheet, 47, ry - 1, 1884 - 47, 2, sprites[SPRITE_SEPARATOR], 1);
+        initImage(&checkboxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX], GFX_FILTER_LINEAR);
+        initImage(&checkedBoxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX_CHECKED], GFX_FILTER_LINEAR);
+        initSlice(&separators[i], spritesheet, 47, ry - 1, 1884 - 47, 2, spriteRegions[SPRITE_SEPARATOR], 1);
     }
 
     loadFileListDir("/");
@@ -356,25 +435,9 @@ void drawFileList(void)
             drawImage(&checkboxes[i]);
 
         // draw type icon
-        int iconY = listY + i * listRowHeight;
-        switch (entries[idx].type) {
-            case FILE_TYPE_FOLDER:
-                moveImage(&folderIcon, 120, iconY + (listRowHeight - 40) / 2 + 2);
-                drawImage(&folderIcon);
-                break;
-            case FILE_TYPE_TEXT:
-                moveImage(&textFileIcon, 120, iconY + (listRowHeight - 43) / 2);
-                drawImage(&textFileIcon);
-                break;
-            case FILE_TYPE_AUDIO:
-                moveImage(&audioFileIcon, 120, iconY + (listRowHeight - 43) / 2);
-                drawImage(&audioFileIcon);
-                break;
-            default:
-                moveImage(&genericFileIcon, 120, iconY + (listRowHeight - 43) / 2);
-                drawImage(&genericFileIcon);
-                break;
-        }
+        int iconY = listY + i * listRowHeight + (listRowHeight - 43) / 2;
+        moveImage(&fileIcons[entries[idx].type], 120, iconY);
+        drawImage(&fileIcons[entries[idx].type]);
 
         // draw labels
         drawLabel(&labels[i]);

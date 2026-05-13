@@ -5,13 +5,13 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProductVersion>10.0.0</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{C4E8B1A5-7F2D-4A3E-8B9C-0E5D2A6F3B17}</ProjectGuid>
+    <ProjectGuid>{A7B3C2D1-9E4F-4D6A-B8C5-1F3E7A2D9B04}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>XmlToSfo</RootNamespace>
-    <AssemblyName>xml-to-sfo</AssemblyName>
+    <RootNamespace>SpritePacker</RootNamespace>
+    <AssemblyName>sprite-packer</AssemblyName>
     <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
-    <StartupObject>XmlToSfo.Program</StartupObject>
+    <StartupObject>SpritePacker.Program</StartupObject>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -23,17 +23,18 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
-    <Reference Include="System.Xml" />
-    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
-    <Compile Include="SfoModel.cs" />
-    <Compile Include="SfoXmlParser.cs" />
-    <Compile Include="SfoBuilder.cs" />
+    <Compile Include="Sprite.cs" />
+    <Compile Include="SpriteLoader.cs" />
+    <Compile Include="Trimmer.cs" />
+    <Compile Include="Packer.cs" />
+    <Compile Include="SheetWriter.cs" />
+    <Compile Include="HeaderWriter.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="sample.xml" />
     <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

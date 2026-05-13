@@ -7,12 +7,12 @@
 #include "widgets/clock-widget.h"
 #include "widgets/free-space-widget.h"
 #include "widgets/file-list.h"
-#include "sprites.h"
+#include "sprite-regions.h"
 #include <string.h>
 
 static Font pop;
 static GfxTexture bg;
-static GfxTexture spritesheet;
+static GfxTexture sprites;
 static Image background;
 static Breadcrumb breadcrumb;
 
@@ -21,20 +21,20 @@ static void homeInit(void)
     // resources
     pop = openSystemFont(FONT_POP);
     bg = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/background.png");
-    spritesheet = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/spritesheet.png");
+    sprites = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/sprites.png");
 
     // background
     initImage(&background, bg, 0, 0, AUTO, AUTO, SPRITE_FULL, GFX_FILTER_LINEAR);
 
     // breadcrumb
-    initBreadcrumb(&breadcrumb, &pop, 75, 130, COLOR_WHITE, spritesheet, sprites[SPRITE_CHEVRON], 20);
+    initBreadcrumb(&breadcrumb, &pop, 75, 130, COLOR_WHITE, sprites, spriteRegions[SPRITE_CHEVRON], 20);
 
     // widgets
     initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
     initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
 
     // file list
-    initFileList(&pop, spritesheet, 183, 244, 1200, 74, 24, COLOR_WHITE, &breadcrumb);
+    initFileList(&pop, sprites, 177, 244, 1200, 74, 24, COLOR_WHITE, &breadcrumb);
 }
 
 static void homeResume(void) {}

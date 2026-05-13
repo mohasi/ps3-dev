@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- shared NPDRM packaging for EBOOT apps -->
+  <ItemDefinitionGroup>
+    <PostBuildEvent>
+      <Message>Packaging $(MSBuildProjectName).pkg</Message>
+      <Command>cd /d "$(ProjectDir)"
+if not exist "$(OutDir)USRDIR" mkdir "$(OutDir)USRDIR"
+"$(SCE_PS3_ROOT)\host-win32\bin\make_fself_npdrm.exe" "$(TargetPath)" "$(OutDir)USRDIR\EBOOT.BIN"
+xcopy /Y /E "$(ProjectDir)res\*" "$(OutDir)USRDIR\"
+copy /Y PARAM.SFO "$(OutDir)PARAM.SFO"
+copy /Y ICON0.PNG "$(OutDir)ICON0.PNG"
+"$(SCE_PS3_ROOT)\host-win32\bin\make_package_npdrm.exe" $(MSBuildProjectName).conf "$(OutDir)."
+if not exist "$(SolutionDir)out" mkdir "$(SolutionDir)out"
+move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+</Project>

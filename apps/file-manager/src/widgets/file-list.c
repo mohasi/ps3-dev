@@ -7,6 +7,7 @@
 #include "sprite-regions.h"
 #include "file.h"
 #include "pad.h"
+#include "audio.h"
 #include <string.h>
 #include <sys/sys_time.h>
 
@@ -65,6 +66,7 @@ static Image fileIcons[12];
 static Slice separators[FILE_LIST_PAGE_SIZE];
 static Slice hover;
 static Breadcrumb *breadcrumb;
+static Audio clickSfx;
 
 static FileType classifyFileType(const char *name, int isDir)
 {
@@ -311,6 +313,8 @@ void initFileList(Font *font, GfxTexture spritesheet, int x, int y, int maxWidth
     }
 
     loadFileListDir("/");
+
+    clickSfx = loadSfx("/dev_hdd0/game/FILEMGR01/USRDIR/click.wav", SFX_MEMORY);
 }
 
 // checks if a button press or hold should trigger a scroll step.
@@ -368,10 +372,12 @@ void updateFileList(void)
     if (pad.btn.square == BTN_PRESSED && hasSelection) {
         entries[selectedIndex].checked = !entries[selectedIndex].checked;
         labelsStale = 1;
+        playSfx(&clickSfx, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 0);
     }
 
     // cross: enter selected directory
     if (pad.btn.cross == BTN_PRESSED && hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER) {
+        playSfx(&clickSfx, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 0);
         if (historyDepth < 16) {
             selectionHistory[historyDepth] = selectedIndex;
             scrollHistory[historyDepth] = scrollOffset;
@@ -384,6 +390,7 @@ void updateFileList(void)
 
     // circle: go up one directory
     if (pad.btn.circle == BTN_PRESSED && strlen(currentPath) > 1) {
+        playSfx(&clickSfx, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 0);
         int len = strlen(currentPath);
         if (len > 1 && currentPath[len - 1] == '/') len--;
         while (len > 1 && currentPath[len - 1] != '/') len--;
@@ -450,6 +457,7 @@ void drawFileList(void)
 
 void termFileList(void)
 {
+    freeSfx(&clickSfx);
     free(entries);
     entries = NULL;
     entryCount = 0;

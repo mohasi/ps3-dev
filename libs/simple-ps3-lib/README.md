@@ -14,7 +14,9 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 - **anim** - easing curves, color interpolation, and animation containers
 - **colors** - Tailwind color palette
 - **file** - cellFs helpers (readFile, readFileAlloc, writeFile, fileExists, makeDir)
-- **ui** - reusable UI components (label, breadcrumb, image, circle, line, rectangle, triangle)
+- **ui** - reusable UI components (label, breadcrumb, image, slice, circle, line, rectangle, triangle)
+- **timer** - polling interval timer using RTC
+- **stats** - FPS counter and free-space display helpers
 - **shaders** - RSX vertex/fragment shader compilation (vpshader.cg, fpshader.cg) built as part of the library
 
 ## Usage

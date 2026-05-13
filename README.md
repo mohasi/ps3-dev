@@ -6,27 +6,46 @@ Small collection of PS3 Cobra/EVILNAT VSH plugins and apps, built with Sony's of
 
 ```
 ps3-dev/
+├── common/
+│   ├── ps3.targets             shared MSBuild (warnings-as-errors, -O2, clean)
+│   └── npdrm.targets           shared NPDRM packaging post-build for apps
 ├── libs/
-│   ├── simple-ps3-lib/         static library for apps (gfx, font, audio, pad, screen, anim)
-│   ├── simple-ps3-prx-lib/    static library for VSH plugins (printf, dbg, file, string-utilities, vsh)
+│   ├── simple-ps3-lib/         static library for apps (gfx, font, audio, pad, screen, anim, ui)
+│   ├── simple-ps3-prx-lib/     static library for VSH plugins (printf, dbg, file, string-utilities, vsh)
 │   ├── libvshtask_export_stub.a
 │   └── libvshmain_export_stub.a
 ├── apps/
-│   └── app-sample/             demo app showcasing engine features
+│   ├── app-sample/             demo app showcasing engine features
+│   └── file-manager/           PS3 file browser with sprite-based UI
 ├── plugins/
 │   ├── simple-disc-mount/      mounts ISOs from an XMB submenu
 │   └── simple-ftp/             anonymous, binary-only FTP server on port 21
-├── tools/scetool/              PRX signing tool + keys, invoked by PostBuildEvent
+├── tools/
+│   ├── sprite-packer/          packs sprite PNGs into atlas + C header
+│   ├── xml-to-sfo/             generates PARAM.SFO from XML
+│   ├── xml-to-c/               generates C screen structs from XML
+│   └── scetool/                PRX signing tool + keys
 ├── out/                        build outputs (.sprx plugins, .pkg apps)
 └── README.md
 ```
+
+## Shared Build Infrastructure
+
+All PS3 vcxproj files import `common/ps3.targets` which provides:
+- `-O2` optimization
+- `-Wall` (all warnings enabled)
+- `-Werror` (warnings as errors)
+- Custom clean that wipes `bin/` and `obj/` contents
+
+App projects additionally import `common/npdrm.targets` which handles the full NPDRM packaging pipeline (make_fself_npdrm → copy assets → make_package_npdrm → move .pkg to `out/`).
 
 ## Libraries
 
 ### simple-ps3-lib
 Reusable static library for apps. Provides 2D rendering, font, audio, input,
-screen lifecycle, animation, color palette, and file utilities. Apps link
-`libsimple-ps3-lib.a` and include headers from `libs/simple-ps3-lib/include/`.
+screen lifecycle, animation, color palette, file utilities, and UI components
+(label, breadcrumb, image, slice, checkbox, circle, line, rectangle, triangle).
+Apps link `libsimple-ps3-lib.a` and include headers from `libs/simple-ps3-lib/include/`.
 
 ### simple-ps3-prx-lib
 Static library for VSH plugins (PRX context). Compiled with `-fno-builtin-printf
@@ -55,3 +74,22 @@ XMB is ready. Up to two concurrent sessions. Full filesystem access. See
 Demo app showcasing the engine features: RSX 2D renderer, system fonts, audio,
 animation, input, and screen/overlay lifecycle. See
 `apps/app-sample/README.md` for details.
+
+### file-manager
+PS3 file browser with sprite-based UI. Features directory listing with file-type
+icons, checkboxes, breadcrumb navigation, hold-to-scroll, and a sprite atlas
+generated at build time via `sprite-packer`. See `apps/file-manager/README.md`
+for details.
+
+## Tools
+
+### sprite-packer
+Packs a directory of PNGs into a power-of-2 atlas and generates a C header
+(`sprite-regions.h`) with named `SpriteRegion` coordinates. Used by file-manager's
+pre-build step.
+
+### xml-to-sfo
+Generates `PARAM.SFO` from a human-readable XML source. Used by app pre-build steps.
+
+### xml-to-c
+Generates C screen layout structs from XML definitions.

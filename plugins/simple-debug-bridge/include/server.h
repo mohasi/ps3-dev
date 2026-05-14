@@ -12,6 +12,7 @@
 #include "dbg.h"
 #include "vsh.h"
 #include "syscall.h"
+#include "printf.h"
 
 #define SDB_PORT      8785
 #define SDB_BUF_MAX   512
@@ -87,6 +88,35 @@ static inline const char *serverMatchCmd(const char *line, const char *cmd)
     return 0;
 }
 
+// list every prx loaded into vsh.self.
+// emits one "<id>\t<name>\t<filename>" line per module then "OK <count>".
+static void cmdVshPluginList(int cli)
+{
+    static uint32_t ids[128];
+    char     name[PRX_NAME_MAX];
+    char     file[PRX_FILENAME_MAX];
+    char     line[PRX_NAME_MAX + PRX_FILENAME_MAX + 32];
+    uint32_t count;
+
+    int32_t rc = prxList(ids, sizeof ids / sizeof ids[0], &count);
+    if (rc < 0) {
+        snprintf(line, sizeof line, SDB_ERR " prxList rc=0x%x", (unsigned)rc);
+        serverSendLine(cli, line);
+        return;
+    }
+
+    int sent = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        if (prxName((int32_t)ids[i], name, file) < 0) continue;
+        snprintf(line, sizeof line, "%u\t%s\t%s", (unsigned)ids[i], name, file);
+        serverSendLine(cli, line);
+        sent++;
+    }
+
+    snprintf(line, sizeof line, SDB_OK " %d", sent);
+    serverSendLine(cli, line);
+}
+
 // dispatch a single command from the client. power commands fire the
 // syscall directly — lv2 tears the whole system down, so there's no need
 // to stop the accept loop or close sockets first (same situation as a
@@ -121,6 +151,9 @@ static void serverHandleClient(int cli)
     }
     else if (serverMatchCmd(buf, "screenshot")) {
         serverSendLine(cli, SDB_ERR " not implemented yet");
+    }
+    else if (serverMatchCmd(buf, "vsh-plugin-list")) {
+        cmdVshPluginList(cli);
     }
     else {
         serverSendLine(cli, SDB_ERR " unknown command");

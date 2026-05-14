@@ -13,4 +13,39 @@
    <SolidColorBrush x:Key="BrBorder" Color="{StaticResource ColorBorder}" />
    <SolidColorBrush x:Key="FgText" Color="{StaticResource ColorText}" />
    <SolidColorBrush x:Key="BrAccent" Color="{StaticResource ColorAccent}" />
+
+   <!-- minimal dark scrollbar (applies app-wide; no key) -->
+   <Style TargetType="Thumb" x:Key="ScrollThumb">
+      <Setter Property="Template">
+         <Setter.Value>
+            <ControlTemplate TargetType="Thumb">
+               <Border Background="{StaticResource BgHover}" CornerRadius="0" Margin="2" />
+            </ControlTemplate>
+         </Setter.Value>
+      </Setter>
+   </Style>
+
+   <Style TargetType="ScrollBar">
+      <Setter Property="Background" Value="{StaticResource BgBase}" />
+      <Setter Property="Width" Value="12" />
+      <Setter Property="Template">
+         <Setter.Value>
+            <ControlTemplate TargetType="ScrollBar">
+               <Grid Background="{TemplateBinding Background}">
+                  <Track Name="PART_Track" IsDirectionReversed="True">
+                     <Track.Thumb>
+                        <Thumb Style="{StaticResource ScrollThumb}" />
+                     </Track.Thumb>
+                  </Track>
+               </Grid>
+            </ControlTemplate>
+         </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+         <Trigger Property="Orientation" Value="Horizontal">
+            <Setter Property="Width" Value="Auto" />
+            <Setter Property="Height" Value="12" />
+         </Trigger>
+      </Style.Triggers>
+   </Style>
 </ResourceDictionary>

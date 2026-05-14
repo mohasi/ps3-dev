@@ -54,6 +54,7 @@ namespace DebugBridgeClient
         private void OnRestartPs3(object sender, RoutedEventArgs e) { SendCommand("restart-ps3"); }
         private void OnShutdown(object sender, RoutedEventArgs e) { SendCommand("shutdown"); }
         private void OnScreenshot(object sender, RoutedEventArgs e) { SendCommand("screenshot"); }
+        private void OnListVshPlugins(object sender, RoutedEventArgs e) { SendCommand("vsh-plugin-list"); }
 
         private void SendCommand(string cmd)
         {
@@ -65,10 +66,10 @@ namespace DebugBridgeClient
             AppendLog("ui -> " + cmd);
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                string reply = ps3.SendCommand(cmd);
+                string[] lines = ps3.SendCommand(cmd);
                 Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
                 {
-                    AppendLog("ps3 -> " + (reply ?? "no response"));
+                    foreach (string line in lines) AppendLog("ps3 -> " + line);
                 }));
             });
         }
@@ -80,11 +81,8 @@ namespace DebugBridgeClient
                 Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() => AppendLog(message)));
                 return;
             }
-            logList.Items.Add(DateTime.Now.ToString("HH:mm:ss") + "  " + message);
-            if (logList.Items.Count > 0)
-                logList.ScrollIntoView(logList.Items[logList.Items.Count - 1]);
-            while (logList.Items.Count > 5000)
-                logList.Items.RemoveAt(0);
+            logBox.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + message + "\n");
+            logBox.ScrollToEnd();
         }
     }
 }

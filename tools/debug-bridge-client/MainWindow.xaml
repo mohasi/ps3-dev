@@ -64,6 +64,8 @@
          <MenuItem Header="Commands">
             <MenuItem Header="Screenshot" Click="OnScreenshot" />
             <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
+            <MenuItem Header="List VSH Plugins" Click="OnListVshPlugins" />
+            <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
             <MenuItem Header="Restart XMB" Click="OnRestartXmb" />
             <MenuItem Header="Restart PS3" Click="OnRestartPs3" />
             <MenuItem Header="Shutdown" Click="OnShutdown" />
@@ -82,12 +84,15 @@
 
          <!-- log tab -->
          <TabItem Header="Log">
-            <ListBox x:Name="logList"
+            <TextBox x:Name="logBox"
                      Background="{StaticResource BgBase}"
                      Foreground="{StaticResource FgText}"
                      BorderThickness="0"
                      FontFamily="Consolas"
-                     FontSize="12" />
+                     FontSize="12"
+                     IsReadOnly="True"
+                     VerticalScrollBarVisibility="Auto"
+                     TextWrapping="NoWrap" />
          </TabItem>
       </TabControl>
 

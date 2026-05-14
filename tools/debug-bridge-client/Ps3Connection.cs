@@ -48,8 +48,10 @@ namespace DebugBridgeClient
             running = false;
         }
 
-        // send a command over a fresh tcp connection and return the response
-        public string SendCommand(string command)
+        // send a command over a fresh tcp connection. reads all response lines
+        // until an OK/ERR terminator. returns body lines + terminator. on
+        // transport failure returns a single "ERR ..." element.
+        public string[] SendCommand(string command)
         {
             lock (sendLock)
             {
@@ -61,7 +63,7 @@ namespace DebugBridgeClient
                         if (!ar.AsyncWaitHandle.WaitOne(3000, false))
                         {
                             tcp.Close();
-                            return "ERR connection timed out";
+                            return new[] { "ERR connection timed out" };
                         }
                         tcp.EndConnect(ar);
                         tcp.ReceiveTimeout = 10000;
@@ -72,13 +74,20 @@ namespace DebugBridgeClient
                         stream.Write(data, 0, data.Length);
 
                         StreamReader reader = new StreamReader(stream, Encoding.ASCII);
-                        string response = reader.ReadLine();
-                        return response ?? "ERR no response";
+                        var lines = new System.Collections.Generic.List<string>();
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            lines.Add(line);
+                            if (line.StartsWith("OK") || line.StartsWith("ERR")) break;
+                        }
+                        if (lines.Count == 0) lines.Add("ERR no response");
+                        return lines.ToArray();
                     }
                 }
                 catch
                 {
-                    return "ERR connection failed";
+                    return new[] { "ERR connection failed" };
                 }
             }
         }
@@ -100,7 +109,8 @@ namespace DebugBridgeClient
 
         private bool Probe()
         {
-            return SendCommand("ping").StartsWith("OK");
+            string[] lines = SendCommand("ping");
+            return lines.Length > 0 && lines[lines.Length - 1].StartsWith("OK");
         }
     }
 }

@@ -91,8 +91,9 @@ namespace DebugBridgeClient
                     }
 
                     log("http -> " + command);
-                    body = ps3.SendCommand(command);
-                    log("ps3 -> " + body);
+                    string[] lines = ps3.SendCommand(command);
+                    body = string.Join("\n", lines);
+                    foreach (string line in lines) log("ps3 -> " + line);
                 }
 
                 byte[] buffer = Encoding.UTF8.GetBytes(body);

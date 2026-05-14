@@ -1,0 +1,112 @@
+<Window x:Class="DebugBridgeClient.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PS3 Debug Bridge"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBase}">
+   <Window.Resources>
+      <Style TargetType="TabItem">
+         <Setter Property="Template">
+            <Setter.Value>
+               <ControlTemplate TargetType="TabItem">
+                  <Border x:Name="tabBorder" Padding="10,4" Margin="0,0,1,0" Background="{StaticResource BgSurface}">
+                     <ContentPresenter ContentSource="Header" />
+                  </Border>
+                  <ControlTemplate.Triggers>
+                     <Trigger Property="IsSelected" Value="True">
+                        <Setter TargetName="tabBorder" Property="Background" Value="{StaticResource BgHover}" />
+                     </Trigger>
+                  </ControlTemplate.Triggers>
+               </ControlTemplate>
+            </Setter.Value>
+         </Setter>
+         <Setter Property="Foreground" Value="{StaticResource FgText}" />
+      </Style>
+      <Style TargetType="MenuItem">
+         <Setter Property="Background" Value="{StaticResource BgSurface}" />
+         <Setter Property="Foreground" Value="{StaticResource FgText}" />
+         <Setter Property="Template">
+            <Setter.Value>
+               <ControlTemplate TargetType="MenuItem">
+                  <Grid>
+                     <Border x:Name="border" Background="{TemplateBinding Background}" Padding="6,3">
+                        <ContentPresenter ContentSource="Header" />
+                     </Border>
+                     <Popup IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                            Placement="Bottom" AllowsTransparency="True">
+                        <Border Background="{StaticResource BgSurface}" BorderBrush="{StaticResource BrBorder}" BorderThickness="1" Padding="0,2">
+                           <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                     </Popup>
+                  </Grid>
+                  <ControlTemplate.Triggers>
+                     <Trigger Property="IsHighlighted" Value="True">
+                        <Setter TargetName="border" Property="Background" Value="{StaticResource BgHover}" />
+                     </Trigger>
+                     <Trigger Property="Role" Value="SubmenuItem">
+                        <Setter TargetName="border" Property="Padding" Value="20,4" />
+                     </Trigger>
+                  </ControlTemplate.Triggers>
+               </ControlTemplate>
+            </Setter.Value>
+         </Setter>
+      </Style>
+   </Window.Resources>
+   <Grid>
+      <Grid.RowDefinitions>
+         <RowDefinition Height="Auto" />
+         <RowDefinition Height="*" />
+         <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <!-- menu bar -->
+      <Menu Grid.Row="0" Background="{StaticResource BgSurface}" Foreground="{StaticResource FgText}">
+         <MenuItem Header="Commands">
+            <MenuItem Header="Screenshot" Click="OnScreenshot" />
+            <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
+            <MenuItem Header="Restart XMB" Click="OnRestartXmb" />
+            <MenuItem Header="Restart PS3" Click="OnRestartPs3" />
+            <MenuItem Header="Shutdown" Click="OnShutdown" />
+         </MenuItem>
+      </Menu>
+
+      <!-- main content with tabs -->
+      <TabControl Grid.Row="1" Background="{StaticResource BgBase}" BorderBrush="{StaticResource BrBorder}" BorderThickness="3">
+         <!-- screen tab -->
+         <TabItem Header="Screen">
+            <Image x:Name="screenImage"
+                   Width="960" Height="540"
+                   Stretch="Uniform"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+         </TabItem>
+
+         <!-- log tab -->
+         <TabItem Header="Log">
+            <ListBox x:Name="logList"
+                     Background="{StaticResource BgBase}"
+                     Foreground="{StaticResource FgText}"
+                     BorderThickness="0"
+                     FontFamily="Consolas"
+                     FontSize="12" />
+         </TabItem>
+      </TabControl>
+
+      <!-- bottom bar -->
+      <StatusBar Grid.Row="2" Background="{StaticResource BgSurface}" Padding="6,4">
+         <StatusBar.ItemsPanel>
+            <ItemsPanelTemplate>
+               <DockPanel LastChildFill="True" />
+            </ItemsPanelTemplate>
+         </StatusBar.ItemsPanel>
+         <StatusBarItem DockPanel.Dock="Right">
+            <StackPanel Orientation="Horizontal">
+               <Ellipse x:Name="statusDot" Width="10" Height="10" Fill="#ff4444" Margin="0,0,6,0" VerticalAlignment="Center" />
+               <TextBlock x:Name="statusText" Text="Disconnected" FontSize="11" Foreground="{StaticResource FgText}" VerticalAlignment="Center" />
+            </StackPanel>
+         </StatusBarItem>
+         <StatusBarItem>
+            <TextBlock Text="HTTP bridge: http://localhost:8786/" FontSize="11" Foreground="{StaticResource FgText}" VerticalAlignment="Center" />
+         </StatusBarItem>
+      </StatusBar>
+   </Grid>
+</Window>

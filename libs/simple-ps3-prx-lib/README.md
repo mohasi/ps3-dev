@@ -8,7 +8,8 @@ Static library for PS3 VSH plugins (PRX context). Compiled with `-fno-builtin-pr
 - **dbg** — timestamped file logging (`dbgLog`) via single atomic `cellFsWrite`
 - **file** — cellFs helpers (readFile, writeFile, fileExists, makeDir)
 - **string-utilities** — case-insensitive compare, URL encode/decode, XML escaping, byte search, int formatting
-- **vsh** — XMB readiness check, VSH notification, `/dev_blind` mount
+- **syscall** — generic LV2 inline-asm trampolines (`scCall1..scCall4`) and reusable wrappers: `mountDevBlind` (837), `sysPower` (379), `prxGetModuleIdByAddress` (461), `prxFinalizeSelf` (482). Cross-checked against [psdevwiki LV2 syscalls](https://www.psdevwiki.com/ps3/LV2_Functions_and_Syscalls).
+- **vsh** — VSH-only NID stub exports: XMB readiness check (`isXmbReady`), VSH notification (`vshNotify`). Only resolvable inside `vsh.self`; non-VSH code should use `syscall.h` instead.
 
 ## Usage
 
@@ -28,6 +29,7 @@ simple-ps3-prx-lib/
 │   ├── dbg.h
 │   ├── file.h
 │   ├── string-utilities.h
+│   ├── syscall.h
 │   └── vsh.h
 └── src/                # implementation
     └── printf.c        # Patrick Powell / Holger Weiss / Hector Martin port

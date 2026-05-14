@@ -8,7 +8,8 @@ Small collection of PS3 Cobra/EVILNAT VSH plugins and apps, built with Sony's of
 ps3-dev/
 ├── common/
 │   ├── ps3.targets             shared MSBuild (warnings-as-errors, -O2, clean)
-│   └── npdrm.targets           shared NPDRM packaging post-build for apps
+│   ├── npdrm.targets           shared NPDRM packaging post-build for apps
+│   └── prx.targets             shared PRX signing post-build for plugins
 ├── libs/
 │   ├── simple-ps3-lib/         static library for apps (gfx, font, audio, pad, screen, anim, ui)
 │   ├── simple-ps3-prx-lib/     static library for VSH plugins (printf, dbg, file, string-utilities, vsh)
@@ -18,8 +19,9 @@ ps3-dev/
 │   ├── app-sample/             demo app showcasing engine features
 │   └── file-manager/           PS3 file browser with sprite-based UI
 ├── plugins/
-│   ├── simple-disc-mount/      mounts ISOs from an XMB submenu
-│   └── simple-ftp/             anonymous, binary-only FTP server on port 21
+│   ├── simple-debug-bridge/  remote debug/control over TCP (port 8785)
+│   ├── simple-disc-mount/    mounts ISOs from an XMB submenu
+│   └── simple-ftp/           anonymous, binary-only FTP server on port 21
 ├── tools/
 │   ├── sprite-packer/          packs sprite PNGs into atlas + C header
 │   ├── xml-to-sfo/             generates PARAM.SFO from XML

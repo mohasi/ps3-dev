@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <sys/timer.h>
 #include "dbg.h"
+#include "syscall.h"
 
 #define SC_COBRA                8
 #define OP_FAKE_STORAGE_EVENT   0x7022
@@ -15,20 +16,6 @@
 #define STORAGE_EVENT_EJECTED       8
 #define STORAGE_EVENT_PRE_INSERT    7
 #define STORAGE_EVENT_INSERTED      3
-
-static inline int64_t scCall4(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4)
-{
-    register uint64_t r3  __asm__("3")  = a1;
-    register uint64_t r4  __asm__("4")  = a2;
-    register uint64_t r5  __asm__("5")  = a3;
-    register uint64_t r6  __asm__("6")  = a4;
-    register uint64_t r11 __asm__("11") = num;
-    __asm__ volatile ("sc\n" : "+r"(r3)
-                      : "r"(r4), "r"(r5), "r"(r6), "r"(r11)
-                      : "r0","r7","r8","r9","r10","r12",
-                        "cr0","ctr","xer","memory");
-    return (int64_t)r3;
-}
 
 /* Issue syscall8 opcode 0x7024 to switch Cobra's active emulated PS3 disc.
  * `files` points to a syscall-visible argv array of ISO part paths. */

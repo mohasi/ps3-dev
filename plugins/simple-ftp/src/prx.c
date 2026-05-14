@@ -8,6 +8,7 @@
 
 #include "dbg.h"
 #include "vsh.h"
+#include "syscall.h"
 #include "ftp.h"
 
 SYS_MODULE_INFO(SimpleFtp, 0, 1, 1);

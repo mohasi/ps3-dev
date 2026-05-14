@@ -39,6 +39,7 @@
     <ClInclude Include="include\dbg.h" />
     <ClInclude Include="include\file.h" />
     <ClInclude Include="include\string-utilities.h" />
+    <ClInclude Include="include\syscall.h" />
     <ClInclude Include="include\vsh.h" />
   </ItemGroup>
   <ItemGroup>

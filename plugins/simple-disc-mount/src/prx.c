@@ -18,6 +18,7 @@
 
 #include "dbg.h"
 #include "vsh.h"
+#include "syscall.h"
 #include "file.h"
 #include "cobra.h"
 #include "xmb-inject.h"

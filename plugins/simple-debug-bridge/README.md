@@ -24,8 +24,11 @@ Pair with the WPF companion in `tools/debug-bridge-client/`.
 | `vsh-plugin-unload <name>` | 🔲 | stop + unload a VSH PRX by module name |
 | `vsh-plugin-enable <name>` | 🔲 | ensure exactly one active line for `<name>` in `boot_plugins.txt` (canonical path `/dev_hdd0/plugins/<name>.sprx`) |
 | `vsh-plugin-disable <name>` | 🔲 | ensure exactly one commented line for `<name>` in `boot_plugins.txt` |
-| `vsh-plugin-install <name> <size>` | 🔲 | upload `<size>` bytes to `/dev_hdd0/plugins/<name>.sprx`, then `enable` |
-| `vsh-plugin-uninstall <name>` | 🔲 | remove every line referencing `<name>` from `boot_plugins.txt`, then delete `/dev_hdd0/plugins/<name>.sprx` |
+| `vsh-plugin-install <name> <size>` | ✅ | upload `<size>` bytes to `/dev_hdd0/plugins/<name>.sprx`, then `enable`. Thin wrapper over `save-file` + `setPluginLine(ACTIVE)`. |
+| `vsh-plugin-uninstall <name>` | ✅ | remove every line referencing `<name>` from `boot_plugins.txt`, then `delete-file /dev_hdd0/plugins/<name>.sprx`. Thin wrapper over `setPluginLine(ABSENT)` + `delete-file`. |
+| `get-file <path> [offset] [length]` | ✅ | stream raw bytes back. Response is `<n>\n<n bytes>` on success, `ERR ...\n` on failure. `length=0` (or omitted) means "to end of file". |
+| `save-file <path> <size>` | ✅ | upload `<size>` bytes to `<path>` (truncating). Parent directory must already exist — use a separate `mkdir`-equivalent if needed. |
+| `delete-file <path>` | ✅ | unlink `<path>`. Idempotent: missing file returns `OK`. |
 
 ## Protocol
 
@@ -117,10 +120,25 @@ simple-debug-bridge/
 ├── src/
 │   └── prx.c               # plugin entry — _start / _stop only
 ├── include/
-│   └── server.h            # accept loop, command dispatch, teardown
+│   ├── server.h            # accept loop, command dispatch, teardown
+│   ├── fileio.h            # socket-coupled file streaming (recvFile / sendFileWindow)
+│   └── installer.h         # plugin install/uninstall — wrappers over fileio + file.h
 ├── simple-debug-bridge.vcxproj
 └── README.md
 ```
+
+Layering:
+
+```
+  server.h       ← wire protocol, command dispatch
+     ├── fileio.h        socket«fs streaming (recvFile, sendFileWindow)
+     └── installer.h     pluginInstall / pluginUninstall
+                       └─ wraps fileio.recvFile + file.deleteFile + manifest edit
+```
+
+Generic (non-streaming) fs primitives — `readFile`, `writeFile`, `fileExists`,
+`makeDir`, `deleteFile` — live in `libs/simple-ps3-prx-lib/include/file.h` and
+are shared across plugins.
 
 Syscall wrappers (`sysPower`, `prxFinalizeSelf`) live in
 `libs/simple-ps3-prx-lib/include/syscall.h`.
@@ -142,4 +160,13 @@ power-off / reboot LV2 tears everything down externally.
 ```
 echo "ping" | nc <ps3-ip> 8785
 echo "restart-xmb" | nc <ps3-ip> 8785
+```
+
+Via the local HTTP bridge (with `debug-bridge-client` running):
+
+```
+curl http://localhost:8786/ping
+curl "http://localhost:8786/get-file?path=/dev_hdd0/tmp/dbg.txt&text=1"
+curl "http://localhost:8786/get-file?path=/dev_hdd0/boot_plugins.txt&text=1"
+curl "http://localhost:8786/delete-file?path=/dev_hdd0/tmp/old.txt"
 ```

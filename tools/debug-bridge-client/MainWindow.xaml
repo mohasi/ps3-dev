@@ -70,6 +70,15 @@
             <MenuItem Header="Restart PS3" Click="OnRestartPs3" />
             <MenuItem Header="Shutdown" Click="OnShutdown" />
          </MenuItem>
+         <MenuItem Header="Plugins">
+            <MenuItem Header="Install..." Click="OnPluginInstall" />
+            <MenuItem Header="Uninstall..." Click="OnPluginUninstall" />
+         </MenuItem>
+         <MenuItem Header="Files">
+            <MenuItem Header="Get File..." Click="OnGetFile" />
+            <MenuItem Header="Save File..." Click="OnSaveFile" />
+            <MenuItem Header="Delete File..." Click="OnDeleteFile" />
+         </MenuItem>
       </Menu>
 
       <!-- main content with tabs -->

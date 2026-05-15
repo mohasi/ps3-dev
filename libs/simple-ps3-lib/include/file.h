@@ -126,6 +126,13 @@ static inline int makeDir(const char *path)
     return (r == CELL_FS_SUCCEEDED || r == (int)CELL_FS_EEXIST) ? 0 : r;
 }
 
+// Deletes a file. Returns 0 on success or if the file did not exist (idempotent).
+static inline int deleteFile(const char *path)
+{
+    int r = cellFsUnlink(path);
+    return (r == CELL_FS_SUCCEEDED || r == (int)CELL_FS_ENOENT) ? 0 : -1;
+}
+
 // Reads entire file into a malloc'd buffer. Sets *outSize on success.
 // Caller must free() the returned pointer. Returns NULL on failure.
 static inline uint8_t *readFileAlloc(const char *path, uint32_t *outSize)

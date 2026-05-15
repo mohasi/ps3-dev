@@ -13,6 +13,9 @@
 #include "vsh.h"
 #include "syscall.h"
 #include "printf.h"
+#include "string-utilities.h"
+#include "fileio.h"
+#include "installer.h"
 
 #define SDB_PORT      8785
 #define SDB_BUF_MAX   512
@@ -117,6 +120,160 @@ static void cmdVshPluginList(int cli)
     serverSendLine(cli, line);
 }
 
+// parse "<name> <size>" args. on success fills name (caller-owned, cap bytes)
+// and *outSize, returns 1. on malformed input returns 0.
+static int parseNameAndSize(const char *args, char *name, int cap, uint32_t *outSize)
+{
+    int i = 0;
+    while (args[i] && args[i] != ' ') {
+        if (i >= cap - 1) return 0;
+        name[i] = args[i];
+        i++;
+    }
+    if (i == 0 || args[i] != ' ') return 0;
+    name[i] = '\0';
+    i++;
+    uint32_t v = 0;
+    int digits = 0;
+    while (args[i] >= '0' && args[i] <= '9') {
+        v = v * 10 + (uint32_t)(args[i] - '0');
+        i++;
+        digits++;
+    }
+    if (digits == 0) return 0;
+    *outSize = v;
+    return 1;
+}
+
+// extract a path token from args. supports "quoted paths" (any chars until
+// closing ") or unquoted (until first space). on success fills out (caller-
+// owned, cap bytes) and returns pointer to remainder (skipping trailing ws).
+// on malformed input returns NULL.
+static const char *parsePath(const char *args, char *out, int cap)
+{
+    int o = 0;
+    if (*args == '"') {
+        args++;
+        while (*args && *args != '"') {
+            if (o >= cap - 1) return 0;
+            out[o++] = *args++;
+        }
+        if (*args != '"') return 0;
+        args++;
+    } else {
+        while (*args && *args != ' ') {
+            if (o >= cap - 1) return 0;
+            out[o++] = *args++;
+        }
+    }
+    if (o == 0) return 0;
+    out[o] = '\0';
+    while (*args == ' ') args++;
+    return args;
+}
+
+// parse a non-negative decimal up to the next space or end. on success fills
+// *outVal and returns pointer to remainder. on malformed input returns NULL.
+static const char *parseUInt64(const char *args, uint64_t *outVal)
+{
+    uint64_t v = 0;
+    int digits = 0;
+    while (*args >= '0' && *args <= '9') {
+        v = v * 10 + (uint64_t)(*args - '0');
+        args++;
+        digits++;
+    }
+    if (digits == 0) return 0;
+    *outVal = v;
+    while (*args == ' ') args++;
+    return args;
+}
+
+// get-file <path> [offset length]
+//   length=0 means "until end-of-file".
+//   response: "OK <bytes>\n<bytes raw>" or "ERR <message>\n".
+static void cmdGetFile(int cli, const char *args)
+{
+    char path[FILE_PATH_MAX];
+    const char *rest = parsePath(args, path, sizeof path);
+    if (!rest) {
+        serverSendLine(cli, SDB_ERR " usage: get-file <path> [offset length]");
+        return;
+    }
+
+    uint64_t offset = 0, length = 0;
+    if (*rest) {
+        rest = parseUInt64(rest, &offset);
+        if (!rest) { serverSendLine(cli, SDB_ERR " bad offset"); return; }
+        rest = parseUInt64(rest, &length);
+        if (!rest) { serverSendLine(cli, SDB_ERR " bad length"); return; }
+    }
+
+    if (!fileExists(path)) {
+        serverSendLine(cli, SDB_ERR " no such file");
+        return;
+    }
+    int64_t window = fileWindowSize(path, offset, length);
+    if (window < 0) {
+        serverSendLine(cli, SDB_ERR " offset past end of file");
+        return;
+    }
+
+    char header[64];
+    snprintf(header, sizeof header, SDB_OK " %lld\n", (long long)window);
+    if (serverSend(cli, header, (int)strLen(header)) < 0) return;
+
+    if (window > 0 && sendFileWindow(cli, path, offset, (uint64_t)window) < 0) {
+        // header already on the wire; client gets short read and reports it.
+        dbgLog("[sdb] get-file send truncated\n");
+    }
+}
+
+// save-file <path> <size>\n<size raw bytes>
+//   response: "OK saved <path> (<size> bytes)" or "ERR ...".
+//   does NOT auto-create parent directories — caller picks an existing path.
+static void cmdSaveFile(int cli, const char *args)
+{
+    char path[FILE_PATH_MAX];
+    const char *rest = parsePath(args, path, sizeof path);
+    if (!rest) {
+        serverSendLine(cli, SDB_ERR " usage: save-file <path> <size>");
+        return;
+    }
+    uint64_t size = 0;
+    rest = parseUInt64(rest, &size);
+    if (!rest) {
+        serverSendLine(cli, SDB_ERR " bad size");
+        return;
+    }
+    if (recvFile(cli, path, (uint32_t)size) < 0) {
+        serverSendLine(cli, SDB_ERR " save failed");
+        return;
+    }
+    char reply[FILE_PATH_MAX + 64];
+    snprintf(reply, sizeof reply, SDB_OK " saved %s (%llu bytes)", path, (unsigned long long)size);
+    serverSendLine(cli, reply);
+}
+
+// delete-file <path>
+//   response: "OK deleted <path>" or "ERR ...".
+//   missing files are treated as success (idempotent).
+static void cmdDeleteFile(int cli, const char *args)
+{
+    char path[FILE_PATH_MAX];
+    if (!parsePath(args, path, sizeof path)) {
+        serverSendLine(cli, SDB_ERR " usage: delete-file <path>");
+        return;
+    }
+    if (deleteFile(path) < 0) {
+        serverSendLine(cli, SDB_ERR " delete failed");
+        return;
+    }
+    char reply[FILE_PATH_MAX + 64];
+    snprintf(reply, sizeof reply, SDB_OK " deleted %s", path);
+    serverSendLine(cli, reply);
+}
+
 // dispatch a single command from the client. power commands fire the
 // syscall directly — lv2 tears the whole system down, so there's no need
 // to stop the accept loop or close sockets first (same situation as a
@@ -156,7 +313,43 @@ static void serverHandleClient(int cli)
         cmdVshPluginList(cli);
     }
     else {
-        serverSendLine(cli, SDB_ERR " unknown command");
+        const char *args;
+        char  name[PLUGIN_NAME_MAX];
+        uint32_t size;
+        char  reply[128];
+
+        if ((args = serverMatchCmd(buf, "get-file")) != 0) {
+            cmdGetFile(cli, args);
+        }
+        else if ((args = serverMatchCmd(buf, "save-file")) != 0) {
+            cmdSaveFile(cli, args);
+        }
+        else if ((args = serverMatchCmd(buf, "delete-file")) != 0) {
+            cmdDeleteFile(cli, args);
+        }
+        else if ((args = serverMatchCmd(buf, "vsh-plugin-install")) != 0) {
+            if (!parseNameAndSize(args, name, sizeof name, &size)) {
+                serverSendLine(cli, SDB_ERR " usage: vsh-plugin-install <name> <size>");
+            } else if (pluginInstall(cli, name, size) < 0) {
+                serverSendLine(cli, SDB_ERR " install failed");
+            } else {
+                snprintf(reply, sizeof reply, SDB_OK " installed %s (%u bytes)", name, (unsigned)size);
+                serverSendLine(cli, reply);
+            }
+        }
+        else if ((args = serverMatchCmd(buf, "vsh-plugin-uninstall")) != 0) {
+            if (args[0] == '\0') {
+                serverSendLine(cli, SDB_ERR " usage: vsh-plugin-uninstall <name>");
+            } else if (pluginUninstall(args) < 0) {
+                serverSendLine(cli, SDB_ERR " uninstall failed");
+            } else {
+                snprintf(reply, sizeof reply, SDB_OK " uninstalled %s", args);
+                serverSendLine(cli, reply);
+            }
+        }
+        else {
+            serverSendLine(cli, SDB_ERR " unknown command");
+        }
     }
 }
 

@@ -42,3 +42,10 @@ static inline int makeDir(const char *path)
     int r = cellFsMkdir(path, CELL_FS_S_IFDIR | 0777);
     return (r == CELL_FS_SUCCEEDED || r == (int)CELL_FS_EEXIST) ? 0 : r;
 }
+
+// Deletes a file. Returns 0 on success or if the file did not exist (idempotent).
+static inline int deleteFile(const char *path)
+{
+    int r = cellFsUnlink(path);
+    return (r == CELL_FS_SUCCEEDED || r == (int)CELL_FS_ENOENT) ? 0 : -1;
+}

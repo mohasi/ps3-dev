@@ -31,6 +31,11 @@ typedef enum {
     PLUGIN_LINE_COMMENTED = 2
 } PluginLineState;
 
+// the bridge itself must boot before any other plugin so it can capture
+// their startup log lines (and any crashes during their own init). everyone
+// else appends and keeps the user's existing ordering untouched.
+#define BRIDGE_PLUGIN_NAME   "simple-debug-bridge"
+
 // build canonical "/dev_hdd0/plugins/<name>.sprx" into out.
 static inline void pluginPath(char *out, int cap, const char *name)
 {
@@ -71,7 +76,9 @@ static int lineMatchesPlugin(const char *line, int lineLen, const char *name)
 }
 
 // rewrite boot_plugins.txt: drop every line matching name, then optionally
-// append a single canonical line. returns 0 on success.
+// add a single canonical line. the bridge itself is always prepended so it
+// boots first; every other plugin is appended so the user's existing
+// ordering is preserved. returns 0 on success.
 static int setPluginLine(const char *name, PluginLineState state)
 {
     static char in[BOOT_PLUGINS_MAX];
@@ -83,7 +90,24 @@ static int setPluginLine(const char *name, PluginLineState state)
         if (inLen < 0) inLen = 0;
     }
 
+    int prepend = (state == PLUGIN_LINE_ACTIVE) &&
+                  (strCmpICase(name, BRIDGE_PLUGIN_NAME) == 0);
+
+    char newLine[PLUGIN_NAME_MAX + 64];
+    int newLen = 0;
+    if (state != PLUGIN_LINE_ABSENT) {
+        if (state == PLUGIN_LINE_COMMENTED) appendStr(newLine, sizeof newLine, &newLen, "# ");
+        appendStr(newLine, sizeof newLine, &newLen, PLUGIN_DIR "/");
+        appendStr(newLine, sizeof newLine, &newLen, name);
+        appendStr(newLine, sizeof newLine, &newLen, ".sprx");
+        if (newLen < (int)sizeof newLine - 1) newLine[newLen++] = '\n';
+    }
+
     int outOff = 0;
+    if (prepend) {
+        for (int k = 0; k < newLen && outOff < (int)sizeof out; k++) out[outOff++] = newLine[k];
+    }
+
     int i = 0;
     while (i < inLen) {
         int j = i;
@@ -96,15 +120,11 @@ static int setPluginLine(const char *name, PluginLineState state)
         i = j + 1;
     }
 
-    if (state != PLUGIN_LINE_ABSENT) {
+    if (state != PLUGIN_LINE_ABSENT && !prepend) {
         if (outOff > 0 && out[outOff - 1] != '\n' && outOff < (int)sizeof out - 1) {
             out[outOff++] = '\n';
         }
-        if (state == PLUGIN_LINE_COMMENTED) appendStr(out, sizeof out, &outOff, "# ");
-        appendStr(out, sizeof out, &outOff, PLUGIN_DIR "/");
-        appendStr(out, sizeof out, &outOff, name);
-        appendStr(out, sizeof out, &outOff, ".sprx");
-        if (outOff < (int)sizeof out - 1) out[outOff++] = '\n';
+        for (int k = 0; k < newLen && outOff < (int)sizeof out; k++) out[outOff++] = newLine[k];
     }
 
     return writeFile(BOOT_PLUGINS_PATH, out, (uint64_t)outOff);

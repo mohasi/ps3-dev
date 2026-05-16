@@ -51,6 +51,7 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="Ps3Connection.cs" />
+    <Compile Include="Ps3Reply.cs" />
     <Compile Include="HttpBridge.cs" />
   </ItemGroup>
   <ItemGroup>

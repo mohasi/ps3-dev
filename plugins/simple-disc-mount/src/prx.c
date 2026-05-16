@@ -36,34 +36,34 @@ static void autoMountLast(void)
 
     // check iso still exists
     if (!fileExists(path)) {
-        dbgLog("[sdm] auto-mount target missing: %s\n", path);
+        logError("[sdm] auto-mount target missing: %s\n", path);
         return;
     }
 
     // mount it
     if (cobraMountIso(path) == 0) {
-        dbgLog("[sdm] auto-mounted: %s\n", path);
+        logInfo("[sdm] auto-mounted: %s\n", path);
     } else {
-        dbgLog("[sdm] auto-mount failed: %s\n", path);
+        logError("[sdm] auto-mount failed: %s\n", path);
     }
 }
 
 static void pluginThread(uint64_t arg)
 {
     (void)arg;
-    dbgLog("[sdm] plugin thread start\n");
+    logInfo("[sdm] plugin thread start\n");
 
     /* Wait for XMB readiness, with a ~60s budget. */
     int ticks = 0;
     while (!isXmbReady()) {
         sys_timer_sleep(1);
         if (++ticks > 60) {
-            dbgLog("[sdm] xmb ready timeout\n");
+            logError("[sdm] xmb ready timeout\n");
             sys_ppu_thread_exit(0);
             return;
         }
     }
-    dbgLog("[sdm] xmb ready\n");
+    logInfo("[sdm] xmb ready\n");
 
     /* Give the storage/BD subsystem time to finish initialising.
      * isXmbReady() fires before the disc driver is fully up — mounting
@@ -78,10 +78,10 @@ static void pluginThread(uint64_t arg)
     autoMountLast();
 
     mountDevBlind();
-    dbgLog("[sdm] dev_blind mounted\n");
+    logInfo("[sdm] dev_blind mounted\n");
 
     if (makeDir(pathXmlHostRoot) != 0 || makeDir(pathXmlHostGp) != 0) {
-        dbgLog("[sdm] mkdir xmlhost failed\n");
+        logError("[sdm] mkdir xmlhost failed\n");
         sys_ppu_thread_exit(0);
         return;
     }
@@ -94,7 +94,7 @@ static void pluginThread(uint64_t arg)
      * so ours isn't stomped. */
     if (rc == PATCH_APPLIED) {
         sys_timer_sleep(10);
-        dbgLog("[sdm] vshNotify\n");
+        logInfo("[sdm] vshNotify\n");
         vshNotify("Simple disc mount plugin installed successfully!");
     }
 
@@ -103,14 +103,14 @@ static void pluginThread(uint64_t arg)
     sys_ppu_thread_t hid;
     sys_ppu_thread_create(&hid, httpListenerThread, 0, 0x400, 0x2000, SYS_PPU_THREAD_CREATE_JOINABLE, "sdmh");
 
-    dbgLog("[sdm] done\n");
+    logInfo("[sdm] done\n");
     sys_ppu_thread_exit(0);
 }
 
 int _start(uint64_t arg)
 {
     (void)arg;
-    dbgLog("[sdm] _start\n");
+    logInfo("[sdm] _start\n");
 
     sys_ppu_thread_t tid;
     sys_ppu_thread_create(&tid, pluginThread, 0, 0x400, 0x4000, SYS_PPU_THREAD_CREATE_JOINABLE, "sdm");

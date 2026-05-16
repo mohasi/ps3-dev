@@ -14,6 +14,11 @@ namespace DebugBridgeClient
     {
         public const int Port = 8786;
 
+        // fired whenever a /capture request returns binary data, so the UI
+        // can mirror http-driven captures onto the screen canvas.
+        public delegate void CaptureHandler(int x, int y, int w, int h, byte[] argb);
+        public event CaptureHandler CaptureReceived;
+
         private readonly Ps3Connection ps3;
         private readonly Action<string> log;
         private HttpListener listener;
@@ -74,7 +79,10 @@ namespace DebugBridgeClient
                 string body;
                 if (string.Equals(path, "status", StringComparison.OrdinalIgnoreCase))
                 {
-                    body = ps3.IsConnected ? "connected" : "disconnected";
+                    // live probe rather than the cached flag — callers (e.g.
+                    // deploy.ps1) need to know the bridge is *actually* taking
+                    // commands right now, not that it was up 3s ago.
+                    body = ps3.SendCommand("ping").Ok ? "connected" : "disconnected";
                 }
                 else if (string.IsNullOrEmpty(path))
                 {
@@ -86,16 +94,26 @@ namespace DebugBridgeClient
                     var q = ParseQuery(req.Url.Query);
                     string filePath = q.ContainsKey("path") ? q["path"] : null;
                     if (string.IsNullOrEmpty(filePath))
-                    {
                         body = "ERR usage: /delete-file?path=<ps3-path>";
-                    }
                     else
+                        body = SendText("delete-file \"" + filePath + "\"");
+                }
+                else if (path.Equals("capture", StringComparison.OrdinalIgnoreCase))
+                {
+                    // GET /capture?x=X&y=Y&w=W&h=H — returns raw ARGB8888 bytes
+                    // (vram byte order: A,R,G,B per pixel), w*h*4 in length.
+                    // also mirrors the capture to the screen canvas so any
+                    // /capture caller (ui, curl, scripts) shows up live.
+                    var q = ParseQuery(req.Url.Query);
+                    int x = IntArg(q, "x", 0), y = IntArg(q, "y", 0);
+                    int w = IntArg(q, "w", 1), h = IntArg(q, "h", 1);
+                    byte[] argb;
+                    body = WriteBinaryReply(resp, "capture " + x + " " + y + " " + w + " " + h, out argb);
+                    if (argb != null)
                     {
-                        string cmd = "delete-file \"" + filePath + "\"";
-                        log("http -> " + cmd);
-                        string[] lines = ps3.SendCommand(cmd);
-                        body = string.Join("\n", lines);
-                        foreach (string line in lines) log("ps3 -> " + line);
+                        var handler = CaptureReceived;
+                        if (handler != null && argb.Length == w * h * 4) handler(x, y, w, h, argb);
+                        return;
                     }
                 }
                 else if (path.Equals("get-file", StringComparison.OrdinalIgnoreCase))
@@ -116,22 +134,10 @@ namespace DebugBridgeClient
                             string l = q.ContainsKey("length") ? q["length"] : "0";
                             cmd = cmd + " " + o + " " + l;
                         }
-                        log("http -> " + cmd);
-                        var dl = ps3.Download(cmd);
-                        log("ps3 -> " + dl.Status);
-                        if (dl.Data == null)
-                        {
-                            body = dl.Status;
-                        }
-                        else
-                        {
-                            bool asText = q.ContainsKey("text") && q["text"] == "1";
-                            resp.ContentType = asText ? "text/plain; charset=utf-8" : "application/octet-stream";
-                            resp.ContentLength64 = dl.Data.Length;
-                            resp.StatusCode = 200;
-                            resp.OutputStream.Write(dl.Data, 0, dl.Data.Length);
-                            return;
-                        }
+                        bool asText = q.ContainsKey("text") && q["text"] == "1";
+                        byte[] payload;
+                        body = WriteBinaryReply(resp, cmd, out payload, asText ? "text/plain; charset=utf-8" : "application/octet-stream");
+                        if (payload != null) return;
                     }
                 }
                 else
@@ -169,17 +175,9 @@ namespace DebugBridgeClient
                         }
                         command = command + sb.ToString();
                     }
-                    if (payload != null)
-                    {
-                        command = command + " " + payload.Length;
-                    }
+                    if (payload != null) command = command + " " + payload.Length;
 
-                    log("http -> " + command + (payload != null ? " (" + payload.Length + " bytes)" : ""));
-                    string[] lines = payload != null
-                        ? ps3.SendCommandWithPayload(command, payload)
-                        : ps3.SendCommand(command);
-                    body = string.Join("\n", lines);
-                    foreach (string line in lines) log("ps3 -> " + line);
+                    body = SendText(command, payload);
                 }
 
                 byte[] buffer = Encoding.UTF8.GetBytes(body);
@@ -199,6 +197,49 @@ namespace DebugBridgeClient
             {
                 resp.Close();
             }
+        }
+
+        // text-mode: log the command, decode the reply payload as ascii.
+        // multi-line payloads (e.g. vsh-plugin-list) get one log line per
+        // record, with continuation lines indented under the "ps3 -> " prefix.
+        private string SendText(string command, byte[] upload = null)
+        {
+            log("http -> " + command + (upload != null ? " (" + upload.Length + " bytes)" : ""));
+            Ps3Reply r = ps3.SendCommand(command, upload);
+            string body = (r.Ok ? "OK" : "ERR") + (r.Payload.Length > 0 ? " " + r.AsText() : "");
+            string[] lines = body.Split('\n');
+            log("ps3 -> " + lines[0]);
+            for (int i = 1; i < lines.Length; i++)
+                if (lines[i].Length > 0) log("       " + lines[i]);
+            return body;
+        }
+
+        // binary-mode: send command, write the payload to resp on success.
+        // returns null on success (payload was written) or the ERR text on failure.
+        private string WriteBinaryReply(HttpListenerResponse resp, string command, out byte[] payload, string contentType = "application/octet-stream")
+        {
+            log("http -> " + command);
+            Ps3Reply r = ps3.SendCommand(command);
+            if (!r.Ok)
+            {
+                payload = null;
+                string text = "ERR " + r.AsText();
+                log("ps3 -> " + text);
+                return text;
+            }
+            log("ps3 -> OK " + r.Payload.Length);
+            payload = r.Payload;
+            resp.ContentType = contentType;
+            resp.ContentLength64 = payload.Length;
+            resp.StatusCode = 200;
+            resp.OutputStream.Write(payload, 0, payload.Length);
+            return null;
+        }
+
+        private static int IntArg(System.Collections.Generic.Dictionary<string, string> q, string key, int fallback)
+        {
+            int v;
+            return q.ContainsKey(key) && int.TryParse(q[key], out v) ? v : fallback;
         }
 
         private static System.Collections.Generic.Dictionary<string, string> ParseQuery(string query)

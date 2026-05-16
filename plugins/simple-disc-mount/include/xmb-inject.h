@@ -186,9 +186,9 @@ static int buildSdmXml(char *buf, int cap)
 static int writeSdmXml(void)
 {
     int n = buildSdmXml(buffer, bufferSize);
-    if (n < 0) { dbgLog("[sdm] build sdm.xml overflow\n"); return -1; }
+    if (n < 0) { logError("[sdm] build sdm.xml overflow\n"); return -1; }
     if (writeFile(pathSdmXml, buffer, (uint64_t)n) != 0) {
-        dbgLog("[sdm] write sdm.xml failed\n");
+        logError("[sdm] write sdm.xml failed\n");
         return -1;
     }
     return 0;
@@ -251,12 +251,12 @@ static int spliceAfterAnchor(const char *viewOpen, int curLen)
 static int patchCategoryGameXml(void)
 {
     int len = readFile(pathCatFlash, buffer, bufferSize);
-    if (len <= 0) { dbgLog("[sdm] read category_game.xml failed\n"); return PATCH_FAILED; }
+    if (len <= 0) { logError("[sdm] read category_game.xml failed\n"); return PATCH_FAILED; }
 
     /* Already up to date? Verbatim match on the exact injectLine. */
     int injLen = strLen(injectLine);
     if (findBytes(buffer, len, injectLine, injLen) >= 0) {
-        dbgLog("[sdm] category_game.xml already up to date\n");
+        logWarn("[sdm] category_game.xml already up to date\n");
         return PATCH_EXISTS;
     }
 
@@ -265,12 +265,12 @@ static int patchCategoryGameXml(void)
         writeFile(pathCatBackup, buffer, (uint64_t)len);
 
     int n = spliceAfterAnchor("<View id=\"root\">", len);
-    if (n < 0) { dbgLog("[sdm] splice root failed\n"); return PATCH_FAILED; }
+    if (n < 0) { logError("[sdm] splice root failed\n"); return PATCH_FAILED; }
 
     if (writeFile(pathCatBlind, buffer, (uint64_t)n) != 0) {
-        dbgLog("[sdm] write /dev_blind failed\n");
+        logError("[sdm] write /dev_blind failed\n");
         return PATCH_FAILED;
     }
-    dbgLog("[sdm] category_game.xml patched\n");
+    logInfo("[sdm] category_game.xml patched\n");
     return PATCH_APPLIED;
 }

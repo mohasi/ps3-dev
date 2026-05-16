@@ -7,7 +7,10 @@ using System.Threading;
 
 namespace DebugBridgeClient
 {
-    // manages the tcp connection to the ps3 simple-debug-bridge plugin (port 8785)
+    // persistent duplex tcp connection to the ps3 simple-debug-bridge plugin
+    // (port 8785). a background thread keeps one socket open and reconnects
+    // on drop. all callers go through SendCommand, which writes a framed
+    // request and reads a framed reply on the same socket.
     public class Ps3Connection
     {
         public const string DefaultHost = "10.0.0.2";
@@ -21,13 +24,11 @@ namespace DebugBridgeClient
         private volatile bool running;
         private volatile bool connected;
         private string host;
+        private TcpClient    tcp;
+        private NetworkStream stream;
 
         public string Host { get { return host; } }
-
-        public bool IsConnected
-        {
-            get { return connected; }
-        }
+        public bool IsConnected { get { return connected; } }
 
         public Ps3Connection()
         {
@@ -46,160 +47,138 @@ namespace DebugBridgeClient
         public void Disconnect()
         {
             running = false;
+            DropSocket();
         }
 
-        // send a command over a fresh tcp connection. reads all response lines
-        // until an OK/ERR terminator. returns body lines + terminator. on
-        // transport failure returns a single "ERR ..." element.
-        public string[] SendCommand(string command)
-        {
-            return SendCommandWithPayload(command, null);
-        }
-
-        // same, but after the command line writes `payload` raw bytes (used
-        // for binary-upload commands like vsh-plugin-install).
-        public string[] SendCommandWithPayload(string command, byte[] payload)
+        // send one command and return the next framed reply. an optional raw
+        // upload payload is appended after the newline (for save-file etc).
+        // on transport error returns an ERR reply and drops the socket so the
+        // auto-connect loop reconnects on the next ping.
+        public Ps3Reply SendCommand(string command, byte[] upload = null)
         {
             lock (sendLock)
             {
+                if (stream == null)
+                    return Ps3Reply.Error("not connected");
                 try
                 {
-                    using (TcpClient tcp = new TcpClient())
-                    {
-                        IAsyncResult ar = tcp.BeginConnect(host, Port, null, null);
-                        if (!ar.AsyncWaitHandle.WaitOne(3000, false))
-                        {
-                            tcp.Close();
-                            return new[] { "ERR connection timed out" };
-                        }
-                        tcp.EndConnect(ar);
-                        // payload uploads need plenty of time; pick generously.
-                        tcp.ReceiveTimeout = payload != null ? 60000 : 10000;
-                        tcp.SendTimeout    = payload != null ? 60000 : 5000;
+                    byte[] cmd = Encoding.ASCII.GetBytes(command + "\n");
+                    stream.Write(cmd, 0, cmd.Length);
+                    if (upload != null && upload.Length > 0)
+                        stream.Write(upload, 0, upload.Length);
 
-                        NetworkStream stream = tcp.GetStream();
-                        byte[] data = Encoding.ASCII.GetBytes(command + "\n");
-                        stream.Write(data, 0, data.Length);
-                        if (payload != null && payload.Length > 0)
-                        {
-                            stream.Write(payload, 0, payload.Length);
-                        }
-
-                        StreamReader reader = new StreamReader(stream, Encoding.ASCII);
-                        var lines = new System.Collections.Generic.List<string>();
-                        string line;
-                        while ((line = reader.ReadLine()) != null)
-                        {
-                            lines.Add(line);
-                            if (line.StartsWith("OK") || line.StartsWith("ERR")) break;
-                        }
-                        if (lines.Count == 0) lines.Add("ERR no response");
-                        return lines.ToArray();
-                    }
+                    return ReadFramedReply();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    return new[] { "ERR connection failed" };
+                    DropSocket();
+                    return Ps3Reply.Error(ex.Message);
                 }
             }
+        }
+
+        // read "<STATUS> <n>\n" then exactly n bytes.
+        private Ps3Reply ReadFramedReply()
+        {
+            string header = ReadHeaderLine();
+            int sp = header.IndexOf(' ');
+            if (sp < 0) throw new IOException("malformed reply header: " + header);
+            string status = header.Substring(0, sp);
+            int n;
+            if (!int.TryParse(header.Substring(sp + 1), out n) || n < 0)
+                throw new IOException("malformed reply length: " + header);
+
+            byte[] payload = new byte[n];
+            int off = 0;
+            while (off < n)
+            {
+                int got = stream.Read(payload, off, n - off);
+                if (got <= 0) throw new IOException("connection closed mid-payload");
+                off += got;
+            }
+            return new Ps3Reply(status == "OK", payload);
+        }
+
+        private string ReadHeaderLine()
+        {
+            var sb = new StringBuilder(32);
+            for (;;)
+            {
+                int b = stream.ReadByte();
+                if (b < 0) throw new IOException("connection closed before header");
+                if (b == '\n') return sb.ToString();
+                if (b != '\r') sb.Append((char)b);
+                if (sb.Length > 64) throw new IOException("header too long");
+            }
+        }
+
+        private void DropSocket()
+        {
+            try { if (stream != null) stream.Close(); } catch { }
+            try { if (tcp    != null) tcp.Close();    } catch { }
+            stream = null;
+            tcp = null;
+            if (connected)
+            {
+                connected = false;
+                EventHandler evt = Disconnected;
+                if (evt != null) evt(this, EventArgs.Empty);
+            }
+        }
+
+        private bool TryConnect()
+        {
+            try
+            {
+                var t = new TcpClient();
+                IAsyncResult ar = t.BeginConnect(host, Port, null, null);
+                if (!ar.AsyncWaitHandle.WaitOne(3000, false))
+                {
+                    t.Close();
+                    return false;
+                }
+                t.EndConnect(ar);
+                t.NoDelay = true;
+                t.ReceiveTimeout = 60000;
+                t.SendTimeout    = 60000;
+                lock (sendLock)
+                {
+                    tcp    = t;
+                    stream = t.GetStream();
+                }
+                return true;
+            }
+            catch { return false; }
         }
 
         private void AutoConnectLoop()
         {
             while (running)
             {
-                bool reachable = Probe();
-                if (reachable != connected)
+                if (!connected)
                 {
-                    connected = reachable;
-                    EventHandler evt = reachable ? Connected : Disconnected;
-                    if (evt != null) evt(this, EventArgs.Empty);
-                }
-                Thread.Sleep(ReconnectDelayMs);
-            }
-        }
-
-        private bool Probe()
-        {
-            string[] lines = SendCommand("ping");
-            return lines.Length > 0 && lines[lines.Length - 1].StartsWith("OK");
-        }
-
-        // result of a binary download. on success Status starts with "OK <bytes>",
-        // Data is the raw payload. on failure Status is "ERR ...", Data is null.
-        public class DownloadResult
-        {
-            public string Status;
-            public byte[] Data;
-        }
-
-        // download a file (or window of one) from the ps3.
-        // protocol: send "<command>\n", read one header line, then exactly N
-        // bytes of payload as advertised in the header.
-        public DownloadResult Download(string command)
-        {
-            lock (sendLock)
-            {
-                var result = new DownloadResult();
-                try
-                {
-                    using (TcpClient tcp = new TcpClient())
+                    if (TryConnect())
                     {
-                        IAsyncResult ar = tcp.BeginConnect(host, Port, null, null);
-                        if (!ar.AsyncWaitHandle.WaitOne(3000, false))
+                        // probe with a ping to confirm the socket is live.
+                        Ps3Reply r = SendCommand("ping");
+                        if (r.Ok)
                         {
-                            tcp.Close();
-                            result.Status = "ERR connection timed out";
-                            return result;
+                            connected = true;
+                            EventHandler evt = Connected;
+                            if (evt != null) evt(this, EventArgs.Empty);
                         }
-                        tcp.EndConnect(ar);
-                        tcp.ReceiveTimeout = 60000;
-                        tcp.SendTimeout    = 5000;
-
-                        NetworkStream stream = tcp.GetStream();
-                        byte[] cmd = Encoding.ASCII.GetBytes(command + "\n");
-                        stream.Write(cmd, 0, cmd.Length);
-
-                        // read header line up to '\n' (max 128 bytes is plenty).
-                        var hdr = new StringBuilder();
-                        for (int i = 0; i < 128; i++)
+                        else
                         {
-                            int b = stream.ReadByte();
-                            if (b < 0) break;
-                            if (b == '\n') break;
-                            if (b != '\r') hdr.Append((char)b);
+                            DropSocket();
                         }
-                        string header = hdr.ToString();
-                        result.Status = header;
-
-                        if (!header.StartsWith("OK ")) return result;
-
-                        int sp = header.IndexOf(' ', 3);
-                        string sizeStr = sp < 0 ? header.Substring(3) : header.Substring(3, sp - 3);
-                        int size;
-                        if (!int.TryParse(sizeStr, out size) || size < 0)
-                        {
-                            result.Status = "ERR bad header: " + header;
-                            return result;
-                        }
-
-                        var data = new byte[size];
-                        int off = 0;
-                        while (off < size)
-                        {
-                            int n = stream.Read(data, off, size - off);
-                            if (n <= 0) { result.Status = "ERR short read"; return result; }
-                            off += n;
-                        }
-                        result.Data = data;
-                        return result;
                     }
                 }
-                catch (Exception ex)
+                else
                 {
-                    result.Status = "ERR " + ex.Message;
-                    return result;
+                    // periodic liveness check; SendCommand drops on failure.
+                    SendCommand("ping");
                 }
+                Thread.Sleep(ReconnectDelayMs);
             }
         }
     }

@@ -54,32 +54,38 @@ static inline int dbgFormatTimestamp(char *out)
     return o;   /* == 22 */
 }
 
-/* Append one timestamped line to /dev_hdd0/tmp/dbg.txt.
+/* Append one timestamped, level-prefixed line to /dev_hdd0/tmp/dbg.txt.
  * Variadic: plain string ("hello\n") or printf-style ("rc=0x%x\n", rc).
  * Full C99 printf minus floats (see common/printf.h).
  *
- * Thread-safety: builds the timestamp + message into one stack buffer and
- * issues a SINGLE cellFsWrite. With O_APPEND the kernel positions and writes
- * atomically per call, so concurrent loggers from different threads/PRX's
- * cannot interleave their timestamp/body halves on the same line.
+ * Format: "[YYYY-MM-DD HH:MM:SS] [LVL ] <message>"
+ *         where LVL is INFO / WARN / ERR  (5-char fixed width incl. space).
+ *
+ * Thread-safety: builds the timestamp + level + message into one stack
+ * buffer and issues a SINGLE cellFsWrite. With O_APPEND the kernel
+ * positions and writes atomically per call, so concurrent loggers from
+ * different threads/PRX's cannot interleave halves on the same line.
  *
  * Buffer is 1 KB for the message (any extra is silently dropped) plus 22
- * bytes for the timestamp. */
-static inline void dbgLog(const char *fmt, ...)
-    __attribute__((format(printf, 1, 2)));
-
-static inline void dbgLog(const char *fmt, ...)
+ * bytes for the timestamp and 7 for the level tag. */
+static inline void logEmit(const char *level, const char *fmt, va_list ap)
 {
-    char line[1024 + 24];
+    char line[1024 + 32];
 
-    int tn = dbgFormatTimestamp(line);   /* writes up to 22 bytes, no NUL */
+    int o = dbgFormatTimestamp(line);    /* up to 22 bytes, no NUL */
 
-    va_list ap;
-    va_start(ap, fmt);
-    int n = vsnprintf(line + tn, sizeof line - tn, fmt, ap);
-    va_end(ap);
+    /* "[LVL ] " — 7 bytes, fixed width so log columns align. */
+    line[o++] = '[';
+    line[o++] = level[0];
+    line[o++] = level[1];
+    line[o++] = level[2];
+    line[o++] = level[3];
+    line[o++] = ']';
+    line[o++] = ' ';
+
+    int n = vsnprintf(line + o, sizeof line - o, fmt, ap);
     if (n <= 0) return;
-    int max = (int)sizeof line - tn - 1;
+    int max = (int)sizeof line - o - 1;
     if (n > max) n = max;
 
     int fd;
@@ -87,7 +93,35 @@ static inline void dbgLog(const char *fmt, ...)
                    &fd, NULL, 0) == CELL_FS_SUCCEEDED)
     {
         uint64_t written;
-        cellFsWrite(fd, line, (uint64_t)(tn + n), &written);
+        cellFsWrite(fd, line, (uint64_t)(o + n), &written);
         cellFsClose(fd);
     }
+}
+
+static inline void logInfo(const char *fmt, ...)
+    __attribute__((format(printf, 1, 2)));
+static inline void logWarn(const char *fmt, ...)
+    __attribute__((format(printf, 1, 2)));
+static inline void logError(const char *fmt, ...)
+    __attribute__((format(printf, 1, 2)));
+
+static inline void logInfo(const char *fmt, ...)
+{
+    va_list ap; va_start(ap, fmt);
+    logEmit("INFO", fmt, ap);
+    va_end(ap);
+}
+
+static inline void logWarn(const char *fmt, ...)
+{
+    va_list ap; va_start(ap, fmt);
+    logEmit("WARN", fmt, ap);
+    va_end(ap);
+}
+
+static inline void logError(const char *fmt, ...)
+{
+    va_list ap; va_start(ap, fmt);
+    logEmit("ERR ", fmt, ap);
+    va_end(ap);
 }

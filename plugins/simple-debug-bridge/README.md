@@ -13,12 +13,12 @@ Pair with the WPF companion in `tools/debug-bridge-client/`.
 | `restart-ps3` | ✅ | LV2 hard reboot (`sys_sm_shutdown` mode `0x1200`) |
 | `restart-xmb` | ✅ | LV2 soft reboot — restarts vsh (`sys_sm_shutdown` mode `0x0200`) |
 | `shutdown` | ✅ | power off (`sys_sm_shutdown` mode `0x1100`) |
-| `screenshot [x,y,w,h]` | 🔲 | capture framebuffer (full or region) |
+| `capture <x> <y> <w> <h>` | ✅ | capture region of front buffer as raw ARGB8888. **XMB only** — returns `ERR` in-app. Direct framebuffer reads + RSX FIFO pause are only safe when VSH owns RSX; in-app capture (via Sony's screenshot hook + file readback) is a follow-up that will share this same command. Use `display-info` first for geometry. |
+| `display-info` | ✅ | report `<width> <height> <pitch> <depth>` of current front buffer. |
 | `terminate` | 🔲 | kill running game process |
 | `launch <titleid>` | 🔲 | launch installed title |
-| `pixel <x,y>` | 🔲 | read single pixel RGBA |
 | `input <buttons>` | 🔲 | send fake pad input |
-| `vsh-plugin-list` | ✅ | list every PRX loaded into vsh.self via `sys_prx_get_module_list` (syscall 494) + `sys_prx_get_module_info` (syscall 495). One line per module: `<id>\t<name>\t<filename>`, then `OK <count>`. Includes system modules — useful for debugging. |
+| `vsh-plugin-list` | ✅ | list every PRX loaded into vsh.self via `sys_prx_get_module_list` (syscall 494) + `sys_prx_get_module_info` (syscall 495). Payload is one line per module: `<id>\t<name>\t<filename>\n`. Includes system modules — useful for debugging. |
 | `vsh-plugin-load <name> <size>` | 🔲 | upload `<size>` bytes to `/dev_hdd0/tmp/sdb/<name>.sprx`, then load + start. Replaces if already loaded by same name. |
 | `vsh-plugin-load <ps3-path>` | 🔲 | load + start a VSH PRX already on disk (no upload). Path may be quoted (`"..."`) to be unambiguous. |
 | `vsh-plugin-unload <name>` | 🔲 | stop + unload a VSH PRX by module name |
@@ -26,35 +26,43 @@ Pair with the WPF companion in `tools/debug-bridge-client/`.
 | `vsh-plugin-disable <name>` | 🔲 | ensure exactly one commented line for `<name>` in `boot_plugins.txt` |
 | `vsh-plugin-install <name> <size>` | ✅ | upload `<size>` bytes to `/dev_hdd0/plugins/<name>.sprx`, then `enable`. Thin wrapper over `save-file` + `setPluginLine(ACTIVE)`. |
 | `vsh-plugin-uninstall <name>` | ✅ | remove every line referencing `<name>` from `boot_plugins.txt`, then `delete-file /dev_hdd0/plugins/<name>.sprx`. Thin wrapper over `setPluginLine(ABSENT)` + `delete-file`. |
-| `get-file <path> [offset] [length]` | ✅ | stream raw bytes back. Response is `<n>\n<n bytes>` on success, `ERR ...\n` on failure. `length=0` (or omitted) means "to end of file". |
+| `get-file <path> [offset] [length]` | ✅ | stream raw bytes back. Payload is the requested file window. `length=0` (or omitted) means "to end of file". |
 | `save-file <path> <size>` | ✅ | upload `<size>` bytes to `<path>` (truncating). Parent directory must already exist — use a separate `mkdir`-equivalent if needed. |
 | `delete-file <path>` | ✅ | unlink `<path>`. Idempotent: missing file returns `OK`. |
 
 ## Protocol
 
-Text-based, one command per fresh TCP connection:
+Persistent duplex TCP socket. One client at a time; commands are issued
+sequentially on the same connection. Each reply is length-framed:
 
 ```
 request:  <command> [args...]\n
-response: <status> [message]\n
+response: <STATUS> <n>\n<n bytes>
 ```
 
-Status: `OK` or `ERR <message>`.
+`<STATUS>` is `OK` or `ERR`. `<n>` is the exact byte length of the payload
+that follows (no trailing newline). Text payloads are UTF-8 / ASCII; binary
+payloads (e.g. `capture`, `get-file`) are raw bytes. An empty payload is
+`OK 0\n`.
 
-Some commands (e.g. `vsh-plugin-list`) return zero or more body lines
-*before* the final status line. The status line is always the terminator —
-clients read lines until one starts with `OK` or `ERR`.
+Server-side helpers in `server.h`:
+- `sendReply(fd, status, msg)` — string payload, length computed internally.
+- `sendStreamReply(fd, status, n)` — writes only the header for a known-size
+  streamed body, followed by the caller's `sendBytes(...)` of `n` bytes.
+
+Both produce identical wire framing; the split is only to avoid buffering
+large bodies (e.g. `vsh-plugin-list` records, file streams) before sending.
 
 ### Binary upload framing
 
-Commands that ship a binary payload (e.g. `vsh-plugin-load <name> <size>`,
-`vsh-plugin-install <name> <size>`) end their command line with a byte count,
-then send exactly that many raw bytes immediately after the `\n`:
+Commands that ship a binary payload (e.g. `vsh-plugin-install <name> <size>`,
+`save-file <path> <size>`) end their command line with a byte count, then send
+exactly that many raw bytes immediately after the `\n`:
 
 ```
 request:  <command> <args...> <byte-count>\n
 request:  <byte-count raw bytes>
-response: <status> [message]\n
+response: <STATUS> <n>\n<n bytes>
 ```
 
 The presence of a numeric `<byte-count>` as the **last** whitespace-separated

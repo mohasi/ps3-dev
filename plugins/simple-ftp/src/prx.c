@@ -17,7 +17,7 @@ SYS_MODULE_START(_start);
 static void pluginThread(uint64_t arg)
 {
     (void)arg;
-    dbgLog("[ftp] plugin thread start\n");
+    logInfo("[ftp] plugin thread start\n");
 
     /* Mount /dev_blind so FTP clients can write to /dev_flash via that
      * mount point. webMAN-MOD exposes this as an "Enable /dev_blind on
@@ -26,19 +26,19 @@ static void pluginThread(uint64_t arg)
      * syscall is idempotent-ish — a second call just returns an error,
      * which we log for visibility but otherwise ignore. */
     int64_t mrc = mountDevBlind();
-    dbgLog("[ftp] mount /dev_blind rc 0x%x\n", (int)mrc);
+    logError("[ftp] mount /dev_blind rc 0x%x\n", (int)mrc);
 
     /* Wait for XMB readiness so the network stack is up. 60s budget. */
     int ticks = 0;
     while (!isXmbReady()) {
         sys_timer_sleep(1);
         if (++ticks > 60) {
-            dbgLog("[ftp] xmb ready timeout\n");
+            logError("[ftp] xmb ready timeout\n");
             sys_ppu_thread_exit(0);
             return;
         }
     }
-    dbgLog("[ftp] xmb ready\n");
+    logInfo("[ftp] xmb ready\n");
 
     /* Hand control to the FTP listener thread. It owns the port 21 socket
      * and spawns a session thread per accepted client. */
@@ -52,7 +52,7 @@ static void pluginThread(uint64_t arg)
 int _start(uint64_t arg)
 {
     (void)arg;
-    dbgLog("[ftp] _start\n");
+    logInfo("[ftp] _start\n");
 
     sys_ppu_thread_t tid;
     sys_ppu_thread_create(&tid, pluginThread, 0, 0x400, 0x4000,

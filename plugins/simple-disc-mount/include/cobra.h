@@ -35,7 +35,7 @@ static inline int cobraMountPs3(char *files[], unsigned int count)
         : "r0","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12",
           "cr0","ctr","xer","memory"
     );
-    if (ret != SUCCESS) dbgLog("[sdm] sc8 mount_ps3 rc=0x%x\n", ret);
+    if (ret != SUCCESS) logError("[sdm] sc8 mount_ps3 rc=0x%x\n", ret);
     return ret;
 }
 
@@ -51,12 +51,12 @@ static inline int cobraFakeDiscEject(void)
 {
     int r = cobraFakeEvent(STORAGE_EVENT_PRE_EJECT);
     if (r != SUCCESS) {
-        dbgLog("[sdm] pre-eject rc=0x%x\n", r);
+        logError("[sdm] pre-eject rc=0x%x\n", r);
         return r;
     }
 
     r = cobraFakeEvent(STORAGE_EVENT_EJECTED);
-    if (r != SUCCESS) dbgLog("[sdm] eject rc=0x%x\n", r);
+    if (r != SUCCESS) logError("[sdm] eject rc=0x%x\n", r);
     return r;
 }
 
@@ -64,12 +64,12 @@ static inline int cobraFakeDiscInsert(void)
 {
     int r = cobraFakeEvent(STORAGE_EVENT_PRE_INSERT);
     if (r != SUCCESS) {
-        dbgLog("[sdm] pre-insert rc=0x%x\n", r);
+        logError("[sdm] pre-insert rc=0x%x\n", r);
         return r;
     }
 
     r = cobraFakeEvent(STORAGE_EVENT_INSERTED);
-    if (r != SUCCESS) dbgLog("[sdm] insert rc=0x%x\n", r);
+    if (r != SUCCESS) logError("[sdm] insert rc=0x%x\n", r);
     return r;
 }
 

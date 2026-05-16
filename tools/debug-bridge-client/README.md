@@ -4,10 +4,13 @@ WPF companion app for the `simple-debug-bridge` PS3 plugin.
 
 ## features
 
-- auto-connects to the PS3 plugin over TCP (port 8785) — polls `ping` every 3s
-- **Commands** menu — Restart XMB, Restart PS3, Shutdown, Screenshot
-- **Screen** tab — reserved for future screenshot display
-- **Log** tab — connection events, sent commands, PS3 responses
+- persistent duplex TCP socket to the PS3 plugin (port 8785); background
+  auto-reconnect on drop
+- **Commands** menu — Screenshot, List VSH Plugins, Restart XMB, Restart PS3, Shutdown
+- **Plugins** menu — Install / Uninstall VSH plugin (`.sprx` upload)
+- **Files** menu — Get / Save / Delete file on the PS3
+- **Screen** tab — renders captures live as they come back from the bridge
+- **Log** tab — connection events, sent commands, framed PS3 replies
 - status bar — connection indicator (bottom right) + HTTP bridge URL
 - local HTTP proxy on `http://localhost:8786/` — forwards commands to the PS3
 

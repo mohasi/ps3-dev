@@ -16,16 +16,15 @@ SYS_MODULE_STOP(_stop);
 int _start(uint64_t arg)
 {
     (void)arg;
-    dbgLog("[sdb] _start\n");
+    logInfo("[sdb] _start\n");
     serverStart();
     return SYS_PRX_RESIDENT;
 }
 
 int _stop(void)
 {
-    dbgLog("[sdb] _stop\n");
+    logInfo("[sdb] _stop\n");
     serverStop();
     prxFinalizeSelf();
-    dbgLog("[sdb] _stop done\n");
     return SYS_PRX_STOP_OK;
 }

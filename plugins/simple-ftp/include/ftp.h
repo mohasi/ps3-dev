@@ -942,17 +942,17 @@ static void ftpListenerThread(uint64_t arg)
     while (listenFd < 0 && retries < 30) {
         listenFd = ftpListen(FTP_PORT);
         if (listenFd < 0) {
-            dbgLog("[ftp] listen failed, retrying\n");
+            logWarn("[ftp] listen failed, retrying\n");
             sys_timer_sleep(2);
             retries++;
         }
     }
     if (listenFd < 0) {
-        dbgLog("[ftp] giving up — port 21 unavailable\n");
+        logError("[ftp] giving up — port 21 unavailable\n");
         sys_ppu_thread_exit(0);
         return;
     }
-    dbgLog("[ftp] listening on :21\n");
+    logInfo("[ftp] listening on :21\n");
 
     for (;;) {
         struct sockaddr_in ra;

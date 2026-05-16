@@ -54,20 +54,20 @@ static void httpParseAndMount(const char *buf, int off)
 
     char path[SDM_PATH_MAX];
     if (urlDecode(buf + prefixLen, path, sizeof path) <= 0) {
-        dbgLog("[sdm] url decode failed\n");
+        logError("[sdm] url decode failed\n");
         return;
     }
     if (!fileExists(path)) {
-        dbgLog("[sdm] file not found: %s\n", path);
+        logError("[sdm] file not found: %s\n", path);
         return;
     }
 
     if (cobraMountIso(path) == SUCCESS) {
         httpWriteLastMount(path);
-        dbgLog("[sdm] mounted: %s\n", path);
+        logInfo("[sdm] mounted: %s\n", path);
         vshNotify("Disc mounted.");
     } else {
-        dbgLog("[sdm] mount failed: %s\n", path);
+        logError("[sdm] mount failed: %s\n", path);
     }
 }
 
@@ -91,7 +91,7 @@ static void httpHandle(int cli)
 static void httpListenerThread(uint64_t arg)
 {
     (void)arg;
-    dbgLog("[sdm] http thread start\n");
+    logInfo("[sdm] http thread start\n");
 
     int fd = -1;
     int retries = 0;
@@ -99,7 +99,7 @@ static void httpListenerThread(uint64_t arg)
         fd = socket(AF_INET, SOCK_STREAM, 0);
         if (fd < 0) { sys_timer_sleep(2); retries++; }
     }
-    if (fd < 0) { dbgLog("[sdm] socket failed\n"); sys_ppu_thread_exit(0); return; }
+    if (fd < 0) { logError("[sdm] socket failed\n"); sys_ppu_thread_exit(0); return; }
 
     struct sockaddr_in a;
     a.sin_family      = AF_INET;
@@ -109,7 +109,7 @@ static void httpListenerThread(uint64_t arg)
     retries = 0;
     while (bind(fd, (struct sockaddr *)&a, sizeof a) < 0) {
         if (++retries > 30) {
-            dbgLog("[sdm] bind failed\n");
+            logError("[sdm] bind failed\n");
             socketclose(fd);
             sys_ppu_thread_exit(0);
             return;
@@ -118,13 +118,13 @@ static void httpListenerThread(uint64_t arg)
         sys_timer_sleep(2);
     }
     if (listen(fd, 2) < 0) {
-        dbgLog("[sdm] listen failed\n");
+        logError("[sdm] listen failed\n");
         socketclose(fd);
         sys_ppu_thread_exit(0);
         return;
     }
 
-    dbgLog("[sdm] listening on :%d\n", SDM_PORT);
+    logInfo("[sdm] listening on :%d\n", SDM_PORT);
 
     for (;;) {
         socklen_t rl = sizeof a;

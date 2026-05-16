@@ -60,7 +60,7 @@ if ($RestartXmb) {
    Write-Host "[deploy] waiting for bridge..." -ForegroundColor Cyan
    $deadline = (Get-Date).AddSeconds(30)
    do {
-      Start-Sleep -Seconds 2
+      Start-Sleep -Seconds 1
       try { $s = Invoke-Bridge 'status' } catch { $s = 'down' }
    } while ($s -ne 'connected' -and (Get-Date) -lt $deadline)
    if ($s -eq 'connected') { Write-Host "[deploy] bridge back up" -ForegroundColor Green }

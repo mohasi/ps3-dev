@@ -13,6 +13,25 @@
 
 #define DBG_LOG "/dev_hdd0/tmp/dbg.txt"
 
+/* Optional live-log sink. If set, every logInfo/Warn/Error call hands the
+ * fully-formatted line (timestamp + level + body) to the sink AFTER the
+ * file write. Unset == file only. Per-PRX static — each plugin owns its
+ * own sink. simple-debug-bridge's bridge.h wires this to push to the host. */
+typedef void (*LogSinkFn)(const char *line, int len);
+static LogSinkFn logSink = 0;
+
+static inline void setLogSink(LogSinkFn fn) { logSink = fn; }
+
+/* Shared bounded-line struct used by every pre-connect log ring in this
+ * codebase (the producer-side ring in bridge.h and the bridge-side ring
+ * in server.h). One typedef, one max-line constant — no parallel copies. */
+#define LOG_LINE_MAX 256
+
+typedef struct {
+    int  len;
+    char data[LOG_LINE_MAX];
+} BacklogLine;
+
 /* Format "[YYYY-MM-DD HH:MM:SS] " into out (22 chars, no NUL). Returns the
  * byte count, or 0 if the RTC query fails — caller just skips the prefix
  * rather than dropping the log line. */
@@ -96,6 +115,8 @@ static inline void logEmit(const char *level, const char *fmt, va_list ap)
         cellFsWrite(fd, line, (uint64_t)(o + n), &written);
         cellFsClose(fd);
     }
+
+    if (logSink) logSink(line, o + n);
 }
 
 static inline void logInfo(const char *fmt, ...)

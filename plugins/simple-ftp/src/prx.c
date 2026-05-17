@@ -10,6 +10,7 @@
 #include "vsh.h"
 #include "syscall.h"
 #include "ftp.h"
+#include "bridge.h"
 
 SYS_MODULE_INFO(SimpleFtp, 0, 1, 1);
 SYS_MODULE_START(_start);
@@ -26,7 +27,8 @@ static void pluginThread(uint64_t arg)
      * syscall is idempotent-ish — a second call just returns an error,
      * which we log for visibility but otherwise ignore. */
     int64_t mrc = mountDevBlind();
-    logError("[ftp] mount /dev_blind rc 0x%x\n", (int)mrc);
+    if (mrc == 0) logInfo ("[ftp] mount /dev_blind rc 0x%x\n", (int)mrc);
+    else          logError("[ftp] mount /dev_blind rc 0x%x\n", (int)mrc);
 
     /* Wait for XMB readiness so the network stack is up. 60s budget. */
     int ticks = 0;
@@ -40,7 +42,7 @@ static void pluginThread(uint64_t arg)
     }
     logInfo("[ftp] xmb ready\n");
 
-    /* Hand control to the FTP listener thread. It owns the port 21 socket
+    /* Hand control to the FTP listener thread.
      * and spawns a session thread per accepted client. */
     sys_ppu_thread_t tid;
     sys_ppu_thread_create(&tid, ftpListenerThread, 0, 0x400, 0x1800,
@@ -52,6 +54,7 @@ static void pluginThread(uint64_t arg)
 int _start(uint64_t arg)
 {
     (void)arg;
+    registerWithBridge("plugin", "simple-ftp");
     logInfo("[ftp] _start\n");
 
     sys_ppu_thread_t tid;

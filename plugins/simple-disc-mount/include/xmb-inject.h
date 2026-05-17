@@ -256,7 +256,7 @@ static int patchCategoryGameXml(void)
     /* Already up to date? Verbatim match on the exact injectLine. */
     int injLen = strLen(injectLine);
     if (findBytes(buffer, len, injectLine, injLen) >= 0) {
-        logWarn("[sdm] category_game.xml already up to date\n");
+        logInfo("[sdm] category_game.xml already up to date\n");
         return PATCH_EXISTS;
     }
 

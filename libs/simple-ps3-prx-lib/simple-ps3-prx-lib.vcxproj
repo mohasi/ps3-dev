@@ -37,6 +37,8 @@
   <ItemGroup>
     <ClInclude Include="include\printf.h" />
     <ClInclude Include="include\dbg.h" />
+    <ClInclude Include="include\bridge.h" />
+    <ClInclude Include="include\thread.h" />
     <ClInclude Include="include\file.h" />
     <ClInclude Include="include\string-utilities.h" />
     <ClInclude Include="include\syscall.h" />

@@ -9,8 +9,9 @@ namespace DebugBridgeClient
 {
     // persistent duplex tcp connection to the ps3 simple-debug-bridge plugin
     // (port 8785). a background thread keeps one socket open and reconnects
-    // on drop. all callers go through SendCommand, which writes a framed
-    // request and reads a framed reply on the same socket.
+    // on drop. a dedicated reader thread demultiplexes the wire into either
+    //   - OK/ERR replies (handed to the in-flight SendCommand caller), or
+    //   - LOG frames (raised on LogReceived for the UI).
     public class Ps3Connection
     {
         public const string DefaultHost = "10.0.0.2";
@@ -19,13 +20,19 @@ namespace DebugBridgeClient
 
         public event EventHandler Connected;
         public event EventHandler Disconnected;
+        public event Action<string> LogReceived;
 
-        private readonly object sendLock = new object();
+        private readonly object sendLock  = new object();   // one request at a time
+        private readonly object replyLock = new object();
+        private readonly ManualResetEvent replyReady = new ManualResetEvent(false);
+        private Ps3Reply pendingReply;
+
         private volatile bool running;
         private volatile bool connected;
         private string host;
         private TcpClient    tcp;
         private NetworkStream stream;
+        private Thread readerThread;
 
         public string Host { get { return host; } }
         public bool IsConnected { get { return connected; } }
@@ -50,24 +57,34 @@ namespace DebugBridgeClient
             DropSocket();
         }
 
-        // send one command and return the next framed reply. an optional raw
-        // upload payload is appended after the newline (for save-file etc).
-        // on transport error returns an ERR reply and drops the socket so the
-        // auto-connect loop reconnects on the next ping.
+        // send one command and return the next OK/ERR reply. LOG frames are
+        // routed to LogReceived by the reader thread and do not satisfy this
+        // call. on transport error returns an ERR reply and drops the socket
+        // so the auto-connect loop reconnects on the next tick.
         public Ps3Reply SendCommand(string command, byte[] upload = null)
         {
             lock (sendLock)
             {
-                if (stream == null)
-                    return Ps3Reply.Error("not connected");
+                NetworkStream s = stream;
+                if (s == null) return Ps3Reply.Error("not connected");
                 try
                 {
-                    byte[] cmd = Encoding.ASCII.GetBytes(command + "\n");
-                    stream.Write(cmd, 0, cmd.Length);
-                    if (upload != null && upload.Length > 0)
-                        stream.Write(upload, 0, upload.Length);
+                    replyReady.Reset();
+                    pendingReply = null;
 
-                    return ReadFramedReply();
+                    byte[] cmd = Encoding.ASCII.GetBytes(command + "\n");
+                    s.Write(cmd, 0, cmd.Length);
+                    if (upload != null && upload.Length > 0)
+                        s.Write(upload, 0, upload.Length);
+
+                    if (!replyReady.WaitOne(60000, false))
+                    {
+                        DropSocket();
+                        return Ps3Reply.Error("reply timeout");
+                    }
+                    Ps3Reply r = pendingReply ?? Ps3Reply.Error("no reply");
+                    pendingReply = null;
+                    return r;
                 }
                 catch (Exception ex)
                 {
@@ -77,34 +94,62 @@ namespace DebugBridgeClient
             }
         }
 
-        // read "<STATUS> <n>\n" then exactly n bytes.
-        private Ps3Reply ReadFramedReply()
+        // reader thread: pulls framed messages off the socket and dispatches
+        // them. dies when the socket drops; AutoConnectLoop will reconnect.
+        private void ReaderLoop()
         {
-            string header = ReadHeaderLine();
-            int sp = header.IndexOf(' ');
-            if (sp < 0) throw new IOException("malformed reply header: " + header);
-            string status = header.Substring(0, sp);
-            int n;
-            if (!int.TryParse(header.Substring(sp + 1), out n) || n < 0)
-                throw new IOException("malformed reply length: " + header);
-
-            byte[] payload = new byte[n];
-            int off = 0;
-            while (off < n)
+            try
             {
-                int got = stream.Read(payload, off, n - off);
-                if (got <= 0) throw new IOException("connection closed mid-payload");
-                off += got;
+                while (running)
+                {
+                    NetworkStream s = stream;
+                    if (s == null) return;
+
+                    string header = ReadHeaderLine(s);
+                    int sp = header.IndexOf(' ');
+                    if (sp < 0) throw new IOException("malformed header: " + header);
+                    string tag = header.Substring(0, sp);
+                    int n;
+                    if (!int.TryParse(header.Substring(sp + 1), out n) || n < 0)
+                        throw new IOException("malformed length: " + header);
+
+                    byte[] payload = new byte[n];
+                    int off = 0;
+                    while (off < n)
+                    {
+                        int got = s.Read(payload, off, n - off);
+                        if (got <= 0) throw new IOException("closed mid-payload");
+                        off += got;
+                    }
+
+                    if (tag == "LOG")
+                    {
+                        var evt = LogReceived;
+                        if (evt != null) evt(Encoding.UTF8.GetString(payload));
+                    }
+                    else
+                    {
+                        // OK / ERR reply for whichever SendCommand is in flight.
+                        lock (replyLock)
+                        {
+                            pendingReply = new Ps3Reply(tag == "OK", payload);
+                            replyReady.Set();
+                        }
+                    }
+                }
             }
-            return new Ps3Reply(status == "OK", payload);
+            catch
+            {
+                DropSocket();
+            }
         }
 
-        private string ReadHeaderLine()
+        private string ReadHeaderLine(NetworkStream s)
         {
             var sb = new StringBuilder(32);
             for (;;)
             {
-                int b = stream.ReadByte();
+                int b = s.ReadByte();
                 if (b < 0) throw new IOException("connection closed before header");
                 if (b == '\n') return sb.ToString();
                 if (b != '\r') sb.Append((char)b);
@@ -118,6 +163,12 @@ namespace DebugBridgeClient
             try { if (tcp    != null) tcp.Close();    } catch { }
             stream = null;
             tcp = null;
+            // unblock any waiting SendCommand
+            lock (replyLock)
+            {
+                pendingReply = Ps3Reply.Error("disconnected");
+                replyReady.Set();
+            }
             if (connected)
             {
                 connected = false;
@@ -139,13 +190,13 @@ namespace DebugBridgeClient
                 }
                 t.EndConnect(ar);
                 t.NoDelay = true;
-                t.ReceiveTimeout = 60000;
+                t.ReceiveTimeout = 0; // reader blocks until LOG frames arrive
                 t.SendTimeout    = 60000;
-                lock (sendLock)
-                {
-                    tcp    = t;
-                    stream = t.GetStream();
-                }
+                tcp    = t;
+                stream = t.GetStream();
+
+                readerThread = new Thread(ReaderLoop) { IsBackground = true };
+                readerThread.Start();
                 return true;
             }
             catch { return false; }

@@ -32,13 +32,33 @@ Pair with the WPF companion in `tools/debug-bridge-client/`.
 
 ## Protocol
 
-Persistent duplex TCP socket. One client at a time; commands are issued
+Persistent duplex TCP socket. One host client at a time; commands are issued
 sequentially on the same connection. Each reply is length-framed:
 
 ```
 request:  <command> [args...]\n
 response: <STATUS> <n>\n<n bytes>
 ```
+
+The same listener also accepts **producer** connections from on-console
+plugins/apps. A producer's first line is the handshake:
+
+```
+REGISTER <plugin|app> <name>\n
+```
+
+After that the producer streams `LOG <n>\n<n bytes>` frames whenever its
+`dbg.h` sink fires. The bridge forwards each frame to the connected host as
+an out-of-band `LOG <n>\n<n bytes>` frame; the host renders it in the
+**Logs** tab. If no host is connected, the bridge buffers producer log
+lines in a bounded ring and replays them on the next host-connect, so the
+cold-boot window is not lost.
+
+Producers integrate via `bridge.h` in `simple-ps3-prx-lib`:
+`registerWithBridge("plugin", "simple-ftp")` from `_start()` installs the
+sink synchronously and spawns a background thread that handles connect +
+REGISTER + backlog drain. Plugin work runs in parallel — registration
+never blocks startup.
 
 `<STATUS>` is `OK` or `ERR`. `<n>` is the exact byte length of the payload
 that follows (no trailing newline). Text payloads are UTF-8 / ASCII; binary

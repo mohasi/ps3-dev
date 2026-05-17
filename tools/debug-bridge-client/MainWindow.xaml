@@ -80,23 +80,17 @@
             <MenuItem Header="Save File..." Click="OnSaveFile" />
             <MenuItem Header="Delete File..." Click="OnDeleteFile" />
          </MenuItem>
+         <MenuItem Header="View">
+            <MenuItem Header="Clear" Click="OnClear" />
+         </MenuItem>
       </Menu>
 
       <!-- main content with tabs -->
       <TabControl Grid.Row="1" Background="{StaticResource BgBase}" BorderBrush="{StaticResource BrBorder}" BorderThickness="3">
-         <!-- screen tab. canvas size is a pre-connect placeholder; OnConnected
-              resizes it to match the actual ps3 framebuffer reported by
-              display-info, so capture (x,y,w,h) is always screen-relative.
-              Viewbox does the scaling; Canvas does the absolute positioning. -->
-         <TabItem Header="Screen">
-            <Viewbox Stretch="Uniform">
-               <Canvas x:Name="screenCanvas" Width="1920" Height="1080" Background="#202020" />
-            </Viewbox>
-         </TabItem>
-
-         <!-- log tab -->
-         <TabItem Header="Log">
-            <TextBox x:Name="logBox"
+         <!-- bridge logs: host-side status + ps3 [sdb] lines forwarded from
+              simple-debug-bridge itself. -->
+         <TabItem Header="Activity">
+            <TextBox x:Name="activityBox"
                      Background="{StaticResource BgBase}"
                      Foreground="{StaticResource FgText}"
                      BorderThickness="0"
@@ -105,6 +99,30 @@
                      IsReadOnly="True"
                      VerticalScrollBarVisibility="Auto"
                      TextWrapping="NoWrap" />
+         </TabItem>
+
+         <!-- app / plugin logs: ps3 LOG frames forwarded from registered
+              producers (anything that isn't [sdb] — [sdm], [ftp], etc.). -->
+         <TabItem Header="Logs">
+            <TextBox x:Name="logsBox"
+                     Background="{StaticResource BgBase}"
+                     Foreground="{StaticResource FgText}"
+                     BorderThickness="0"
+                     FontFamily="Consolas"
+                     FontSize="12"
+                     IsReadOnly="True"
+                     VerticalScrollBarVisibility="Auto"
+                     TextWrapping="NoWrap" />
+         </TabItem>
+
+         <!-- screen tab. canvas size is a pre-connect placeholder; OnConnected
+              resizes it to match the actual ps3 framebuffer reported by
+              display-info, so capture (x,y,w,h) is always screen-relative.
+              Viewbox does the scaling; Canvas does the absolute positioning. -->
+         <TabItem Header="Screen">
+            <Viewbox Stretch="Uniform">
+               <Canvas x:Name="screenCanvas" Width="1920" Height="1080" Background="#202020" />
+            </Viewbox>
          </TabItem>
       </TabControl>
 

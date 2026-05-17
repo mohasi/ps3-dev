@@ -21,6 +21,7 @@ namespace DebugBridgeClient
             ps3 = new Ps3Connection();
             ps3.Connected    += (s, e) => OnConnected();
             ps3.Disconnected += (s, e) => SetConnectionStatus(false);
+            ps3.LogReceived  += OnPs3Log;
 
             httpBridge = new HttpBridge(ps3, AppendLog);
             // mirror http-driven captures to the canvas so any /capture call
@@ -206,6 +207,15 @@ namespace DebugBridgeClient
             RunCommand("save-file \"" + ps3Path + "\" " + payload.Length, payload);
         }
 
+        // wipe both log views and the screen pane so the next session starts
+        // from a clean slate — useful when reproducing a specific sequence.
+        private void OnClear(object sender, RoutedEventArgs e)
+        {
+            activityBox.Clear();
+            logsBox.Clear();
+            screenCanvas.Children.Clear();
+        }
+
         // minimal input prompt - avoids a separate xaml file for one textbox.
         private string PromptInput(string title, string label)
         {
@@ -271,13 +281,26 @@ namespace DebugBridgeClient
 
         private void AppendLog(string msg)
         {
+            AppendTo(activityBox, msg);
+        }
+
+        // every line that came in over the dbg.h LOG pipeline (from any
+        // ps3-side plugin including sdb itself) belongs in the plugin tab.
+        // the bridge tab is reserved for host-side command/response chatter.
+        private void OnPs3Log(string line)
+        {
+            AppendTo(logsBox, line.TrimEnd('\r', '\n'));
+        }
+
+        private void AppendTo(TextBox box, string msg)
+        {
             if (!Dispatcher.CheckAccess())
             {
-                Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action<string>(AppendLog), msg);
+                Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action<TextBox, string>(AppendTo), box, msg);
                 return;
             }
-            logBox.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + msg + Environment.NewLine);
-            logBox.ScrollToEnd();
+            box.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + msg + Environment.NewLine);
+            box.ScrollToEnd();
         }
     }
 }

@@ -44,4 +44,6 @@ Throughput lands at roughly 90% of IRISMAN's, which is the fastest of the three 
 
 ## Debug log
 
-Anything unusual — bind conflicts, accept errors, malformed commands, failed mounts — ends up in `/dev_hdd0/tmp/dbg.txt`, one timestamped line per event. If the plugin doesn't seem to be listening or a client is behaving strangely, pull that file over FTP (or over USB) and scan it.
+Anything unusual — bind conflicts, accept errors, malformed commands, failed mounts — is logged via `dbg.h` (`logInfo` / `logWarn` / `logError`), one timestamped, level-prefixed line per event.
+
+Every line is written atomically to `/dev_hdd0/tmp/dbg.txt` **and**, if `simple-debug-bridge` is installed, forwarded live to the `debug-bridge-client` Logs tab on the PC. The plugin calls `registerWithBridge("plugin", "simple-ftp")` from `_start()`, so startup chatter is buffered locally and drained as soon as the bridge link comes up — even early-boot races reach the host.

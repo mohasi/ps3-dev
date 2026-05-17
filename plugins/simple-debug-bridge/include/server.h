@@ -9,11 +9,13 @@
 
 #include <sys/ppu_thread.h>
 #include <sys/timer.h>
+#include <sys/synchronization.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netex/net.h>
 
 #include "dbg.h"
+#include "thread.h"
 #include "vsh.h"
 #include "syscall.h"
 #include "printf.h"
@@ -22,10 +24,11 @@
 #include "installer.h"
 #include "capture.h"
 
-#define SDB_PORT      8785
-#define SDB_BUF_MAX   512
-#define SDB_OK        "OK"
-#define SDB_ERR       "ERR"
+#define SDB_PORT          8785
+#define SDB_BUF_MAX       512
+#define SDB_LOG_BODY_MAX  4096
+#define SDB_OK            "OK"
+#define SDB_ERR           "ERR"
 
 // sys_sm_shutdown modes (psdevwiki) — see syscall.h sysPower()
 enum {
@@ -37,10 +40,32 @@ enum {
 // teardown state — only relevant when something calls sys_prx_stop_module
 // on us (hot reload during dev). on power-off / reboot lv2 tears the whole
 // system down externally.
-static volatile int      serverRunning  = 0;
+static volatile int      isServerRunning  = 0;
 static int               serverListenFd = -1;
-static int               serverClientFd = -1; // current connected client, if any
+static int               serverHostFd   = -1; // current connected host, if any
 static sys_ppu_thread_t  serverThreadId = 0;
+
+// serializes writes to the host fd. command replies happen on the host
+// thread; producer LOG frames are forwarded from producer threads. without
+// this lock a producer write can interleave bytes inside a host reply
+// payload and desync the host's framed reader.
+static sys_lwmutex_t     serverHostWriteMx;
+
+// active producer registry. one app slot (newest wins — if a second app
+// registers we drop the previous one) and N plugin slots. capture routing
+// will later prefer the app slot when present, but logs flow from any
+// registered producer to the host as soon as the host is connected.
+#define SDB_MAX_PLUGINS 8
+#define SDB_NAME_MAX    32
+
+typedef struct {
+    int  fd;
+    char name[SDB_NAME_MAX];
+} ProducerSlot;
+
+static ProducerSlot appSlot    = { -1, { 0 } };
+static ProducerSlot pluginSlots[SDB_MAX_PLUGINS];
+static sys_lwmutex_t serverRegistryMx;
 
 // send a full buffer, retrying partial writes. low-level primitive
 // underneath sendReply / sendStreamReply and used by callers that stream a
@@ -56,6 +81,71 @@ static inline int sendBytes(int fd, const void *buf, int len)
         remaining -= n;
     }
     return len;
+}
+
+// pre-connect ring buffer. producers (and the bridge itself) start logging
+// well before the host attaches; without a backlog those lines would be
+// silently dropped and the operator would never see plugin startup output
+// in the Logs tab. ring is sized for typical startup chatter; older
+// lines are overwritten if the host stays away too long.
+#define SDB_LOG_BACKLOG  64
+
+static BacklogLine logBacklog[SDB_LOG_BACKLOG];
+static int logBacklogHead  = 0;   // next write slot
+static int logBacklogCount = 0;   // valid entries (<= SDB_LOG_BACKLOG)
+
+static inline int sendLogFrame(int fd, const char *buf, int len)
+{
+    char hdr[32];
+    int hLen = snprintf(hdr, sizeof hdr, "LOG %d\n", len);
+    if (sendBytes(fd, hdr, hLen) < 0) return -1;
+    if (sendBytes(fd, buf, len) < 0) return -1;
+    return 0;
+}
+
+static inline void pushBacklog(const char *buf, int len)
+{
+    int take = len < LOG_LINE_MAX ? len : LOG_LINE_MAX;
+    BacklogLine *slot = &logBacklog[logBacklogHead];
+    slot->len = take;
+    for (int i = 0; i < take; i++) slot->data[i] = buf[i];
+    logBacklogHead = (logBacklogHead + 1) % SDB_LOG_BACKLOG;
+    if (logBacklogCount < SDB_LOG_BACKLOG) logBacklogCount++;
+}
+
+// drain pre-connect lines in chronological order. caller must hold
+// serverHostWriteMx and have serverHostFd set to the just-attached host.
+static inline void drainBacklog(int fd)
+{
+    if (logBacklogCount == 0) return;
+    int start = (logBacklogHead - logBacklogCount + SDB_LOG_BACKLOG) % SDB_LOG_BACKLOG;
+    for (int i = 0; i < logBacklogCount; i++) {
+        BacklogLine *slot = &logBacklog[(start + i) % SDB_LOG_BACKLOG];
+        if (sendLogFrame(fd, slot->data, slot->len) < 0) {
+            shutdown(fd, SHUT_RDWR);
+            break;
+        }
+    }
+    logBacklogCount = 0;
+    logBacklogHead  = 0;
+}
+
+// forward a LOG line from a producer thread to the host. takes the host
+// write mutex so the "LOG <n>\n<bytes>" frame never interleaves with a
+// reply to a host command. when no host is connected, queues into the
+// ring buffer so the lines are replayed on the next host-connect.
+static void forwardLogToHost(const char *buf, int len)
+{
+    sys_lwmutex_lock(&serverHostWriteMx, 0);
+    int fd = serverHostFd;
+    if (fd >= 0) {
+        if (sendLogFrame(fd, buf, len) < 0) {
+            shutdown(fd, SHUT_RDWR);
+        }
+    } else {
+        pushBacklog(buf, len);
+    }
+    sys_lwmutex_unlock(&serverHostWriteMx);
 }
 
 // every reply on the wire is "<status> <n>\n[<n bytes>]" where status is
@@ -82,7 +172,7 @@ static inline int sendReply(int fd, const char *status, const char *text)
 }
 
 // read one line from client (up to \n), null-terminates, returns length or -1
-static int serverRecvLine(int fd, char *buf, int maxLen)
+static int receiveLine(int fd, char *buf, int maxLen)
 {
     int off = 0;
     while (off < maxLen - 1) {
@@ -101,7 +191,7 @@ static int serverRecvLine(int fd, char *buf, int maxLen)
 }
 
 // match a command prefix, return pointer to args (after space) or NULL
-static inline const char *serverMatchCmd(const char *line, const char *cmd)
+static inline const char *matchCommand(const char *line, const char *cmd)
 {
     int i = 0;
     while (cmd[i]) {
@@ -332,33 +422,33 @@ static void cmdDeleteFile(int cli, const char *args)
 // dispatch one command from the client. returns 0 on success, -1 on send
 // failure (caller should drop the connection). power commands fire the
 // syscall directly — lv2 tears the whole system down.
-static int serverDispatch(int cli, char *buf)
+static int dispatchCommand(int cli, char *buf)
 {
     // skip logging ping — client polls it every few seconds and would
     // otherwise fill dbg.txt with noise.
-    if (!serverMatchCmd(buf, "ping")) {
+    if (!matchCommand(buf, "ping")) {
         logInfo("[sdb] cmd: %s\n", buf);
     }
 
-    if (serverMatchCmd(buf, "ping")) {
+    if (matchCommand(buf, "ping")) {
         return sendReply(cli, SDB_OK, "");
     }
-    if (serverMatchCmd(buf, "restart-ps3")) {
+    if (matchCommand(buf, "restart-ps3")) {
         sendReply(cli, SDB_OK, "rebooting");
         sysPower(POWER_REBOOT);
         return 0;
     }
-    if (serverMatchCmd(buf, "restart-xmb")) {
+    if (matchCommand(buf, "restart-xmb")) {
         sendReply(cli, SDB_OK, "restarting xmb");
         sysPower(POWER_VSH_REBOOT);
         return 0;
     }
-    if (serverMatchCmd(buf, "shutdown")) {
+    if (matchCommand(buf, "shutdown")) {
         sendReply(cli, SDB_OK, "shutting down");
         sysPower(POWER_SHUTDOWN);
         return 0;
     }
-    if (serverMatchCmd(buf, "display-info")) {
+    if (matchCommand(buf, "display-info")) {
         uint32_t w, h, pitch, depth;
         char     reply[96];
         captureDisplayInfo(&w, &h, &pitch, &depth);
@@ -366,7 +456,7 @@ static int serverDispatch(int cli, char *buf)
                  (unsigned)w, (unsigned)h, (unsigned)pitch, (unsigned)depth);
         return sendReply(cli, SDB_OK, reply);
     }
-    if (serverMatchCmd(buf, "vsh-plugin-list")) {
+    if (matchCommand(buf, "vsh-plugin-list")) {
         cmdVshPluginList(cli);
         return 0;
     }
@@ -376,19 +466,19 @@ static int serverDispatch(int cli, char *buf)
     uint32_t size;
     char  reply[128];
 
-    if ((args = serverMatchCmd(buf, "get-file")) != 0) {
+    if ((args = matchCommand(buf, "get-file")) != 0) {
         cmdGetFile(cli, args);
     }
-    else if ((args = serverMatchCmd(buf, "save-file")) != 0) {
+    else if ((args = matchCommand(buf, "save-file")) != 0) {
         cmdSaveFile(cli, args);
     }
-    else if ((args = serverMatchCmd(buf, "delete-file")) != 0) {
+    else if ((args = matchCommand(buf, "delete-file")) != 0) {
         cmdDeleteFile(cli, args);
     }
-    else if ((args = serverMatchCmd(buf, "capture")) != 0) {
+    else if ((args = matchCommand(buf, "capture")) != 0) {
         cmdCapture(cli, args);
     }
-    else if ((args = serverMatchCmd(buf, "vsh-plugin-install")) != 0) {
+    else if ((args = matchCommand(buf, "vsh-plugin-install")) != 0) {
         if (!parseNameAndSize(args, name, sizeof name, &size)) {
             sendReply(cli, SDB_ERR, "usage: vsh-plugin-install <name> <size>");
         } else if (pluginInstall(cli, name, size) < 0) {
@@ -398,7 +488,7 @@ static int serverDispatch(int cli, char *buf)
             sendReply(cli, SDB_OK, reply);
         }
     }
-    else if ((args = serverMatchCmd(buf, "vsh-plugin-uninstall")) != 0) {
+    else if ((args = matchCommand(buf, "vsh-plugin-uninstall")) != 0) {
         if (args[0] == '\0') {
             sendReply(cli, SDB_ERR, "usage: vsh-plugin-uninstall <name>");
         } else if (pluginUninstall(args) < 0) {
@@ -414,22 +504,178 @@ static int serverDispatch(int cli, char *buf)
     return 0;
 }
 
-// persistent client session: read framed commands (newline-terminated) and
-// send framed replies until the client disconnects or a send fails.
-static void serverHandleClient(int cli)
+// persistent host session: read framed commands (newline-terminated) and
+// send framed replies until the host disconnects or a send fails. each
+// dispatch grabs the host write mutex so a producer LOG forward cannot
+// splice bytes inside the reply frame.
+static void handleHostSession(int cli)
 {
     char buf[SDB_BUF_MAX];
-    while (serverRunning) {
-        int len = serverRecvLine(cli, buf, sizeof buf);
+    while (isServerRunning) {
+        int len = receiveLine(cli, buf, sizeof buf);
         if (len <= 0) return;
-        if (serverDispatch(cli, buf) < 0) return;
+        sys_lwmutex_lock(&serverHostWriteMx, 0);
+        int rc = dispatchCommand(cli, buf);
+        sys_lwmutex_unlock(&serverHostWriteMx);
+        if (rc < 0) return;
     }
+}
+
+static inline void copyProducerName(ProducerSlot *slot, const char *name)
+{
+    int i = 0;
+    while (i < SDB_NAME_MAX - 1 && name[i]) { slot->name[i] = name[i]; i++; }
+    slot->name[i] = '\0';
+}
+
+// register a producer in the app slot or a free plugin slot. on app
+// registration any previous app socket is shut down (newest wins). returns
+// the slot pointer, or NULL if no plugin slot was free.
+static ProducerSlot *registerProducer(int cli, int isApp, const char *name)
+{
+    ProducerSlot *slot = 0;
+    sys_lwmutex_lock(&serverRegistryMx, 0);
+
+    if (isApp) {
+        if (appSlot.fd >= 0) {
+            logWarn("[sdb] replacing app producer %s with %s\n", appSlot.name, name);
+            shutdown(appSlot.fd, SHUT_RDWR);
+        }
+        appSlot.fd = cli;
+        copyProducerName(&appSlot, name);
+        slot = &appSlot;
+    } else {
+        for (int i = 0; i < SDB_MAX_PLUGINS; i++) {
+            if (pluginSlots[i].fd < 0) {
+                pluginSlots[i].fd = cli;
+                copyProducerName(&pluginSlots[i], name);
+                slot = &pluginSlots[i];
+                break;
+            }
+        }
+    }
+
+    sys_lwmutex_unlock(&serverRegistryMx);
+    return slot;
+}
+
+static void unregisterProducer(ProducerSlot *slot)
+{
+    sys_lwmutex_lock(&serverRegistryMx, 0);
+    slot->fd = -1;
+    slot->name[0] = '\0';
+    sys_lwmutex_unlock(&serverRegistryMx);
+}
+
+// producer session: forward incoming "LOG <n>\n<bytes>" frames to the host
+// (if connected). also accepts "BYE\n" as a graceful disconnect signal.
+static void handleProducerSession(int cli, ProducerSlot *slot)
+{
+    char buf[SDB_BUF_MAX];
+    while (isServerRunning) {
+        int len = receiveLine(cli, buf, sizeof buf);
+        if (len <= 0) return;
+
+        const char *args;
+        if ((args = matchCommand(buf, "LOG")) != 0) {
+            uint64_t n = 0;
+            if (parseUInt64(args, &n) == 0 || n == 0 || n > SDB_LOG_BODY_MAX) {
+                logWarn("[sdb] producer %s: bad LOG frame\n", slot->name);
+                return;
+            }
+            char body[SDB_LOG_BODY_MAX];
+            int off = 0;
+            while (off < (int)n) {
+                int got = recv(cli, body + off, (int)n - off, 0);
+                if (got <= 0) return;
+                off += got;
+            }
+            forwardLogToHost(body, off);
+        }
+        else if (matchCommand(buf, "BYE")) {
+            return;
+        }
+        else {
+            logWarn("[sdb] producer %s: unknown frame: %s\n", slot->name, buf);
+        }
+    }
+}
+
+// per-connection thread arg: just the fd boxed as a uint64_t.
+static void runConnHandler(uint64_t arg)
+{
+    int cli = (int)arg;
+
+    // first line decides the role of this socket. expected forms:
+    //   "REGISTER plugin <name>\n"  — producer plugin
+    //   "REGISTER app <name>\n"     — producer app
+    //   anything else               — legacy host control session
+    char first[SDB_BUF_MAX];
+    int len = receiveLine(cli, first, sizeof first);
+    if (len <= 0) goto done;
+
+    const char *args = matchCommand(first, "REGISTER");
+    if (args) {
+        int isApp = 0;
+        const char *name = 0;
+        if ((name = matchCommand(args, "app")) != 0)    isApp = 1;
+        else if ((name = matchCommand(args, "plugin")) != 0) isApp = 0;
+
+        if (!name || !*name) {
+            logWarn("[sdb] bad REGISTER frame: %s\n", first);
+            goto done;
+        }
+        ProducerSlot *slot = registerProducer(cli, isApp, name);
+        if (!slot) {
+            logWarn("[sdb] no producer slot for %s\n", name);
+            goto done;
+        }
+        // producers only push LOG frames outbound and may go minutes
+        // between writes; the host-oriented 30s recv timeout from the
+        // accept loop would silently drop the slot. clear it so the
+        // producer stays registered until it actively disconnects.
+        struct timeval none = { 0, 0 };
+        setsockopt(cli, SOL_SOCKET, SO_RCVTIMEO, &none, sizeof none);
+        logInfo("[sdb] producer registered: %s %s\n", isApp ? "app" : "plugin", name);
+        handleProducerSession(cli, slot);
+        unregisterProducer(slot);
+        logInfo("[sdb] producer disconnected: %s\n", name);
+    }
+    else {
+        // single-host policy: reject a second host while one is connected.
+        if (serverHostFd >= 0) {
+            logWarn("[sdb] rejecting second host (already connected)\n");
+            sendReply(cli, SDB_ERR, "busy");
+        } else {
+            serverHostFd = cli;
+            // drain any logs buffered while no host was connected (plugin
+            // startup, bridge startup, producer registrations) so the
+            // Debug Logs tab shows the full history, not just post-connect.
+            sys_lwmutex_lock(&serverHostWriteMx, 0);
+            drainBacklog(cli);
+            sys_lwmutex_unlock(&serverHostWriteMx);
+            logInfo("[sdb] host connected\n");
+            // the first line we already consumed is a real command; dispatch
+            // it before entering the read loop.
+            sys_lwmutex_lock(&serverHostWriteMx, 0);
+            int rc = dispatchCommand(cli, first);
+            sys_lwmutex_unlock(&serverHostWriteMx);
+            if (rc >= 0) handleHostSession(cli);
+            serverHostFd = -1;
+            logInfo("[sdb] host disconnected\n");
+        }
+    }
+
+done:
+    shutdown(cli, SHUT_RDWR);
+    socketclose(cli);
+    sys_ppu_thread_exit(0);
 }
 
 // open a listening tcp socket on the given port, or -1 on any failure.
 // caller retries the whole thing — keeps socket+bind+listen atomic so we
 // never end up with a half-initialised fd lingering across retries.
-static int serverListen(uint16_t port)
+static int openListener(uint16_t port)
 {
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s < 0) return -1;
@@ -444,7 +690,7 @@ static int serverListen(uint16_t port)
     return s;
 }
 
-static void serverThread(uint64_t arg)
+static void runAcceptLoop(uint64_t arg)
 {
     (void)arg;
     logInfo("[sdb] server thread start\n");
@@ -452,7 +698,7 @@ static void serverThread(uint64_t arg)
     // wait for xmb readiness before binding
     int ticks = 0;
     while (!isXmbReady()) {
-        if (!serverRunning) {
+        if (!isServerRunning) {
             logInfo("[sdb] cancelled during xmb wait\n");
             sys_ppu_thread_exit(0);
             return;
@@ -469,11 +715,11 @@ static void serverThread(uint64_t arg)
     int fd      = -1;
     int retries = 0;
     while (fd < 0 && retries < 30) {
-        if (!serverRunning) {
+        if (!isServerRunning) {
             sys_ppu_thread_exit(0);
             return;
         }
-        fd = serverListen(SDB_PORT);
+        fd = openListener(SDB_PORT);
         if (fd < 0) {
             logWarn("[sdb] listen failed, retrying\n");
             sys_timer_sleep(2);
@@ -486,7 +732,7 @@ static void serverThread(uint64_t arg)
         return;
     }
 
-    // 1-second timeout so accept() wakes periodically to check serverRunning
+    // 1-second timeout so accept() wakes periodically to check isServerRunning
     struct timeval tv;
     tv.tv_sec = 1;
     tv.tv_usec = 0;
@@ -495,42 +741,31 @@ static void serverThread(uint64_t arg)
     serverListenFd = fd;
     logInfo("[sdb] listening on :%d\n", SDB_PORT);
 
-    while (serverRunning) {
+    while (isServerRunning) {
         struct sockaddr_in ra;
         socklen_t al = sizeof ra;
         int c = accept(fd, (struct sockaddr *)&ra, &al);
         if (c < 0) continue;
-        if (!serverRunning) {
+        if (!isServerRunning) {
             shutdown(c, SHUT_RDWR);
             socketclose(c);
             break;
         }
-        // single-client policy: reject a second host while one is connected.
-        // host's ping-driven reconnect heals the stale-socket case within a
-        // few seconds, so we don't need to boot the current client.
-        if (serverClientFd >= 0) {
-            logWarn("[sdb] rejecting second client (already connected)\n");
-            sendReply(c, SDB_ERR, "busy");
-            shutdown(c, SHUT_RDWR);
-            socketclose(c);
-            continue;
-        }
         // per-client recv timeout so a wedged peer (e.g. powered off mid-
         // session) doesn't keep the slot indefinitely; the connection will
-        // be dropped and the next host reconnect attempt accepted.
+        // be dropped and the next reconnect attempt accepted.
         struct timeval ct;
         ct.tv_sec  = 30;
         ct.tv_usec = 0;
         setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &ct, sizeof ct);
         setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &ct, sizeof ct);
 
-        serverClientFd = c;
-        logInfo("[sdb] client connected\n");
-        serverHandleClient(c);
-        serverClientFd = -1;
-        shutdown(c, SHUT_RDWR);
-        socketclose(c);
-        logInfo("[sdb] client disconnected\n");
+        // detached per-connection thread. handshake decides host vs producer
+        // role; host single-client enforcement lives inside the thread so
+        // producers can keep registering even while a host is connected.
+        sys_ppu_thread_t tid = 0;
+        spawnThread(&tid, runConnHandler, (uint64_t)c, THREAD_STACK_SIZE_16KB, "sdb_conn");
+        // detached — thread self-exits on disconnect and lv2 reclaims it.
     }
 
     socketclose(fd);
@@ -539,28 +774,54 @@ static void serverThread(uint64_t arg)
     sys_ppu_thread_exit(0);
 }
 
-// spawn the accept-loop thread.
-static void serverStart(void)
+// initialize state and mutexes, then spawn the accept-loop thread.
+static void startServer(void)
 {
-    serverRunning = 1;
+    isServerRunning = 1;
+
+    sys_lwmutex_attribute_t a;
+    sys_lwmutex_attribute_initialize(a);
+    // recursive: dispatchCommand runs under the host write mutex, and any
+    // logInfo inside it re-enters via the bridge's own LOG tee. without
+    // recursion that's an instant self-deadlock.
+    a.attr_recursive = SYS_SYNC_RECURSIVE;
+    sys_lwmutex_create(&serverHostWriteMx, &a);
+    a.attr_recursive = SYS_SYNC_NOT_RECURSIVE;
+    sys_lwmutex_create(&serverRegistryMx, &a);
+
+    appSlot.fd = -1;
+    appSlot.name[0] = '\0';
+    for (int i = 0; i < SDB_MAX_PLUGINS; i++) {
+        pluginSlots[i].fd = -1;
+        pluginSlots[i].name[0] = '\0';
+    }
+
+    // accept loop thread is joinable so stopServer can wait for clean
+    // teardown; per-connection threads (above) are detached.
     sys_ppu_thread_t tid = 0;
-    sys_ppu_thread_create(&tid, serverThread, 0, 0x400, 0x4000,
-                          SYS_PPU_THREAD_CREATE_JOINABLE, "sdb");
+    spawnJoinableThread(&tid, runAcceptLoop, 0, THREAD_STACK_SIZE_16KB, "sdb");
     serverThreadId = tid;
 }
 
 // stop the server and wait for the thread to exit. only called from _stop
 // (sys_prx_stop_module path) — never from the server thread itself, so no
 // self-join guard needed.
-static void serverStop(void)
+static void stopServer(void)
 {
-    logInfo("[sdb] serverStop\n");
-    serverRunning = 0;
+    logInfo("[sdb] stopServer\n");
+    isServerRunning = 0;
 
-    // wake any in-progress client recv
-    if (serverClientFd >= 0) {
-        shutdown(serverClientFd, SHUT_RDWR);
+    // wake any in-progress host recv
+    if (serverHostFd >= 0) {
+        shutdown(serverHostFd, SHUT_RDWR);
     }
+    // wake any in-progress producer recvs
+    sys_lwmutex_lock(&serverRegistryMx, 0);
+    if (appSlot.fd >= 0) shutdown(appSlot.fd, SHUT_RDWR);
+    for (int i = 0; i < SDB_MAX_PLUGINS; i++) {
+        if (pluginSlots[i].fd >= 0) shutdown(pluginSlots[i].fd, SHUT_RDWR);
+    }
+    sys_lwmutex_unlock(&serverRegistryMx);
     // shutdown listen socket to wake accept() immediately
     if (serverListenFd >= 0) {
         shutdown(serverListenFd, SHUT_RDWR);
@@ -572,5 +833,8 @@ static void serverStop(void)
         serverThreadId = 0;
     }
 
-    logInfo("[sdb] serverStop done\n");
+    sys_lwmutex_destroy(&serverHostWriteMx);
+    sys_lwmutex_destroy(&serverRegistryMx);
+
+    logInfo("[sdb] stopServer done\n");
 }

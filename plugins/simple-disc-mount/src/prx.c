@@ -23,6 +23,7 @@
 #include "cobra.h"
 #include "xmb-inject.h"
 #include "http.h"
+#include "bridge.h"
 
 SYS_MODULE_INFO(SimpleDiscMount, 0, 1, 1);
 SYS_MODULE_START(_start);
@@ -110,6 +111,7 @@ static void pluginThread(uint64_t arg)
 int _start(uint64_t arg)
 {
     (void)arg;
+    registerWithBridge("plugin", "simple-disc-mount");
     logInfo("[sdm] _start\n");
 
     sys_ppu_thread_t tid;

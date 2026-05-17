@@ -44,7 +44,7 @@ Place `.iso` files in `/dev_hdd0/PS3ISO/`. The menu regenerates on every boot, s
 
 ## Debug log
 
-All activity is logged to `/dev_hdd0/tmp/dbg.txt` with timestamps. If mounting doesn't work or the menu doesn't appear, check that file.
+All activity is logged via `dbg.h` (`logInfo` / `logWarn` / `logError`) with `[sdm]` tags. Each line is written atomically to `/dev_hdd0/tmp/dbg.txt` and, if `simple-debug-bridge` is installed, forwarded live to the `debug-bridge-client` Logs tab on the PC. The plugin calls `registerWithBridge("plugin", "simple-disc-mount")` from `_start()`, so startup chatter (XMB-wait, auto-mount, XML patching, HTTP listener bring-up) is buffered locally and drained as soon as the bridge link comes up.
 
 ## Requirements
 

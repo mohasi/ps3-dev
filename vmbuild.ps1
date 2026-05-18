@@ -1,5 +1,5 @@
 # vmbuild.ps1 - run a build inside the Win7 VM over SSH and stream output.
-# usage: vmbuild.ps1 <plugins|apps|tools> <name> [Build|Rebuild|Clean] [Release|Debug]
+# usage: vmbuild.ps1 <plugins|apps|tools|libs> <name> [Build|Rebuild|Clean] [Release|Debug]
 #
 # auto-starts the VM headless via VBoxManage if it isn't already running, then
 # waits for SSH to come up before invoking the build.
@@ -7,7 +7,7 @@
 # VM connection defaults can be overridden via env vars:
 #   PS3VM_USER, PS3VM_HOST, PS3VM_PORT, PS3VM_KEY, PS3VM_NAME
 param(
-   [Parameter(Mandatory)][ValidateSet('plugins','apps','tools')] [string]$Kind,
+   [Parameter(Mandatory)][ValidateSet('plugins','apps','tools','libs')] [string]$Kind,
    [Parameter(Mandatory)] [string]$Name,
    [ValidateSet('Build','Rebuild','Clean')] [string]$Target = 'Build',
    [ValidateSet('Release','Debug')] [string]$Config = 'Release',

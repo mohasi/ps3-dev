@@ -10,7 +10,7 @@
 #include "vsh.h"
 #include "syscall.h"
 #include "ftp.h"
-#include "bridge.h"
+#include "bridge-client.h"
 
 SYS_MODULE_INFO(SimpleFtp, 0, 1, 1);
 SYS_MODULE_START(_start);

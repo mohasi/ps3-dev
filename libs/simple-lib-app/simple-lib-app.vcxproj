@@ -8,7 +8,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A}</ProjectGuid>
-    <ProjectName>simple-ps3-lib</ProjectName>
+    <ProjectName>simple-lib-app</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
@@ -22,7 +22,7 @@
   <PropertyGroup>
     <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
-    <TargetName>libsimple-ps3-lib</TargetName>
+    <TargetName>libsimple-lib-app</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
     <ClCompile>

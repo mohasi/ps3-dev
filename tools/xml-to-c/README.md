@@ -1,7 +1,7 @@
 # xml-to-c
 
 Tiny .NET console app that turns a screen XML layout into a `.c` / `.h`
-pair compatible with `simple-ps3-lib`.
+pair compatible with `simple-lib-app`.
 
 Drop an XML onto `xml-to-c.exe` (or pass its path as argv). On success the
 generator writes `<name>.c` and `<name>.h` next to the input and exits silently.
@@ -119,7 +119,7 @@ output is what you wrote in the XML.
 
 ## Generated layout
 
-Emitted `.c` follows the `Screen` pattern from `simple-ps3-lib`:
+Emitted `.c` follows the `Screen` pattern from `simple-lib-app`:
 
 * opens fonts and loads textures in `<name>Init`, then initialises each
   drawable component

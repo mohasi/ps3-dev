@@ -54,7 +54,7 @@ an out-of-band `LOG <n>\n<n bytes>` frame; the host renders it in the
 lines in a bounded ring and replays them on the next host-connect, so the
 cold-boot window is not lost.
 
-Producers integrate via `bridge.h` in `simple-ps3-prx-lib`:
+Producers integrate via `bridge.h` in `simple-lib-plugin`:
 `registerWithBridge("plugin", "simple-ftp")` from `_start()` installs the
 sink synchronously and spawns a background thread that handles connect +
 REGISTER + backlog drain. Plugin work runs in parallel — registration
@@ -165,11 +165,11 @@ Layering:
 ```
 
 Generic (non-streaming) fs primitives — `readFile`, `writeFile`, `fileExists`,
-`makeDir`, `deleteFile` — live in `libs/simple-ps3-prx-lib/include/file.h` and
+`makeDir`, `deleteFile` — live in `libs/simple-lib-plugin/include/file.h` and
 are shared across plugins.
 
 Syscall wrappers (`sysPower`, `prxFinalizeSelf`) live in
-`libs/simple-ps3-prx-lib/include/syscall.h`.
+`libs/simple-lib-plugin/include/syscall.h`.
 
 ## Teardown
 

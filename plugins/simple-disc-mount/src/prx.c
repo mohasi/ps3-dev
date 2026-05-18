@@ -23,7 +23,7 @@
 #include "cobra.h"
 #include "xmb-inject.h"
 #include "http.h"
-#include "bridge.h"
+#include "bridge-client.h"
 
 SYS_MODULE_INFO(SimpleDiscMount, 0, 1, 1);
 SYS_MODULE_START(_start);

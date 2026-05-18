@@ -19,9 +19,10 @@ set "EXT="
 set "PLAT="
 if /I "%KIND%"=="plugins" ( set "EXT=vcxproj" & set "PLAT=PS3" )
 if /I "%KIND%"=="apps"    ( set "EXT=vcxproj" & set "PLAT=PS3" )
+if /I "%KIND%"=="libs"    ( set "EXT=vcxproj" & set "PLAT=PS3" )
 if /I "%KIND%"=="tools"   ( set "EXT=csproj"  & set "PLAT=AnyCPU" )
 if "%EXT%"=="" (
-   echo [build] unknown kind: %KIND% ^(must be plugins, apps, or tools^)
+   echo [build] unknown kind: %KIND% ^(must be plugins, apps, libs, or tools^)
    exit /b 2
 )
 

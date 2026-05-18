@@ -28,12 +28,12 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
     <ClCompile>
-      <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-ps3-prx-lib\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-plugin\include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <AdditionalOptions>-mprx -zgenprx -zgenstub %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>$(SolutionDir)libs\simple-ps3-prx-lib\bin\$(Configuration)\libsimple-ps3-prx-lib.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;$(SolutionDir)libs\libpaf_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)\libsimple-lib-core.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;$(SolutionDir)libs\libpaf_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     </ItemDefinitionGroup>
   <ItemGroup>

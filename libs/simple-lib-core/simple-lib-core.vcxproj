@@ -7,12 +7,12 @@
     </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{3B2E1A4F-7D2C-4E8A-9B11-5F9C8E6D4A21}</ProjectGuid>
-    <ProjectName>simple-ftp</ProjectName>
+    <ProjectGuid>{B2C3D4E5-6F7A-4B8C-9D0E-1F2A3B4C5D6E}</ProjectGuid>
+    <ProjectName>simple-lib-core</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <ConfigurationType>StaticLibrary</ConfigurationType>
     <PlatformToolset>GCC</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -22,30 +22,31 @@
   <PropertyGroup>
     <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
-    <ExtensionsToDeleteOnClean>*.obj;*.d;*.map;*.lst;*.pch;$(TargetPath);simple-ftp.sprx;$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
-    <TargetName>$(ProjectName).ppu</TargetName>
-    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+    <TargetName>libsimple-lib-core</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
     <ClCompile>
-      <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-plugin\include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>-fno-builtin-printf -fno-builtin-sprintf -fno-builtin-snprintf -fno-builtin-vsnprintf -nodefaultlibs</AdditionalOptions>
     </ClCompile>
-    <Link>
-      <AdditionalOptions>-mprx -zgenprx -zgenstub %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)\libsimple-lib-core.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\libm.a;$(SCE_PS3_ROOT)\target\ppu\lib\libio_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libc_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
-    </Link>
-    </ItemDefinitionGroup>
+  </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\prx.c" />
+    <ClCompile Include="src\printf.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\ftp.h" />
+    <ClInclude Include="include\printf.h" />
+    <ClInclude Include="include\dbg.h" />
+    <ClInclude Include="include\file.h" />
+    <ClInclude Include="include\thread.h" />
+    <ClInclude Include="include\string-utilities.h" />
+    <ClInclude Include="include\wire.h" />
+    <ClInclude Include="include\log-backlog.h" />
+    <ClInclude Include="include\bridge-client.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\ps3.targets" />
-  <Import Project="$(SolutionDir)common\prx.targets" />
 </Project>

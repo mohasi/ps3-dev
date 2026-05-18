@@ -54,6 +54,6 @@ Drop new `.png` files into `sprites/`. They're automatically included in the pro
 
 ## Dependencies
 
-- **simple-ps3-lib** — renderer, font, input, screen lifecycle, UI components
+- **simple-lib-app** — renderer, font, input, screen lifecycle, UI components
 - **sprite-packer** — build-time atlas generation
 - **xml-to-sfo** — build-time PARAM.SFO generation

@@ -5,7 +5,7 @@
 // a single tcp socket and reuses it for every command. each request is
 // "<cmd>[ args]\n" (with optional raw upload bytes after the newline for
 // upload commands like save-file). each reply is the framed format
-// "<STATUS> <n>\n[<n bytes>]" — see sendStreamReply().
+// "<STATUS> <n>\n[<n bytes>]" — see sendFrame() / sendFrameHeader() in wire.h.
 
 #include <sys/ppu_thread.h>
 #include <sys/timer.h>
@@ -20,6 +20,8 @@
 #include "syscall.h"
 #include "printf.h"
 #include "string-utilities.h"
+#include "wire.h"
+#include "log-backlog.h"
 #include "fileio.h"
 #include "installer.h"
 #include "capture.h"
@@ -68,66 +70,38 @@ static ProducerSlot pluginSlots[SDB_MAX_PLUGINS];
 static sys_lwmutex_t serverRegistryMx;
 
 // send a full buffer, retrying partial writes. low-level primitive
-// underneath sendReply / sendStreamReply and used by callers that stream a
-// known-size payload after sendStreamReply (captureSendRow, cmdVshPluginList).
-static inline int sendBytes(int fd, const void *buf, int len)
-{
-    const char *p = (const char *)buf;
-    int remaining = len;
-    while (remaining > 0) {
-        int n = send(fd, p, remaining, 0);
-        if (n <= 0) return -1;
-        p += n;
-        remaining -= n;
-    }
-    return len;
-}
+// underneath sendReply / sendFrame and used by callers that stream a
+// known-size payload after sendFrameHeader (captureSendRow, cmdVshPluginList).
+// sendBytes / sendFrameHeader / sendFrame / receiveLine come from wire.h.
 
 // pre-connect ring buffer. producers (and the bridge itself) start logging
 // well before the host attaches; without a backlog those lines would be
 // silently dropped and the operator would never see plugin startup output
-// in the Logs tab. ring is sized for typical startup chatter; older
-// lines are overwritten if the host stays away too long.
-#define SDB_LOG_BACKLOG  64
-
-static BacklogLine logBacklog[SDB_LOG_BACKLOG];
-static int logBacklogHead  = 0;   // next write slot
-static int logBacklogCount = 0;   // valid entries (<= SDB_LOG_BACKLOG)
-
-static inline int sendLogFrame(int fd, const char *buf, int len)
-{
-    char hdr[32];
-    int hLen = snprintf(hdr, sizeof hdr, "LOG %d\n", len);
-    if (sendBytes(fd, hdr, hLen) < 0) return -1;
-    if (sendBytes(fd, buf, len) < 0) return -1;
-    return 0;
-}
+// in the Logs tab. drained on host connect; older lines overwritten if the
+// host stays away too long.
+static LogBacklog logBacklog;
 
 static inline void pushBacklog(const char *buf, int len)
 {
-    int take = len < LOG_LINE_MAX ? len : LOG_LINE_MAX;
-    BacklogLine *slot = &logBacklog[logBacklogHead];
-    slot->len = take;
-    for (int i = 0; i < take; i++) slot->data[i] = buf[i];
-    logBacklogHead = (logBacklogHead + 1) % SDB_LOG_BACKLOG;
-    if (logBacklogCount < SDB_LOG_BACKLOG) logBacklogCount++;
+    pushLogBacklog(&logBacklog, buf, len);
+}
+
+// drain callback: forward each buffered line as a LOG frame to the host.
+static int sendBacklogToHost(const char *data, int len, void *user)
+{
+    int fd = *(int *)user;
+    if (sendFrame(fd, "LOG", data, len) < 0) {
+        shutdown(fd, SHUT_RDWR);
+        return -1;
+    }
+    return 0;
 }
 
 // drain pre-connect lines in chronological order. caller must hold
 // serverHostWriteMx and have serverHostFd set to the just-attached host.
 static inline void drainBacklog(int fd)
 {
-    if (logBacklogCount == 0) return;
-    int start = (logBacklogHead - logBacklogCount + SDB_LOG_BACKLOG) % SDB_LOG_BACKLOG;
-    for (int i = 0; i < logBacklogCount; i++) {
-        BacklogLine *slot = &logBacklog[(start + i) % SDB_LOG_BACKLOG];
-        if (sendLogFrame(fd, slot->data, slot->len) < 0) {
-            shutdown(fd, SHUT_RDWR);
-            break;
-        }
-    }
-    logBacklogCount = 0;
-    logBacklogHead  = 0;
+    drainLogBacklog(&logBacklog, sendBacklogToHost, &fd);
 }
 
 // forward a LOG line from a producer thread to the host. takes the host
@@ -139,7 +113,7 @@ static void forwardLogToHost(const char *buf, int len)
     sys_lwmutex_lock(&serverHostWriteMx, 0);
     int fd = serverHostFd;
     if (fd >= 0) {
-        if (sendLogFrame(fd, buf, len) < 0) {
+        if (sendFrame(fd, "LOG", buf, len) < 0) {
             shutdown(fd, SHUT_RDWR);
         }
     } else {
@@ -154,40 +128,12 @@ static void forwardLogToHost(const char *buf, int len)
 //
 //   sendReply       — c-string payload, length figured out internally.
 //                     covers empty replies (""), errors, and every text OK.
-//   sendStreamReply — write just the header for a known-size payload; caller
+//   sendFrameHeader — write just the header for a known-size payload; caller
 //                     follows up with sendBytes / sendFileWindow / captureRegion
 //                     to produce the n bytes (capture, get-file, vsh-plugin-list).
-static inline int sendStreamReply(int fd, const char *status, uint32_t len)
-{
-    char hdr[32];
-    int n = snprintf(hdr, sizeof hdr, "%s %u\n", status, (unsigned)len);
-    return sendBytes(fd, hdr, n);
-}
-
 static inline int sendReply(int fd, const char *status, const char *text)
 {
-    uint32_t len = (uint32_t)strLen(text);
-    if (sendStreamReply(fd, status, len) < 0) return -1;
-    return len ? sendBytes(fd, text, (int)len) : 0;
-}
-
-// read one line from client (up to \n), null-terminates, returns length or -1
-static int receiveLine(int fd, char *buf, int maxLen)
-{
-    int off = 0;
-    while (off < maxLen - 1) {
-        int n = recv(fd, buf + off, 1, 0);
-        if (n <= 0) return -1;
-        if (buf[off] == '\n') {
-            buf[off] = '\0';
-            // strip trailing \r
-            if (off > 0 && buf[off - 1] == '\r') buf[--off] = '\0';
-            return off;
-        }
-        off++;
-    }
-    buf[off] = '\0';
-    return off;
+    return sendFrame(fd, status, text, (int)strLen(text));
 }
 
 // match a command prefix, return pointer to args (after space) or NULL
@@ -229,7 +175,7 @@ static void cmdVshPluginList(int cli)
         off += (uint32_t)snprintf(payload + off, sizeof payload - off,
                                   "%u\t%s\t%s\n", (unsigned)ids[i], name, file);
     }
-    if (sendStreamReply(cli, SDB_OK, off) < 0) return;
+    if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
     if (off) sendBytes(cli, payload, (int)off);
 }
 
@@ -332,7 +278,7 @@ static void cmdGetFile(int cli, const char *args)
         return;
     }
 
-    if (sendStreamReply(cli, SDB_OK, (uint32_t)window) < 0) return;
+    if (sendFrameHeader(cli, SDB_OK, (uint32_t)window) < 0) return;
 
     if (window > 0 && sendFileWindow(cli, path, offset, (uint64_t)window) < 0) {
         // header already on the wire; client gets short read and reports it.
@@ -396,7 +342,7 @@ static void cmdCapture(int cli, const char *args)
     uint32_t cw = (x + w > dw) ? (dw - (uint32_t)x) : (uint32_t)w;
     uint32_t ch = (y + h > dh) ? (dh - (uint32_t)y) : (uint32_t)h;
 
-    if (sendStreamReply(cli, SDB_OK, cw * ch * 4) < 0) return;
+    if (sendFrameHeader(cli, SDB_OK, cw * ch * 4) < 0) return;
     captureRegion((uint32_t)x, (uint32_t)y, cw, ch, captureSendRow, &cli);
 }
 

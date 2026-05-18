@@ -11,8 +11,9 @@ ps3-dev/
 │   ├── npdrm.targets           shared NPDRM packaging post-build for apps
 │   └── prx.targets             shared PRX signing post-build for plugins
 ├── libs/
-│   ├── simple-ps3-lib/         static library for apps (gfx, font, audio, pad, screen, anim, ui)
-│   ├── simple-ps3-prx-lib/     static library for VSH plugins (printf, dbg, file, string-utilities, vsh)
+│   ├── simple-lib-core/        cross-context primitives (printf, dbg, file, thread, wire, log-backlog, bridge-client)
+│   ├── simple-lib-app/         static library for apps (gfx, font, audio, pad, screen, anim, ui)
+│   ├── simple-lib-plugin/     header-only PRX-only extras (syscall, vsh)
 │   ├── libvshtask_export_stub.a
 │   └── libvshmain_export_stub.a
 ├── apps/
@@ -43,18 +44,28 @@ App projects additionally import `common/npdrm.targets` which handles the full N
 
 ## Libraries
 
-### simple-ps3-lib
-Reusable static library for apps. Provides 2D rendering, font, audio, input,
-screen lifecycle, animation, color palette, file utilities, and UI components
-(label, breadcrumb, image, slice, checkbox, circle, line, rectangle, triangle).
-Apps link `libsimple-ps3-lib.a` and include headers from `libs/simple-ps3-lib/include/`.
+### simple-lib-core
+Cross-context primitives shared by both PRX plugins and apps: drop-in
+`printf`, leveled timestamped logging (`dbg`), cellFs helpers (`file`),
+PPU thread spawn (`thread`), string utilities, framed TCP protocol
+(`wire`), pre-connect log ring (`log-backlog`), and the producer-side
+bridge client (`bridge-client`). Built with `-fno-builtin-printf
+-nodefaultlibs` so it links safely into `vsh.self`. Must appear
+**before** SDK stubs in the link order or the PRX silently fails to
+load.
 
-### simple-ps3-prx-lib
-Static library for VSH plugins (PRX context). Compiled with `-fno-builtin-printf
--nodefaultlibs` for safe use inside `vsh.self`. Provides a drop-in printf
-replacement, debug logging, file helpers, string utilities, and VSH exports.
-Plugins link `libsimple-ps3-prx-lib.a` — it must appear **before** SDK stubs
-in the link order or the PRX silently fails to load.
+### simple-lib-app
+Reusable static library for apps. Provides 2D rendering, font, audio,
+input, screen lifecycle, animation, color palette, and UI components
+(label, breadcrumb, image, slice, checkbox, circle, line, rectangle,
+triangle). Apps link `libsimple-lib-app.a` and include headers from
+`libs/simple-lib-app/include/`. Built on top of `simple-lib-core`.
+
+### simple-lib-plugin
+Header-only library for the PRX-only extras: LV2 syscall trampolines
+(`syscall.h`) and VSH NID stubs (`vsh.h`). No archive output — plugins
+just add its `include/` path. All non-PRX-specific helpers live in
+`simple-lib-core`.
 
 ## Plugins
 

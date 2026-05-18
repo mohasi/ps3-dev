@@ -1,4 +1,4 @@
-﻿# simple-ps3-lib
+# simple-lib-app
 
 Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 
@@ -21,17 +21,17 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 
 ## Usage
 
-1. Build `simple-ps3-lib` first - produces `libsimple-ps3-lib.a` in `bin/Release/`.
+1. Build `simple-lib-app` first - produces `libsimple-lib-app.a` in `bin/Release/`.
 2. In your app's vcxproj:
-   - Add `$(SolutionDir)libs\simple-ps3-lib\include` to include directories.
-   - Link with `-L"$(SolutionDir)libs\simple-ps3-lib\bin\$(Configuration)" -lsimple-ps3-lib` in additional linker options.
+   - Add `$(SolutionDir)libs\simple-lib-app\include` to include directories.
+   - Link with `-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app` in additional linker options.
 3. Include headers as needed: `#include "gfx.h"`, `#include "font.h"`, `#include "ui/label.h"`, etc.
 
 ## Layout
 
 ```
-simple-ps3-lib/
-+-- simple-ps3-lib.vcxproj
+simple-lib-app/
++-- simple-lib-app.vcxproj
 +-- vpshader.cg             # RSX vertex shader source
 +-- fpshader.cg             # RSX fragment shader source
 +-- include/                # public headers
@@ -71,4 +71,8 @@ simple-ps3-lib/
 - Shaders (`vpshader.cg`, `fpshader.cg`) are compiled as custom build steps within this library. Consuming apps no longer need their own shader build steps.
 - `vorbis.c` is stb_vorbis (public domain), `#include`d directly by `audio.c` - not compiled separately.
 - UI components under `ui/` are self-contained drawing helpers. Header-only components (circle, image, line, rectangle, triangle) define inline draw functions; label and breadcrumb have separate implementation files.
-- This lib is independent of `simple-ps3-prx-lib`. Both contain their own copy of `file.h` since it is context-neutral.
+- This lib depends on `simple-lib-core` for the cross-context
+  primitives (printf, dbg, file, thread, string utilities, wire,
+  log-backlog, bridge-client). It does **not** depend on
+  `simple-lib-plugin` (PRX-only extras). A legacy local `file.h` is
+  still present here pending migration to the core copy.

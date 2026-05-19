@@ -530,13 +530,8 @@ static void handleProducerSession(int cli, ProducerSlot *slot)
                 return;
             }
             char body[SDB_LOG_BODY_MAX];
-            int off = 0;
-            while (off < (int)n) {
-                int got = recv(cli, body + off, (int)n - off, 0);
-                if (got <= 0) return;
-                off += got;
-            }
-            forwardLogToHost(body, off);
+            if (receiveExact(cli, body, (int)n) < 0) return;
+            forwardLogToHost(body, (int)n);
         }
         else if (matchCommand(buf, "BYE")) {
             return;

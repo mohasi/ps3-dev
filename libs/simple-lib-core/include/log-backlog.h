@@ -23,7 +23,7 @@ typedef struct {
 
 // callback fired once per buffered line during drain. return <0 to stop
 // the drain early (caller will reset the ring regardless).
-typedef int (*LogBacklogSink)(const char *data, int len, void *user);
+typedef int (*OnBacklogLine)(const char *data, int len, void *user);
 
 static inline void pushLogBacklog(LogBacklog *ring, const char *data, int len)
 {
@@ -35,13 +35,13 @@ static inline void pushLogBacklog(LogBacklog *ring, const char *data, int len)
    if (ring->count < LOG_BACKLOG_MAX) ring->count++;
 }
 
-static inline void drainLogBacklog(LogBacklog *ring, LogBacklogSink sink, void *user)
+static inline void drainLogBacklog(LogBacklog *ring, OnBacklogLine onLine, void *user)
 {
    if (ring->count == 0) return;
    int start = (ring->head - ring->count + LOG_BACKLOG_MAX) % LOG_BACKLOG_MAX;
    for (int i = 0; i < ring->count; i++) {
       BacklogLine *slot = &ring->lines[(start + i) % LOG_BACKLOG_MAX];
-      if (sink(slot->data, slot->len, user) < 0) break;
+      if (onLine(slot->data, slot->len, user) < 0) break;
    }
    ring->count = 0;
    ring->head  = 0;

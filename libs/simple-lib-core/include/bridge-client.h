@@ -13,12 +13,11 @@
  * Plugin work (FTP listener, disc-mount HTTP listener, ...) does NOT wait
  * for registration -- the registration thread runs in parallel.
  *
- * Connect retries are HARD-CAPPED at BRIDGE_CONNECT_TRIES (30 s total at
- * 200 ms cadence); the thread exits silently if the bridge never appears,
+ * Connect retries are HARD-CAPPED at BRIDGE_CONNECT_TRIES (10 s total at
+ * 500 ms cadence); the thread exits silently if the bridge never appears,
  * so there is no possibility of spamming the loopback indefinitely. */
 
 #include <stdint.h>
-#include <sys/timer.h>
 #include <sys/ppu_thread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -31,8 +30,8 @@
 #include "log-backlog.h"
 
 #define BRIDGE_LOOPBACK_PORT   8785
-#define BRIDGE_CONNECT_TRIES   150            // 150 * 200ms = 30s ceiling
-#define BRIDGE_RETRY_USEC      (200 * 1000)
+#define BRIDGE_CONNECT_TRIES   20             // 20 * 500ms = 10s ceiling
+#define BRIDGE_RETRY_MS        500
 
 // pre-connect line backlog. logInfo/Warn/Error fired during plugin startup
 // (xmb-ready wait, mounts, listener-retry races) happens before the TCP
@@ -47,19 +46,28 @@ typedef struct {
 
 static int bridgeSocket = -1;
 
+static inline int isBridgeConnected(void) { return bridgeSocket >= 0; }
+
+static inline void dropBridgeConnection(void)
+{
+   if (bridgeSocket >= 0) {
+      socketclose(bridgeSocket);
+      bridgeSocket = -1;
+   }
+}
+
 // log sink installed by registerWithBridge -- fires AFTER the dbg.txt
 // write so disk remains the source of truth. while the bridge socket isn't
 // up yet, queue into the local ring; once it is, push live.
 static inline void pushLogToBridge(const char *line, int len)
 {
-   if (bridgeSocket < 0) {
+   if (!isBridgeConnected()) {
       pushLogBacklog(&bridgeBacklog, line, len);
       return;
    }
-   if (sendFrame(bridgeSocket, "LOG", line, len) < 0) {
-      socketclose(bridgeSocket);
-      bridgeSocket = -1;
-   }
+
+   int success = sendFrame(bridgeSocket, "LOG", line, len) == 0;
+   if (!success) dropBridgeConnection();
 }
 
 // drain callback: send each buffered line through the now-live socket.
@@ -67,6 +75,28 @@ static int sendBacklogLine(const char *data, int len, void *user)
 {
    int socketFd = *(int *)user;
    return sendFrame(socketFd, "LOG", data, len);
+}
+
+// app-side request handler: bridge forwards host requests (capture today,
+// future host->app rpcs) over the same socket. for now nothing is wired up,
+// so any inbound line gets an immediate "not implemented" reply instead of
+// being silently dropped.
+static void runRequestHandler(uint64_t arg)
+{
+   (void)arg;
+   static const char notImplemented[] = "request not implemented";
+
+   while (isBridgeConnected()) {
+      char line[128];
+      int lineLength = receiveLine(bridgeSocket, line, sizeof line); // blocks
+      if (lineLength <= 0) break;
+
+      int success = sendFrame(bridgeSocket, "ERR", notImplemented, sizeof(notImplemented) - 1) == 0;
+      if (!success) break;
+   }
+
+   dropBridgeConnection();
+   exitThread();
 }
 
 // background thread: retries the connect until the bridge accepts (up to
@@ -82,31 +112,45 @@ static void runBridgeRegistration(uint64_t arg)
    address.sin_port        = htons(BRIDGE_LOOPBACK_PORT);
    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
+   // connect to bridge
    int connectedSocket = -1;
    for (int attempt = 0; attempt < BRIDGE_CONNECT_TRIES; attempt++) {
       connectedSocket = socket(AF_INET, SOCK_STREAM, 0);
-      if (connectedSocket >= 0 &&
-          connect(connectedSocket, (struct sockaddr *)&address, sizeof address) == 0) break;
-      if (connectedSocket >= 0) { socketclose(connectedSocket); connectedSocket = -1; }
-      sys_timer_usleep(BRIDGE_RETRY_USEC);
+      int opened    = connectedSocket >= 0;
+      int connected = opened && connect(connectedSocket, (struct sockaddr *)&address, sizeof address) == 0;
+      if (connected) break;
+      if (opened) { socketclose(connectedSocket); connectedSocket = -1; }
+      sleepMs(BRIDGE_RETRY_MS);
    }
-   if (connectedSocket < 0) { sys_ppu_thread_exit(0); return; }
+   if (connectedSocket < 0) goto done;
 
+   // register with bridge
    char handshake[128];
-   int handshakeLen = snprintf(handshake, sizeof handshake, "REGISTER %s %s\n",
-                               registration->kind, registration->name);
-   if (sendBytes(connectedSocket, handshake, handshakeLen) < 0) {
+   int handshakeLen = snprintf(handshake, sizeof handshake, "REGISTER %s %s\n", registration->kind, registration->name);
+   int success = sendBytes(connectedSocket, handshake, handshakeLen) == handshakeLen;
+   if (!success) {
       socketclose(connectedSocket);
-      sys_ppu_thread_exit(0);
-      return;
+      goto done;
    }
 
    bridgeSocket = connectedSocket;
    drainLogBacklog(&bridgeBacklog, sendBacklogLine, &bridgeSocket);
+
    // first line emitted through the sink -- confirms registration end-to-end
    // and gives the host a guaranteed marker even for silent plugins.
    logInfo("[%s] bridge link up\n", registration->name);
-   sys_ppu_thread_exit(0);
+
+   // only apps service inbound requests today (capture, future host->app rpcs).
+   // plugins never receive requests, so don't tie a thread up in a recv that
+   // will never wake.
+   int isApp = strcmp(registration->kind, "app") == 0;
+   if (isApp) {
+      sys_ppu_thread_t handlerThreadId = 0;
+      spawnThread(&handlerThreadId, runRequestHandler, 0, THREAD_STACK_SIZE_8KB, "sdb_req");
+   }
+
+done:
+   exitThread();
 }
 
 // fire-and-forget: spawn the registration thread and return immediately.
@@ -115,11 +159,11 @@ static void runBridgeRegistration(uint64_t arg)
 // the TCP connect get queued for replay after REGISTER.
 static inline void registerWithBridge(const char *kind, const char *name)
 {
-   if (bridgeSocket >= 0) return;
+   if (isBridgeConnected()) return;
 
-   setLogSink(pushLogToBridge);
+   setLogCallback(pushLogToBridge);
 
-   static BridgeRegistration registration;   // single-shot per plugin
+   static BridgeRegistration registration;   // single-shot per producer
    registration.kind = kind;
    registration.name = name;
 

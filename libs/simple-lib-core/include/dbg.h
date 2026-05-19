@@ -13,14 +13,15 @@
 
 #define DBG_LOG "/dev_hdd0/tmp/dbg.txt"
 
-/* Optional live-log sink. If set, every logInfo/Warn/Error call hands the
- * fully-formatted line (timestamp + level + body) to the sink AFTER the
- * file write. Unset == file only. Per-PRX static — each plugin owns its
- * own sink. simple-debug-bridge's bridge.h wires this to push to the host. */
-typedef void (*LogSinkFn)(const char *line, int len);
-static LogSinkFn logSink = 0;
+/* Optional live-log callback. If set, every logInfo/Warn/Error call hands
+ * the fully-formatted line (timestamp + level + body) to the callback
+ * AFTER the file write. Unset == file only. Per-PRX static — each plugin
+ * owns its own callback. simple-debug-bridge wires this to push to the
+ * host. */
+typedef void (*LogCallback)(const char *line, int len);
+static LogCallback logCallback = 0;
 
-static inline void setLogSink(LogSinkFn fn) { logSink = fn; }
+static inline void setLogCallback(LogCallback fn) { logCallback = fn; }
 
 /* Shared bounded-line struct used by every pre-connect log ring in this
  * codebase (the producer-side ring in bridge.h and the bridge-side ring
@@ -116,7 +117,7 @@ static inline void logEmit(const char *level, const char *fmt, va_list ap)
         cellFsClose(fd);
     }
 
-    if (logSink) logSink(line, o + n);
+    if (logCallback) logCallback(line, o + n);
 }
 
 static inline void logInfo(const char *fmt, ...)

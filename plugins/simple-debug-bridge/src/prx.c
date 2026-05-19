@@ -16,12 +16,12 @@ SYS_MODULE_STOP(_stop);
 int _start(uint64_t arg)
 {
     (void)arg;
-    // _start runs before the sink is installed, so this line is dbg.txt-only.
-    // everything after setLogSink is tee'd to the host via forwardLogToHost,
+    // _start runs before the callback is installed, so this line is dbg.txt-only.
+    // everything after setLogCallback is tee'd to the host via forwardLogToHost,
     // with pre-connect lines buffered in the server-side ring.
     logInfo("[sdb] _start\n");
     startServer();
-    setLogSink(forwardLogToHost);
+    setLogCallback(forwardLogToHost);
     return SYS_PRX_RESIDENT;
 }
 

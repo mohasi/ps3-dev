@@ -10,6 +10,7 @@
 #include "screen.h"
 #include "screens/home.h"
 #include "ui/stats.h"
+#include "bridge-client.h"
 
 #define PROCESS_PRIORITY_DEFAULT 1001
 #define PROCESS_STACK_SIZE_64KB  0x10000
@@ -23,6 +24,10 @@ int main(int argc, char **argv)
 
 	appRegisterExitCallback();
 	mountDevBlind();
+
+	initRtc();
+	initNet();
+	registerWithBridge("app", "file-manager");
 
 	if (initGfx(GFX_VSYNC_OFF) != 0) return 1;
 	if (initSfx() != 0) return 1;

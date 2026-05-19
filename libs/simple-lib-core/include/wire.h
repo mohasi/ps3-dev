@@ -31,6 +31,21 @@ static inline int sendBytes(int fd, const void *buf, int len)
    return len;
 }
 
+// read exactly len bytes into buf, blocking until satisfied. -1 if the
+// peer disconnects or errors mid-read. counterpart to sendBytes.
+static inline int receiveExact(int fd, void *buf, int len)
+{
+   char *p = (char *)buf;
+   int remaining = len;
+   while (remaining > 0) {
+      int n = recv(fd, p, remaining, 0);
+      if (n <= 0) return -1;
+      p += n;
+      remaining -= n;
+   }
+   return len;
+}
+
 // write just the "<verb> <len>\n" header. used when the caller streams the
 // payload bytes itself (sendBytes / sendFileWindow / captureRegion).
 static inline int sendFrameHeader(int fd, const char *verb, uint32_t len)

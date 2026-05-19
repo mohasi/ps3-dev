@@ -23,8 +23,9 @@
 #include "wire.h"
 #include "log-backlog.h"
 #include "fileio.h"
-#include "installer.h"
+#include "plugin.h"
 #include "capture.h"
+#include "pkg.h"
 
 #define SDB_PORT          8785
 #define SDB_BUF_MAX       512
@@ -433,7 +434,7 @@ static int dispatchCommand(int cli, char *buf)
     else if ((args = matchCommand(buf, "vsh-plugin-install")) != 0) {
         if (!parseNameAndSize(args, name, sizeof name, &size)) {
             sendReply(cli, SDB_ERR, "usage: vsh-plugin-install <name> <size>");
-        } else if (pluginInstall(cli, name, size) < 0) {
+        } else if (installPlugin(cli, name, size) < 0) {
             sendReply(cli, SDB_ERR, "install failed");
         } else {
             snprintf(reply, sizeof reply, "installed %s (%u bytes)", name, (unsigned)size);
@@ -443,11 +444,70 @@ static int dispatchCommand(int cli, char *buf)
     else if ((args = matchCommand(buf, "vsh-plugin-uninstall")) != 0) {
         if (args[0] == '\0') {
             sendReply(cli, SDB_ERR, "usage: vsh-plugin-uninstall <name>");
-        } else if (pluginUninstall(args) < 0) {
+        } else if (uninstallPlugin(args) < 0) {
             sendReply(cli, SDB_ERR, "uninstall failed");
         } else {
             snprintf(reply, sizeof reply, "uninstalled %s", args);
             sendReply(cli, SDB_OK, reply);
+        }
+    }
+    else if ((args = matchCommand(buf, "pkg-uninstall")) != 0) {
+        if (!isValidTitleId(args)) {
+            sendReply(cli, SDB_ERR, "usage: pkg-uninstall <TITLE_ID>");
+        } else {
+            uint64_t freed = 0;
+            int rc = uninstallPkg(args, &freed);
+            if (rc < 0) {
+                sendReply(cli, SDB_ERR, "uninstall failed");
+            } else if (rc > 0) {
+                sendReply(cli, SDB_ERR, "not installed");
+            } else {
+                snprintf(reply, sizeof reply, "uninstalled %s (%llu bytes)",
+                         args, (unsigned long long)freed);
+                sendReply(cli, SDB_OK, reply);
+            }
+        }
+    }
+    else if ((args = matchCommand(buf, "pkg-install")) != 0) {
+        // wire: "pkg-install <name> <clean> <size>". host shapes the URL
+        // params; HttpBridge appends `<size>` from the POST body length.
+        char  pkgName[SDB_NAME_MAX];
+        uint32_t clean = 0;
+        // reuse parseNameAndSize for the leading "<name> <clean>" pair,
+        // then take the trailing size by hand.
+        if (!parseNameAndSize(args, pkgName, sizeof pkgName, &clean)) {
+            sendReply(cli, SDB_ERR, "usage: pkg-install <name> <clean> <size>");
+        } else {
+            const char *tail = args;
+            while (*tail && *tail != ' ') tail++;          // skip name
+            while (*tail == ' ') tail++;
+            while (*tail && *tail != ' ') tail++;          // skip clean
+            while (*tail == ' ') tail++;
+            uint32_t size = 0;
+            int digits = 0;
+            while (*tail >= '0' && *tail <= '9') { size = size * 10 + (uint32_t)(*tail - '0'); tail++; digits++; }
+            if (digits == 0) {
+                sendReply(cli, SDB_ERR, "usage: pkg-install <name> <clean> <size>");
+            } else if (stagePkgUpload(cli, pkgName, size) < 0) {
+                sendReply(cli, SDB_ERR, "stage failed");
+            } else {
+                // staged ok — extract into /dev_hdd0/game/<TITLE_ID>/. read
+                // title-id from the pkg's PARAM.SFO so the host never has to
+                // know it. `clean` controls whether an existing install is
+                // wiped first (matches xmb "reinstall" behavior).
+                char pkgPath[FILE_PATH_MAX];
+                buildStagePath(pkgPath, sizeof pkgPath, pkgName);
+                char     titleId[PKG_TITLE_LEN + 1] = {0};
+                uint32_t files = 0;
+                uint64_t bytes = 0;
+                if (installPkg(pkgPath, (int)clean, titleId, &files, &bytes) < 0) {
+                    sendReply(cli, SDB_ERR, "extract failed");
+                } else {
+                    snprintf(reply, sizeof reply, "installed %s (%u files, %llu bytes)",
+                             titleId, (unsigned)files, (unsigned long long)bytes);
+                    sendReply(cli, SDB_OK, reply);
+                }
+            }
         }
     }
     else {

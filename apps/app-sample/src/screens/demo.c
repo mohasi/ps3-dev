@@ -28,7 +28,7 @@ static Label titleText;
 static Label wrapText;
 static Label ellipsisText;
 
-static void demoInit(void)
+static void initDemo(void)
 {
     initAnimatedSprite();
     initBars();
@@ -55,14 +55,14 @@ static void demoInit(void)
     setAnim(&anims, &colorT, 0.0f, 1.0f, 800, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
 }
 
-static void demoResume(void)
+static void resumeDemo(void)
 {
     resumeSfx(&sfxMakoto);
     resumeSfx(&bgm);
     resumeAnim(&anims);
 }
 
-static void demoUpdate(void)
+static void updateDemo(void)
 {
     updateAnim(&anims);
 
@@ -89,17 +89,17 @@ static void demoUpdate(void)
 
     if (pad.btn.select == BTN_PRESSED) {
         if (sidepanel.status == OVERLAY_VISIBLE)
-            overlayHide(&sidepanel);
+            hideOverlay(&sidepanel);
         else
-            overlayShow(&sidepanel);
+            showOverlay(&sidepanel);
     }
 
     updateBouncingBox();
     updateAnimatedSprite();
-    overlayUpdate(&sidepanel);
+    updateOverlay(&sidepanel);
 }
 
-static void demoDraw(void)
+static void drawDemo(void)
 {
     drawBars();
     drawBouncingBox();
@@ -116,23 +116,23 @@ static void demoDraw(void)
     circle.fill = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
     drawCircle(&circle);
 
-    overlayDraw(&sidepanel);
+    drawOverlay(&sidepanel);
 }
 
-static void demoSuspend(void)
+static void suspendDemo(void)
 {
     pauseSfx(&sfxMakoto);
     pauseSfx(&bgm);
     pauseAnim(&anims);
 }
 
-static void demoTerm(void)
+static void termDemo(void)
 {
-    overlayTerm(&sidepanel);
+    termOverlay(&sidepanel);
     cancelAllAnims(&anims);
     closeFont(&pop);
     freeSfx(&sfxMakoto);
     freeSfx(&bgm);
 }
 
-Screen demoScreen = { demoInit, demoResume, demoUpdate, demoDraw, demoSuspend, demoTerm, SCREEN_TERMINATED };
+Screen demoScreen = { initDemo, resumeDemo, updateDemo, drawDemo, suspendDemo, termDemo, SCREEN_TERMINATED };

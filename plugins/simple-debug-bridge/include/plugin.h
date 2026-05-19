@@ -131,7 +131,7 @@ static int setPluginLine(const char *name, PluginLineState state)
 }
 
 // install: recvFile -> canonical path, then enable in manifest.
-static int pluginInstall(int cli, const char *name, uint32_t size)
+static int installPlugin(int cli, const char *name, uint32_t size)
 {
     char path[FILE_PATH_MAX];
     pluginPath(path, sizeof path, name);
@@ -141,7 +141,7 @@ static int pluginInstall(int cli, const char *name, uint32_t size)
 }
 
 // uninstall: drop manifest entries, deleteFile (idempotent — missing file ok).
-static int pluginUninstall(const char *name)
+static int uninstallPlugin(const char *name)
 {
     char path[FILE_PATH_MAX];
     pluginPath(path, sizeof path, name);

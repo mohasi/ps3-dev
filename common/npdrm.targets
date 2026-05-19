@@ -12,7 +12,7 @@ copy /Y PARAM.SFO "$(OutDir)PARAM.SFO"
 copy /Y ICON0.PNG "$(OutDir)ICON0.PNG"
 "$(SCE_PS3_ROOT)\host-win32\bin\make_package_npdrm.exe" $(MSBuildProjectName).conf "$(OutDir)."
 if not exist "$(SolutionDir)out" mkdir "$(SolutionDir)out"
-move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\"</Command>
+move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\$(MSBuildProjectName).pkg"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
 </Project>

@@ -100,22 +100,22 @@ static const uint32_t palette[] = {
 #define CELL_SIZE 66
 #define CELL_GAP 4
 
-static void paletteInit(void)
+static void initPalette(void)
 {
     font = openSystemFont(FONT_POP);
     initLabel(&titleText, &font, GRID_X, 20, 300, AUTO, 32, COLOR_WHITE, TEXT_NOWRAP, "Colors");
 }
 
-static void paletteResume(void) {}
+static void resumePalette(void) {}
 
-static void paletteUpdate(void)
+static void updatePalette(void)
 {
     if (pad.btn.left == BTN_PRESSED) {
         popScreen();
     }
 }
 
-static void paletteDraw(void)
+static void drawPalette(void)
 {
     drawLabel(&titleText);
 
@@ -129,11 +129,11 @@ static void paletteDraw(void)
     }
 }
 
-static void paletteSuspend(void) {}
+static void suspendPalette(void) {}
 
-static void paletteTerm(void)
+static void termPalette(void)
 {
     closeFont(&font);
 }
 
-Screen paletteScreen = { paletteInit, paletteResume, paletteUpdate, paletteDraw, paletteSuspend, paletteTerm, SCREEN_TERMINATED };
+Screen paletteScreen = { initPalette, resumePalette, updatePalette, drawPalette, suspendPalette, termPalette, SCREEN_TERMINATED };

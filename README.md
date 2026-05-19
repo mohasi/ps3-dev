@@ -40,7 +40,31 @@ All PS3 vcxproj files import `common/ps3.targets` which provides:
 - `-Werror` (warnings as errors)
 - Custom clean that wipes `bin/` and `obj/` contents
 
-App projects additionally import `common/npdrm.targets` which handles the full NPDRM packaging pipeline (make_fself_npdrm → copy assets → make_package_npdrm → move .pkg to `out/`).
+App projects additionally import `common/npdrm.targets` which handles the full NPDRM packaging pipeline (make_fself_npdrm → copy assets → make_package_npdrm → move the resulting `.pkg` to `out/<projectname>.pkg`). The deterministic filename is what `deploy.ps1` relies on for app installs.
+
+## Build & deploy
+
+All PS3 builds run inside the Windows 7 VM via SSH (`dev/vmbuild.ps1`).
+The local Windows host never invokes the Sony SDK directly.
+
+```
+dev/vmbuild.ps1 <plugins|apps|libs|tools> <name> [Build|Rebuild|Clean] [Release|Debug]
+```
+
+`deploy.ps1` is the one-shot "build + install on the live PS3" entry point.
+It auto-detects whether `<name>` is a plugin or an app from the folder layout:
+
+```
+dev/deploy.ps1 simple-debug-bridge -RestartXmb   # plugin: -RestartXmb when self-replacing
+dev/deploy.ps1 file-manager                       # app:    restart-xmb is automatic
+dev/deploy.ps1 app-sample -NoClean                # app:    keep existing /dev_hdd0/game/<TID>/
+```
+
+Plugins are uploaded as `out/<name>.sprx` via `vsh-plugin-install`. Apps are
+uploaded as `out/<name>.pkg` via `pkg-install`, which extracts the package
+on-device (no XMB install dialog) into `/dev_hdd0/game/<TITLE_ID>/`. Both
+paths require `debug-bridge-client.exe` running on the host and the PS3
+bridge plugin reachable.
 
 ## Libraries
 

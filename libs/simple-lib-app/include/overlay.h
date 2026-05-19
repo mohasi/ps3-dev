@@ -19,8 +19,8 @@ typedef struct Overlay {
     OverlayStatus status;
 } Overlay;
 
-static inline void overlayShow(Overlay *o)   { if (o->status != OVERLAY_VISIBLE && o->show) o->show(); }
-static inline void overlayHide(Overlay *o)   { if (o->status == OVERLAY_VISIBLE && o->hide) o->hide(); }
-static inline void overlayUpdate(Overlay *o) { if (o->status == OVERLAY_VISIBLE && o->update) o->update(); }
-static inline void overlayDraw(Overlay *o)   { if (o->status == OVERLAY_VISIBLE && o->draw) o->draw(); }
-static inline void overlayTerm(Overlay *o)   { if (o->status != OVERLAY_TERMINATED && o->term) o->term(); }
+static inline void showOverlay(Overlay *o)   { if (o->status != OVERLAY_VISIBLE && o->show) o->show(); }
+static inline void hideOverlay(Overlay *o)   { if (o->status == OVERLAY_VISIBLE && o->hide) o->hide(); }
+static inline void updateOverlay(Overlay *o) { if (o->status == OVERLAY_VISIBLE && o->update) o->update(); }
+static inline void drawOverlay(Overlay *o)   { if (o->status == OVERLAY_VISIBLE && o->draw) o->draw(); }
+static inline void termOverlay(Overlay *o)   { if (o->status != OVERLAY_TERMINATED && o->term) o->term(); }

@@ -16,7 +16,7 @@ static GfxTexture sprites;
 static Image background;
 static Breadcrumb breadcrumb;
 
-static void homeInit(void)
+static void initHome(void)
 {
     // resources
     pop = openSystemFont(FONT_POP);
@@ -37,16 +37,16 @@ static void homeInit(void)
     initFileList(&pop, sprites, 177, 244, 1200, 74, 24, COLOR_WHITE, &breadcrumb);
 }
 
-static void homeResume(void) {}
+static void resumeHome(void) {}
 
-static void homeUpdate(void)
+static void updateHome(void)
 {
     updateClockWidget();
     updateFreeSpaceWidget();
     updateFileList();
 }
 
-static void homeDraw(void)
+static void drawHome(void)
 {
     drawImage(&background);
     drawBreadcrumb(&breadcrumb);
@@ -55,13 +55,13 @@ static void homeDraw(void)
     drawFileList();
 }
 
-static void homeSuspend(void) {}
+static void suspendHome(void) {}
 
-static void homeTerm(void)
+static void termHome(void)
 {
     termFileList();
     termBreadcrumb(&breadcrumb);
     closeFont(&pop);
 }
 
-Screen homeScreen = { homeInit, homeResume, homeUpdate, homeDraw, homeSuspend, homeTerm, SCREEN_TERMINATED };
+Screen homeScreen = { initHome, resumeHome, updateHome, drawHome, suspendHome, termHome, SCREEN_TERMINATED };

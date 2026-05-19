@@ -26,6 +26,8 @@ Pair with the WPF companion in `tools/debug-bridge-client/`.
 | `vsh-plugin-disable <name>` | 🔲 | ensure exactly one commented line for `<name>` in `boot_plugins.txt` |
 | `vsh-plugin-install <name> <size>` | ✅ | upload `<size>` bytes to `/dev_hdd0/plugins/<name>.sprx`, then `enable`. Thin wrapper over `save-file` + `setPluginLine(ACTIVE)`. |
 | `vsh-plugin-uninstall <name>` | ✅ | remove every line referencing `<name>` from `boot_plugins.txt`, then `delete-file /dev_hdd0/plugins/<name>.sprx`. Thin wrapper over `setPluginLine(ABSENT)` + `delete-file`. |
+| `pkg-install <name> <clean> <size>` | ✅ | upload `<size>` bytes to `/dev_hdd0/packages/<name>.pkg`, parse `PARAM.SFO` for `TITLE_ID`, optionally wipe `/dev_hdd0/game/<TITLE_ID>/` if `clean=1`, then extract the pkg there. **Debug-format pkgs only** (`pkg_rev_type == 0x00000001`). No XMB install dialog. Reply: `OK installed <TITLE_ID> (<n> files, <bytes> bytes)`. Run `restart-xmb` after to refresh the Games column. |
+| `pkg-uninstall <TITLE_ID>` | ✅ | recursive delete of `/dev_hdd0/game/<TITLE_ID>/`. Reply: `OK uninstalled <TITLE_ID> (<bytes> bytes)`. |
 | `get-file <path> [offset] [length]` | ✅ | stream raw bytes back. Payload is the requested file window. `length=0` (or omitted) means "to end of file". |
 | `save-file <path> <size>` | ✅ | upload `<size>` bytes to `<path>` (truncating). Parent directory must already exist — use a separate `mkdir`-equivalent if needed. |
 | `delete-file <path>` | ✅ | unlink `<path>`. Idempotent: missing file returns `OK`. |
@@ -130,6 +132,7 @@ Effects:
 |---|---|
 | `vsh-plugin-load <name> <size>` | `/dev_hdd0/tmp/sdb/<name>.sprx` (transient — `tmp` is volatile) |
 | `vsh-plugin-install <name> <size>` | `/dev_hdd0/plugins/<name>.sprx` (persistent) |
+| `pkg-install <name> ...` | `/dev_hdd0/packages/<name>.pkg` (staged), then extracted into `/dev_hdd0/game/<TITLE_ID>/` |
 
 `vsh-plugin-unload <name>` will best-effort delete `/dev_hdd0/tmp/sdb/<name>.sprx`
 if it exists (cleanup of transient uploads). `/plugins/` files are never
@@ -150,7 +153,8 @@ simple-debug-bridge/
 ├── include/
 │   ├── server.h            # accept loop, command dispatch, teardown
 │   ├── fileio.h            # socket-coupled file streaming (recvFile / sendFileWindow)
-│   └── installer.h         # plugin install/uninstall — wrappers over fileio + file.h
+│   ├── plugin.h            # vsh plugin install/uninstall + boot_plugins.txt edits
+│   └── pkg.h               # debug-format .pkg parser + extractor (sha1 keystream cipher)
 ├── simple-debug-bridge.vcxproj
 └── README.md
 ```
@@ -160,8 +164,10 @@ Layering:
 ```
   server.h       ← wire protocol, command dispatch
      ├── fileio.h        socket«fs streaming (recvFile, sendFileWindow)
-     └── installer.h     pluginInstall / pluginUninstall
-                       └─ wraps fileio.recvFile + file.deleteFile + manifest edit
+     ├── plugin.h        installPlugin / uninstallPlugin
+     │                  └─ wraps fileio.recvFile + file.deleteFile + manifest edit
+     └── pkg.h           installPkg / uninstallPkg / extractPkg
+                        └─ self-contained debug-pkg parser (header, sha1 cipher, file table, sfo)
 ```
 
 Generic (non-streaming) fs primitives — `readFile`, `writeFile`, `fileExists`,

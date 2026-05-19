@@ -3,6 +3,22 @@
 // Returns length of a string.
 static inline int strLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 
+// Byte-wise copy. Use instead of libc memcpy in code that links against a
+// stripped libc (e.g. vsh prx imports — memcpy is not exported there).
+static inline void memCopy(void *dst, const void *src, int n)
+{
+    unsigned char *d = (unsigned char *)dst;
+    const unsigned char *s = (const unsigned char *)src;
+    for (int i = 0; i < n; i++) d[i] = s[i];
+}
+
+// Strict string equality. Same reason as memCopy: avoids libc strcmp.
+static inline int strEq(const char *a, const char *b)
+{
+    while (*a && *b && *a == *b) { a++; b++; }
+    return *a == *b;
+}
+
 // Case-insensitive string comparison.
 static inline int strCmpICase(const char *a, const char *b)
 {

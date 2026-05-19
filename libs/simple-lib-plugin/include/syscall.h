@@ -130,7 +130,7 @@ static inline void sysPower(uint64_t mode)
 
 // lv2 syscall 461 - sys_prx_get_module_id_by_address.
 // returns the prx id of the module containing the given address.
-static inline int32_t prxGetModuleIdByAddress(void *addr)
+static inline int32_t getPrxModuleIdByAddress(void *addr)
 {
     return (int32_t)scCall1(461, (uint64_t)(uintptr_t)addr);
 }
@@ -141,7 +141,7 @@ static inline int32_t prxGetModuleIdByAddress(void *addr)
 static inline void prxFinalizeSelf(void)
 {
     static uint64_t meminfo[5] = { 0x28, 2, 0, 0, 0 };
-    int32_t prx = prxGetModuleIdByAddress((void *)prxFinalizeSelf);
+    int32_t prx = getPrxModuleIdByAddress((void *)prxFinalizeSelf);
     (void)scCall3(482, (uint64_t)prx, 0, (uint64_t)(uintptr_t)meminfo);
 }
 

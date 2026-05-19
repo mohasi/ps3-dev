@@ -379,18 +379,24 @@ static int dispatchCommand(int cli, char *buf)
     if (matchCommand(buf, "ping")) {
         return sendReply(cli, SDB_OK, "");
     }
+    // vsh flags an improper shutdown on next boot unless /dev_hdd0/tmp/turnoff
+    // is removed before sys_sm_shutdown. xai_plugin / evilnat cfw power options
+    // do the same thing — see apps/xai_plugin/xai_plugin/functions.cpp rebootXMB().
     if (matchCommand(buf, "restart-ps3")) {
         sendReply(cli, SDB_OK, "rebooting");
+        cellFsUnlink("/dev_hdd0/tmp/turnoff");
         sysPower(POWER_REBOOT);
         return 0;
     }
     if (matchCommand(buf, "restart-xmb")) {
         sendReply(cli, SDB_OK, "restarting xmb");
+        cellFsUnlink("/dev_hdd0/tmp/turnoff");
         sysPower(POWER_VSH_REBOOT);
         return 0;
     }
     if (matchCommand(buf, "shutdown")) {
         sendReply(cli, SDB_OK, "shutting down");
+        cellFsUnlink("/dev_hdd0/tmp/turnoff");
         sysPower(POWER_SHUTDOWN);
         return 0;
     }

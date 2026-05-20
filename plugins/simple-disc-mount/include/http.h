@@ -1,8 +1,8 @@
 #pragma once
 
-/* HTTP listener that intercepts XMB menu clicks and mounts ISOs via Cobra.
- * webrender_plugin GETs http://127.0.0.1:8947/mount/<full-path> when the
- * user presses X on an ISO item. */
+// HTTP listener that intercepts XMB menu clicks and mounts ISOs via Cobra.
+// webrender_plugin GETs http://127.0.0.1:8947/mount/<full-path> when the
+// user presses X on an ISO item.
 
 #include <sys/ppu_thread.h>
 #include <sys/timer.h>
@@ -22,10 +22,10 @@
 
 static const char *pathLastMount = "/dev_hdd0/tmp/sdm_last.txt";
 
-/* Tiny HTML page that closes the webrender browser as soon as it loads.
- * Sent on every served request — success and bail-out paths alike — so the
- * page never dangles in front of the user. Content-Length must match the
- * body exactly or some clients hang waiting for more bytes. */
+// Tiny HTML page that closes the webrender browser as soon as it loads.
+// Sent on every served request — success and bail-out paths alike — so the
+// page never dangles in front of the user. Content-Length must match the
+// body exactly or some clients hang waiting for more bytes.
 static const char httpRespAutoClose[] =
     "HTTP/1.1 200 OK\r\n"
     "Content-Type: text/html\r\n"
@@ -39,10 +39,10 @@ static void httpWriteLastMount(const char *path)
     writeFile(pathLastMount, path, (uint64_t)strLen(path));
 }
 
-/* Parses the request in `buf` and, if it's a well-formed mount URL whose
- * target exists, fires cobraMountIso. All log/notify side-effects live here.
- * Returns nothing — caller always sends the auto-close response so the
- * webrender browser never dangles, regardless of which bail path we take. */
+// Parses the request in `buf` and, if it's a well-formed mount URL whose
+// target exists, fires cobraMountIso. All log/notify side-effects live here.
+// Returns nothing — caller always sends the auto-close response so the
+// webrender browser never dangles, regardless of which bail path we take.
 static void httpParseAndMount(const char *buf, int off)
 {
     static const char prefix[] = "GET /mount/";
@@ -62,7 +62,7 @@ static void httpParseAndMount(const char *buf, int off)
         return;
     }
 
-    if (cobraMountIso(path) == SUCCESS) {
+    if (cobraMountIso(path) == 0) {
         httpWriteLastMount(path);
         logInfo("[sdm] mounted: %s\n", path);
         vshNotify("Disc mounted.");
@@ -71,21 +71,21 @@ static void httpParseAndMount(const char *buf, int off)
     }
 }
 
-static void httpHandle(int cli)
+static void httpHandle(int clientFd)
 {
     char buf[SDM_BUF_MAX];
     int off = 0;
     while (off < (int)sizeof(buf) - 1) {
-        int n = recv(cli, buf + off, sizeof(buf) - 1 - off, 0);
-        if (n <= 0) return;     /* dead socket — no point trying to respond */
-        off += n;
+        int got = recv(clientFd, buf + off, sizeof(buf) - 1 - off, 0);
+        if (got <= 0) return;     // dead socket — no point trying to respond
+        off += got;
         buf[off] = '\0';
         if (off >= 4 && buf[off-4] == '\r' && buf[off-3] == '\n' &&
             buf[off-2] == '\r' && buf[off-1] == '\n') break;
     }
 
     httpParseAndMount(buf, off);
-    send(cli, httpRespAutoClose, sizeof(httpRespAutoClose) - 1, 0);
+    send(clientFd, httpRespAutoClose, sizeof(httpRespAutoClose) - 1, 0);
 }
 
 static void httpListenerThread(uint64_t arg)
@@ -93,33 +93,33 @@ static void httpListenerThread(uint64_t arg)
     (void)arg;
     logInfo("[sdm] http thread start\n");
 
-    int fd = -1;
+    int listenFd = -1;
     int retries = 0;
-    while (fd < 0 && retries < 30) {
-        fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (fd < 0) { sys_timer_sleep(2); retries++; }
+    while (listenFd < 0 && retries < 30) {
+        listenFd = socket(AF_INET, SOCK_STREAM, 0);
+        if (listenFd < 0) { sys_timer_sleep(2); retries++; }
     }
-    if (fd < 0) { logError("[sdm] socket failed\n"); sys_ppu_thread_exit(0); return; }
+    if (listenFd < 0) { logError("[sdm] socket failed\n"); sys_ppu_thread_exit(0); return; }
 
-    struct sockaddr_in a;
-    a.sin_family      = AF_INET;
-    a.sin_port        = htons(SDM_PORT);
-    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    struct sockaddr_in addr;
+    addr.sin_family      = AF_INET;
+    addr.sin_port        = htons(SDM_PORT);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     retries = 0;
-    while (bind(fd, (struct sockaddr *)&a, sizeof a) < 0) {
+    while (bind(listenFd, (struct sockaddr *)&addr, sizeof addr) < 0) {
         if (++retries > 30) {
             logError("[sdm] bind failed\n");
-            socketclose(fd);
+            socketclose(listenFd);
             sys_ppu_thread_exit(0);
             return;
         }
 
         sys_timer_sleep(2);
     }
-    if (listen(fd, 2) < 0) {
+    if (listen(listenFd, 2) < 0) {
         logError("[sdm] listen failed\n");
-        socketclose(fd);
+        socketclose(listenFd);
         sys_ppu_thread_exit(0);
         return;
     }
@@ -127,12 +127,12 @@ static void httpListenerThread(uint64_t arg)
     logInfo("[sdm] listening on :%d\n", SDM_PORT);
 
     for (;;) {
-        socklen_t rl = sizeof a;
-        int c = accept(fd, (struct sockaddr *)&a, &rl);
-        if (c < 0) { sys_timer_usleep(100000); continue; }
-        httpHandle(c);
-        shutdown(c, SHUT_RDWR);
-        socketclose(c);
+        socklen_t remoteAddrLen = sizeof addr;
+        int clientFd = accept(listenFd, (struct sockaddr *)&addr, &remoteAddrLen);
+        if (clientFd < 0) { sys_timer_usleep(100000); continue; }
+        httpHandle(clientFd);
+        shutdown(clientFd, SHUT_RDWR);
+        socketclose(clientFd);
     }
 }
 

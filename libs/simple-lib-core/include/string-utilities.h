@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 // Returns length of a string.
 static inline int strLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 
@@ -138,4 +140,23 @@ static inline int intToDec(int v, char *out)
     int n = t;
     while (t--) *out++ = tmp[t];
     return n;
+}
+
+// NUL-terminated copy bounded by cap. Truncates rather than overruns.
+static inline void strCopy(char *dst, int cap, const char *src)
+{
+    int i = 0;
+    while (i < cap - 1 && src[i]) { dst[i] = src[i]; i++; }
+    dst[i] = 0;
+}
+
+// Appends decimal uint64_t to buf at offset o; returns new offset.
+static inline int appendUint64(char *buf, int cap, int o, uint64_t v)
+{
+    char num[24];
+    int t = 0;
+    if (v == 0) num[t++] = '0';
+    else while (v) { num[t++] = (char)('0' + v % 10); v /= 10; }
+    while (t-- && o < cap) buf[o++] = num[t];
+    return o;
 }

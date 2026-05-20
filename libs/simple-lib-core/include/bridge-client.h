@@ -1,21 +1,21 @@
 #pragma once
 
-/* simple-debug-bridge producer client.
- *
- * Plugins and apps call registerWithBridge() once at startup. The log sink
- * is installed synchronously so any log emitted from that moment on is
- * captured. A background thread:
- *   1. opens a loopback TCP socket to the bridge on port 8785, retrying
- *      until the bridge listener is up (cold-boot race);
- *   2. sends the handshake "REGISTER <kind> <name>\n"; and
- *   3. drains the pre-connect line backlog, then flips to live forwarding.
- *
- * Plugin work (FTP listener, disc-mount HTTP listener, ...) does NOT wait
- * for registration -- the registration thread runs in parallel.
- *
- * Connect retries are HARD-CAPPED at BRIDGE_CONNECT_TRIES (10 s total at
- * 500 ms cadence); the thread exits silently if the bridge never appears,
- * so there is no possibility of spamming the loopback indefinitely. */
+// simple-debug-bridge producer client.
+//
+// Plugins and apps call registerWithBridge() once at startup. The log sink
+// is installed synchronously so any log emitted from that moment on is
+// captured. A background thread:
+//   1. opens a loopback TCP socket to the bridge on port 8785, retrying
+//      until the bridge listener is up (cold-boot race);
+//   2. sends the handshake "REGISTER <kind> <name>\n"; and
+//   3. drains the pre-connect line backlog, then flips to live forwarding.
+//
+// Plugin work (FTP listener, disc-mount HTTP listener, ...) does NOT wait
+// for registration -- the registration thread runs in parallel.
+//
+// Connect retries are HARD-CAPPED at BRIDGE_CONNECT_TRIES (10 s total at
+// 500 ms cadence); the thread exits silently if the bridge never appears,
+// so there is no possibility of spamming the loopback indefinitely.
 
 #include <stdint.h>
 #include <sys/ppu_thread.h>
@@ -28,6 +28,7 @@
 #include "thread.h"
 #include "wire.h"
 #include "log-backlog.h"
+#include "string-utilities.h"
 
 #define BRIDGE_LOOPBACK_PORT   8785
 #define BRIDGE_CONNECT_TRIES   20             // 20 * 500ms = 10s ceiling
@@ -143,7 +144,7 @@ static void runBridgeRegistration(uint64_t arg)
    // only apps service inbound requests today (capture, future host->app rpcs).
    // plugins never receive requests, so don't tie a thread up in a recv that
    // will never wake.
-   int isApp = strcmp(registration->kind, "app") == 0;
+   int isApp = strEq(registration->kind, "app");
    if (isApp) {
       sys_ppu_thread_t handlerThreadId = 0;
       spawnThread(&handlerThreadId, runRequestHandler, 0, THREAD_STACK_SIZE_8KB, "sdb_req");

@@ -4,15 +4,17 @@
 # usage:
 #   deploy.ps1 <name> [-RestartXmb] [-Config Release|Debug] [-NoClean]
 #
-# target is auto-detected:
-#   dev/plugins/<name>  -> vsh plugin (.sprx); installs via vsh-plugin-install
-#   dev/apps/<name>     -> npdrm app   (.pkg);  installs via pkg-install
-#                          (XMB restart is implied so the tile appears)
+# target is auto-detected from folder layout:
+#   dev/plugins/<name>  -> vsh plugin (.sprx); installs via vsh-plugin-install.
+#                          pass -RestartXmb to load the new sprx now.
+#   dev/apps/<name>     -> npdrm app   (.pkg);  installs via pkg-install.
+#                          extracts into /dev_hdd0/game/<TITLE_ID>/.
+#                          pass -RestartXmb if XMB needs to rescan the tile.
 #
 # examples:
 #   deploy.ps1 simple-disc-mount
 #   deploy.ps1 simple-debug-bridge -RestartXmb
-#   deploy.ps1 file-manager                 # app: restart-xmb is automatic
+#   deploy.ps1 file-manager
 #   deploy.ps1 app-sample -NoClean          # keep existing /game/<TID> tree
 #
 # preconditions:
@@ -48,23 +50,23 @@ function Wait-Bridge($seconds) {
    else                    { Write-Host "[deploy] bridge did not reconnect in ${seconds}s" -ForegroundColor Yellow }
 }
 
-# 0. resolve target kind from folder layout
+# resolve target kind from folder layout
 if     (Test-Path (Join-Path $root "plugins\$Name")) { $kind = 'plugins' }
 elseif (Test-Path (Join-Path $root "apps\$Name"))    { $kind = 'apps' }
 else { Write-Host "[deploy] no plugin or app named '$Name' under dev/" -ForegroundColor Red; exit 1 }
 
-# 1. precondition checks
+# precondition: bridge reachable and connected to PS3
 Write-Host "[deploy] checking bridge..." -ForegroundColor Cyan
 try   { $status = Invoke-Bridge 'status' }
 catch { Write-Host "[deploy] http bridge unreachable - is debug-bridge-client.exe running?" -ForegroundColor Red; exit 1 }
 if ($status -ne 'connected') { Write-Host "[deploy] bridge says: $status" -ForegroundColor Red; exit 1 }
 
-# 2. build in VM
+# build in VM
 Write-Host "[deploy] building $kind/$Name ($Config)..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File (Join-Path $root 'vmbuild.ps1') $kind $Name Build $Config
 if ($LASTEXITCODE -ne 0) { Write-Host "[deploy] build failed" -ForegroundColor Red; exit $LASTEXITCODE }
 
-# 3. install via bridge
+# install via bridge
 if ($kind -eq 'plugins') {
    $sprx = Join-Path $root "out\$Name.sprx"
    if (-not (Test-Path $sprx)) { Write-Host "[deploy] missing $sprx" -ForegroundColor Red; exit 1 }
@@ -76,7 +78,8 @@ if ($kind -eq 'plugins') {
    Write-Host "[deploy] ps3 -> $resp"
    if ($resp -notmatch '^OK ') { Write-Host "[deploy] install failed" -ForegroundColor Red; exit 1 }
 
-   # 4. optional restart so cobra reloads the sprx (required for self-replace)
+   # vsh keeps the old sprx mapped until shellview reloads, so a fresh
+   # install needs an XMB restart to take effect.
    if ($RestartXmb) {
       Write-Host "[deploy] restart-xmb..." -ForegroundColor Cyan
       $resp = Invoke-Bridge 'restart-xmb'
@@ -100,12 +103,13 @@ else {
    Write-Host "[deploy] ps3 -> $resp"
    if ($resp -notmatch '^OK ') { Write-Host "[deploy] install failed" -ForegroundColor Red; exit 1 }
 
-   # XMB caches the Games column at boot; without a restart the new tile
-   # won't appear. always do it for app installs (cheap compared to the
-   # ~30s an SDK installer would take).
-   Write-Host "[deploy] restart-xmb..." -ForegroundColor Cyan
-   $resp = Invoke-Bridge 'restart-xmb'
-   Write-Host "[deploy] ps3 -> $resp"
-   Wait-Bridge 30
+   # the bridge only extracts; the tile usually appears on the next XMB
+   # rescan. pass -RestartXmb to force one immediately.
+   if ($RestartXmb) {
+      Write-Host "[deploy] restart-xmb..." -ForegroundColor Cyan
+      $resp = Invoke-Bridge 'restart-xmb'
+      Write-Host "[deploy] ps3 -> $resp"
+      Wait-Bridge 30
+   }
 }
 

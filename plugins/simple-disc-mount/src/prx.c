@@ -1,16 +1,16 @@
-/* Simple Disc Mount — VSH plugin.
- *
- * Adds "Mount Disc Image" below "Package Manager" in the XMB Games column,
- * populating a submenu with every .iso in /dev_hdd0/PS3ISO. Items wake
- * Sony's webrender_plugin with http://0:8947/mount/<name>, which our
- * in-process HTTP listener catches and turns into a Cobra PS3 disc mount.
- *
- * Boot order on the plugin thread:
- *   1. wait for XMB ready
- *   2. auto-mount last ISO if sdm_last.txt remembers one
- *   3. open /dev_blind, ensure xmlhost directories exist
- *   4. regenerate sdm.xml (ISO list) and patch category_game.xml once
- *   5. spawn the HTTP listener so X-press on items actually mounts */
+// Simple Disc Mount — VSH plugin.
+//
+// Adds "Mount Disc Image" below "Package Manager" in the XMB Games column,
+// populating a submenu with every .iso in /dev_hdd0/PS3ISO. Items wake
+// Sony's webrender_plugin with http://0:8947/mount/<name>, which our
+// in-process HTTP listener catches and turns into a Cobra PS3 disc mount.
+//
+// Boot order on the plugin thread:
+//   1. wait for XMB ready
+//   2. auto-mount last ISO if sdm_last.txt remembers one
+//   3. open /dev_blind, ensure xmlhost directories exist
+//   4. regenerate sdm.xml (ISO list) and patch category_game.xml once
+//   5. spawn the HTTP listener so X-press on items actually mounts
 
 #include <sys/prx.h>
 #include <sys/ppu_thread.h>
@@ -54,7 +54,7 @@ static void pluginThread(uint64_t arg)
     (void)arg;
     logInfo("[sdm] plugin thread start\n");
 
-    /* Wait for XMB readiness, with a ~60s budget. */
+    // Wait for XMB readiness, with a ~60s budget.
     int ticks = 0;
     while (!isXmbReady()) {
         sys_timer_sleep(1);
@@ -66,16 +66,16 @@ static void pluginThread(uint64_t arg)
     }
     logInfo("[sdm] xmb ready\n");
 
-    /* Give the storage/BD subsystem time to finish initialising.
-     * isXmbReady() fires before the disc driver is fully up — mounting
-     * immediately leads to 80010516 ("game could not be started") because
-     * the system hasn't registered the virtual BD device yet. The manual
-     * XMB path works because the user navigates for several seconds first. */
+    // Give the storage/BD subsystem time to finish initialising.
+    // isXmbReady() fires before the disc driver is fully up — mounting
+    // immediately leads to 80010516 ("game could not be started") because
+    // the system hasn't registered the virtual BD device yet. The manual
+    // XMB path works because the user navigates for several seconds first.
     sys_timer_sleep(5);
 
-    /* Re-mount the last ISO before we touch XML so the fake-disc-insert
-     * event races in alongside the XMB's first paint — the BD icon tends to
-     * show up the moment the Games column settles. */
+    // Re-mount the last ISO before we touch XML so the fake-disc-insert
+    // event races in alongside the XMB's first paint — the BD icon tends to
+    // show up the moment the Games column settles.
     autoMountLast();
 
     mountDevBlind();
@@ -91,18 +91,18 @@ static void pluginThread(uint64_t arg)
 
     int rc = patchCategoryGameXml();
 
-    /* Notify only on a fresh install. Sleep past webMAN's own boot toast
-     * so ours isn't stomped. */
+    // Notify only on a fresh install. Sleep past webMAN's own boot toast
+    // so ours isn't stomped.
     if (rc == PATCH_APPLIED) {
         sys_timer_sleep(10);
         logInfo("[sdm] vshNotify\n");
         vshNotify("Simple disc mount plugin installed successfully!");
     }
 
-    /* Hand off to the HTTP listener. It owns :8947 (loopback) and turns
-     * incoming GET /mount/<name> into cobraMountIso calls. */
-    sys_ppu_thread_t hid;
-    sys_ppu_thread_create(&hid, httpListenerThread, 0, 0x400, 0x2000, SYS_PPU_THREAD_CREATE_JOINABLE, "sdmh");
+    // Hand off to the HTTP listener. It owns :8947 (loopback) and turns
+    // incoming GET /mount/<name> into cobraMountIso calls.
+    sys_ppu_thread_t httpTid;
+    sys_ppu_thread_create(&httpTid, httpListenerThread, 0, 0x400, 0x2000, SYS_PPU_THREAD_CREATE_JOINABLE, "sdmh");
 
     logInfo("[sdm] done\n");
     sys_ppu_thread_exit(0);

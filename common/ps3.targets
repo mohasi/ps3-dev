@@ -4,8 +4,11 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <OptimizationLevel>Level2</OptimizationLevel>
-      <TreatWarningAsError>true</TreatWarningAsError>
       <WarningLevel>EnableAllWarnings</WarningLevel>
+      <!-- The MSBuild TreatWarningAsError property is a no-op for the PS3
+           GCC toolset (no rule mapping). Enforce warnings-as-errors on the
+           compiler command line directly. -->
+      <AdditionalOptions>-Werror %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
 

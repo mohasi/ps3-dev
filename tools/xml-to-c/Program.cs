@@ -88,7 +88,7 @@ namespace XmlToC
         {
             Console.Error.WriteLine();
             Console.Error.WriteLine("Press any key to close...");
-            try { Console.ReadKey(true); } catch { /* no console available */ }
+            try { Console.ReadKey(true); } catch { } // no console available
             return code;
         }
     }

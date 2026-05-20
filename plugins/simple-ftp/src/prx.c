@@ -1,6 +1,6 @@
-/* simple-ftp — minimal FTP server for PS3 VSH.
- * Anonymous, binary-only, PASV-mode only. Listens on :21.
- * See ftp.h for the server itself; this file is just the plugin entry. */
+// simple-ftp — minimal FTP server for PS3 VSH.
+// Anonymous, binary-only, PASV-mode only. Listens on :21.
+// See ftp.h for the server itself; this file is just the plugin entry.
 
 #include <sys/prx.h>
 #include <sys/ppu_thread.h>
@@ -20,17 +20,17 @@ static void pluginThread(uint64_t arg)
     (void)arg;
     logInfo("[ftp] plugin thread start\n");
 
-    /* Mount /dev_blind so FTP clients can write to /dev_flash via that
-     * mount point. webMAN-MOD exposes this as an "Enable /dev_blind on
-     * startup" option; we enable it unconditionally because the whole
-     * point of this plugin is unrestricted filesystem access. The mount
-     * syscall is idempotent-ish — a second call just returns an error,
-     * which we log for visibility but otherwise ignore. */
-    int64_t mrc = mountDevBlind();
-    if (mrc == 0) logInfo ("[ftp] mount /dev_blind rc 0x%x\n", (int)mrc);
-    else          logError("[ftp] mount /dev_blind rc 0x%x\n", (int)mrc);
+    // Mount /dev_blind so FTP clients can write to /dev_flash via that
+    // mount point. webMAN-MOD exposes this as an "Enable /dev_blind on
+    // startup" option; we enable it unconditionally because the whole
+    // point of this plugin is unrestricted filesystem access. The mount
+    // syscall is idempotent-ish — a second call just returns an error,
+    // which we log for visibility but otherwise ignore.
+    int64_t mountRc = mountDevBlind();
+    if (mountRc == 0) logInfo ("[ftp] mount /dev_blind rc 0x%x\n", (int)mountRc);
+    else              logError("[ftp] mount /dev_blind rc 0x%x\n", (int)mountRc);
 
-    /* Wait for XMB readiness so the network stack is up. 60s budget. */
+    // Wait for XMB readiness so the network stack is up. 60s budget.
     int ticks = 0;
     while (!isXmbReady()) {
         sys_timer_sleep(1);
@@ -42,8 +42,8 @@ static void pluginThread(uint64_t arg)
     }
     logInfo("[ftp] xmb ready\n");
 
-    /* Hand control to the FTP listener thread.
-     * and spawns a session thread per accepted client. */
+    // Hand control to the FTP listener thread.
+    // and spawns a session thread per accepted client.
     sys_ppu_thread_t tid;
     sys_ppu_thread_create(&tid, ftpListenerThread, 0, 0x400, 0x1800,
                           SYS_PPU_THREAD_CREATE_JOINABLE, "ftpd");

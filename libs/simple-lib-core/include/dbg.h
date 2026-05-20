@@ -4,28 +4,28 @@
 #include <stdint.h>
 
 #include <cell/fs/cell_fs_file_api.h>
-#include <cell/rtc.h>   /* local-time source — librtc_stub, PRX-safe.
-                         * Callers must link -lrtc_stub. */
+// local-time source — librtc_stub, PRX-safe. Callers must link -lrtc_stub.
+#include <cell/rtc.h>
 
-#include "printf.h"     /* vsnprintf from common/printf.c — must NOT use
-                         * libc_stub's printf family from a VSH PRX;
-                         * see common/printf.h for rationale. */
+// vsnprintf from common/printf.c — must NOT use libc_stub's printf family
+// from a VSH PRX; see common/printf.h for rationale.
+#include "printf.h"
 
 #define DBG_LOG "/dev_hdd0/tmp/dbg.txt"
 
-/* Optional live-log callback. If set, every logInfo/Warn/Error call hands
- * the fully-formatted line (timestamp + level + body) to the callback
- * AFTER the file write. Unset == file only. Per-PRX static — each plugin
- * owns its own callback. simple-debug-bridge wires this to push to the
- * host. */
+// Optional live-log callback. If set, every logInfo/Warn/Error call hands
+// the fully-formatted line (timestamp + level + body) to the callback
+// AFTER the file write. Unset == file only. Per-PRX static — each plugin
+// owns its own callback. simple-debug-bridge wires this to push to the
+// host.
 typedef void (*LogCallback)(const char *line, int len);
 static LogCallback logCallback = 0;
 
 static inline void setLogCallback(LogCallback fn) { logCallback = fn; }
 
-/* Shared bounded-line struct used by every pre-connect log ring in this
- * codebase (the producer-side ring in bridge.h and the bridge-side ring
- * in server.h). One typedef, one max-line constant — no parallel copies. */
+// Shared bounded-line struct used by every pre-connect log ring in this
+// codebase (the producer-side ring in bridge.h and the bridge-side ring
+// in server.h). One typedef, one max-line constant — no parallel copies.
 #define LOG_LINE_MAX 256
 
 typedef struct {
@@ -33,9 +33,9 @@ typedef struct {
     char data[LOG_LINE_MAX];
 } BacklogLine;
 
-/* Format "[YYYY-MM-DD HH:MM:SS] " into out (22 chars, no NUL). Returns the
- * byte count, or 0 if the RTC query fails — caller just skips the prefix
- * rather than dropping the log line. */
+// Format "[YYYY-MM-DD HH:MM:SS] " into out (22 chars, no NUL). Returns the
+// byte count, or 0 if the RTC query fails — caller just skips the prefix
+// rather than dropping the log line.
 static inline int dbgFormatTimestamp(char *out)
 {
     CellRtcDateTime d;
@@ -71,30 +71,30 @@ static inline int dbgFormatTimestamp(char *out)
     out[o++] = (char)('0' +  se        % 10);
     out[o++] = ']';
     out[o++] = ' ';
-    return o;   /* == 22 */
+    return o;  // == 22
 }
 
-/* Append one timestamped, level-prefixed line to /dev_hdd0/tmp/dbg.txt.
- * Variadic: plain string ("hello\n") or printf-style ("rc=0x%x\n", rc).
- * Full C99 printf minus floats (see common/printf.h).
- *
- * Format: "[YYYY-MM-DD HH:MM:SS] [LVL ] <message>"
- *         where LVL is INFO / WARN / ERR  (5-char fixed width incl. space).
- *
- * Thread-safety: builds the timestamp + level + message into one stack
- * buffer and issues a SINGLE cellFsWrite. With O_APPEND the kernel
- * positions and writes atomically per call, so concurrent loggers from
- * different threads/PRX's cannot interleave halves on the same line.
- *
- * Buffer is 1 KB for the message (any extra is silently dropped) plus 22
- * bytes for the timestamp and 7 for the level tag. */
+// Append one timestamped, level-prefixed line to /dev_hdd0/tmp/dbg.txt.
+// Variadic: plain string ("hello\n") or printf-style ("rc=0x%x\n", rc).
+// Full C99 printf minus floats (see common/printf.h).
+//
+// Format: "[YYYY-MM-DD HH:MM:SS] [LVL ] <message>"
+//         where LVL is INFO / WARN / ERR  (5-char fixed width incl. space).
+//
+// Thread-safety: builds the timestamp + level + message into one stack
+// buffer and issues a SINGLE cellFsWrite. With O_APPEND the kernel
+// positions and writes atomically per call, so concurrent loggers from
+// different threads/PRX's cannot interleave halves on the same line.
+//
+// Buffer is 1 KB for the message (any extra is silently dropped) plus 22
+// bytes for the timestamp and 7 for the level tag.
 static inline void logEmit(const char *level, const char *fmt, va_list ap)
 {
     char line[1024 + 32];
 
-    int o = dbgFormatTimestamp(line);    /* up to 22 bytes, no NUL */
+    int o = dbgFormatTimestamp(line);  // up to 22 bytes, no NUL
 
-    /* "[LVL ] " — 7 bytes, fixed width so log columns align. */
+    // "[LVL ] " — 7 bytes, fixed width so log columns align.
     line[o++] = '[';
     line[o++] = level[0];
     line[o++] = level[1];

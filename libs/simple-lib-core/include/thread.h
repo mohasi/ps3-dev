@@ -15,6 +15,7 @@
 #define THREAD_PRIORITY_DEFAULT  0x400
 #define THREAD_STACK_SIZE_8KB    0x2000
 #define THREAD_STACK_SIZE_16KB   0x4000
+#define THREAD_STACK_SIZE_64KB   0x10000
 
 // sys_ppu_thread_create takes 0 for detached; SYS_PPU_THREAD_CREATE_JOINABLE
 // is already named, so mirror it for the detached case.

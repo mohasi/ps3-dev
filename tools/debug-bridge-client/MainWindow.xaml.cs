@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -13,6 +15,17 @@ namespace DebugBridgeClient
     {
         private Ps3Connection ps3;
         private HttpBridge httpBridge;
+
+        // batched log pipeline: producers (any thread) enqueue lines, a
+        // single dispatcher timer drains both queues per tick into one
+        // AppendText + one ScrollToEnd per box. one dispatcher post per
+        // line freezes WPF; one post per tick handles thousands/sec.
+        private readonly Queue<string> activityQueue = new Queue<string>();
+        private readonly Queue<string> logsQueue     = new Queue<string>();
+        private readonly object        queueLock     = new object();
+        private DispatcherTimer logFlushTimer;
+        private const int LogMaxChars  = 512 * 1024;
+        private const int LogTrimChunk =  64 * 1024;
 
         public MainWindow()
         {
@@ -30,6 +43,12 @@ namespace DebugBridgeClient
                 Dispatcher.BeginInvoke(DispatcherPriority.Normal,
                     new Action(() => DrawCapture(x, y, w, h, argb)));
 
+            logFlushTimer = new DispatcherTimer(DispatcherPriority.Background) {
+                Interval = TimeSpan.FromMilliseconds(33)
+            };
+            logFlushTimer.Tick += (s, e) => FlushLogs();
+            logFlushTimer.Start();
+
             Loaded += OnLoaded;
             Closed += OnClosed;
         }
@@ -38,12 +57,14 @@ namespace DebugBridgeClient
         {
             AppendLog("http bridge on http://localhost:8786/");
             httpBridge.Start();
+            modulesView.Attach(ps3);
             AppendLog("connecting to " + ps3.Host + "...");
             ps3.StartAutoConnect();
         }
 
         private void OnClosed(object sender, EventArgs e)
         {
+            logFlushTimer.Stop();
             httpBridge.Stop();
             ps3.Disconnect();
         }
@@ -150,8 +171,6 @@ namespace DebugBridgeClient
             screenCanvas.Children.Add(tile);
         }
 
-        private void OnListVshPlugins(object sender, RoutedEventArgs e) { RunCommand("vsh-plugin-list"); }
-
         private void OnPluginInstall(object sender, RoutedEventArgs e)
         {
             if (!ps3.IsConnected) { AppendLog("not connected"); return; }
@@ -248,9 +267,10 @@ namespace DebugBridgeClient
         }
 
         // run a text-mode command and log the reply. multi-line payloads
-        // (e.g. vsh-plugin-list) get one log line per record, with the
-        // continuation lines indented under the "ps3 ->" prefix so they
-        // line up visually.
+        // (e.g. module-list, module-inspect) get one log line per record,
+        // continuation lines indented under "ps3 ->" so they line up.
+        // AppendLog is thread-safe (queue + lock, drained by the dispatcher
+        // timer), so we log straight from the worker — no extra UI marshal.
         private void RunCommand(string cmd, byte[] upload = null)
         {
             if (!ps3.IsConnected) { AppendLog("not connected"); return; }
@@ -258,13 +278,10 @@ namespace DebugBridgeClient
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
                 string reply = SendText(cmd, upload);
-                Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
-                {
-                    string[] lines = reply.Split('\n');
-                    AppendLog("ps3 -> " + lines[0]);
-                    for (int i = 1; i < lines.Length; i++)
-                        if (lines[i].Length > 0) AppendLog("       " + lines[i]);
-                }));
+                string[] lines = reply.Split('\n');
+                AppendLog("ps3 -> " + lines[0]);
+                for (int i = 1; i < lines.Length; i++)
+                    if (lines[i].Length > 0) AppendLog("       " + lines[i]);
             });
         }
 
@@ -281,7 +298,8 @@ namespace DebugBridgeClient
 
         private void AppendLog(string msg)
         {
-            AppendTo(activityBox, msg);
+            string stamped = DateTime.Now.ToString("HH:mm:ss") + "  " + msg;
+            lock (queueLock) activityQueue.Enqueue(stamped);
         }
 
         // every line that came in over the dbg.h LOG pipeline (from any
@@ -289,17 +307,44 @@ namespace DebugBridgeClient
         // the bridge tab is reserved for host-side command/response chatter.
         private void OnPs3Log(string line)
         {
-            AppendTo(logsBox, line.TrimEnd('\r', '\n'));
+            string stamped = DateTime.Now.ToString("HH:mm:ss") + "  " + line.TrimEnd('\r', '\n');
+            lock (queueLock) logsQueue.Enqueue(stamped);
         }
 
-        private void AppendTo(TextBox box, string msg)
+        // drain both queues into one AppendText + ScrollToEnd per box per
+        // tick. Cap each box at LogMaxChars by chopping LogTrimChunk off
+        // the front when we cross the limit — keeps TextBox layout cheap
+        // under sustained traffic (~1000 lines/s is comfortable).
+        private void FlushLogs()
         {
-            if (!Dispatcher.CheckAccess())
-            {
-                Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action<TextBox, string>(AppendTo), box, msg);
-                return;
+            string[] activityLines, logLines;
+            lock (queueLock) {
+                activityLines = DrainQueue(activityQueue);
+                logLines      = DrainQueue(logsQueue);
             }
-            box.AppendText(DateTime.Now.ToString("HH:mm:ss") + "  " + msg + Environment.NewLine);
+            AppendBatch(activityBox, activityLines);
+            AppendBatch(logsBox,     logLines);
+        }
+
+        private static string[] DrainQueue(Queue<string> q)
+        {
+            if (q.Count == 0) return null;
+            string[] a = q.ToArray();
+            q.Clear();
+            return a;
+        }
+
+        private void AppendBatch(TextBox box, string[] lines)
+        {
+            if (lines == null || lines.Length == 0) return;
+            StringBuilder sb = new StringBuilder(lines.Length * 64);
+            foreach (string s in lines) sb.Append(s).Append('\n');
+            box.AppendText(sb.ToString());
+            if (box.Text.Length > LogMaxChars) {
+                int cut = box.Text.Length - (LogMaxChars - LogTrimChunk);
+                box.Text = box.Text.Substring(cut);
+                box.CaretIndex = box.Text.Length;
+            }
             box.ScrollToEnd();
         }
     }

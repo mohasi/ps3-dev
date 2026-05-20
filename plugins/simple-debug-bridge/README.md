@@ -18,7 +18,9 @@ Pair with the WPF companion in `tools/debug-bridge-client/`.
 | `terminate` | 🔲 | kill running game process |
 | `launch <titleid>` | 🔲 | launch installed title |
 | `input <buttons>` | 🔲 | send fake pad input |
-| `vsh-plugin-list` | ✅ | list every PRX loaded into vsh.self via `sys_prx_get_module_list` (syscall 494) + `sys_prx_get_module_info` (syscall 495). Payload is one line per module: `<id>\t<name>\t<filename>\n`. Includes system modules — useful for debugging. |
+| `module-list` | ✅ | list every PRX loaded into vsh.self via `sys_prx_get_module_list` (syscall 494) + `sys_prx_get_module_info` (syscall 495). Payload is one line per module: `<id>\t<name>\t<filename>\n`. Includes system modules — useful for debugging. |
+| `module-info <name>` | ✅ | per-module identity, ELF segment table, linkage tables, exports and imports. Payload is tab-separated text: `id`/`name`/`file` headers, one `seg\t<index>\t<type>\t<base>\t<filesz>\t<memsz>` line per ELF segment, `libent`/`libstub` headers from the v2 form of `sys_prx_get_module_info`, then `ent\t<lib>\tnfunc=…` followed by `ef\t<nid>\t<opd>` lines per exported function, then `stub\t<lib>\tnfunc=…` followed by `sf\t<nid>\t<stubOpd>` lines per imported function. Foundation for MITM tooling. |
+| `process-list` | ✅ | list processes the bridge can see. Always emits `vsh\tvsh\tlive`; emits an additional `app\t<name>\tlive` line when an app producer is currently registered. Top-level entry point for the host's Modules tree: the client enumerates processes first, then issues `module-list` / `module-info` per process. |
 | `vsh-plugin-load <name> <size>` | 🔲 | upload `<size>` bytes to `/dev_hdd0/tmp/sdb/<name>.sprx`, then load + start. Replaces if already loaded by same name. |
 | `vsh-plugin-load <ps3-path>` | 🔲 | load + start a VSH PRX already on disk (no upload). Path may be quoted (`"..."`) to be unambiguous. |
 | `vsh-plugin-unload <name>` | 🔲 | stop + unload a VSH PRX by module name |
@@ -73,7 +75,7 @@ Server-side helpers in `server.h`:
   streamed body, followed by the caller's `sendBytes(...)` of `n` bytes.
 
 Both produce identical wire framing; the split is only to avoid buffering
-large bodies (e.g. `vsh-plugin-list` records, file streams) before sending.
+large bodies (e.g. `module-list` records, file streams) before sending.
 
 ### Binary upload framing
 

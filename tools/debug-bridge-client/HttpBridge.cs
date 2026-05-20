@@ -216,8 +216,9 @@ namespace DebugBridgeClient
         }
 
         // text-mode: log the command, decode the reply payload as ascii.
-        // multi-line payloads (e.g. vsh-plugin-list) get one log line per
-        // record, with continuation lines indented under the "ps3 -> " prefix.
+        // multi-line payloads (e.g. module-list, module-inspect) get one
+        // log line per record, continuation lines indented under the
+        // "ps3 -> " prefix. The UI batches appends, so volume is fine.
         private string SendText(string command, byte[] upload = null)
         {
             log("http -> " + command + (upload != null ? " (" + upload.Length + " bytes)" : ""));

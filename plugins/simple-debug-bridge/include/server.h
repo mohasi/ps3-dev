@@ -72,7 +72,7 @@ static sys_lwmutex_t serverRegistryMx;
 
 // send a full buffer, retrying partial writes. low-level primitive
 // underneath sendReply / sendFrame and used by callers that stream a
-// known-size payload after sendFrameHeader (captureSendRow, cmdVshPluginList).
+// known-size payload after sendFrameHeader (captureSendRow, cmdModuleList).
 // sendBytes / sendFrameHeader / sendFrame / receiveLine come from wire.h.
 
 // pre-connect ring buffer. producers (and the bridge itself) start logging
@@ -131,7 +131,7 @@ static void forwardLogToHost(const char *buf, int len)
 //                     covers empty replies (""), errors, and every text OK.
 //   sendFrameHeader — write just the header for a known-size payload; caller
 //                     follows up with sendBytes / sendFileWindow / captureRegion
-//                     to produce the n bytes (capture, get-file, vsh-plugin-list).
+//                     to produce the n bytes (capture, get-file, module-list).
 static inline int sendReply(int fd, const char *status, const char *text)
 {
     return sendFrame(fd, status, text, (int)strLen(text));
@@ -153,7 +153,7 @@ static inline const char *matchCommand(const char *line, const char *cmd)
 // list every prx loaded into vsh.self. payload body is one
 // "<id>\t<name>\t<filename>\n" record per module (final newline included),
 // returned as a single OK frame so the host reads it all in one shot.
-static void cmdVshPluginList(int cli)
+static void cmdModuleList(int cli)
 {
     static uint32_t ids[128];
     // worst case: 128 modules * (uint32 + name + path + tabs/newline)
@@ -180,7 +180,294 @@ static void cmdVshPluginList(int cli)
     if (off) sendBytes(cli, payload, (int)off);
 }
 
-// parse "<name> <size>" args. on success fills name (caller-owned, cap bytes)
+// enumerate processes the bridge knows about. the bridge itself runs in
+// vsh, so vsh is always present. an app process is reported when an app
+// producer has registered with us — that gives us at least its name.
+// payload: one "<kind>\t<name>\t<status>\n" record per process.
+static void cmdProcessList(int cli)
+{
+    char payload[256];
+    uint32_t off = 0;
+    off += (uint32_t)snprintf(payload + off, sizeof payload - off,
+                              "vsh\tvsh\tlive\n");
+    sys_lwmutex_lock(&serverRegistryMx, 0);
+    if (appSlot.fd >= 0 && appSlot.name[0]) {
+        off += (uint32_t)snprintf(payload + off, sizeof payload - off,
+                                  "app\t%s\tlive\n", appSlot.name);
+    }
+    sys_lwmutex_unlock(&serverRegistryMx);
+    if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
+    if (off) sendBytes(cli, payload, (int)off);
+}
+
+// find a loaded prx by name. returns its id, or -1 if not found.
+// f[] looks unused but the sys_prx_get_module_info syscall does not
+// populate the name field unless filename is also requested — see
+// prxInfo() in syscall.h.
+static int32_t findModuleByName(const char *name)
+{
+    static uint32_t ids[128];
+    char     n[PRX_NAME_MAX];
+    char     f[PRX_FILENAME_MAX];
+    uint32_t count = 0;
+    if (prxList(ids, sizeof ids / sizeof ids[0], &count) < 0) return -1;
+    for (uint32_t i = 0; i < count; i++) {
+        if (prxName((int32_t)ids[i], n, f) < 0) continue;
+        if (strEq(n, name)) return (int32_t)ids[i];
+    }
+    return -1;
+}
+
+// .lib.ent / .lib.stub record layouts — mirrored from sdk/sys/prx.h
+// so we don't drag the PPU-only header into bridge code. NID tables
+// and add tables are stored as runtime 32-bit virtual addresses
+// inside the module's segment-0 mapping.
+typedef struct {
+    uint8_t  structsize;          // == 28
+    uint8_t  reserved1;
+    uint16_t version;
+    uint16_t attribute;
+    uint16_t nfunc;
+    uint16_t nvar;
+    uint16_t ntls;
+    uint8_t  hashinfo, hashinfo2, reserved2, nidaltsets;
+    uint32_t libname;
+    uint32_t nidtable;
+    uint32_t addtable;
+} PrxLibEnt;
+
+typedef struct {
+    uint8_t  structsize;          // == 44
+    uint8_t  reserved1;
+    uint16_t version;
+    uint16_t attribute;
+    uint16_t nfunc;
+    uint16_t nvar;
+    uint16_t ntls;
+    uint8_t  reserved2[4];
+    uint32_t libname;
+    uint32_t funcNidtable;
+    uint32_t funcTable;
+    uint32_t varNidtable;
+    uint32_t varTable;
+    uint32_t tlsNidtable;
+    uint32_t tlsTable;
+} PrxLibStub;
+
+// dump exports + imports of one module. text payload:
+//   id\t<id>\n
+//   libent\t<addr>\t<size>\n
+//   libstub\t<addr>\t<size>\n
+//   seg\t<i>\t<base>\t<memsz>\n        (repeated, for context)
+//   ent\t<libname>\tnfunc=<n>\tnvar=<n>\tntls=<n>\n
+//     ef\t<nid>\t<opd>\n               (repeated, one per export function)
+//   stub\t<libname>\tnfunc=<n>\tnvar=<n>\tntls=<n>\n
+//     sf\t<nid>\t<stubOpd>\n           (repeated, one per import function)
+// every pointer the walker dereferences is bounds-checked against the
+// module's segments first — a bad VA inside a record will be skipped
+// rather than crashing the VSH process.
+
+// returns 1 if [addr, addr+span) lies entirely inside any one segment.
+// span==0 is treated as 1 (a single addressable byte).
+static int addrInSegments(uint32_t addr, uint32_t span,
+                          const PrxSegment *segs, uint32_t segCount)
+{
+    if (addr == 0) return 0;
+    if (span == 0) span = 1;
+    uint32_t endAddr = addr + span;
+    if (endAddr < addr) return 0; // overflow
+    for (uint32_t i = 0; i < segCount && i < PRX_SEGMENTS_MAX; i++) {
+        uint32_t base = (uint32_t)segs[i].base;
+        uint32_t size = (uint32_t)segs[i].memsz;
+        if (size == 0) continue;
+        if (addr >= base && endAddr <= base + size) return 1;
+    }
+    return 0;
+}
+
+// copy a null-terminated string from a VA inside the module, with a
+// hard byte cap. returns the number of bytes copied (excluding NUL).
+// returns 0 if addr is unmapped or non-printable.
+static uint32_t copyModuleString(char *out, uint32_t outCap, uint32_t addr,
+                                 const PrxSegment *segs, uint32_t segCount)
+{
+    out[0] = '\0';
+    if (!addrInSegments(addr, 1, segs, segCount)) return 0;
+    const char *src = (const char *)(uintptr_t)addr;
+    uint32_t i = 0;
+    while (i < outCap - 1) {
+        if (!addrInSegments(addr + i, 1, segs, segCount)) break;
+        char c = src[i];
+        if (c == '\0') break;
+        if ((unsigned char)c < 0x20 || (unsigned char)c > 0x7e) { out[0] = '\0'; return 0; }
+        out[i] = c;
+        i++;
+    }
+    out[i] = '\0';
+    return i;
+}
+
+#define INSPECT_NFUNC_MAX  4096   // sanity cap on per-lib function count
+#define INSPECT_LIBNAME_MAX  64
+
+// dump identity, segments, linkage tables, exports and imports of one
+// module. text payload, one record per line:
+//   id\t<id>\n
+//   name\t<name>\n
+//   file\t<filename>\n
+//   seg\t<index>\t<type>\t<base>\t<filesz>\t<memsz>\n   (repeated)
+//   libent\t<addr>\t<size>\n
+//   libstub\t<addr>\t<size>\n
+//   ent\t<libname>\tnfunc=<n>\tnvar=<n>\tntls=<n>\n
+//     ef\t<nid>\t<opd>\n              (repeated, one per export function)
+//   stub\t<libname>\tnfunc=<n>\tnvar=<n>\tntls=<n>\n
+//     sf\t<nid>\t<stubOpd>\n          (repeated, one per import function)
+// every pointer the walker dereferences is bounds-checked against the
+// module's segments first — a bad VA inside a record is skipped rather
+// than crashing the VSH process.
+static void cmdModuleInfo(int cli, const char *args)
+{
+    if (!args || !args[0]) {
+        sendReply(cli, SDB_ERR, "usage: module-info <name>");
+        return;
+    }
+    int32_t id = findModuleByName(args);
+    if (id < 0) { sendReply(cli, SDB_ERR, "module not found"); return; }
+
+    char       name[PRX_NAME_MAX];
+    char       file[PRX_FILENAME_MAX];
+    PrxSegment segs[PRX_SEGMENTS_MAX];
+    uint32_t   segCount = 0;
+    int32_t rc = prxInfo(id, name, file, segs, PRX_SEGMENTS_MAX, &segCount);
+    if (rc < 0) {
+        char err[64];
+        snprintf(err, sizeof err, "prxInfo rc=0x%x", (unsigned)rc);
+        sendReply(cli, SDB_ERR, err);
+        return;
+    }
+    if (segCount > PRX_SEGMENTS_MAX) segCount = PRX_SEGMENTS_MAX;
+
+    PrxLinkage link = {0};
+    int32_t lrc = prxLinkage(id, &link, NULL, 0, NULL);
+    int linkageOk = (lrc >= 0);
+
+    // confirm linkage tables are in mapped memory before we walk them.
+    // a bogus table address or a record's internal pointer would
+    // otherwise fault the VSH process.
+    int libentOk  = linkageOk && addrInSegments(link.libentAddr,  link.libentSize,  segs, segCount);
+    int libstubOk = linkageOk && addrInSegments(link.libstubAddr, link.libstubSize, segs, segCount);
+    if (linkageOk && !libentOk)  logWarn("[sdb] libent table outside segments, skipping exports\n");
+    if (linkageOk && !libstubOk) logWarn("[sdb] libstub table outside segments, skipping imports\n");
+
+    static char payload[64 * 1024];
+    uint32_t off = (uint32_t)snprintf(payload, sizeof payload,
+                                      "id\t%u\nname\t%s\nfile\t%s\n",
+                                      (unsigned)id, name, file);
+    for (uint32_t i = 0; i < segCount; i++) {
+        off += (uint32_t)snprintf(payload + off, sizeof payload - off,
+                                  "seg\t%llu\t0x%llx\t0x%llx\t0x%llx\t0x%llx\n",
+                                  (unsigned long long)segs[i].index,
+                                  (unsigned long long)segs[i].type,
+                                  (unsigned long long)segs[i].base,
+                                  (unsigned long long)segs[i].filesz,
+                                  (unsigned long long)segs[i].memsz);
+    }
+    if (linkageOk) {
+        off += (uint32_t)snprintf(payload + off, sizeof payload - off,
+                                  "libent\t0x%x\t%u\nlibstub\t0x%x\t%u\n",
+                                  (unsigned)link.libentAddr, (unsigned)link.libentSize,
+                                  (unsigned)link.libstubAddr, (unsigned)link.libstubSize);
+    }
+
+    // walk exports
+    if (libentOk) {
+        uint32_t cursor = link.libentAddr;
+        uint32_t end    = link.libentAddr + link.libentSize;
+        while (cursor + sizeof(PrxLibEnt) <= end && off + 256 < sizeof payload) {
+            if (!addrInSegments(cursor, sizeof(PrxLibEnt), segs, segCount)) {
+                logWarn("[sdb] libent record at 0x%x outside segments\n", (unsigned)cursor);
+                break;
+            }
+            const PrxLibEnt *e = (const PrxLibEnt *)(uintptr_t)cursor;
+            if (e->structsize == 0 || e->structsize > 64) break;
+            uint16_t nfunc = e->nfunc;
+            if (nfunc > INSPECT_NFUNC_MAX) {
+                logWarn("[sdb] ent nfunc=%u capped, libname=0x%x\n", nfunc, (unsigned)e->libname);
+                nfunc = INSPECT_NFUNC_MAX;
+            }
+            char libname[INSPECT_LIBNAME_MAX];
+            copyModuleString(libname, sizeof libname, e->libname, segs, segCount);
+            off += (uint32_t)snprintf(payload + off, sizeof payload - off,
+                                      "ent\t%s\tnfunc=%u\tnvar=%u\tntls=%u\n",
+                                      libname, e->nfunc, e->nvar, e->ntls);
+
+            uint32_t nidsAddr = e->nidtable;
+            uint32_t addAddr  = e->addtable;
+            int nidsOk = addrInSegments(nidsAddr, (uint32_t)nfunc * 4, segs, segCount);
+            int addOk  = addrInSegments(addAddr,  (uint32_t)nfunc * 4, segs, segCount);
+            if (nidsOk && addOk) {
+                const uint32_t *nids = (const uint32_t *)(uintptr_t)nidsAddr;
+                const uint32_t *add  = (const uint32_t *)(uintptr_t)addAddr;
+                for (uint16_t i = 0; i < nfunc && off + 48 < sizeof payload; i++) {
+                    off += (uint32_t)snprintf(payload + off, sizeof payload - off,
+                                              "ef\t0x%08x\t0x%x\n",
+                                              (unsigned)nids[i], (unsigned)add[i]);
+                }
+            } else if (nfunc > 0) {
+                logWarn("[sdb] ent skipped nid/add: lib='%s' nids=0x%x(%d) add=0x%x(%d) nfunc=%u\n",
+                        libname, (unsigned)nidsAddr, nidsOk, (unsigned)addAddr, addOk, nfunc);
+            }
+            cursor += e->structsize;
+        }
+    }
+
+    // walk imports
+    if (libstubOk) {
+        uint32_t cursor = link.libstubAddr;
+        uint32_t end    = link.libstubAddr + link.libstubSize;
+        while (cursor + sizeof(PrxLibStub) <= end && off + 256 < sizeof payload) {
+            if (!addrInSegments(cursor, sizeof(PrxLibStub), segs, segCount)) {
+                logWarn("[sdb] libstub record at 0x%x outside segments\n", (unsigned)cursor);
+                break;
+            }
+            const PrxLibStub *s = (const PrxLibStub *)(uintptr_t)cursor;
+            if (s->structsize == 0 || s->structsize > 64) break;
+            uint16_t nfunc = s->nfunc;
+            if (nfunc > INSPECT_NFUNC_MAX) {
+                logWarn("[sdb] stub nfunc=%u capped, libname=0x%x\n", nfunc, (unsigned)s->libname);
+                nfunc = INSPECT_NFUNC_MAX;
+            }
+            char libname[INSPECT_LIBNAME_MAX];
+            copyModuleString(libname, sizeof libname, s->libname, segs, segCount);
+            off += (uint32_t)snprintf(payload + off, sizeof payload - off,
+                                      "stub\t%s\tnfunc=%u\tnvar=%u\tntls=%u\n",
+                                      libname, s->nfunc, s->nvar, s->ntls);
+
+            uint32_t nidsAddr = s->funcNidtable;
+            uint32_t tabAddr  = s->funcTable;
+            int nidsOk = addrInSegments(nidsAddr, (uint32_t)nfunc * 4, segs, segCount);
+            int tabOk  = addrInSegments(tabAddr,  (uint32_t)nfunc * 4, segs, segCount);
+            if (nidsOk && tabOk) {
+                const uint32_t *nids = (const uint32_t *)(uintptr_t)nidsAddr;
+                const uint32_t *tab  = (const uint32_t *)(uintptr_t)tabAddr;
+                for (uint16_t i = 0; i < nfunc && off + 48 < sizeof payload; i++) {
+                    off += (uint32_t)snprintf(payload + off, sizeof payload - off,
+                                              "sf\t0x%08x\t0x%x\n",
+                                              (unsigned)nids[i], (unsigned)tab[i]);
+                }
+            } else if (nfunc > 0) {
+                logWarn("[sdb] stub skipped nid/tab: lib='%s' nids=0x%x(%d) tab=0x%x(%d) nfunc=%u\n",
+                        libname, (unsigned)nidsAddr, nidsOk, (unsigned)tabAddr, tabOk, nfunc);
+            }
+            cursor += s->structsize;
+        }
+    }
+
+    if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
+    if (off) sendBytes(cli, payload, (int)off);
+}
+
+
 // and *outSize, returns 1. on malformed input returns 0.
 static int parseNameAndSize(const char *args, char *name, int cap, uint32_t *outSize)
 {
@@ -430,8 +717,12 @@ static int dispatchCommand(int cli, char *buf)
                  (unsigned)w, (unsigned)h, (unsigned)pitch, (unsigned)depth);
         return sendReply(cli, SDB_OK, reply);
     }
-    if (matchCommand(buf, "vsh-plugin-list")) {
-        cmdVshPluginList(cli);
+    if (matchCommand(buf, "module-list")) {
+        cmdModuleList(cli);
+        return 0;
+    }
+    if (matchCommand(buf, "process-list")) {
+        cmdProcessList(cli);
         return 0;
     }
 
@@ -440,7 +731,10 @@ static int dispatchCommand(int cli, char *buf)
     uint32_t size;
     char  reply[128];
 
-    if ((args = matchCommand(buf, "get-file")) != 0) {
+    if ((args = matchCommand(buf, "module-info")) != 0) {
+        cmdModuleInfo(cli, args);
+    }
+    else if ((args = matchCommand(buf, "get-file")) != 0) {
         cmdGetFile(cli, args);
     }
     else if ((args = matchCommand(buf, "save-file")) != 0) {

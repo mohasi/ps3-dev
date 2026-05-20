@@ -65,8 +65,6 @@
          <MenuItem Header="Commands">
             <MenuItem Header="Screenshot" Click="OnScreenshot" />
             <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
-            <MenuItem Header="List VSH Plugins" Click="OnListVshPlugins" />
-            <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
             <MenuItem Header="Restart XMB" Click="OnRestartXmb" />
             <MenuItem Header="Restart PS3" Click="OnRestartPs3" />
             <MenuItem Header="Shutdown" Click="OnShutdown" />
@@ -113,6 +111,13 @@
                      IsReadOnly="True"
                      VerticalScrollBarVisibility="Auto"
                      TextWrapping="NoWrap" />
+         </TabItem>
+
+         <!-- module browser: one IModuleSource per process. Refresh
+              re-enumerates; expanding a module fetches its segments,
+              exports and imports on demand. -->
+         <TabItem Header="Modules">
+            <local:ModulesView x:Name="modulesView" xmlns:local="clr-namespace:DebugBridgeClient" />
          </TabItem>
 
          <!-- screen tab. canvas size is a pre-connect placeholder; OnConnected

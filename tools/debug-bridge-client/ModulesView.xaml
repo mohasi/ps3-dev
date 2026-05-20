@@ -1,0 +1,68 @@
+<UserControl x:Class="DebugBridgeClient.ModulesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource BgBase}">
+   <UserControl.Resources>
+      <!-- flat dark button: matches the menu items, no 3d chrome, no
+           white mouse-over highlight from the default wpf template. -->
+      <Style x:Key="FlatButton" TargetType="Button">
+         <Setter Property="Background" Value="{StaticResource BgSurface}" />
+         <Setter Property="Foreground" Value="{StaticResource FgText}" />
+         <Setter Property="BorderBrush" Value="{StaticResource BrBorder}" />
+         <Setter Property="BorderThickness" Value="1" />
+         <Setter Property="Padding" Value="10,3" />
+         <Setter Property="Template">
+            <Setter.Value>
+               <ControlTemplate TargetType="Button">
+                  <Border x:Name="bd"
+                          Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}"
+                          BorderThickness="{TemplateBinding BorderThickness}"
+                          Padding="{TemplateBinding Padding}">
+                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Border>
+                  <ControlTemplate.Triggers>
+                     <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="bd" Property="Background" Value="{StaticResource BgHover}" />
+                     </Trigger>
+                     <Trigger Property="IsPressed" Value="True">
+                        <Setter TargetName="bd" Property="Background" Value="{StaticResource BgHoverBright}" />
+                     </Trigger>
+                  </ControlTemplate.Triggers>
+               </ControlTemplate>
+            </Setter.Value>
+         </Setter>
+      </Style>
+   </UserControl.Resources>
+   <Grid>
+      <Grid.RowDefinitions>
+         <RowDefinition Height="Auto" />
+         <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+
+      <!-- toolbar: status on the left, refresh pushed to the right -->
+      <DockPanel Grid.Row="0" Margin="6,6,6,4" LastChildFill="False">
+         <TextBlock x:Name="statusText" DockPanel.Dock="Left" Margin="0,4,0,0"
+                    Foreground="{StaticResource FgText}" FontSize="11" Text="idle" />
+         <Button x:Name="refreshButton" DockPanel.Dock="Right" Content="Refresh"
+                 Style="{StaticResource FlatButton}" Click="OnRefresh" />
+      </DockPanel>
+
+      <!-- tree: process -> module -> { segments, exports, imports } -->
+      <TreeView x:Name="tree" Grid.Row="1"
+                Background="{StaticResource BgBase}"
+                Foreground="{StaticResource FgText}"
+                BorderBrush="{StaticResource BrBorder}"
+                BorderThickness="0,1,0,0"
+                FontFamily="Consolas"
+                FontSize="12"
+                VirtualizingStackPanel.IsVirtualizing="True"
+                VirtualizingStackPanel.VirtualizationMode="Recycling">
+         <TreeView.Resources>
+            <Style TargetType="TreeViewItem">
+               <Setter Property="Foreground" Value="{StaticResource FgText}" />
+            </Style>
+         </TreeView.Resources>
+      </TreeView>
+   </Grid>
+</UserControl>

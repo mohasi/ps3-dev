@@ -156,6 +156,19 @@ static inline void prxFinalizeSelf(void)
 
 #define PRX_NAME_MAX      30
 #define PRX_FILENAME_MAX  512
+#define PRX_SEGMENTS_MAX  4   // SYS_MODULE_MAX_SEGMENTS from sys/moduleexport.h
+
+// one ELF PT_LOAD segment as reported by sys_prx_get_module_info. base is
+// the runtime virtual address the segment was mapped to (this is what we
+// need to walk imports/exports — segment 0 is the RX code+rodata segment
+// that holds sce_module_info, _scelibstub[], _scelibent[]).
+typedef struct {
+    uint64_t base;
+    uint64_t filesz;
+    uint64_t memsz;
+    uint64_t index;
+    uint64_t type;
+} PrxSegment;
 
 // list prx ids loaded into the current process (vsh.self in our context).
 // writes up to maxIds entries into ids[], stores actual count in *outCount.
@@ -182,18 +195,41 @@ static inline int32_t prxList(uint32_t *ids, uint32_t maxIds, uint32_t *outCount
     return rc;
 }
 
-// look up a prx by id; writes module name into nameOut[PRX_NAME_MAX] and
-// (optionally) source file path into fileOut[PRX_FILENAME_MAX]. pass NULL
-// for fileOut to skip the path. both buffers are always null-terminated
-// on success. returns 0 or negative lv2 error.
-static inline int32_t prxName(int32_t id, char *nameOut, char *fileOut)
+// look up a prx by id.
+//   nameOut    : PRX_NAME_MAX bytes, always null-terminated on success.
+//   fileOut    : PRX_FILENAME_MAX bytes, source path, null-terminated.
+//                MUST be a real caller-owned buffer even if you don't
+//                care about the value — see quirk below.
+//   segsOut    : array of PrxSegment, filled up to min(segsMax, allSegmentsNum).
+//                may be NULL to skip.
+//   segsMax    : capacity of segsOut. ignored if segsOut is NULL.
+//   segsCount  : actual segment count reported by the kernel (can exceed segsMax).
+// returns 0 or negative lv2 error.
+//
+// historical notes (resolved):
+//   - the kernel does not always null-terminate info.name; we zero the
+//     buffer before each call so trailing stale bytes can't survive into
+//     a strEq with a shorter name.
+//   - fileOut must be a real caller-owned buffer with non-zero
+//     filenameSize even if the path is uninteresting — the kernel only
+//     fills the name field reliably when filename is also valid.
+//   - the original "pad[16]" guard turned out to be the four v2-extension
+//     fields (libent_addr/size, libstub_addr/size). passing
+//     sizeof(info) == 88 selects the v2 layout; the kernel writes them
+//     unconditionally. exposed via prxLinkage() below.
+static inline int32_t prxInfo(int32_t id, char *nameOut, char *fileOut,
+                              PrxSegment *segsOut, uint32_t segsMax, uint32_t *segsCount)
 {
+    // sys_prx_module_info_v2_t layout. sizeof == 88 selects v2 in lv2.
+    // declared in sdk/.../sys/prx.h; we mirror it here because the SDK
+    // header pulls in PPU-only typedefs we don't want everywhere.
     struct {
         uint64_t size;
         char     name[PRX_NAME_MAX];
         char     version[2];
         uint32_t modattribute, startEntry, stopEntry, allSegmentsNum;
         uint32_t filename, filenameSize, segments, segmentsNum;
+        uint32_t libentAddr, libentSize, libstubAddr, libstubSize;
     } info;
     struct {
         uint64_t size;
@@ -201,24 +237,94 @@ static inline int32_t prxName(int32_t id, char *nameOut, char *fileOut)
         uint32_t pad;
     } opt;
 
+    for (uint32_t i = 0; i < sizeof info; i++) ((char *)&info)[i] = 0;
     info.size         = sizeof info;
     info.filename     = (uint32_t)(uintptr_t)fileOut;
-    info.filenameSize = fileOut ? PRX_FILENAME_MAX : 0;
-    info.segments     = 0;
-    info.segmentsNum  = 0;
-    if (fileOut) fileOut[0] = '\0';
+    info.filenameSize = PRX_FILENAME_MAX;
+    info.segments     = (uint32_t)(uintptr_t)segsOut;
+    info.segmentsNum  = segsOut ? segsMax : 0;
+    fileOut[0] = '\0';
 
     opt.size = sizeof opt;
     opt.info = (uint32_t)(uintptr_t)&info;
     opt.pad  = 0;
 
     int32_t rc = (int32_t)scCall3(495, (uint64_t)id, 0, (uint64_t)(uintptr_t)&opt);
-    if (rc < 0) { nameOut[0] = '\0'; return rc; }
+    if (rc < 0) {
+        if (nameOut) nameOut[0] = '\0';
+        if (segsCount) *segsCount = 0;
+        return rc;
+    }
 
-    // syscall doesn't always null-terminate; force it.
-    for (int i = 0; i < PRX_NAME_MAX; i++) nameOut[i] = info.name[i];
-    nameOut[PRX_NAME_MAX - 1] = '\0';
-    if (fileOut) fileOut[PRX_FILENAME_MAX - 1] = '\0';
+    if (nameOut) {
+        for (int i = 0; i < PRX_NAME_MAX; i++) nameOut[i] = info.name[i];
+        nameOut[PRX_NAME_MAX - 1] = '\0';
+    }
+    fileOut[PRX_FILENAME_MAX - 1] = '\0';
+    if (segsCount) *segsCount = info.allSegmentsNum;
+    return 0;
+}
+
+// thin wrapper: name + filename, no segments. callers that don't need
+// the path still must allocate the buffer; the kernel relies on it.
+static inline int32_t prxName(int32_t id, char *nameOut, char *fileOut)
+{
+    return prxInfo(id, nameOut, fileOut, 0, 0, 0);
+}
+
+// .lib.ent / .lib.stub table descriptors for one loaded prx, as
+// reported by the v2 form of sys_prx_get_module_info. addresses are
+// runtime VAs inside the module's segment-0 mapping; sizes are byte
+// lengths of arrays of sys_prx_libent32_t / sys_prx_libstub32_t (the
+// individual records carry their own structsize, so divide carefully).
+typedef struct {
+    uint32_t libentAddr;
+    uint32_t libentSize;
+    uint32_t libstubAddr;
+    uint32_t libstubSize;
+} PrxLinkage;
+
+// pull the export (.lib.ent) and import (.lib.stub) table descriptors
+// for a loaded prx, plus its segment table so callers can validate
+// pointers before dereferencing them. populated unconditionally by the
+// v2 syscall path.
+static inline int32_t prxLinkage(int32_t id, PrxLinkage *outLink,
+                                 PrxSegment *segsOut, uint32_t segsMax,
+                                 uint32_t *segsCount)
+{
+    struct {
+        uint64_t size;
+        char     name[PRX_NAME_MAX];
+        char     version[2];
+        uint32_t modattribute, startEntry, stopEntry, allSegmentsNum;
+        uint32_t filename, filenameSize, segments, segmentsNum;
+        uint32_t libentAddr, libentSize, libstubAddr, libstubSize;
+    } info;
+    struct { uint64_t size; uint32_t info; uint32_t pad; } opt;
+    char file[PRX_FILENAME_MAX];
+    for (uint32_t i = 0; i < sizeof info; i++) ((char *)&info)[i] = 0;
+    info.size         = sizeof info;
+    info.filename     = (uint32_t)(uintptr_t)file;
+    info.filenameSize = PRX_FILENAME_MAX;
+    info.segments     = (uint32_t)(uintptr_t)segsOut;
+    info.segmentsNum  = segsOut ? segsMax : 0;
+    file[0]           = '\0';
+    opt.size = sizeof opt;
+    opt.info = (uint32_t)(uintptr_t)&info;
+    opt.pad  = 0;
+    int32_t rc = (int32_t)scCall3(495, (uint64_t)id, 0, (uint64_t)(uintptr_t)&opt);
+    if (rc < 0) {
+        if (outLink) { outLink->libentAddr = outLink->libentSize = outLink->libstubAddr = outLink->libstubSize = 0; }
+        if (segsCount) *segsCount = 0;
+        return rc;
+    }
+    if (outLink) {
+        outLink->libentAddr  = info.libentAddr;
+        outLink->libentSize  = info.libentSize;
+        outLink->libstubAddr = info.libstubAddr;
+        outLink->libstubSize = info.libstubSize;
+    }
+    if (segsCount) *segsCount = info.allSegmentsNum;
     return 0;
 }
 

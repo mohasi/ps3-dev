@@ -366,6 +366,27 @@ static void cmdDeleteFile(int cli, const char *args)
     sendReply(cli, SDB_OK, reply);
 }
 
+// list-dir <path>
+//   reply: OK <n>\n<n bytes> with one "<kind>\t<size>\t<mtime>\t<name>\n"
+//   line per entry. used to diff /dev_hdd0/ before and after a sony-side
+//   install so we can find what xmb registration writes that we don't.
+static void cmdListDir(int cli, const char *args)
+{
+    char path[FILE_PATH_MAX];
+    if (!parsePath(args, path, sizeof path)) {
+        sendReply(cli, SDB_ERR, "usage: list-dir <path>");
+        return;
+    }
+    static char body[64 * 1024];
+    int n = listDir(path, body, (int)sizeof body);
+    if (n < 0) {
+        sendReply(cli, SDB_ERR, "list failed");
+        return;
+    }
+    if (sendFrameHeader(cli, SDB_OK, (uint32_t)n) < 0) return;
+    if (n > 0) sendBytes(cli, body, n);
+}
+
 // dispatch one command from the client. returns 0 on success, -1 on send
 // failure (caller should drop the connection). power commands fire the
 // syscall directly — lv2 tears the whole system down.
@@ -427,6 +448,9 @@ static int dispatchCommand(int cli, char *buf)
     }
     else if ((args = matchCommand(buf, "delete-file")) != 0) {
         cmdDeleteFile(cli, args);
+    }
+    else if ((args = matchCommand(buf, "list-dir")) != 0) {
+        cmdListDir(cli, args);
     }
     else if ((args = matchCommand(buf, "capture")) != 0) {
         cmdCapture(cli, args);

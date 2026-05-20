@@ -98,6 +98,22 @@ namespace DebugBridgeClient
                     else
                         body = SendText("delete-file \"" + filePath + "\"");
                 }
+                else if (path.Equals("list-dir", StringComparison.OrdinalIgnoreCase))
+                {
+                    // GET /list-dir?path=/dev_hdd0
+                    var q = ParseQuery(req.Url.Query);
+                    string dirPath = q.ContainsKey("path") ? q["path"] : null;
+                    if (string.IsNullOrEmpty(dirPath))
+                    {
+                        body = "ERR usage: /list-dir?path=<ps3-path>";
+                    }
+                    else
+                    {
+                        byte[] payload;
+                        body = WriteBinaryReply(resp, "list-dir \"" + dirPath + "\"", out payload, "text/plain; charset=utf-8");
+                        if (payload != null) return;
+                    }
+                }
                 else if (path.Equals("capture", StringComparison.OrdinalIgnoreCase))
                 {
                     // GET /capture?x=X&y=Y&w=W&h=H — returns raw ARGB8888 bytes

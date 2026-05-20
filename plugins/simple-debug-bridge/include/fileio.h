@@ -95,4 +95,47 @@ static int sendFileWindow(int cli, const char *path, uint64_t offset, uint64_t l
     return 0;
 }
 
+// list one directory into `out`, one entry per line:
+//   "<kind>\t<size>\t<mtime>\t<name>\n"
+// where kind is 'f' (regular), 'd' (directory), or '?' (other / stat failed).
+// returns total bytes written on success (0 == empty dir), or -1 on failure
+// (open or buffer-too-small). entries are stat'd individually so size/mtime
+// reflect the underlying inode, matching what an ftp ls would show.
+static int listDir(const char *dir, char *out, int cap)
+{
+    int fd;
+    if (cellFsOpendir(dir, &fd) != CELL_FS_SUCCEEDED) return -1;
+
+    int written = 0;
+    CellFsDirent ent;
+    uint64_t read = 0;
+    while (cellFsReaddir(fd, &ent, &read) == CELL_FS_SUCCEEDED && read > 0) {
+        const char *name = ent.d_name;
+        if (name[0] == '.' && (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'))) continue;
+
+        char path[FILE_PATH_MAX];
+        if (snprintf(path, sizeof path, "%s/%s", dir, name) >= (int)sizeof path) continue;
+
+        char kind = '?';
+        uint64_t size = 0;
+        int64_t  mtime = 0;
+        CellFsStat st;
+        if (cellFsStat(path, &st) == CELL_FS_SUCCEEDED) {
+            uint32_t mode = st.st_mode & CELL_FS_S_IFMT;
+            if      (mode == CELL_FS_S_IFREG) kind = 'f';
+            else if (mode == CELL_FS_S_IFDIR) kind = 'd';
+            size  = st.st_size;
+            mtime = (int64_t)st.st_mtime;
+        }
+
+        int n = snprintf(out + written, cap - written,
+                         "%c\t%llu\t%lld\t%s\n",
+                         kind, (unsigned long long)size, (long long)mtime, name);
+        if (n < 0 || n >= cap - written) { cellFsClosedir(fd); return -1; }
+        written += n;
+    }
+    cellFsClosedir(fd);
+    return written;
+}
+
 // delete-file / uninstall use deleteFile() from file.h directly.

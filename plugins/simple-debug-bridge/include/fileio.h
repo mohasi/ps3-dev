@@ -137,5 +137,3 @@ static int listDir(const char *dir, char *out, int cap)
     cellFsClosedir(fd);
     return written;
 }
-
-// delete-file / uninstall use deleteFile() from file.h directly.

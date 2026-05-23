@@ -79,10 +79,11 @@ namespace DebugBridgeClient
                 string body;
                 if (string.Equals(path, "status", StringComparison.OrdinalIgnoreCase))
                 {
-                    // live probe rather than the cached flag — callers (e.g.
-                    // deploy.ps1) need to know the bridge is *actually* taking
-                    // commands right now, not that it was up 3s ago.
-                    body = ps3.SendCommand("ping").Ok ? "connected" : "disconnected";
+                    // cached flag only — never enter the sendLock. a wedged
+                    // in-flight command on a stalled bridge must not make
+                    // /status itself appear to time out, otherwise the
+                    // operator can't tell "host hung" from "ps3 hung".
+                    body = ps3.IsConnected ? "connected" : "disconnected";
                 }
                 else if (string.IsNullOrEmpty(path))
                 {
@@ -111,6 +112,24 @@ namespace DebugBridgeClient
                     {
                         byte[] payload;
                         body = WriteBinaryReply(resp, "list-dir \"" + dirPath + "\"", out payload, "text/plain; charset=utf-8");
+                        if (payload != null) return;
+                    }
+                }
+                else if (path.Equals("read-mem", StringComparison.OrdinalIgnoreCase))
+                {
+                    // GET /read-mem?<hexAddr>&<decLen> — returns raw bytes from
+                    // ps3 vsh memory. positional only, matches bridge syntax.
+                    string raw = (req.Url.Query ?? "").TrimStart('?');
+                    var parts = raw.Split('&');
+                    if (parts.Length < 2 || string.IsNullOrEmpty(parts[0]) || string.IsNullOrEmpty(parts[1]))
+                    {
+                        body = "ERR usage: /read-mem?<hexAddr>&<decLen>";
+                    }
+                    else
+                    {
+                        string cmd = "read-mem " + Uri.UnescapeDataString(parts[0]) + " " + Uri.UnescapeDataString(parts[1]);
+                        byte[] payload;
+                        body = WriteBinaryReply(resp, cmd, out payload, "application/octet-stream");
                         if (payload != null) return;
                     }
                 }

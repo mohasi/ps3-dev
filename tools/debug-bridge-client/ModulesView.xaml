@@ -56,8 +56,15 @@
                 BorderThickness="0,1,0,0"
                 FontFamily="Consolas"
                 FontSize="12"
+                KeyDown="OnTreeKeyDown"
                 VirtualizingStackPanel.IsVirtualizing="True"
                 VirtualizingStackPanel.VirtualizationMode="Recycling">
+         <TreeView.ContextMenu>
+            <ContextMenu>
+               <MenuItem Header="Copy" Click="OnCopyNode" InputGestureText="Ctrl+C" />
+               <MenuItem Header="Copy subtree" Click="OnCopySubtree" InputGestureText="Ctrl+Shift+C" />
+            </ContextMenu>
+         </TreeView.ContextMenu>
          <TreeView.Resources>
             <Style TargetType="TreeViewItem">
                <Setter Property="Foreground" Value="{StaticResource FgText}" />

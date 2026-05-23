@@ -43,6 +43,8 @@
 #include <arpa/inet.h>
 #include <netex/net.h>
 #include <netex/errno.h>
+
+#include "thread.h"
 #include <netex/sockinfo.h>
 
 #include <cell/fs/cell_fs_file_api.h>
@@ -888,7 +890,7 @@ static void ftpSessionThread(uint64_t arg)
     FtpSession *session = (FtpSession *)(uintptr_t)arg;
     runFtpSession(session);
     releaseSession(session);
-    sys_ppu_thread_exit(0);
+    exitThread();
 }
 
 // --- listener (spawned from prx.c) ---
@@ -909,7 +911,7 @@ static void ftpListenerThread(uint64_t arg)
     }
     if (listenFd < 0) {
         logError("[ftp] giving up — port 21 unavailable\n");
-        sys_ppu_thread_exit(0);
+        exitThread();
         return;
     }
     logInfo("[ftp] listening on :21\n");

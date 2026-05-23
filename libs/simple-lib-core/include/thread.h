@@ -36,10 +36,18 @@ static inline int spawnJoinableThread(sys_ppu_thread_t *tid, void (*entry)(uint6
     return sys_ppu_thread_create(tid, entry, arg, THREAD_PRIORITY_DEFAULT, stack, SYS_PPU_THREAD_CREATE_JOINABLE, name);
 }
 
-// lightweight recursive mutex helpers. all three wrap the lv2 lwmutex
-// primitives with vsh-friendly defaults (recursive + priority order),
-// matching how plugins already use them ad-hoc. returns the lv2 rc.
+// lightweight mutex helpers wrapping the lv2 lwmutex primitives. lock/unlock
+// take the default priority-order attribute. createLock is non-recursive by
+// default (the safer choice); createRecursiveLock is for paths that may
+// re-enter their own critical section (e.g. log tee inside a held lock).
 static inline int createLock(sys_lwmutex_t *m)
+{
+    sys_lwmutex_attribute_t attr;
+    sys_lwmutex_attribute_initialize(attr);
+    return sys_lwmutex_create(m, &attr);
+}
+
+static inline int createRecursiveLock(sys_lwmutex_t *m)
 {
     sys_lwmutex_attribute_t attr;
     sys_lwmutex_attribute_initialize(attr);
@@ -47,11 +55,26 @@ static inline int createLock(sys_lwmutex_t *m)
     return sys_lwmutex_create(m, &attr);
 }
 
-static inline int lock(sys_lwmutex_t *m)   { return sys_lwmutex_lock(m, 0); }
-static inline int unlock(sys_lwmutex_t *m) { return sys_lwmutex_unlock(m); }
+static inline int destroyLock(sys_lwmutex_t *m) { return sys_lwmutex_destroy(m); }
+static inline int lock(sys_lwmutex_t *m)        { return sys_lwmutex_lock(m, 0); }
+static inline int unlock(sys_lwmutex_t *m)      { return sys_lwmutex_unlock(m); }
 
 // readable aliases for the two awkwardly-named lv2 primitives every
 // background thread uses. exitThread() ends the current detached worker;
 // sleepMs() is the obvious wrapper around sys_timer_usleep's microsecond api.
+// yieldThread() lets the scheduler run other ready threads of equal/higher
+// priority for one quantum before returning; if nothing else is ready it
+// returns immediately. use to give the kernel breathing room between
+// syscall-heavy loop iterations without parking the thread.
 static inline void exitThread(void)     { sys_ppu_thread_exit(0); }
 static inline void sleepMs(unsigned ms) { sys_timer_usleep(ms * 1000); }
+static inline void yieldThread(void)    { sys_ppu_thread_yield(); }
+
+// join a previously-spawned joinable thread, discarding its exit status.
+// callers that need the status can still use sys_ppu_thread_join directly,
+// but every existing teardown path here just wants "wait until it's gone".
+static inline int joinThread(sys_ppu_thread_t tid)
+{
+    uint64_t status = 0;
+    return sys_ppu_thread_join(tid, &status);
+}

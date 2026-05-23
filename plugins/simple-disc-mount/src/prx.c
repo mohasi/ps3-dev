@@ -20,6 +20,7 @@
 #include "vsh.h"
 #include "syscall.h"
 #include "file.h"
+#include "thread.h"
 #include "cobra.h"
 #include "xmb-inject.h"
 #include "http.h"
@@ -60,7 +61,7 @@ static void pluginThread(uint64_t arg)
         sys_timer_sleep(1);
         if (++ticks > 60) {
             logError("[sdm] xmb ready timeout\n");
-            sys_ppu_thread_exit(0);
+            exitThread();
             return;
         }
     }
@@ -83,11 +84,11 @@ static void pluginThread(uint64_t arg)
 
     if (makeDir(pathXmlHostRoot) != 0 || makeDir(pathXmlHostGp) != 0) {
         logError("[sdm] mkdir xmlhost failed\n");
-        sys_ppu_thread_exit(0);
+        exitThread();
         return;
     }
 
-    if (writeSdmXml() != 0) { sys_ppu_thread_exit(0); return; }
+    if (writeSdmXml() != 0) { exitThread(); return; }
 
     int rc = patchCategoryGameXml();
 
@@ -102,10 +103,10 @@ static void pluginThread(uint64_t arg)
     // Hand off to the HTTP listener. It owns :8947 (loopback) and turns
     // incoming GET /mount/<name> into cobraMountIso calls.
     sys_ppu_thread_t httpTid;
-    sys_ppu_thread_create(&httpTid, httpListenerThread, 0, 0x400, 0x2000, SYS_PPU_THREAD_CREATE_JOINABLE, "sdmh");
+    spawnJoinableThread(&httpTid, httpListenerThread, 0, THREAD_STACK_SIZE_8KB, "sdmh");
 
     logInfo("[sdm] done\n");
-    sys_ppu_thread_exit(0);
+    exitThread();
 }
 
 int _start(uint64_t arg)
@@ -115,6 +116,6 @@ int _start(uint64_t arg)
     logInfo("[sdm] _start\n");
 
     sys_ppu_thread_t tid;
-    sys_ppu_thread_create(&tid, pluginThread, 0, 0x400, 0x4000, SYS_PPU_THREAD_CREATE_JOINABLE, "sdm");
+    spawnJoinableThread(&tid, pluginThread, 0, THREAD_STACK_SIZE_16KB, "sdm");
     return SYS_PRX_RESIDENT;
 }

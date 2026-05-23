@@ -33,6 +33,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="include\syscall.h" />
+    <ClInclude Include="include\module-inspect.h" />
+    <ClInclude Include="include\module-hook.h" />
     <ClInclude Include="include\vsh.h" />
   </ItemGroup>
   <ItemGroup>

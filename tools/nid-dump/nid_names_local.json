@@ -1,0 +1,8 @@
+{
+  "0xBC9A0086": "module_start",
+  "0x9F18429D": "module_stop",
+  "0xD7F43016": "module_info",
+  "0x6D0F6CAE": "_sce_package_version",
+  "0xA02D46E7": "vshNotify",
+  "0xEB757101": "isXmbReady"
+}

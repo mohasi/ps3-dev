@@ -120,6 +120,13 @@
             <local:ModulesView x:Name="modulesView" xmlns:local="clr-namespace:DebugBridgeClient" />
          </TabItem>
 
+         <!-- module trace: arm "module-trace-on" on the bridge, exercise
+              the system, stop to pull the capture and fill a filterable
+              grid (one row per outgoing import call). -->
+         <TabItem Header="Trace">
+            <local:TraceView x:Name="traceView" xmlns:local="clr-namespace:DebugBridgeClient" />
+         </TabItem>
+
          <!-- screen tab. canvas size is a pre-connect placeholder; OnConnected
               resizes it to match the actual ps3 framebuffer reported by
               display-info, so capture (x,y,w,h) is always screen-relative.

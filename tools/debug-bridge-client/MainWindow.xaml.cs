@@ -58,6 +58,7 @@ namespace DebugBridgeClient
             AppendLog("http bridge on http://localhost:8786/");
             httpBridge.Start();
             modulesView.Attach(ps3);
+            traceView.Attach(ps3);
             AppendLog("connecting to " + ps3.Host + "...");
             ps3.StartAutoConnect();
         }

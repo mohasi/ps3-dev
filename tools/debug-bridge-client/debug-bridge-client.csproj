@@ -42,6 +42,10 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>
+    <Page Include="TraceView.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="Theme.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -57,7 +61,13 @@
     <Compile Include="ModulesView.xaml.cs">
       <DependentUpon>ModulesView.xaml</DependentUpon>
     </Compile>
+    <Compile Include="TraceView.xaml.cs">
+      <DependentUpon>TraceView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="TraceCapture.cs" />
     <Compile Include="Modules.cs" />
+    <Compile Include="NidNames.cs" />
+    <Compile Include="NidProtos.cs" />
     <Compile Include="Ps3Connection.cs" />
     <Compile Include="Ps3Reply.cs" />
     <Compile Include="HttpBridge.cs" />

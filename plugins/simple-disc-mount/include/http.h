@@ -13,6 +13,7 @@
 #include "dbg.h"
 #include "file.h"
 #include "cobra.h"
+#include "thread.h"
 #include "vsh.h"
 #include "string-utilities.h"
 
@@ -99,7 +100,7 @@ static void httpListenerThread(uint64_t arg)
         listenFd = socket(AF_INET, SOCK_STREAM, 0);
         if (listenFd < 0) { sys_timer_sleep(2); retries++; }
     }
-    if (listenFd < 0) { logError("[sdm] socket failed\n"); sys_ppu_thread_exit(0); return; }
+    if (listenFd < 0) { logError("[sdm] socket failed\n"); exitThread(); return; }
 
     struct sockaddr_in addr;
     addr.sin_family      = AF_INET;
@@ -111,7 +112,7 @@ static void httpListenerThread(uint64_t arg)
         if (++retries > 30) {
             logError("[sdm] bind failed\n");
             socketclose(listenFd);
-            sys_ppu_thread_exit(0);
+            exitThread();
             return;
         }
 
@@ -120,7 +121,7 @@ static void httpListenerThread(uint64_t arg)
     if (listen(listenFd, 2) < 0) {
         logError("[sdm] listen failed\n");
         socketclose(listenFd);
-        sys_ppu_thread_exit(0);
+        exitThread();
         return;
     }
 

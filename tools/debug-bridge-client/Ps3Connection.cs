@@ -77,7 +77,7 @@ namespace DebugBridgeClient
                     if (upload != null && upload.Length > 0)
                         s.Write(upload, 0, upload.Length);
 
-                    if (!replyReady.WaitOne(60000, false))
+                    if (!replyReady.WaitOne(10000, false))
                     {
                         DropSocket();
                         return Ps3Reply.Error("reply timeout");

@@ -10,6 +10,7 @@
 #include "vsh.h"
 #include "syscall.h"
 #include "ftp.h"
+#include "thread.h"
 #include "bridge-client.h"
 
 SYS_MODULE_INFO(SimpleFtp, 0, 1, 1);
@@ -36,7 +37,7 @@ static void pluginThread(uint64_t arg)
         sys_timer_sleep(1);
         if (++ticks > 60) {
             logError("[ftp] xmb ready timeout\n");
-            sys_ppu_thread_exit(0);
+            exitThread();
             return;
         }
     }
@@ -48,7 +49,7 @@ static void pluginThread(uint64_t arg)
     sys_ppu_thread_create(&tid, ftpListenerThread, 0, 0x400, 0x1800,
                           SYS_PPU_THREAD_CREATE_JOINABLE, "ftpd");
 
-    sys_ppu_thread_exit(0);
+    exitThread();
 }
 
 int _start(uint64_t arg)
@@ -58,7 +59,6 @@ int _start(uint64_t arg)
     logInfo("[ftp] _start\n");
 
     sys_ppu_thread_t tid;
-    sys_ppu_thread_create(&tid, pluginThread, 0, 0x400, 0x4000,
-                          SYS_PPU_THREAD_CREATE_JOINABLE, "sftp");
+    spawnJoinableThread(&tid, pluginThread, 0, THREAD_STACK_SIZE_16KB, "sftp");
     return SYS_PRX_RESIDENT;
 }

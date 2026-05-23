@@ -328,3 +328,26 @@ static inline int32_t prxLinkage(int32_t id, PrxLinkage *outLink,
     return 0;
 }
 
+// lv2 syscalls 348/349 - sys_memory_allocate / sys_memory_free. used by
+// plugins that need scratch larger than their BSS budget (e.g. module-hook
+// event ring + per-arm slot tables) without bloating the on-disk SPRX and
+// trampling neighboring flash-mapped regions like cobra. flags use
+// SYS_MEMORY_PAGE_SIZE_{1M,64K} from <sys/memory.h>; pageFlag below names
+// the two common cases. size is rounded up to the page granularity by lv2.
+#define SYS_PAGE_64K  0x200ULL
+#define SYS_PAGE_1M   0x400ULL
+
+static inline int32_t sysMemAllocate(uint32_t size, uint64_t pageFlag, uint32_t *outAddr)
+{
+    uint32_t addr = 0;
+    int32_t  rc   = (int32_t)scCall3(348, (uint64_t)size, pageFlag,
+                                     (uint64_t)(uintptr_t)&addr);
+    *outAddr = (rc < 0) ? 0 : addr;
+    return rc;
+}
+
+static inline int32_t sysMemFree(uint32_t addr)
+{
+    return (int32_t)scCall1(349, (uint64_t)addr);
+}
+

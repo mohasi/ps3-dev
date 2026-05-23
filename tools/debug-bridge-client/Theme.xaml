@@ -6,7 +6,9 @@
    <Color x:Key="ColorSurfaceHigh">#5a5a5a</Color>
    <Color x:Key="ColorBorder">#3f3f3f</Color>
    <Color x:Key="ColorText">#cccccc</Color>
+   <Color x:Key="ColorTextDim">#707070</Color>
    <Color x:Key="ColorAccent">#4a9cd6</Color>
+   <Color x:Key="ColorHighlight">#3c5a78</Color>
 
    <SolidColorBrush x:Key="BgBase" Color="{StaticResource ColorBase}" />
    <SolidColorBrush x:Key="BgSurface" Color="{StaticResource ColorSurface}" />
@@ -14,7 +16,9 @@
    <SolidColorBrush x:Key="BgHoverBright" Color="{StaticResource ColorSurfaceHigh}" />
    <SolidColorBrush x:Key="BrBorder" Color="{StaticResource ColorBorder}" />
    <SolidColorBrush x:Key="FgText" Color="{StaticResource ColorText}" />
+   <SolidColorBrush x:Key="FgTextDim" Color="{StaticResource ColorTextDim}" />
    <SolidColorBrush x:Key="BrAccent" Color="{StaticResource ColorAccent}" />
+   <SolidColorBrush x:Key="BgHighlight" Color="{StaticResource ColorHighlight}" />
 
    <!-- minimal dark scrollbar (applies app-wide; no key) -->
    <Style TargetType="Thumb" x:Key="ScrollThumb">

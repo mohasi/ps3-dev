@@ -1,7 +1,8 @@
 // simple-debug-bridge — VSH plugin
 //
-// opens a TCP listener on port 8785 (LAN) so a PC client can send
-// commands: restart, shutdown, screenshot.
+// TCP listener on port 8785. host clients send framed commands; producer
+// plugins/apps connect on the same port and forward their log lines. full
+// command surface is the dispatch table in server.h.
 
 #include <sys/prx.h>
 

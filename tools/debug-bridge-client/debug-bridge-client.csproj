@@ -65,6 +65,7 @@
       <DependentUpon>TraceView.xaml</DependentUpon>
     </Compile>
     <Compile Include="TraceCapture.cs" />
+    <Compile Include="TraceHeatmap.cs" />
     <Compile Include="Modules.cs" />
     <Compile Include="NidNames.cs" />
     <Compile Include="NidProtos.cs" />

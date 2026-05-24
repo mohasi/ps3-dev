@@ -1,8 +1,11 @@
 <UserControl x:Class="DebugBridgeClient.TraceView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:DebugBridgeClient"
              Background="{StaticResource BgBase}">
+
    <UserControl.Resources>
+
       <Style x:Key="FlatButton" TargetType="Button">
          <Setter Property="Background" Value="{StaticResource BgSurface}" />
          <Setter Property="Foreground" Value="{StaticResource FgText}" />
@@ -12,11 +15,13 @@
          <Setter Property="Template">
             <Setter.Value>
                <ControlTemplate TargetType="Button">
-                  <Border x:Name="bd" Background="{TemplateBinding Background}"
+                  <Border x:Name="bd"
+                          Background="{TemplateBinding Background}"
                           BorderBrush="{TemplateBinding BorderBrush}"
                           BorderThickness="{TemplateBinding BorderThickness}"
                           Padding="{TemplateBinding Padding}">
-                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                     <ContentPresenter HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
                   </Border>
                   <ControlTemplate.Triggers>
                      <Trigger Property="IsMouseOver" Value="True">
@@ -63,7 +68,8 @@
                           Padding="{TemplateBinding Padding}"
                           SnapsToDevicePixels="True">
                      <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                       VerticalAlignment="Center" RecognizesAccessKey="True" />
+                                       VerticalAlignment="Center"
+                                       RecognizesAccessKey="True" />
                   </Border>
                   <ControlTemplate.Triggers>
                      <Trigger Property="IsMouseOver" Value="True">
@@ -78,15 +84,14 @@
          </Setter>
       </Style>
 
-      <!-- flat ListViewItem:
-           inner border on hover/selection which reads as 3D in dark
-           mode. replace with a plain Border whose Background follows
-           triggers, so selected/hovered/matched rows are solid color. -->
+      <!-- flat ListViewItem: inner border on hover/selection that reads as
+           3d in dark mode. replaced with a plain Border whose Background
+           follows triggers, so selected/hovered/matched rows are solid. -->
       <Style x:Key="FlatRow" TargetType="ListViewItem">
-         <Setter Property="Background"      Value="Transparent" />
-         <Setter Property="Foreground"      Value="{StaticResource FgText}" />
+         <Setter Property="Background" Value="Transparent" />
+         <Setter Property="Foreground" Value="{StaticResource FgText}" />
          <Setter Property="BorderThickness" Value="0" />
-         <Setter Property="Padding"         Value="0" />
+         <Setter Property="Padding" Value="0" />
          <Setter Property="SnapsToDevicePixels" Value="True" />
          <Setter Property="Template">
             <Setter.Value>
@@ -110,13 +115,14 @@
             </Setter.Value>
          </Setter>
          <Style.Triggers>
-            <!-- matched-by-search rows: solid accent fill, win over hover
+            <!-- matched-by-search rows: solid accent fill, wins over hover
                  but not over selection. -->
             <DataTrigger Binding="{Binding IsMatch}" Value="True">
                <Setter Property="Background" Value="{StaticResource BgHighlight}" />
             </DataTrigger>
          </Style.Triggers>
       </Style>
+
    </UserControl.Resources>
 
    <Grid>
@@ -125,45 +131,86 @@
          <RowDefinition Height="Auto" />
          <RowDefinition Height="*" />
          <RowDefinition Height="Auto" />
-         <RowDefinition Height="110" />
+         <RowDefinition Height="180" />
       </Grid.RowDefinitions>
 
       <!-- single toolbar row:
            [Start] [Stop] [module] [Incl. Deps]   ...   Search:[box] [Refresh] -->
-      <DockPanel Grid.Row="0" Margin="6,6,6,4" LastChildFill="False">
-         <Button x:Name="startButton" DockPanel.Dock="Left" Content="Start"
-                 Style="{StaticResource FlatButton}" Margin="0,0,4,0" Click="OnStart" />
-         <Button x:Name="stopButton" DockPanel.Dock="Left" Content="Stop"
-                 Style="{StaticResource FlatButton}" Margin="0,0,8,0" IsEnabled="False" Click="OnStop" />
-         <Grid DockPanel.Dock="Left" Width="160" Margin="0,0,6,0">
-            <TextBox x:Name="moduleBox" Style="{StaticResource DarkTextBox}"
-                     TextChanged="OnModuleTextChanged" KeyDown="OnModuleKeyDown" />
-            <TextBlock x:Name="modulePlaceholder" Text="module (e.g. SimpleFtp)"
-                       IsHitTestVisible="False" Foreground="{StaticResource FgTextDim}"
-                       Margin="6,0,10,0" VerticalAlignment="Center" />
+      <DockPanel Grid.Row="0"
+                 Margin="6,6,6,4"
+                 LastChildFill="False">
+
+         <Button x:Name="startButton"
+                 DockPanel.Dock="Left"
+                 Content="Start"
+                 Style="{StaticResource FlatButton}"
+                 Margin="0,0,4,0"
+                 Click="OnStart" />
+
+         <Button x:Name="stopButton"
+                 DockPanel.Dock="Left"
+                 Content="Stop"
+                 Style="{StaticResource FlatButton}"
+                 Margin="0,0,8,0"
+                 IsEnabled="False"
+                 Click="OnStop" />
+
+         <Grid DockPanel.Dock="Left"
+               Width="160"
+               Margin="0,0,6,0">
+            <TextBox x:Name="moduleBox"
+                     Style="{StaticResource DarkTextBox}"
+                     TextChanged="OnModuleTextChanged"
+                     KeyDown="OnModuleKeyDown" />
+            <TextBlock x:Name="modulePlaceholder"
+                       Text="module (e.g. SimpleFtp)"
+                       IsHitTestVisible="False"
+                       Foreground="{StaticResource FgTextDim}"
+                       Margin="6,0,10,0"
+                       VerticalAlignment="Center" />
          </Grid>
-         <CheckBox x:Name="depsCheck" DockPanel.Dock="Left" Content="Incl. Deps"
-                   Foreground="{StaticResource FgText}" VerticalAlignment="Center"
+
+         <CheckBox x:Name="depsCheck"
+                   DockPanel.Dock="Left"
+                   Content="Incl. Deps"
+                   Foreground="{StaticResource FgText}"
+                   VerticalAlignment="Center"
                    Margin="0,0,8,0" />
 
-         <Button x:Name="refreshButton" DockPanel.Dock="Right" Content="Refresh"
-                 Style="{StaticResource FlatButton}" Margin="6,0,0,0" Click="OnRefresh" />
+         <Button x:Name="refreshButton"
+                 DockPanel.Dock="Right"
+                 Content="Refresh"
+                 Style="{StaticResource FlatButton}"
+                 Margin="6,0,0,0"
+                 Click="OnRefresh" />
+
          <Grid DockPanel.Dock="Right" Width="160">
-            <TextBox x:Name="filterBox" Style="{StaticResource DarkTextBox}"
-                     TextChanged="OnFilterChanged" KeyDown="OnFilterKeyDown" />
-            <TextBlock x:Name="filterPlaceholder" Text="search name/nid etc."
-                       IsHitTestVisible="False" Foreground="{StaticResource FgTextDim}"
-                       Margin="6,0,10,0" VerticalAlignment="Center" />
+            <TextBox x:Name="filterBox"
+                     Style="{StaticResource DarkTextBox}"
+                     TextChanged="OnFilterChanged"
+                     KeyDown="OnFilterKeyDown" />
+            <TextBlock x:Name="filterPlaceholder"
+                       Text="search name/nid etc."
+                       IsHitTestVisible="False"
+                       Foreground="{StaticResource FgTextDim}"
+                       Margin="6,0,10,0"
+                       VerticalAlignment="Center" />
          </Grid>
+
       </DockPanel>
 
       <!-- status line: small, dim, no separator -->
-      <TextBlock Grid.Row="1" x:Name="statusText" Margin="8,0,8,4"
-                 Foreground="{StaticResource FgTextDim}" FontSize="11" Text="idle" />
+      <TextBlock x:Name="statusText"
+                 Grid.Row="1"
+                 Margin="8,0,8,4"
+                 Foreground="{StaticResource FgTextDim}"
+                 FontSize="11"
+                 Text="idle" />
 
       <!-- one row per outgoing import call, in capture order. no top border
            so the toolbar and grid blend into one surface. -->
-      <ListView x:Name="grid" Grid.Row="2"
+      <ListView x:Name="grid"
+                Grid.Row="2"
                 Background="{StaticResource BgBase}"
                 Foreground="{StaticResource FgText}"
                 BorderThickness="0"
@@ -176,34 +223,71 @@
                 SelectionChanged="OnRowSelectionChanged">
          <ListView.View>
             <GridView ColumnHeaderContainerStyle="{StaticResource FlatHeader}">
-               <GridViewColumn Header="#"      Width="60"  DisplayMemberBinding="{Binding Index}" />
-               <GridViewColumn Header="Module" Width="140" DisplayMemberBinding="{Binding Module}" />
-               <GridViewColumn Header="NID"    Width="110" DisplayMemberBinding="{Binding NidHex}" />
-               <GridViewColumn Header="Name"   Width="320" DisplayMemberBinding="{Binding Name}" />
+               <GridViewColumn Header="#"
+                               Width="60"
+                               DisplayMemberBinding="{Binding Index}" />
+               <GridViewColumn Header="Module"
+                               Width="220"
+                               DisplayMemberBinding="{Binding Module}" />
+               <GridViewColumn Header="NID"
+                               Width="110"
+                               DisplayMemberBinding="{Binding NidHex}" />
+               <GridViewColumn Header="Name"
+                               Width="320"
+                               DisplayMemberBinding="{Binding Name}" />
             </GridView>
          </ListView.View>
       </ListView>
 
-      <!-- thin divider between grid and details pane. -->
-      <Border Grid.Row="3" Height="1" Background="{StaticResource BrBorder}" />
+      <!-- thicker divider so the details pane reads as a separate band. -->
+      <Border Grid.Row="3" Height="3" Background="{StaticResource BrBorder}" />
 
-      <!-- details pane: param table only. the grid above already shows
-           module/nid/name; a signature line would be redundant. -->
-      <ListView x:Name="detailsParams" Grid.Row="4"
-                Background="{StaticResource BgBase}"
-                Foreground="{StaticResource FgText}"
-                BorderThickness="0"
-                FontFamily="Consolas" FontSize="12"
-                ItemContainerStyle="{StaticResource FlatRow}"
-                ScrollViewer.HorizontalScrollBarVisibility="Auto">
-         <ListView.View>
-            <GridView ColumnHeaderContainerStyle="{StaticResource FlatHeader}">
-               <GridViewColumn Header="reg"   Width="50"  DisplayMemberBinding="{Binding Reg}" />
-               <GridViewColumn Header="name"  Width="130" DisplayMemberBinding="{Binding Name}" />
-               <GridViewColumn Header="type"  Width="180" DisplayMemberBinding="{Binding Type}" />
-               <GridViewColumn Header="value" Width="300" DisplayMemberBinding="{Binding Value}" />
-            </GridView>
-         </ListView.View>
-      </ListView>
+      <!-- details pane: param table on the left, anomaly heatmap on the
+           right. the heatmap encodes one cell per event in capture order,
+           color = call rarity, so unusual calls pop visually. -->
+      <Grid Grid.Row="4">
+         <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="260" />
+         </Grid.ColumnDefinitions>
+
+         <ListView x:Name="detailsParams"
+                   Grid.Column="0"
+                   Background="{StaticResource BgBase}"
+                   Foreground="{StaticResource FgText}"
+                   BorderThickness="0"
+                   FontFamily="Consolas"
+                   FontSize="12"
+                   ItemContainerStyle="{StaticResource FlatRow}"
+                   ScrollViewer.HorizontalScrollBarVisibility="Auto">
+            <ListView.View>
+               <GridView ColumnHeaderContainerStyle="{StaticResource FlatHeader}">
+                  <GridViewColumn Header="reg"
+                                  Width="50"
+                                  DisplayMemberBinding="{Binding Reg}" />
+                  <GridViewColumn Header="name"
+                                  Width="130"
+                                  DisplayMemberBinding="{Binding Name}" />
+                  <GridViewColumn Header="type"
+                                  Width="130"
+                                  DisplayMemberBinding="{Binding Type}" />
+                  <GridViewColumn Header="value"
+                                  Width="150"
+                                  DisplayMemberBinding="{Binding Value}" />
+               </GridView>
+            </ListView.View>
+         </ListView>
+
+         <Border Grid.Column="1" Width="3" Background="{StaticResource BrBorder}" />
+
+         <ScrollViewer Grid.Column="2"
+                       Margin="6"
+                       VerticalScrollBarVisibility="Auto"
+                       HorizontalScrollBarVisibility="Disabled">
+            <local:TraceHeatmap x:Name="heatmap" />
+         </ScrollViewer>
+
+      </Grid>
    </Grid>
 </UserControl>

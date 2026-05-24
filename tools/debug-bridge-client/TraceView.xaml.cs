@@ -28,6 +28,7 @@ namespace DebugBridgeClient
             InitializeComponent();
             grid.ItemsSource          = rows;
             detailsParams.ItemsSource = paramRows;
+            heatmap.CellClicked      += OnHeatmapCellClicked;
         }
 
         public void Attach(Ps3Connection connection) { ps3 = connection; }
@@ -49,6 +50,7 @@ namespace DebugBridgeClient
             paramRows.Clear();
             grid.Items.Refresh();
             detailsParams.Items.Refresh();
+            heatmap.Clear();
             System.Threading.ThreadPool.QueueUserWorkItem(delegate {
                 Ps3Reply r = ps3.SendCommand(cmd);
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(delegate {
@@ -126,6 +128,7 @@ namespace DebugBridgeClient
             for (int i = 0; i < parsed.Events.Count; i++)
                 rows.Add(new TraceRow(parsed.Events[i]));
             grid.Items.Refresh();
+            heatmap.SetEvents(rows);
             ApplyHighlight(false);
 
             TraceCapture.Summary s = parsed.Summary;
@@ -231,6 +234,15 @@ namespace DebugBridgeClient
         }
 
         private void SetStatus(string msg) { statusText.Text = msg; }
+
+        // clicking a heatmap cell selects the matching row in the grid
+        // and scrolls it into view, so the viz doubles as a navigator.
+        private void OnHeatmapCellClicked(int index)
+        {
+            if (index < 0 || index >= rows.Count) return;
+            grid.SelectedIndex = index;
+            grid.ScrollIntoView(rows[index]);
+        }
 
         // ---- details pane -------------------------------------------------
 

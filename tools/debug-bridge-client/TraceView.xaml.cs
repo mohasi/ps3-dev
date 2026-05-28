@@ -105,10 +105,10 @@ namespace DebugBridgeClient
         private void LoadCaptureAsync()
         {
             System.Threading.ThreadPool.QueueUserWorkItem(delegate {
-                Ps3Reply r = ps3.SendCommand("get-file \"" + CapturePath + "\"");
+                Ps3Reply r = ps3.SendCommand("pull-file \"" + CapturePath + "\"");
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(delegate {
                     if (!r.Ok) {
-                        SetStatus("get-file failed: " + r.AsText().TrimEnd('\n'));
+                        SetStatus("pull-file failed: " + r.AsText().TrimEnd('\n'));
                         return;
                     }
                     Populate(r.Payload);

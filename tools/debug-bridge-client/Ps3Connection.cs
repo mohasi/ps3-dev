@@ -61,7 +61,7 @@ namespace DebugBridgeClient
         // routed to LogReceived by the reader thread and do not satisfy this
         // call. on transport error returns an ERR reply and drops the socket
         // so the auto-connect loop reconnects on the next tick.
-        public Ps3Reply SendCommand(string command, byte[] upload = null)
+        public Ps3Reply SendCommand(string command, byte[] upload = null, int timeoutMs = 10000)
         {
             lock (sendLock)
             {
@@ -77,7 +77,7 @@ namespace DebugBridgeClient
                     if (upload != null && upload.Length > 0)
                         s.Write(upload, 0, upload.Length);
 
-                    if (!replyReady.WaitOne(10000, false))
+                    if (!replyReady.WaitOne(timeoutMs, false))
                     {
                         DropSocket();
                         return Ps3Reply.Error("reply timeout");

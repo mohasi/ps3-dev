@@ -41,9 +41,24 @@
                      <Border x:Name="border"
                              Background="{TemplateBinding Background}"
                              Padding="6,3">
-                        <ContentPresenter ContentSource="Header" />
+                        <Grid>
+                           <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="*" />
+                              <ColumnDefinition Width="Auto" />
+                           </Grid.ColumnDefinitions>
+                           <ContentPresenter Grid.Column="0" ContentSource="Header" VerticalAlignment="Center" />
+                           <TextBlock x:Name="arrow"
+                                      Grid.Column="1"
+                                      Text="▶"
+                                      FontSize="9"
+                                      Margin="12,0,0,0"
+                                      VerticalAlignment="Center"
+                                      Foreground="{StaticResource FgText}"
+                                      Visibility="Collapsed" />
+                        </Grid>
                      </Border>
-                     <Popup IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                     <Popup x:Name="popup"
+                            IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
                             Placement="Bottom"
                             AllowsTransparency="True">
                         <Border Background="{StaticResource BgSurface}"
@@ -61,6 +76,11 @@
                      </Trigger>
                      <Trigger Property="Role" Value="SubmenuItem">
                         <Setter TargetName="border" Property="Padding" Value="20,4" />
+                     </Trigger>
+                     <Trigger Property="Role" Value="SubmenuHeader">
+                        <Setter TargetName="border" Property="Padding" Value="20,4" />
+                        <Setter TargetName="popup" Property="Placement" Value="Right" />
+                        <Setter TargetName="arrow" Property="Visibility" Value="Visible" />
                      </Trigger>
                   </ControlTemplate.Triggers>
                </ControlTemplate>
@@ -83,19 +103,30 @@
             Foreground="{StaticResource FgText}">
          <MenuItem Header="Commands">
             <MenuItem Header="Screenshot" Click="OnScreenshot" />
+            <MenuItem Header="Stat Tree..." Click="OnStatTree" />
+            <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
+            <MenuItem Header="Files">
+               <MenuItem Header="Pull File">
+                  <MenuItem Header="/dev_hdd0/tmp/stat-tree.txt"    Click="OnPullFile" Tag="/dev_hdd0/tmp/stat-tree.txt" />
+                  <MenuItem Header="/dev_hdd0/tmp/dbg.txt"          Click="OnPullFile" Tag="/dev_hdd0/tmp/dbg.txt" />
+                  <MenuItem Header="/dev_hdd0/tmp/trace-capture.bin" Click="OnPullFile" Tag="/dev_hdd0/tmp/trace-capture.bin" />
+                  <MenuItem Header="Custom..." Click="OnPullFile" />
+               </MenuItem>
+               <MenuItem Header="Push File..." Click="OnPushFile" />
+               <MenuItem Header="Delete File..." Click="OnDeleteFile" />
+            </MenuItem>
+            <MenuItem Header="Packages">
+               <MenuItem Header="Install..." Click="OnPackageInstall" />
+               <MenuItem Header="Uninstall..." IsEnabled="False" />
+            </MenuItem>
+            <MenuItem Header="Plugins">
+               <MenuItem Header="Install..." Click="OnPluginInstall" />
+               <MenuItem Header="Uninstall..." Click="OnPluginUninstall" />
+            </MenuItem>
             <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
             <MenuItem Header="Restart XMB" Click="OnRestartXmb" />
             <MenuItem Header="Restart PS3" Click="OnRestartPs3" />
             <MenuItem Header="Shutdown" Click="OnShutdown" />
-         </MenuItem>
-         <MenuItem Header="Plugins">
-            <MenuItem Header="Install..." Click="OnPluginInstall" />
-            <MenuItem Header="Uninstall..." Click="OnPluginUninstall" />
-         </MenuItem>
-         <MenuItem Header="Files">
-            <MenuItem Header="Get File..." Click="OnGetFile" />
-            <MenuItem Header="Save File..." Click="OnSaveFile" />
-            <MenuItem Header="Delete File..." Click="OnDeleteFile" />
          </MenuItem>
          <MenuItem Header="View">
             <MenuItem Header="Clear" Click="OnClear" />

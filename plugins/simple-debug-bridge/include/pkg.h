@@ -437,6 +437,42 @@ static int readPkgTitleId(const char *pkgPath, char *outTitleId)
     return rc;
 }
 
+// Tickle the file that explore_plugin writes after a manual cfw install
+// (/dev_hdd0/tmp/explore/xil2/reg.xml). Hypothesis: the xmb watches this
+// file's mtime and re-scans /dev_hdd0/game/ when it changes, so bumping
+// its timestamp is enough to register a freshly-extracted title.
+// Payload format mirrors the captured 81-byte file exactly.
+static int pokeXmbRefresh(void)
+{
+    makeDir("/dev_hdd0/tmp");
+    makeDir("/dev_hdd0/tmp/explore");
+    makeDir("/dev_hdd0/tmp/explore/xil2");
+
+    CellRtcDateTime d;
+    if (cellRtcGetCurrentClockUtc(&d) != 0) {
+        logError("[pkg] pokeXmbRefresh: rtc query failed\n");
+        return -1;
+    }
+
+    // exactly 81 bytes (matches captured reg.xml byte-for-byte in shape):
+    // <?xml version="1.0" encoding="utf-8"?>\n<reg updated="YYYY-MM-DDTHH:MM:SS.SSZ" />\n
+    char xml[96];
+    int n = snprintf(xml, sizeof xml,
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+        "<reg updated=\"%04d-%02d-%02dT%02d:%02d:%02d.%02uZ\" />\n",
+        (int)d.year, (int)d.month, (int)d.day,
+        (int)d.hour, (int)d.minute, (int)d.second,
+        (unsigned)((d.microsecond / 10000u) % 100u));
+    if (n <= 0) return -1;
+
+    if (writeFile("/dev_hdd0/tmp/explore/xil2/reg.xml", xml, (uint64_t)n) < 0) {
+        logError("[pkg] pokeXmbRefresh: write reg.xml failed\n");
+        return -1;
+    }
+    logInfo("[pkg] pokeXmbRefresh: wrote reg.xml (%d bytes)\n", n);
+    return 0;
+}
+
 // full install: read title-id from the staged pkg sfo, optionally
 // uninstall the existing tree, extract into /dev_hdd0/game/<TITLE_ID>/.
 // fills *outTitleId / counts on success. returns 0, or -1 (logged).
@@ -460,5 +496,7 @@ static int installPkg(const char *pkgPath, int clean, char *outTitleId,
     }
     char destDir[FILE_PATH_MAX];
     buildInstallPath(destDir, sizeof destDir, outTitleId);
-    return extractPkg(pkgPath, destDir, filesOut, bytesOut);
+    int rc = extractPkg(pkgPath, destDir, filesOut, bytesOut);
+    if (rc == 0) pokeXmbRefresh();
+    return rc;
 }

@@ -172,6 +172,24 @@ namespace DebugBridgeClient
             screenCanvas.Children.Add(tile);
         }
 
+        // walk a ps3 subtree and have the bridge write a sha1'd snapshot to
+        // /dev_hdd0/tmp/stat-tree.txt. used for before/after install diffs to
+        // find what xmb registration touches beyond the pkg extraction itself.
+        // fire-and-forget: the bridge logs progress, and the operator pulls the
+        // file via Files -> Pull File... once the OK comes back.
+        private void OnStatTree(object sender, RoutedEventArgs e)
+        {
+            if (!ps3.IsConnected) { AppendLog("not connected"); return; }
+            string root = PromptInput("Stat tree", "Root path:");
+            if (string.IsNullOrEmpty(root)) return;
+            RunCommand("stat-tree \"" + root + "\"", null, StatTreeTimeoutMs);
+        }
+
+        // stat-tree hashes every file under <root>; on /dev_hdd0 that walks
+        // 10k+ entries and currently runs ~40 s, well under this ceiling.
+        // shared with HttpBridge so /stat-tree and the UI agree.
+        public const int StatTreeTimeoutMs = 5 * 60 * 1000;
+
         private void OnPluginInstall(object sender, RoutedEventArgs e)
         {
             if (!ps3.IsConnected) { AppendLog("not connected"); return; }
@@ -187,6 +205,24 @@ namespace DebugBridgeClient
             RunCommand("vsh-plugin-install " + name + " " + payload.Length, payload);
         }
 
+        // ship the pkg bytes to the bridge; it stages to /dev_hdd0/packages/<name>.pkg
+        // (the .pkg suffix is appended by buildStagePath on the ps3 side) and then
+        // extracts to /dev_hdd0/game/<TITLE_ID>/. clean=1 mirrors xmb reinstall.
+        private void OnPackageInstall(object sender, RoutedEventArgs e)
+        {
+            if (!ps3.IsConnected) { AppendLog("not connected"); return; }
+            OpenFileDialog dlg = new OpenFileDialog();
+            dlg.Filter = "PS3 package (*.pkg)|*.pkg";
+            dlg.Title = "Install package";
+            if (dlg.ShowDialog(this) != true) return;
+            string path = dlg.FileName;
+            string name = Path.GetFileNameWithoutExtension(path);
+            byte[] payload;
+            try { payload = File.ReadAllBytes(path); }
+            catch (Exception ex) { AppendLog("read failed: " + ex.Message); return; }
+            RunCommand("pkg-install " + name + " 1 " + payload.Length, payload);
+        }
+
         private void OnPluginUninstall(object sender, RoutedEventArgs e)
         {
             if (!ps3.IsConnected) { AppendLog("not connected"); return; }
@@ -195,12 +231,54 @@ namespace DebugBridgeClient
             RunCommand("vsh-plugin-uninstall " + name);
         }
 
-        private void OnGetFile(object sender, RoutedEventArgs e)
+        // single handler for both the "Custom..." item and the preset
+        // submenu entries: presets carry the PS3 path in MenuItem.Tag,
+        // Custom... has no Tag and falls through to a prompt.
+        private void OnPullFile(object sender, RoutedEventArgs e)
         {
             if (!ps3.IsConnected) { AppendLog("not connected"); return; }
-            string path = PromptInput("Get file", "PS3 path (e.g. /dev_hdd0/tmp/dbg.txt):");
+            MenuItem mi = sender as MenuItem;
+            string path = mi != null ? mi.Tag as string : null;
+            if (string.IsNullOrEmpty(path))
+                path = PromptInput("Pull file", "PS3 path (e.g. /dev_hdd0/tmp/dbg.txt):");
             if (string.IsNullOrEmpty(path)) return;
-            RunCommand("get-file \"" + path + "\"");
+            FetchFileToDisk(path);
+        }
+
+        // run pull-file on a worker thread, then prompt for a local save
+        // destination on the UI thread. payload is written raw - no
+        // text decoding - so binary files (stat-tree.txt, trace bins)
+        // round-trip cleanly. cancel = silent discard.
+        private void FetchFileToDisk(string ps3Path)
+        {
+            AppendLog("ui -> pull-file \"" + ps3Path + "\"");
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                Ps3Reply r = ps3.SendCommand("pull-file \"" + ps3Path + "\"");
+                if (!r.Ok)
+                {
+                    AppendLog("ps3 -> ERR " + r.AsText().TrimEnd('\n'));
+                    return;
+                }
+                byte[] payload = r.Payload;
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    SaveFileDialog dlg = new SaveFileDialog();
+                    dlg.Title    = "Save " + ps3Path;
+                    dlg.FileName = System.IO.Path.GetFileName(ps3Path);
+                    dlg.Filter   = "All files (*.*)|*.*";
+                    if (dlg.ShowDialog(this) != true) return;
+                    try
+                    {
+                        File.WriteAllBytes(dlg.FileName, payload);
+                        AppendLog("ps3 -> OK saved " + payload.Length + " bytes to " + dlg.FileName);
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendLog("save failed: " + ex.Message);
+                    }
+                }));
+            });
         }
 
         private void OnDeleteFile(object sender, RoutedEventArgs e)
@@ -211,20 +289,20 @@ namespace DebugBridgeClient
             RunCommand("delete-file \"" + path + "\"");
         }
 
-        private void OnSaveFile(object sender, RoutedEventArgs e)
+        private void OnPushFile(object sender, RoutedEventArgs e)
         {
             if (!ps3.IsConnected) { AppendLog("not connected"); return; }
             OpenFileDialog dlg = new OpenFileDialog();
             dlg.Title = "Select file to upload";
             if (dlg.ShowDialog(this) != true) return;
             string localPath = dlg.FileName;
-            string ps3Path = PromptInput("Save file",
+            string ps3Path = PromptInput("Push file",
                 "PS3 destination path (e.g. /dev_hdd0/tmp/" + Path.GetFileName(localPath) + "):");
             if (string.IsNullOrEmpty(ps3Path)) return;
             byte[] payload;
             try { payload = File.ReadAllBytes(localPath); }
             catch (Exception ex) { AppendLog("read failed: " + ex.Message); return; }
-            RunCommand("save-file \"" + ps3Path + "\" " + payload.Length, payload);
+            RunCommand("push-file \"" + ps3Path + "\" " + payload.Length, payload);
         }
 
         // wipe both log views and the screen pane so the next session starts
@@ -272,13 +350,13 @@ namespace DebugBridgeClient
         // continuation lines indented under "ps3 ->" so they line up.
         // AppendLog is thread-safe (queue + lock, drained by the dispatcher
         // timer), so we log straight from the worker — no extra UI marshal.
-        private void RunCommand(string cmd, byte[] upload = null)
+        private void RunCommand(string cmd, byte[] upload = null, int timeoutMs = 10000)
         {
             if (!ps3.IsConnected) { AppendLog("not connected"); return; }
             AppendLog("ui -> " + cmd + (upload != null ? " (" + upload.Length + " bytes)" : ""));
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                string reply = SendText(cmd, upload);
+                string reply = SendText(cmd, upload, timeoutMs);
                 string[] lines = reply.Split('\n');
                 AppendLog("ps3 -> " + lines[0]);
                 for (int i = 1; i < lines.Length; i++)
@@ -287,11 +365,11 @@ namespace DebugBridgeClient
         }
 
         // text-mode helper: format the reply as "OK [text]" / "ERR [text]"
-        // for display in the log box. binary commands (capture, get-file)
+        // for display in the log box. binary commands (capture, pull-file)
         // get the Ps3Reply payload directly via ps3.SendCommand.
-        private string SendText(string cmd, byte[] upload = null)
+        private string SendText(string cmd, byte[] upload = null, int timeoutMs = 10000)
         {
-            Ps3Reply r = ps3.SendCommand(cmd, upload);
+            Ps3Reply r = ps3.SendCommand(cmd, upload, timeoutMs);
             string prefix = r.Ok ? "OK" : "ERR";
             if (r.Payload.Length == 0) return prefix;
             return prefix + " " + r.AsText().TrimEnd('\n');

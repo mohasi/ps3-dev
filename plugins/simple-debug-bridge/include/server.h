@@ -6,7 +6,7 @@
 // listens on port 8785. one persistent host client at a time + up to
 // SDB_MAX_PLUGINS producer plugins + one app producer (newest wins).
 // each request is "<cmd>[ args]\n" (with optional raw upload bytes
-// after the newline for upload commands like save-file). each reply
+// after the newline for upload commands like push-file). each reply
 // is the framed format "<STATUS> <n>\n[<n bytes>]" - see sendFrame()
 // / sendFrameHeader() in wire.h.
 //
@@ -33,6 +33,7 @@
 #include "cmd-capture.h"
 #include "cmd-trace.h"
 #include "cmd-read-mem.h"
+#include "cmd-stat-tree.h"
 
 #define SDB_PORT          8785
 #define SDB_BUF_MAX       512
@@ -185,10 +186,11 @@ static int dispatchCommand(int cli, char *buf)
     else if ((args = matchCommand(buf, "module-trace-off")) != 0) cmdModuleTraceOff (cli, args);
     else if ((args = matchCommand(buf, "read-mem"))         != 0) cmdReadMem        (cli, args);
     else if ((args = matchCommand(buf, "process-info"))     != 0) cmdProcessInfo    (cli, args);
-    else if ((args = matchCommand(buf, "get-file"))         != 0) cmdGetFile        (cli, args);
-    else if ((args = matchCommand(buf, "save-file"))        != 0) cmdSaveFile       (cli, args);
+    else if ((args = matchCommand(buf, "pull-file"))        != 0) cmdPullFile       (cli, args);
+    else if ((args = matchCommand(buf, "push-file"))        != 0) cmdPushFile       (cli, args);
     else if ((args = matchCommand(buf, "delete-file"))      != 0) cmdDeleteFile     (cli, args);
     else if ((args = matchCommand(buf, "list-dir"))         != 0) cmdListDir        (cli, args);
+    else if ((args = matchCommand(buf, "stat-tree"))        != 0) cmdStatTree       (cli, args);
     else if ((args = matchCommand(buf, "capture"))          != 0) cmdCapture        (cli, args);
     else if ((args = matchCommand(buf, "vsh-plugin-install")) != 0) {
         if (!parseNameAndSize(args, name, sizeof name, &size)) {

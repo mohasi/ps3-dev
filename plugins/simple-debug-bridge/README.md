@@ -19,7 +19,9 @@ Pair with the WPF companion in `tools/debug-bridge-client/`.
 | `launch <titleid>` | 🔲 | launch installed title |
 | `input <buttons>` | 🔲 | send fake pad input |
 | `module-list` | ✅ | list every PRX loaded into vsh.self via `sys_prx_get_module_list` (syscall 494) + `sys_prx_get_module_info` (syscall 495). Payload is one line per module: `<id>\t<name>\t<filename>\n`. Includes system modules — useful for debugging. |
-Foundation for trace tooling. |
+| `module-info <name>` | ✅ | per-module detail: ELF segments, linkage tables, exports, imports. Payload is sectioned text consumed by the Modules tab. Foundation for trace tooling. |
+| `module-trace-on` / `module-trace-off` | ✅ | arm / disarm import-call tracing across loaded modules. Captures go to a ring buffer on the ps3, pulled later with `pull-file /dev_hdd0/tmp/trace-capture.bin`. |
+| `read-mem <hexAddr> <decLen>` | ✅ | dump `<decLen>` raw bytes from vsh address space starting at `<hexAddr>`. Payload is binary; use `/read-mem?<hex>&<dec>` over HTTP for `application/octet-stream`. |
 | `process-list` | ✅ | list processes the bridge can introspect. Always emits a single `vsh\tlive` line: on CEX the dbg syscalls for cross-process enumeration (`sys_dbg_get_process_list` and friends) are either ENOSYS or locked to the calling pid, so the bridge can only see the process it runs in. The tabular wire shape (`<name>\t<status>\n` per row) is preserved so a future CFW escalation (DEX / Rebug / QA flags) can add entries without changing the client. |
 | `process-info <name>` | ✅ | per-process identity and loaded-module list. Payload is tab-separated text: `pid\t0x<hex>`, `name\t<text>`, `sdk\t0x<hex>` (from `sys_process_get_sdk_version`), then one `mod\t<id>\t<name>\t<filename>` row per PRX loaded into the process. Currently `<name>` must be `vsh`. Imports/exports of the main `.self` itself are not yet surfaced (followup: parse `/dev_flash/vsh/module/vsh.self`). |
 | `vsh-plugin-load <name> <size>` | 🔲 | upload `<size>` bytes to `/dev_hdd0/tmp/sdb/<name>.sprx`, then load + start. Replaces if already loaded by same name. |
@@ -27,13 +29,15 @@ Foundation for trace tooling. |
 | `vsh-plugin-unload <name>` | 🔲 | stop + unload a VSH PRX by module name |
 | `vsh-plugin-enable <name>` | 🔲 | ensure exactly one active line for `<name>` in `boot_plugins.txt` (canonical path `/dev_hdd0/plugins/<name>.sprx`) |
 | `vsh-plugin-disable <name>` | 🔲 | ensure exactly one commented line for `<name>` in `boot_plugins.txt` |
-| `vsh-plugin-install <name> <size>` | ✅ | upload `<size>` bytes to `/dev_hdd0/plugins/<name>.sprx`, then `enable`. Thin wrapper over `save-file` + `setPluginLine(ACTIVE)`. |
+| `vsh-plugin-install <name> <size>` | ✅ | upload `<size>` bytes to `/dev_hdd0/plugins/<name>.sprx`, then `enable`. Thin wrapper over `push-file` + `setPluginLine(ACTIVE)`. |
 | `vsh-plugin-uninstall <name>` | ✅ | remove every line referencing `<name>` from `boot_plugins.txt`, then `delete-file /dev_hdd0/plugins/<name>.sprx`. Thin wrapper over `setPluginLine(ABSENT)` + `delete-file`. |
 | `pkg-install <name> <clean> <size>` | ✅ | upload `<size>` bytes to `/dev_hdd0/packages/<name>.pkg`, parse `PARAM.SFO` for `TITLE_ID`, optionally wipe `/dev_hdd0/game/<TITLE_ID>/` if `clean=1`, then extract the pkg there. **Debug-format pkgs only** (`pkg_rev_type == 0x00000001`). No XMB install dialog. Reply: `OK installed <TITLE_ID> (<n> files, <bytes> bytes)`. Run `restart-xmb` after to refresh the Games column. |
 | `pkg-uninstall <TITLE_ID>` | ✅ | recursive delete of `/dev_hdd0/game/<TITLE_ID>/`. Reply: `OK uninstalled <TITLE_ID> (<bytes> bytes)`. |
-| `get-file <path> [offset] [length]` | ✅ | stream raw bytes back. Payload is the requested file window. `length=0` (or omitted) means "to end of file". |
-| `save-file <path> <size>` | ✅ | upload `<size>` bytes to `<path>` (truncating). Parent directory must already exist — use a separate `mkdir`-equivalent if needed. |
+| `pull-file <path> [offset] [length]` | ✅ | stream raw bytes back. Payload is the requested file window. `length=0` (or omitted) means "to end of file". |
+| `push-file <path> <size>` | ✅ | upload `<size>` bytes to `<path>` (truncating). Parent directory must already exist — use a separate `mkdir`-equivalent if needed. |
 | `delete-file <path>` | ✅ | unlink `<path>`. Idempotent: missing file returns `OK`. |
+| `list-dir <path>` | ✅ | one tab-separated line per entry: `<kind>\t<size>\t<mtime>\t<name>\n`. Non-recursive. Used to diff `/dev_hdd0/` around a sony-side install. |
+| `stat-tree <root>` | ✅ | recursive snapshot of `<root>` written to `/dev_hdd0/tmp/stat-tree.txt` as `<kind>\t<size>\t<mtime>\t<sha1>\t<path>\n` per entry. sha1 only for regular files <= 256 KiB; larger files emit `0`s and diff on size+mtime. Reply is just `OK files=<n> dirs=<n> -> /dev_hdd0/tmp/stat-tree.txt`; pull the file separately. Runs ~40 s on `/dev_hdd0`. Iterative DFS, single 64 KiB heap allocation, never recurses or follows symlinks. |
 
 ## Protocol
 
@@ -67,7 +71,7 @@ never blocks startup.
 
 `<STATUS>` is `OK` or `ERR`. `<n>` is the exact byte length of the payload
 that follows (no trailing newline). Text payloads are UTF-8 / ASCII; binary
-payloads (e.g. `capture`, `get-file`) are raw bytes. An empty payload is
+payloads (e.g. `capture`, `pull-file`) are raw bytes. An empty payload is
 `OK 0\n`.
 
 Server-side helpers in `server.h`:
@@ -81,7 +85,7 @@ large bodies (e.g. `module-list` records, file streams) before sending.
 ### Binary upload framing
 
 Commands that ship a binary payload (e.g. `vsh-plugin-install <name> <size>`,
-`save-file <path> <size>`) end their command line with a byte count, then send
+`push-file <path> <size>`) end their command line with a byte count, then send
 exactly that many raw bytes immediately after the `\n`:
 
 ```
@@ -155,7 +159,15 @@ simple-debug-bridge/
 │   └── prx.c               # plugin entry — _start / _stop only
 ├── include/
 │   ├── server.h            # accept loop, command dispatch, teardown
+│   ├── cmd-common.h        # shared reply / parse helpers used by every cmd-*
+│   ├── cmd-introspect.h    # module-list, process-list, process-info
+│   ├── cmd-file.h          # pull-file / push-file / delete-file / list-dir
+│   ├── cmd-stat-tree.h     # recursive sha1'd snapshot for install diffs
+│   ├── cmd-capture.h       # capture + display-info (vsh-side framebuffer read)
+│   ├── cmd-trace.h         # module-trace-on / module-trace-off
+│   ├── cmd-read-mem.h      # read-mem (raw vsh address-space dump)
 │   ├── fileio.h            # socket-coupled file streaming (recvFile / sendFileWindow)
+│   ├── capture.h           # vsh-side framebuffer + RSX FIFO helpers
 │   ├── plugin.h            # vsh plugin install/uninstall + boot_plugins.txt edits
 │   └── pkg.h               # debug-format .pkg parser + extractor (sha1 keystream cipher)
 ├── simple-debug-bridge.vcxproj
@@ -203,7 +215,7 @@ Via the local HTTP bridge (with `debug-bridge-client` running):
 
 ```
 curl http://localhost:8786/ping
-curl "http://localhost:8786/get-file?path=/dev_hdd0/tmp/dbg.txt&text=1"
-curl "http://localhost:8786/get-file?path=/dev_hdd0/boot_plugins.txt&text=1"
+curl "http://localhost:8786/pull-file?path=/dev_hdd0/tmp/dbg.txt&text=1"
+curl "http://localhost:8786/pull-file?path=/dev_hdd0/boot_plugins.txt&text=1"
 curl "http://localhost:8786/delete-file?path=/dev_hdd0/tmp/old.txt"
 ```

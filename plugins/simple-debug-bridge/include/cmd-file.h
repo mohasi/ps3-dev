@@ -1,21 +1,21 @@
 #pragma once
 
-// file-ops commands: get-file, save-file, delete-file, list-dir.
+// file-ops commands: pull-file, push-file, delete-file, list-dir.
 // thin wrappers around the helpers in fileio.h that frame the result
 // for the host socket and parse the argument tokens.
 
 #include "cmd-common.h"
 #include "fileio.h"
 
-// get-file <path> [offset length]
+// pull-file <path> [offset length]
 //   length=0 means "until end-of-file".
 //   reply: OK <window>\n<window bytes> on success, ERR ... on failure.
-static void cmdGetFile(int cli, const char *args)
+static void cmdPullFile(int cli, const char *args)
 {
     char path[FILE_PATH_MAX];
     const char *rest = parsePath(args, path, sizeof path);
     if (!rest) {
-        sendReply(cli, SDB_ERR, "usage: get-file <path> [offset length]");
+        sendReply(cli, SDB_ERR, "usage: pull-file <path> [offset length]");
         return;
     }
 
@@ -41,19 +41,19 @@ static void cmdGetFile(int cli, const char *args)
 
     if (window > 0 && sendFileWindow(cli, path, offset, (uint64_t)window) < 0) {
         // header already on the wire; client gets short read and reports it.
-        logError("[sdb] get-file send truncated\n");
+        logError("[sdb] pull-file send truncated\n");
     }
 }
 
-// save-file <path> <size>\n<size raw bytes>
+// push-file <path> <size>\n<size raw bytes>
 //   reply: OK saved <path> (<size> bytes)  or  ERR ...
 //   does NOT auto-create parent directories - caller picks an existing path.
-static void cmdSaveFile(int cli, const char *args)
+static void cmdPushFile(int cli, const char *args)
 {
     char path[FILE_PATH_MAX];
     const char *rest = parsePath(args, path, sizeof path);
     if (!rest) {
-        sendReply(cli, SDB_ERR, "usage: save-file <path> <size>");
+        sendReply(cli, SDB_ERR, "usage: push-file <path> <size>");
         return;
     }
     uint64_t size = 0;

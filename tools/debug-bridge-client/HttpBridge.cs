@@ -151,18 +151,41 @@ namespace DebugBridgeClient
                         return;
                     }
                 }
-                else if (path.Equals("get-file", StringComparison.OrdinalIgnoreCase))
+                else if (path.Equals("stat-tree", StringComparison.OrdinalIgnoreCase))
                 {
-                    // GET /get-file?path=/dev_hdd0/tmp/dbg.txt[&offset=N&length=N][&text=1]
+                    // GET /stat-tree?root=/dev_hdd0 - kicks off a recursive
+                    // sha1'd snapshot on the ps3 written to
+                    // /dev_hdd0/tmp/stat-tree.txt. caller pulls the file
+                    // separately via /pull-file. stat-tree is the only command
+                    // that legitimately runs for minutes, so the long timeout
+                    // stays inline here rather than leaking into SendText.
+                    var q = ParseQuery(req.Url.Query);
+                    string root = q.ContainsKey("root") ? q["root"] : null;
+                    if (string.IsNullOrEmpty(root))
+                    {
+                        body = "ERR usage: /stat-tree?root=<ps3-path>";
+                    }
+                    else
+                    {
+                        string cmd = "stat-tree \"" + root + "\"";
+                        log("http -> " + cmd);
+                        Ps3Reply r = ps3.SendCommand(cmd, null, MainWindow.StatTreeTimeoutMs);
+                        body = (r.Ok ? "OK" : "ERR") + (r.Payload.Length > 0 ? " " + r.AsText() : "");
+                        log("ps3 -> " + body);
+                    }
+                }
+                else if (path.Equals("pull-file", StringComparison.OrdinalIgnoreCase))
+                {
+                    // GET /pull-file?path=/dev_hdd0/tmp/dbg.txt[&offset=N&length=N][&text=1]
                     var q = ParseQuery(req.Url.Query);
                     string filePath = q.ContainsKey("path") ? q["path"] : null;
                     if (string.IsNullOrEmpty(filePath))
                     {
-                        body = "ERR usage: /get-file?path=<ps3-path>[&offset=N&length=N][&text=1]";
+                        body = "ERR usage: /pull-file?path=<ps3-path>[&offset=N&length=N][&text=1]";
                     }
                     else
                     {
-                        string cmd = "get-file \"" + filePath + "\"";
+                        string cmd = "pull-file \"" + filePath + "\"";
                         if (q.ContainsKey("offset") || q.ContainsKey("length"))
                         {
                             string o = q.ContainsKey("offset") ? q["offset"] : "0";

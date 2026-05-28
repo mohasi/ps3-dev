@@ -2,7 +2,7 @@
 
 // generic ps3 file io primitives over a tcp socket. no protocol awareness —
 // callers (server.h) own the wire framing. used by both raw file commands
-// (get-file / save-file) and higher-level wrappers (plugin.h, pkg.h).
+// (pull-file / push-file) and higher-level wrappers (plugin.h, pkg.h).
 // note: non-streaming primitives (readFile/writeFile/deleteFile/...) live in
 // the shared prx lib's file.h — this header only adds the socket-coupled ones.
 

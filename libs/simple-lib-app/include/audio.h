@@ -52,11 +52,15 @@ void  termSfx(void);
 Audio loadSfx(const char *path, SfxMode mode);
 void  freeSfx(Audio *a);
 void  playSfx(Audio *a, float volume, float speed, int loop);
+// one-shot at default volume/speed, no looping. safe on a NULL handle so
+// callers do not need to null-check optional ui sounds.
+static inline void playSfxOnce(Audio *a)
+{
+    if (a) playSfx(a, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 0);
+}
 void  stopSfx(Audio *a);
 void  pauseSfx(Audio *a);
 void  resumeSfx(Audio *a);
 void  setSfxMasterVolume(float vol);
 void  raiseSfxMasterVolume(float amount);
 void  lowerSfxMasterVolume(float amount);
-
-

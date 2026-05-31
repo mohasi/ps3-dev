@@ -35,5 +35,3 @@ extern PadState pad;
 
 void initPad(void);
 void updatePad(void);
-
-

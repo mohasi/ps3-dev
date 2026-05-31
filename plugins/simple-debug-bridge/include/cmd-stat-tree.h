@@ -276,9 +276,7 @@ static void cmdStatTree(int cli, const char *args)
     int32_t  allocRc = sysMemAllocate(STAT_TREE_ARENA_BYTES, SYS_PAGE_64K, &ctxAddr);
     if (allocRc < 0 || ctxAddr == 0 || sizeof(StatTreeCtx) > STAT_TREE_ARENA_BYTES) {
         if (ctxAddr) sysMemFree(ctxAddr);
-        char err[64];
-        snprintf(err, sizeof err, "alloc failed rc=0x%x", (unsigned)allocRc);
-        sendReply(cli, SDB_ERR, err);
+        sendErrRc(cli, "alloc failed", allocRc);
         return;
     }
     StatTreeCtx *c = (StatTreeCtx *)(uintptr_t)ctxAddr;

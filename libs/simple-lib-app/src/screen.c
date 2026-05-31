@@ -10,10 +10,6 @@ static size_t  vramMarks[SCREEN_MAX_STACK];
 static int screenDepth = 0;
 Screen *currentScreen = NULL;
 
-// ============================================================================
-// top-level navigation
-// ============================================================================
-
 void changeScreen(Screen *newScreen)
 {
     if (currentScreen && currentScreen->term) currentScreen->term();

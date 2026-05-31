@@ -83,11 +83,6 @@ static sys_lwmutex_t serverRegistryLock;
 // host stays away too long.
 static LogBacklog logBacklog;
 
-static inline void pushBacklog(const char *buf, int len)
-{
-    pushLogBacklog(&logBacklog, buf, len);
-}
-
 // drain callback: forward each buffered line as a LOG frame to the host.
 static int sendBacklogToHost(const char *data, int len, void *user)
 {
@@ -97,13 +92,6 @@ static int sendBacklogToHost(const char *data, int len, void *user)
         return -1;
     }
     return 0;
-}
-
-// drain pre-connect lines in chronological order. caller must hold
-// serverHostWriteLock and have serverHostFd set to the just-attached host.
-static inline void drainBacklog(int fd)
-{
-    drainLogBacklog(&logBacklog, sendBacklogToHost, &fd);
 }
 
 // forward a LOG line from a producer thread to the host. takes the host
@@ -119,7 +107,7 @@ static void forwardLogToHost(const char *buf, int len)
             shutdown(fd, SHUT_RDWR);
         }
     } else {
-        pushBacklog(buf, len);
+        pushLogBacklog(&logBacklog, buf, len);
     }
     unlock(&serverHostWriteLock);
 }
@@ -424,7 +412,7 @@ static void runConnHandler(uint64_t arg)
             // drain any logs buffered while no host was connected (plugin
             // startup, bridge startup, producer registrations) so the
             // Debug Logs tab shows the full history, not just post-connect.
-            drainBacklog(cli);
+            drainLogBacklog(&logBacklog, sendBacklogToHost, &cli);
             // the first line we already consumed is a real command; dispatch
             // it before entering the read loop.
             int rc = dispatchCommand(cli, first);
@@ -536,7 +524,7 @@ static void runAcceptLoop(uint64_t arg)
         // role; host single-client enforcement lives inside the thread so
         // producers can keep registering even while a host is connected.
         sys_ppu_thread_t tid = 0;
-        spawnThread(&tid, runConnHandler, (uint64_t)c, THREAD_STACK_SIZE_16KB, "sdb_conn");
+        spawnThread(&tid, runConnHandler, (uint64_t)c, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "bridge-conn");
         // detached - thread self-exits on disconnect and lv2 reclaims it.
     }
 
@@ -567,7 +555,7 @@ static void startServer(void)
     // accept loop thread is joinable so stopServer can wait for clean
     // teardown; per-connection threads (above) are detached.
     sys_ppu_thread_t tid = 0;
-    spawnJoinableThread(&tid, runAcceptLoop, 0, THREAD_STACK_SIZE_16KB, "sdb");
+    spawnJoinableThread(&tid, runAcceptLoop, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "bridge-accept");
     serverThreadId = tid;
 }
 

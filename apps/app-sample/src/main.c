@@ -35,11 +35,11 @@ int main(int argc, char **argv)
 		appPoll();
 		updatePad();
 
-		screenUpdate();
+		updateScreen();
 
 		beginGfxFrame();
 		clearGfx(COLOR_SLATE_900);
-		screenDraw();
+		drawScreen();
 		drawStats();
 		endGfxFrame();
 	}

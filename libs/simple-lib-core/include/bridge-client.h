@@ -147,7 +147,7 @@ static void runBridgeRegistration(uint64_t arg)
    int isApp = strEq(registration->kind, "app");
    if (isApp) {
       sys_ppu_thread_t handlerThreadId = 0;
-      spawnThread(&handlerThreadId, runRequestHandler, 0, THREAD_STACK_SIZE_8KB, "sdb_req");
+      spawnThread(&handlerThreadId, runRequestHandler, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "bridge-client-req");
    }
 
 done:
@@ -170,5 +170,5 @@ static inline void registerWithBridge(const char *kind, const char *name)
 
    sys_ppu_thread_t threadId = 0;
    spawnThread(&threadId, runBridgeRegistration, (uint64_t)(uintptr_t)&registration,
-               THREAD_STACK_SIZE_8KB, "sdb_reg");
+               THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "bridge-client-reg");
 }

@@ -40,18 +40,9 @@ void setBreadcrumbPath(Breadcrumb *b, const char *path)
     char *p = buf;
     if (*p == '/') p++;
 
-    // first segment: prepend / to form e.g. "/dev_hdd0"
-    if (*p && b->depth < BREADCRUMB_MAX_DEPTH) {
-        char *slash = p;
-        while (*slash && *slash != '/') slash++;
-        char saved = *slash;
-        *slash = '\0';
-        b->segments[0][0] = '/';
-        strncpy(b->segments[0] + 1, p, BREADCRUMB_MAX_NAME - 2);
-        b->segments[0][BREADCRUMB_MAX_NAME - 1] = '\0';
-        b->depth = 1;
-        p = saved ? slash + 1 : slash;
-    } else {
+    // root shows as "/". everything below root shows bare segments
+    // ("dev_hdd0" > "PS3" > ...), no leading slash on the first.
+    if (!*p) {
         strncpy(b->segments[0], "/", BREADCRUMB_MAX_NAME - 1);
         b->segments[0][BREADCRUMB_MAX_NAME - 1] = '\0';
         b->depth = 1;

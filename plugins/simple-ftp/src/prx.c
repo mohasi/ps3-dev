@@ -46,8 +46,7 @@ static void pluginThread(uint64_t arg)
     // Hand control to the FTP listener thread.
     // and spawns a session thread per accepted client.
     sys_ppu_thread_t tid;
-    sys_ppu_thread_create(&tid, ftpListenerThread, 0, 0x400, 0x1800,
-                          SYS_PPU_THREAD_CREATE_JOINABLE, "ftpd");
+    spawnJoinableThread(&tid, ftpListenerThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "ftp-listener");
 
     exitThread();
 }
@@ -59,6 +58,6 @@ int _start(uint64_t arg)
     logInfo("[ftp] _start\n");
 
     sys_ppu_thread_t tid;
-    spawnJoinableThread(&tid, pluginThread, 0, THREAD_STACK_SIZE_16KB, "sftp");
+    spawnJoinableThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "ftp-main");
     return SYS_PRX_RESIDENT;
 }

@@ -1,6 +1,7 @@
 // audio - multi-stream audio mixer with wav and ogg vorbis support
 #include "audio.h"
 #include "file.h"
+#include "thread.h"
 #include <cell/audio.h>
 #include <cell/sysmodule.h>
 #include <sys/ppu_thread.h>
@@ -8,6 +9,28 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+
+// reads entire file into a malloc'd buffer. caller frees. NULL on failure.
+static uint8_t *readFileAlloc(const char *path, uint32_t *outSize)
+{
+    int fd;
+    if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_FS_SUCCEEDED) return NULL;
+    CellFsStat st;
+    if (cellFsFstat(fd, &st) != CELL_FS_SUCCEEDED) { cellFsClose(fd); return NULL; }
+    uint32_t size = (uint32_t)st.st_size;
+    uint8_t *buf = (uint8_t *)malloc(size);
+    if (!buf) { cellFsClose(fd); return NULL; }
+    uint64_t totalRead = 0;
+    while (totalRead < size) {
+        uint64_t r;
+        if (cellFsRead(fd, buf + totalRead, size - totalRead, &r) != CELL_FS_SUCCEEDED || r == 0) break;
+        totalRead += r;
+    }
+    cellFsClose(fd);
+    if (totalRead != size) { free(buf); return NULL; }
+    *outSize = size;
+    return buf;
+}
 
 #define STB_VORBIS_BIG_ENDIAN
 #define STB_VORBIS_NO_STDIO
@@ -49,13 +72,13 @@ static inline int16_t wavSwapS16(int16_t v) {
 // mixer state
 // ============================================================================
 
-static Audio *gStreams[SFX_MAX_STREAMS];
-static int gStreamCount = 0;
-static float gMasterVolume = 1.0f;
-static sys_ppu_thread_t gAudioThread;
-static volatile int gAudioRunning = 0;
-static CellAudioPortConfig gPortConfig;
-static uint32_t gPortNum;
+static Audio *streams[SFX_MAX_STREAMS];
+static int streamCount = 0;
+static float masterVolume = 1.0f;
+static sys_ppu_thread_t audioThread;
+static volatile int audioRunning = 0;
+static CellAudioPortConfig portConfig;
+static uint32_t portNum;
 
 // ============================================================================
 // wav decode
@@ -205,8 +228,8 @@ static void audioMixerThread(uint64_t arg) {
     float mix[SFX_BLOCK_SAMPLES * 2];
     uint64_t lastBlock = 0;
 
-    while (gAudioRunning) {
-        uint64_t curBlock = *(volatile uint64_t *)gPortConfig.readIndexAddr;
+    while (audioRunning) {
+        uint64_t curBlock = *(volatile uint64_t *)portConfig.readIndexAddr;
         if (curBlock == lastBlock) {
             sys_timer_usleep(500);
             continue;
@@ -215,11 +238,11 @@ static void audioMixerThread(uint64_t arg) {
 
         memset(mix, 0, sizeof(mix));
 
-        for (int s = 0; s < gStreamCount; s++) {
-            Audio *a = gStreams[s];
+        for (int s = 0; s < streamCount; s++) {
+            Audio *a = streams[s];
             if (!a || a->state != SFX_STATE_PLAYING) continue;
 
-            float vol = a->volume * gMasterVolume;
+            float vol = a->volume * masterVolume;
             double step = (double)a->sampleRate / (double)SFX_SAMPLE_RATE * a->speed;
 
             if (a->mode == SFX_MEMORY && a->pcmData) {
@@ -260,7 +283,7 @@ static void audioMixerThread(uint64_t arg) {
         }
 
         uint32_t writeBlock = (curBlock + 1) % 8;
-        float *dst = (float *)(uintptr_t)(gPortConfig.portAddr +
+        float *dst = (float *)(uintptr_t)(portConfig.portAddr +
                      SFX_BLOCK_SAMPLES * 2 * sizeof(float) * writeBlock);
         memcpy(dst, mix, SFX_BLOCK_SAMPLES * 2 * sizeof(float));
     }
@@ -283,26 +306,27 @@ int initSfx(void) {
     p.level = 1.0f;
 
     if (cellAudioInit() != CELL_OK) return -1;
-    if (cellAudioPortOpen(&p, &gPortNum) != CELL_OK) return -1;
-    if (cellAudioGetPortConfig(gPortNum, &gPortConfig) != CELL_OK) return -1;
-    if (cellAudioPortStart(gPortNum) != CELL_OK) return -1;
+    if (cellAudioPortOpen(&p, &portNum) != CELL_OK) return -1;
+    if (cellAudioGetPortConfig(portNum, &portConfig) != CELL_OK) return -1;
+    if (cellAudioPortStart(portNum) != CELL_OK) return -1;
 
-    gAudioRunning = 1;
-    gStreamCount = 0;
-    memset(gStreams, 0, sizeof(gStreams));
+    audioRunning = 1;
+    streamCount = 0;
+    memset(streams, 0, sizeof(streams));
 
-    sys_ppu_thread_create(&gAudioThread, audioMixerThread, 0,
-                          1000, 0x4000, SYS_PPU_THREAD_CREATE_JOINABLE, "AudioMixer");
+    sys_ppu_thread_create(&audioThread, audioMixerThread, 0,
+                          THREAD_PRIORITY_HIGH, THREAD_STACK_SIZE_16KB,
+                          SYS_PPU_THREAD_CREATE_JOINABLE, "audio-mixer");
     return 0;
 }
 
 void termSfx(void) {
-    gAudioRunning = 0;
+    audioRunning = 0;
     uint64_t ec;
-    sys_ppu_thread_join(gAudioThread, &ec);
+    sys_ppu_thread_join(audioThread, &ec);
 
-    cellAudioPortStop(gPortNum);
-    cellAudioPortClose(gPortNum);
+    cellAudioPortStop(portNum);
+    cellAudioPortClose(portNum);
     cellAudioQuit();
     cellSysmoduleUnloadModule(CELL_SYSMODULE_AUDIO);
 }
@@ -405,21 +429,21 @@ void playSfx(Audio *a, float volume, float speed, int loop) {
     if (a->mode == SFX_STREAM && a->vorbis)
         stb_vorbis_seek_start(a->vorbis);
 
-    for (int i = 0; i < gStreamCount; i++)
-        if (gStreams[i] == a) return;
-    if (gStreamCount < SFX_MAX_STREAMS)
-        gStreams[gStreamCount++] = a;
+    for (int i = 0; i < streamCount; i++)
+        if (streams[i] == a) return;
+    if (streamCount < SFX_MAX_STREAMS)
+        streams[streamCount++] = a;
 }
 
 void stopSfx(Audio *a) {
     a->state = SFX_STATE_STOPPED;
     a->playPos = 0.0;
 
-    for (int i = 0; i < gStreamCount; i++) {
-        if (gStreams[i] == a) {
-            gStreams[i] = gStreams[gStreamCount - 1];
-            gStreams[gStreamCount - 1] = NULL;
-            gStreamCount--;
+    for (int i = 0; i < streamCount; i++) {
+        if (streams[i] == a) {
+            streams[i] = streams[streamCount - 1];
+            streams[streamCount - 1] = NULL;
+            streamCount--;
             break;
         }
     }
@@ -438,13 +462,13 @@ void resumeSfx(Audio *a) {
 void setSfxMasterVolume(float vol) {
     if (vol < 0.0f) vol = 0.0f;
     if (vol > 1.0f) vol = 1.0f;
-    gMasterVolume = vol;
+    masterVolume = vol;
 }
 
 void raiseSfxMasterVolume(float amount) {
-    setSfxMasterVolume(gMasterVolume + amount);
+    setSfxMasterVolume(masterVolume + amount);
 }
 
 void lowerSfxMasterVolume(float amount) {
-    setSfxMasterVolume(gMasterVolume - amount);
+    setSfxMasterVolume(masterVolume - amount);
 }

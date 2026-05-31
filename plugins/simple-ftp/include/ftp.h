@@ -52,6 +52,7 @@
 
 #include "dbg.h"
 #include "string-utilities.h"
+#include "file.h"  // joinPath, mountDevBlind, cellFs wrappers
 
 // --- tuneables ---
 enum {
@@ -238,23 +239,15 @@ static void resolvePath(FtpSession *session, const char *in, char *out)
     normalizePath(out);
 }
 
-// Join dir + name with a single separator.
-static void joinPath(char *out, int cap, const char *dir, const char *name)
-{
-    int o = 0;
-    while (dir[o] && o < cap - 1) { out[o] = dir[o]; o++; }
-    if (o > 0 && out[o - 1] != '/' && o < cap - 1) out[o++] = '/';
-    for (int k = 0; name[k] && o < cap - 1; k++) out[o++] = name[k];
-    out[o] = 0;
-}
-
-// Write the parent of `in` (absolute path) into `out`. "/" stays "/".
+// writes the parent of `in` (absolute path) into `out`. "/" stays "/".
+// differs from core toParentPath() which mutates in place; ftp needs both
+// the input and the parent at the same time.
 static void derivePathParent(const char *in, char *out)
 {
     int n = strLen(in);
-    while (n > 1 && in[n - 1] == '/') n--;  // strip trailing /
-    while (n > 0 && in[n - 1] != '/') n--;  // back to last /   
-    if (n > 1) n--;  // drop that / unless root
+    while (n > 1 && in[n - 1] == '/') n--;
+    while (n > 0 && in[n - 1] != '/') n--;
+    if (n > 1) n--;
     if (n == 0) { out[0] = '/'; out[1] = 0; return; }
     for (int i = 0; i < n; i++) out[i] = in[i];
     out[n] = 0;
@@ -934,10 +927,9 @@ static void ftpListenerThread(uint64_t arg)
         session->data = -1;
 
         sys_ppu_thread_t tid;
-        int r = sys_ppu_thread_create(&tid, ftpSessionThread,
-                                      (uint64_t)(uintptr_t)session,
-                                      0x500, 0x4000,
-                                      SYS_PPU_THREAD_CREATE_JOINABLE, "ftpc");
+        int r = spawnJoinableThread(&tid, ftpSessionThread,
+                                    (uint64_t)(uintptr_t)session,
+                                    THREAD_PRIORITY_LOW, THREAD_STACK_SIZE_16KB, "ftp-session");
         if (r != 0) {
             ftpReply(c, 421, "Server busy.");
             shutdown(c, SHUT_RDWR);

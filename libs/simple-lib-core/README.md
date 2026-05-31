@@ -15,12 +15,16 @@ to link into `vsh.self` PRXs; apps link it the same way.
   `logError`. Optional sink (`setLogSink`) forwards each fully-formatted
   line after the disk write. Defines `BacklogLine` / `LOG_LINE_MAX`
   used by every pre-connect log ring.
-- **file** — cellFs helpers: `readFile`, `writeFile`, `fileExists`,
-  `makeDir`, `deleteFile`.
+- **file** — cellFs helpers (`readFile`, `writeFile`, `fileExists`,
+  `makeDir`, `deleteFile`, `deleteTree`) plus libc-free path utilities
+  (`joinPath`, `toParentPath`, `getExtension`, `isDir`, `formatSize`,
+  `MAX_PATH_LEN`) and the `mountDevBlind` LV2 syscall stub (cobra
+  /dev_blind mount via raw inline asm — prx-safe).
 - **thread** — `spawnThread()` PPU-thread spawn helper and stack-size
   constants.
-- **string-utilities** — case-insensitive compare, URL encode/decode,
-  XML escaping, byte search, int formatting.
+- **string-utilities** — bounded copy / uppercase, length, case-
+  insensitive compare, URL encode/decode, XML escaping, byte search,
+  integer formatting.
 - **wire** — framed TCP helpers used by both bridge server and producer
   client: `sendBytes`, `sendFrameHeader`, `sendFrame(fd, verb, payload,
   len)` (formats `<verb> <len>\n<bytes>`), `receiveLine` (newline-

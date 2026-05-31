@@ -34,6 +34,8 @@ void moveLabel(Label *l, int x, int y)
 
 void drawLabel(Label *l)
 {
-    if (l->tt.tex.w > 0)
-        drawGfxTexture(l->x, l->y, l->tt.tex.w, l->tt.tex.h, l->tt.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+    if (l->tt.tex.w > 0) {
+        uint32_t tint = (l->color & 0xFF000000) | 0x00FFFFFF;
+        drawGfxTexture(l->x, l->y, l->tt.tex.w, l->tt.tex.h, l->tt.tex, 0.0f, 0.0f, 1.0f, 1.0f, tint, GFX_FILTER_NEAREST);
+    }
 }

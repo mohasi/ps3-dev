@@ -2,6 +2,10 @@
 
 #include <stdint.h>
 
+// utf-8 em dash (U+2014). used in ui as a "value not known yet" placeholder
+// (e.g. folder size while the background sizer is still walking).
+#define EM_DASH "\xe2\x80\x94"
+
 // Returns length of a string.
 static inline int strLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 
@@ -142,6 +146,17 @@ static inline int intToDec(int v, char *out)
     return n;
 }
 
+// Uppercases src into dst, NUL-terminated, bounded by cap. ASCII only.
+static inline void toUpper(char *dst, int cap, const char *src)
+{
+    int i = 0;
+    for (; i < cap - 1 && src[i]; i++) {
+        char c = src[i];
+        dst[i] = (c >= 'a' && c <= 'z') ? (char)(c - 'a' + 'A') : c;
+    }
+    dst[i] = 0;
+}
+
 // NUL-terminated copy bounded by cap. Truncates rather than overruns.
 static inline void strCopy(char *dst, int cap, const char *src)
 {
@@ -149,6 +164,10 @@ static inline void strCopy(char *dst, int cap, const char *src)
     while (i < cap - 1 && src[i]) { dst[i] = src[i]; i++; }
     dst[i] = 0;
 }
+
+// Returns s, or "" if s is NULL. Useful for printf/setLabelText calls
+// where a null pointer would otherwise crash or need a ternary at each call site.
+static inline const char *strOrEmpty(const char *s) { return s ? s : ""; }
 
 // Appends decimal uint64_t to buf at offset o; returns new offset.
 static inline int appendUint64(char *buf, int cap, int o, uint64_t v)

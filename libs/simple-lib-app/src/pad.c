@@ -5,11 +5,11 @@
 
 PadState pad;
 
-static CellPadData padCurrent;
-static uint16_t padPrevD1 = 0;
-static uint16_t padPrevD2 = 0;
+static CellPadData current;
+static uint16_t prev1 = 0;  // previous frame's DIGITAL1 bits (dpad, start, select, L3/R3)
+static uint16_t prev2 = 0;  // previous frame's DIGITAL2 bits (face buttons, L1/R1/L2/R2)
 
-static uint8_t btnState(int held, int wasHeld)
+static inline uint8_t getState(int held, int wasHeld)
 {
     if (held && !wasHeld) return BTN_PRESSED;
     if (held && wasHeld)  return BTN_HELD;
@@ -27,34 +27,35 @@ void updatePad(void)
 {
     CellPadData tmp;
     if (cellPadGetData(0, &tmp) == CELL_OK && tmp.len > 0) {
-        padCurrent = tmp;
+        current = tmp;
     }
 
-    uint16_t d1 = padCurrent.button[CELL_PAD_BTN_OFFSET_DIGITAL1];
-    uint16_t d2 = padCurrent.button[CELL_PAD_BTN_OFFSET_DIGITAL2];
+    uint16_t d1 = current.button[CELL_PAD_BTN_OFFSET_DIGITAL1];
+    uint16_t d2 = current.button[CELL_PAD_BTN_OFFSET_DIGITAL2];
 
-    pad.btn.cross    = btnState(d2 & CELL_PAD_CTRL_CROSS,    padPrevD2 & CELL_PAD_CTRL_CROSS);
-    pad.btn.circle   = btnState(d2 & CELL_PAD_CTRL_CIRCLE,   padPrevD2 & CELL_PAD_CTRL_CIRCLE);
-    pad.btn.square   = btnState(d2 & CELL_PAD_CTRL_SQUARE,   padPrevD2 & CELL_PAD_CTRL_SQUARE);
-    pad.btn.triangle = btnState(d2 & CELL_PAD_CTRL_TRIANGLE, padPrevD2 & CELL_PAD_CTRL_TRIANGLE);
-    pad.btn.l1       = btnState(d2 & CELL_PAD_CTRL_L1,       padPrevD2 & CELL_PAD_CTRL_L1);
-    pad.btn.r1       = btnState(d2 & CELL_PAD_CTRL_R1,       padPrevD2 & CELL_PAD_CTRL_R1);
-    pad.btn.l2       = btnState(d2 & CELL_PAD_CTRL_L2,       padPrevD2 & CELL_PAD_CTRL_L2);
-    pad.btn.r2       = btnState(d2 & CELL_PAD_CTRL_R2,       padPrevD2 & CELL_PAD_CTRL_R2);
-    pad.btn.up       = btnState(d1 & CELL_PAD_CTRL_UP,       padPrevD1 & CELL_PAD_CTRL_UP);
-    pad.btn.down     = btnState(d1 & CELL_PAD_CTRL_DOWN,     padPrevD1 & CELL_PAD_CTRL_DOWN);
-    pad.btn.left     = btnState(d1 & CELL_PAD_CTRL_LEFT,     padPrevD1 & CELL_PAD_CTRL_LEFT);
-    pad.btn.right    = btnState(d1 & CELL_PAD_CTRL_RIGHT,    padPrevD1 & CELL_PAD_CTRL_RIGHT);
-    pad.btn.start    = btnState(d1 & CELL_PAD_CTRL_START,    padPrevD1 & CELL_PAD_CTRL_START);
-    pad.btn.select   = btnState(d1 & CELL_PAD_CTRL_SELECT,   padPrevD1 & CELL_PAD_CTRL_SELECT);
-    pad.btn.l3       = btnState(d1 & CELL_PAD_CTRL_L3,       padPrevD1 & CELL_PAD_CTRL_L3);
-    pad.btn.r3       = btnState(d1 & CELL_PAD_CTRL_R3,       padPrevD1 & CELL_PAD_CTRL_R3);
+    pad.btn.cross    = getState(d2 & CELL_PAD_CTRL_CROSS,    prev2 & CELL_PAD_CTRL_CROSS);
+    pad.btn.circle   = getState(d2 & CELL_PAD_CTRL_CIRCLE,   prev2 & CELL_PAD_CTRL_CIRCLE);
+    pad.btn.square   = getState(d2 & CELL_PAD_CTRL_SQUARE,   prev2 & CELL_PAD_CTRL_SQUARE);
+    pad.btn.triangle = getState(d2 & CELL_PAD_CTRL_TRIANGLE, prev2 & CELL_PAD_CTRL_TRIANGLE);
+    pad.btn.l1       = getState(d2 & CELL_PAD_CTRL_L1,       prev2 & CELL_PAD_CTRL_L1);
+    pad.btn.r1       = getState(d2 & CELL_PAD_CTRL_R1,       prev2 & CELL_PAD_CTRL_R1);
+    pad.btn.l2       = getState(d2 & CELL_PAD_CTRL_L2,       prev2 & CELL_PAD_CTRL_L2);
+    pad.btn.r2       = getState(d2 & CELL_PAD_CTRL_R2,       prev2 & CELL_PAD_CTRL_R2);
+    pad.btn.up       = getState(d1 & CELL_PAD_CTRL_UP,       prev1 & CELL_PAD_CTRL_UP);
+    pad.btn.down     = getState(d1 & CELL_PAD_CTRL_DOWN,     prev1 & CELL_PAD_CTRL_DOWN);
+    pad.btn.left     = getState(d1 & CELL_PAD_CTRL_LEFT,     prev1 & CELL_PAD_CTRL_LEFT);
+    pad.btn.right    = getState(d1 & CELL_PAD_CTRL_RIGHT,    prev1 & CELL_PAD_CTRL_RIGHT);
+    pad.btn.start    = getState(d1 & CELL_PAD_CTRL_START,    prev1 & CELL_PAD_CTRL_START);
+    pad.btn.select   = getState(d1 & CELL_PAD_CTRL_SELECT,   prev1 & CELL_PAD_CTRL_SELECT);
+    pad.btn.l3       = getState(d1 & CELL_PAD_CTRL_L3,       prev1 & CELL_PAD_CTRL_L3);
+    pad.btn.r3       = getState(d1 & CELL_PAD_CTRL_R3,       prev1 & CELL_PAD_CTRL_R3);
 
-    pad.lStick.x = padCurrent.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X] - 128;
-    pad.lStick.y = padCurrent.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y] - 128;
-    pad.rStick.x = padCurrent.button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X] - 128;
-    pad.rStick.y = padCurrent.button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y] - 128;
+    // sticks: SDK reports unsigned 0..255, centered at 128. shift to signed -128..127.
+    pad.lStick.x = current.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_X]  - 128;
+    pad.lStick.y = current.button[CELL_PAD_BTN_OFFSET_ANALOG_LEFT_Y]  - 128;
+    pad.rStick.x = current.button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_X] - 128;
+    pad.rStick.y = current.button[CELL_PAD_BTN_OFFSET_ANALOG_RIGHT_Y] - 128;
 
-    padPrevD1 = d1;
-    padPrevD2 = d2;
+    prev1 = d1;
+    prev2 = d2;
 }

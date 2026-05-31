@@ -7,3 +7,5 @@ out/
 *.o
 *.suo
 *.pkg
+.github/captures
+.github/ghidra

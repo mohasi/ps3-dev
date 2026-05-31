@@ -42,6 +42,15 @@ static inline int sendReply(int fd, const char *status, const char *text)
     return sendFrame(fd, status, text, (int)strLen(text));
 }
 
+// shorthand for "<label> rc=0x<hex>" error replies. used by every
+// command handler that fails on a syscall return code.
+static inline int sendErrRc(int fd, const char *label, int32_t rc)
+{
+    char err[64];
+    snprintf(err, sizeof err, "%s rc=0x%x", label, (unsigned)rc);
+    return sendReply(fd, SDB_ERR, err);
+}
+
 // match a command prefix, return pointer to args (after space) or NULL
 static inline const char *matchCommand(const char *line, const char *cmd)
 {

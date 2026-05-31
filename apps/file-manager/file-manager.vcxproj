@@ -44,15 +44,27 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
+    <ClCompile Include="src\selection-actions.c" />
+    <ClCompile Include="src\file-actions.c" />
+    <ClCompile Include="src\folder-sizer.c" />
+    <ClCompile Include="src\file-type.c" />
     <ClCompile Include="src\screens\home.c" />
     <ClCompile Include="src\overlays\sidepanel.c" />
+    <ClCompile Include="src\overlays\confirm-overlay.c" />
+    <ClCompile Include="src\overlays\progress-overlay.c" />
     <ClCompile Include="src\widgets\clock-widget.c" />
     <ClCompile Include="src\widgets\free-space-widget.c" />
     <ClCompile Include="src\widgets\file-list.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\selection-actions.h" />
+    <ClInclude Include="include\file-actions.h" />
+    <ClInclude Include="include\folder-sizer.h" />
+    <ClInclude Include="include\file-type.h" />
     <ClInclude Include="include\screens\home.h" />
     <ClInclude Include="include\overlays\sidepanel.h" />
+    <ClInclude Include="include\overlays\confirm-overlay.h" />
+    <ClInclude Include="include\overlays\progress-overlay.h" />
     <ClInclude Include="include\widgets\clock-widget.h" />
     <ClInclude Include="include\widgets\free-space-widget.h" />
     <ClInclude Include="include\widgets\file-list.h" />

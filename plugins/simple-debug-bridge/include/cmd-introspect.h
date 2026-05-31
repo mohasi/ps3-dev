@@ -19,9 +19,7 @@ static void cmdModuleList(int cli)
 
     int32_t rc = prxList(moduleIds, MODULE_IDS_MAX, &count);
     if (rc < 0) {
-        char err[64];
-        snprintf(err, sizeof err, "prxList rc=0x%x", (unsigned)rc);
-        sendReply(cli, SDB_ERR, err);
+        sendErrRc(cli, "prxList", rc);
         return;
     }
 
@@ -81,9 +79,7 @@ static void cmdModuleInfo(int cli, const char *args)
     uint32_t   segCount = 0;
     int32_t rc = prxInfo(id, name, file, segs, PRX_SEGMENTS_MAX, &segCount);
     if (rc < 0) {
-        char err[64];
-        snprintf(err, sizeof err, "prxInfo rc=0x%x", (unsigned)rc);
-        sendReply(cli, SDB_ERR, err);
+        sendErrRc(cli, "prxInfo", rc);
         return;
     }
     if (segCount > PRX_SEGMENTS_MAX) segCount = PRX_SEGMENTS_MAX;
@@ -143,9 +139,7 @@ static void cmdProcessInfo(int cli, const char *args)
     uint32_t count = 0;
     int32_t  rc = prxList(moduleIds, MODULE_IDS_MAX, &count);
     if (rc < 0) {
-        char err[64];
-        snprintf(err, sizeof err, "prxList rc=0x%x", (unsigned)rc);
-        sendReply(cli, SDB_ERR, err);
+        sendErrRc(cli, "prxList", rc);
         return;
     }
 

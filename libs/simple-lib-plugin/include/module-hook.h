@@ -395,15 +395,8 @@ static inline void freeHookArm(void)
 {
     if (activeArm.arenaAddr != 0) sysMemFree(activeArm.arenaAddr);
     hookRingCtrl = 0;
-    activeArm.arenaAddr      = 0;
-    activeArm.mods           = 0;
-    activeArm.slots          = 0;
-    activeArm.slotCap        = 0;
-    activeArm.modCap         = 0;
-    activeArm.slotCursor     = 0;
-    activeArm.modCursor      = 0;
-    activeArm.slotsRequested = 0;
-    activeArm.slotsDropped   = 0;
+    HookArm cleared = { 0 };
+    activeArm = cleared;
 }
 
 // drain newly-recorded events from the ring. consumer-side: bumps

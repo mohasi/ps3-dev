@@ -9,11 +9,13 @@ lib and `simple-lib-app`.
 ## What it provides
 
 - **syscall** � generic LV2 inline-asm trampolines (`scCall1..scCall5`)
-  and reusable wrappers: `mountDevBlind` (837), `sysPower` (379),
+  and reusable wrappers: `sysPower` (379),
   `prxGetModuleIdByAddress` (461), `prxFinalizeSelf` (482),
   `prxList` (494), `prxName` (495). Cross-checked against
   [psdevwiki LV2 syscalls](https://www.psdevwiki.com/ps3/LV2_Functions_and_Syscalls)
   and RPCS3 sys_prx struct layouts.
+  (`mountDevBlind` (837) lives in `simple-lib-core/file.h` — it is
+  prx-safe and apps need it too.)
 - **vsh** � VSH-only NID stub exports: XMB readiness check
   (`isXmbReady`), VSH notification (`vshNotify`). Only resolvable inside
   `vsh.self`; non-VSH code should use `syscall.h` instead.

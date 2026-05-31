@@ -255,7 +255,7 @@ static int startHookDrain(void)
     hookDrainWritten = 0;
     hookDrainStop    = 0;
     int rc = spawnJoinableThread(&hookDrainTid, hookDrainThread, 0,
-                                 THREAD_STACK_SIZE_16KB, "sdb-hook-drain");
+                                 THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "bridge-hook-drain");
     if (rc != 0) {
         cellFsClose(hookDrainFd);
         hookDrainFd = -1;

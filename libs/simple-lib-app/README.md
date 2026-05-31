@@ -13,7 +13,7 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 - **app** - top-level application loop tying screens, overlays, input, and rendering together
 - **anim** - easing curves, color interpolation, and animation containers
 - **colors** - Tailwind color palette
-- **file** - cellFs helpers (readFile, readFileAlloc, writeFile, fileExists, makeDir)
+- **file** - cellFs helpers come from `simple-lib-core/file.h` (path utilities, mountDevBlind, etc.); apps include `"file.h"` and get the core copy via the include path. App-only heap helpers live alongside their single caller.
 - **ui** - reusable UI components (label, breadcrumb, image, slice, circle, line, rectangle, triangle)
 - **timer** - polling interval timer using RTC
 - **stats** - FPS counter and free-space display helpers
@@ -44,7 +44,6 @@ simple-lib-app/
 |   +-- app.h
 |   +-- anim.h
 |   +-- colors.h
-|   +-- file.h
 |   +-- ui/
 |       +-- breadcrumb.h
 |       +-- circle.h
@@ -74,5 +73,4 @@ simple-lib-app/
 - This lib depends on `simple-lib-core` for the cross-context
   primitives (printf, dbg, file, thread, string utilities, wire,
   log-backlog, bridge-client). It does **not** depend on
-  `simple-lib-plugin` (PRX-only extras). A legacy local `file.h` is
-  still present here pending migration to the core copy.
+  `simple-lib-plugin` (PRX-only extras).

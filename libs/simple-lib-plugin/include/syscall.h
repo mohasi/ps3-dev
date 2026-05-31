@@ -96,28 +96,6 @@ static inline int64_t scCall6(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a
     return (int64_t)r3;
 }
 
-// lv2 syscall 837 - mounts /dev_blind, the writable mirror of /dev_flash
-// exposed by cobra cfw (always on under evilnat).
-static inline int64_t mountDevBlind(void)
-{
-    register uint64_t r3  __asm__("3")  = (uint64_t)(uintptr_t)"CELL_FS_IOS:BUILTIN_FLSH1";
-    register uint64_t r4  __asm__("4")  = (uint64_t)(uintptr_t)"CELL_FS_FAT";
-    register uint64_t r5  __asm__("5")  = (uint64_t)(uintptr_t)"/dev_blind";
-    register uint64_t r6  __asm__("6")  = 0;
-    register uint64_t r7  __asm__("7")  = 0;
-    register uint64_t r8  __asm__("8")  = 0;
-    register uint64_t r9  __asm__("9")  = 0;
-    register uint64_t r10 __asm__("10") = 0;
-    register uint64_t r11 __asm__("11") = 837;
-
-    __asm__ volatile ("sc\n"
-        : "+r"(r3)
-        : "r"(r4), "r"(r5), "r"(r6), "r"(r7),
-          "r"(r8), "r"(r9), "r"(r10), "r"(r11)
-        : "r0", "r12", "cr0", "ctr", "xer", "memory");
-    return (int64_t)r3;
-}
-
 // lv2 syscall 379 - sys_sm_shutdown. modes (per psdevwiki):
 //   0x1100 = shutdown
 //   0x1200 = lv2 hard reboot (full system + hv restart)

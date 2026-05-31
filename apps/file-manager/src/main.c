@@ -41,11 +41,10 @@ int main(int argc, char **argv)
 	while (!appExitRequested) {
 		appPoll();
 		updatePad();
-
-		screenUpdate();
+		updateScreen();
 
 		beginGfxFrame();
-		screenDraw();
+		drawScreen();
 		drawStats();
 		endGfxFrame();
 	}

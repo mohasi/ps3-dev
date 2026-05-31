@@ -27,7 +27,7 @@ namespace DebugBridgeClient
     public class TraceHeatmap : Grid
     {
         private const int   MaxCellPx     = 8;
-        private const int   HoverScale    = 3;
+        private const int   HoverGrow     = 3;
         private const int   HoverAnimMs   = 120;
 
 
@@ -249,7 +249,7 @@ namespace DebugBridgeClient
                 hoverRect.Visibility = Visibility.Visible;
 
             DoubleAnimation anim = new DoubleAnimation {
-                To = HoverScale,
+                To = HoverGrow,
                 Duration = new Duration(TimeSpan.FromMilliseconds(HoverAnimMs))
             };
             hoverScale.BeginAnimation(ScaleTransform.ScaleXProperty, anim);

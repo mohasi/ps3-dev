@@ -3,6 +3,7 @@
 #include "ui/label.h"
 #include "timer.h"
 #include "file.h"
+#include "string-utilities.h"
 #include <cell/cell_fs.h>
 
 static Label label;
@@ -18,7 +19,7 @@ static void refresh(void *ctx)
     uint64_t freeGB = (uint64_t)blockSize * freeBlocks / (1024 * 1024 * 1024);
 
     char buf[8];
-    int p = intToStr((int)freeGB, buf);
+    int p = intToDec((int)freeGB, buf);
     buf[p++] = ' ';
     buf[p++] = 'G';
     buf[p++] = 'B';

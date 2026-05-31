@@ -55,7 +55,6 @@
     <ClInclude Include="include\overlay.h" />
     <ClInclude Include="include\anim.h" />
     <ClInclude Include="include\colors.h" />
-    <ClInclude Include="include\file.h" />
     <ClInclude Include="include\app.h" />
     <ClInclude Include="include\ui\image.h" />
     <ClInclude Include="include\ui\label.h" />
@@ -65,7 +64,9 @@
     <ClInclude Include="include\ui\circle.h" />
     <ClInclude Include="include\ui\triangle.h" />
     <ClInclude Include="include\ui\line.h" />
+    <ClInclude Include="include\ui\slice.h" />
     <ClInclude Include="include\timer.h" />
+    <ClInclude Include="include\button-repeat.h" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="fpshader.cg">

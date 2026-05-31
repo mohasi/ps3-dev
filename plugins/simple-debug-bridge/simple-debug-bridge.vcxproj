@@ -44,6 +44,14 @@
     <ClInclude Include="include\server.h" />
     <ClInclude Include="include\cmd-read-mem.h" />
     <ClInclude Include="include\cmd-stat-tree.h" />
+    <ClInclude Include="include\cmd-capture.h" />
+    <ClInclude Include="include\cmd-file.h" />
+    <ClInclude Include="include\cmd-common.h" />
+    <ClInclude Include="include\cmd-introspect.h" />
+    <ClInclude Include="include\cmd-trace.h" />
+    <ClInclude Include="include\fileio.h" />
+    <ClInclude Include="include\pkg.h" />
+    <ClInclude Include="include\plugin.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />

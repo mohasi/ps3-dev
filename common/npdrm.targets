@@ -1,18 +1,86 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- shared NPDRM packaging for EBOOT apps -->
+  <!--
+    Shared NPDRM packaging for EBOOT apps. Turns the built .elf into an
+    installable, VSH-privileged .pkg.
+
+    Why VSH-privileged: the EBOOT is signed with the standard homebrew auth id
+    plus widened capability flags, so CFW lv2 skips per-uid filesystem
+    permission checks. That lets the app read VSH-owned dirs (mode 0700/0770)
+    like /dev_hdd0/tmp, /dev_hdd0/video, /dev_hdd0/plugins. Same trick
+    IRISMAN / multiMAN use. Blast radius is the same as a VSH plugin, so every
+    app importing this targets file gets that privilege.
+
+    Pipeline (each stage prints a [pkg] line):
+      1. read the content id from <project>.conf  (single source of truth)
+      2. stage USRDIR
+      3. sign the .elf -> EBOOT.BIN with scetool   (the privilege step)
+      4. copy resources + PARAM.SFO + ICON0.PNG into the stage
+      5. wrap the stage into a .pkg with pkg_custom (Sony's make_package_npdrm
+         refuses pre-encrypted SELFs; pkg_custom does not)
+      6. move the .pkg to out/
+
+    The exact scetool values below were verified by dumping a working IRISMAN
+    EBOOT (scetool -i) and matching it field for field. Don't tweak them blind;
+    re-dump and compare if a change is needed.
+  -->
   <ItemDefinitionGroup>
     <PostBuildEvent>
-      <Message>Packaging $(MSBuildProjectName).pkg</Message>
-      <Command>cd /d "$(ProjectDir)"
-if not exist "$(OutDir)USRDIR" mkdir "$(OutDir)USRDIR"
-"$(SCE_PS3_ROOT)\host-win32\bin\make_fself_npdrm.exe" "$(TargetPath)" "$(OutDir)USRDIR\EBOOT.BIN"
-xcopy /Y /E "$(ProjectDir)res\*" "$(OutDir)USRDIR\"
-copy /Y PARAM.SFO "$(OutDir)PARAM.SFO"
-copy /Y ICON0.PNG "$(OutDir)ICON0.PNG"
-"$(SCE_PS3_ROOT)\host-win32\bin\make_package_npdrm.exe" $(MSBuildProjectName).conf "$(OutDir)."
+      <Message>Packaging $(MSBuildProjectName).pkg (NPDRM, vsh-privileged)</Message>
+      <Command>@echo off
+echo [pkg] === $(MSBuildProjectName): building vsh-privileged NPDRM package ===
+
+rem --- 1. content id (the only place it lives is the .conf) ---
+cd /d "$(ProjectDir)"
+for /f "tokens=1,* delims==" %%a in ('findstr /B /C:"Content_ID" "$(MSBuildProjectName).conf"') do set NP_CID=%%b
+set NP_CID=%NP_CID: =%
+if "%NP_CID%"=="" (
+  echo [pkg] ERROR: Content_ID not found in $(MSBuildProjectName).conf
+  exit /b 1
+)
+echo [pkg] content id: %NP_CID%
+
+rem --- 2. fresh staging dir ---
+set STAGE=$(OutDir)pkg-stage
+if exist "%STAGE%" rmdir /s /q "%STAGE%"
+mkdir "%STAGE%\USRDIR"
+echo [pkg] staging in %STAGE%
+
+rem --- 3. sign .elf -> EBOOT.BIN (this is what grants vsh-class fs access) ---
+rem    flag groups split out for readability; values matched to a working IRISMAN eboot.
+set SCE_SELF=-0 SELF -5 NPDRM -1 TRUE -s FALSE -7 TRUE -2 1 -6 0003004000000000 -A 0001000000000000
+set SCE_AUTH=-3 1010000001000003 -4 01000002
+set SCE_CTRL=--self-ctrl-flags 4000000000000000000000000000000000000000000000000000000000000002
+set SCE_CAPS=--self-cap-flags 00000000000000000000000000000000000000000000003B0000000100042000
+set SCE_NPDRM=--np-license-type=FREE --np-app-type=EXEC --np-real-fname=EBOOT.BIN --np-content-id=%NP_CID%
+echo [pkg] signing EBOOT.BIN with scetool...
+pushd "$(SolutionDir)tools\scetool"
+scetool.exe %SCE_SELF% %SCE_AUTH% %SCE_CTRL% %SCE_CAPS% %SCE_NPDRM% -e "$(TargetPath)" "%STAGE%\USRDIR\EBOOT.BIN"
+set SCE_RC=%errorlevel%
+popd
+if not "%SCE_RC%"=="0" (
+  echo [pkg] ERROR: scetool failed ^(rc=%SCE_RC%^) - aborting
+  exit /b 1
+)
+
+rem --- 4. resources + sfo + icon ---
+echo [pkg] copying resources, PARAM.SFO, ICON0.PNG...
+xcopy /Y /E /Q "$(ProjectDir)res\*" "%STAGE%\USRDIR\" >nul
+copy /Y "$(ProjectDir)PARAM.SFO" "%STAGE%\PARAM.SFO" >nul
+copy /Y "$(ProjectDir)ICON0.PNG" "%STAGE%\ICON0.PNG" >nul
+
+rem --- 5. wrap into a .pkg ---
+echo [pkg] building pkg with pkg_custom...
+"$(SolutionDir)tools\pkg-custom\pkg_custom.exe" -c %NP_CID% "%STAGE%" "$(OutDir)$(MSBuildProjectName).pkg"
+if errorlevel 1 (
+  echo [pkg] ERROR: pkg_custom failed - aborting
+  exit /b 1
+)
+
+rem --- 6. publish to out/ ---
 if not exist "$(SolutionDir)out" mkdir "$(SolutionDir)out"
-move /Y "$(ProjectDir)*.pkg" "$(SolutionDir)out\$(MSBuildProjectName).pkg"</Command>
+move /Y "$(OutDir)$(MSBuildProjectName).pkg" "$(SolutionDir)out\$(MSBuildProjectName).pkg" >nul
+echo [pkg] done -^> out\$(MSBuildProjectName).pkg</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
 </Project>

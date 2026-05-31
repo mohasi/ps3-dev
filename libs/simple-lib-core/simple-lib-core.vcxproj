@@ -43,6 +43,7 @@
     <ClInclude Include="include\wire.h" />
     <ClInclude Include="include\log-backlog.h" />
     <ClInclude Include="include\bridge-client.h" />
+    <ClInclude Include="include\sha1.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />

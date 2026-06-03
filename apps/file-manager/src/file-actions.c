@@ -12,6 +12,18 @@ static void onDeleteConfirmed(bool confirmed)
 void dispatchAction(SelectionAction action)
 {
     switch (action) {
+        case ACTION_CUT:
+            cutSelection();
+            break;
+
+        case ACTION_COPY:
+            copySelection();
+            break;
+
+        case ACTION_PASTE:
+            pasteClipboard();
+            break;
+
         case ACTION_DELETE: {
             int n = getSelectionCount();
             char message[64];
@@ -19,7 +31,7 @@ void dispatchAction(SelectionAction action)
             askConfirm("Delete Confirmation", message, "Yes", "No", onDeleteConfirmed);
             break;
         }
-        default:  // copy, cut: not implemented yet -- no-op
+        default:
             logInfo("[file-actions] %s: not implemented yet\n", getActionTitle(action));
             break;
     }

@@ -44,6 +44,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
+    <ClCompile Include="src\clipboard.c" />
     <ClCompile Include="src\selection-actions.c" />
     <ClCompile Include="src\file-actions.c" />
     <ClCompile Include="src\folder-sizer.c" />
@@ -57,6 +58,7 @@
     <ClCompile Include="src\widgets\file-list.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\clipboard.h" />
     <ClInclude Include="include\selection-actions.h" />
     <ClInclude Include="include\file-actions.h" />
     <ClInclude Include="include\folder-sizer.h" />

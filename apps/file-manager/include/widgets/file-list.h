@@ -31,4 +31,15 @@ int getSelectionCount(void);
 // deletes the current selection (all checked rows, or the active row when none
 // are checked), then refreshes the listing. the cursor lands on the row above
 // the topmost deleted item, or the row below it when that was the top of the list.
+// also clears the cut clipboard.
 void deleteSelection(void);
+
+// puts the current selection (checked rows, or the active row when none are
+// checked) onto the clipboard for a move (cut) or a duplicate (copy), replacing
+// any previous clipboard contents.
+void cutSelection(void);
+void copySelection(void);
+
+// applies the clipboard into the current directory then refreshes the listing.
+// see clipboardPasteInto for the move/copy/overwrite/no-op semantics.
+void pasteClipboard(void);

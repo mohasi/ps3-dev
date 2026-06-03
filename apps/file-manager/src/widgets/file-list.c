@@ -7,6 +7,7 @@
 #include "sprite-regions.h"
 #include "folder-sizer.h"
 #include "file-type.h"
+#include "clipboard.h"
 #include "file.h"
 #include "pad.h"
 #include "audio.h"
@@ -48,6 +49,8 @@ static int selectionHistory[HISTORY_MAX];
 static int scrollHistory[HISTORY_MAX];
 static int historyDepth;
 static ButtonRepeat scrollRepeat;
+
+#define MARKED_ROW_ALPHA 0x80   // 50% opacity for rows pending a cut or copy
 
 static Image checkboxes[FILE_LIST_PAGE_SIZE];
 static Image checkedBoxes[FILE_LIST_PAGE_SIZE];
@@ -381,6 +384,14 @@ void updateFileList(void)
     updateFolderSizer(&sizerSource);
 }
 
+// non-zero if entry idx is currently on the clipboard (cut or copy).
+static int entryIsMarked(int idx)
+{
+    char full[MAX_PATH_LEN];
+    joinPath(full, MAX_PATH_LEN, currentPath, entries[idx].name);
+    return clipboardContains(full);
+}
+
 void drawFileList(void)
 {
     // hide top separator when the first visible row is selected (hover replaces it)
@@ -403,21 +414,24 @@ void drawFileList(void)
             drawNineSlice(&hover);
         }
 
+        // rows on the clipboard (cut or copy) render ghosted at 50% opacity
+        int alpha = entryIsMarked(idx) ? MARKED_ROW_ALPHA : 0xFF;
+
         // draw checkbox
         if (entries[idx].checked)
-            drawImage(&checkedBoxes[i]);
+            drawImageAlpha(&checkedBoxes[i], alpha);
         else
-            drawImage(&checkboxes[i]);
+            drawImageAlpha(&checkboxes[i], alpha);
 
         // draw type icon
         int iconY = listY + i * listRowHeight + (listRowHeight - 43) / 2;
         moveImage(&fileIcons[entries[idx].type], 120, iconY);
-        drawImage(&fileIcons[entries[idx].type]);
+        drawImageAlpha(&fileIcons[entries[idx].type], alpha);
 
         // draw labels
-        drawLabel(&labels[i]);
-        drawLabel(&sizeLabels[i]);
-        drawLabel(&typeLabels[i]);
+        drawLabelAlpha(&labels[i], alpha);
+        drawLabelAlpha(&sizeLabels[i], alpha);
+        drawLabelAlpha(&typeLabels[i], alpha);
     }
 
     drawLabel(&counterLabel);
@@ -430,9 +444,8 @@ void termFileList(void)
     entries = NULL;
     entryCount = 0;
     entryCapacity = 0;
+    clipboardTerm();
 }
-
-// --- action menu queries -----------------------------------------------------
 
 static SelectionSummary summary;
 
@@ -510,13 +523,17 @@ const SelectionSummary *getSelectionSummary(void)
     return &summary;
 }
 
-// copy, cut, delete apply to any non-empty selection (one row or many). an
-// empty directory has nothing to act on, so no action is offered. the list is
-// derived from selection state here so it can grow type-sensitive later.
+// cut, copy and delete apply to any non-empty selection (one row or many).
+// paste is offered whenever the clipboard holds something - even in an empty
+// directory, since pasting there is valid. order is cut, copy, paste, delete.
 const SelectionAction *getAvailableActions(int *outCount)
 {
-    static const SelectionAction list[] = { ACTION_COPY, ACTION_CUT, ACTION_DELETE };
-    *outCount = entryCount > 0 ? (int)(sizeof(list) / sizeof(list[0])) : 0;
+    static SelectionAction list[4];
+    int n = 0;
+    if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
+    if (!clipboardIsEmpty())  list[n++] = ACTION_PASTE;
+    if (entryCount > 0)       list[n++] = ACTION_DELETE;
+    *outCount = n;
     return list;
 }
 
@@ -536,24 +553,30 @@ int getSelectionCount(void)
     return entryCount > 0 ? 1 : 0;  // the active row, if any
 }
 
+// whether row i is part of the current action target: the checked rows, or the
+// active row when nothing is checked. checkedCount comes from countChecked().
+static int entryTargeted(int i, int checkedCount)
+{
+    return checkedCount > 0 ? entries[i].checked : (i == selectedIndex);
+}
+
 void deleteSelection(void)
 {
     if (entryCount == 0) return;
 
     int checkedCount = countChecked(NULL);
 
-    // target the checked rows, or just the active row when nothing is checked.
     // remember the topmost target so the cursor can land on the row above it.
     int topmost = -1;
     char fullPath[MAX_PATH_LEN];
     for (int i = 0; i < entryCount; i++) {
-        int targeted = checkedCount > 0 ? entries[i].checked : (i == selectedIndex);
-        if (!targeted) continue;
+        if (!entryTargeted(i, checkedCount)) continue;
         if (topmost < 0) topmost = i;
         joinPath(fullPath, MAX_PATH_LEN, currentPath, entries[i].name);
         deleteTree(fullPath, NULL);
     }
 
+    clipboardClear();      // a delete invalidates any pending cut/copy
     loadDir(currentPath);  // resets selectedIndex/scrollOffset to 0
 
     // row above the topmost deleted item; if that was the top of the list,
@@ -561,4 +584,30 @@ void deleteSelection(void)
     selectedIndex = topmost > 0 ? topmost - 1 : 0;
     scrollToSelected();
     labelsStale = 1;
+}
+
+// gathers the current selection (checked rows, or the active row when nothing
+// is checked) onto the clipboard in the given mode.
+static void clipboardFromSelection(ClipboardMode mode)
+{
+    if (entryCount == 0) return;
+    int checkedCount = countChecked(NULL);
+
+    clipboardBegin(mode);
+    char full[MAX_PATH_LEN];
+    for (int i = 0; i < entryCount; i++) {
+        if (!entryTargeted(i, checkedCount)) continue;
+        joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name);
+        clipboardAdd(full);
+    }
+}
+
+void cutSelection(void)  { clipboardFromSelection(CLIP_CUT); }
+void copySelection(void) { clipboardFromSelection(CLIP_COPY); }
+
+void pasteClipboard(void)
+{
+    if (clipboardIsEmpty()) return;
+    clipboardPasteInto(currentPath);  // moves/copies, then clears the clipboard
+    loadDir(currentPath);             // refresh; pasted items show, cut items un-dim
 }

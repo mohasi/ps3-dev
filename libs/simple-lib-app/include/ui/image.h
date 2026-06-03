@@ -40,10 +40,15 @@ static inline void moveImage(Image *img, int x, int y)
     img->y = y;
 }
 
-static inline void drawImage(Image *img)
+// draws the image modulated by alpha (0-255); RGB stays untouched so this
+// just controls overall opacity (e.g. a 50% "ghosted" look for cut items).
+static inline void drawImageAlpha(Image *img, int alpha)
 {
-    drawGfxTexture(img->x, img->y, img->w, img->h, img->tex, img->u0, img->v0, img->u1, img->v1, 0xFFFFFFFF, img->filter);
+    uint32_t tint = ((uint32_t)(alpha & 0xFF) << 24) | 0x00FFFFFF;
+    drawGfxTexture(img->x, img->y, img->w, img->h, img->tex, img->u0, img->v0, img->u1, img->v1, tint, img->filter);
 }
+
+static inline void drawImage(Image *img) { drawImageAlpha(img, 0xFF); }
 
 // moves then draws in one call - handy when an image is repositioned every frame.
 static inline void drawImageAt(Image *img, int x, int y) { moveImage(img, x, y); drawImage(img); }

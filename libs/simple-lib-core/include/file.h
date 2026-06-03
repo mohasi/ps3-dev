@@ -53,6 +53,15 @@ static inline void toParentPath(char *path)
     else          { path[len] = '\0'; }
 }
 
+// returns the final path component (the name) of path. for "/a/b/c" -> "c",
+// for "/a/b/" -> "" (trailing slash), for "name" -> "name". points into path.
+static inline const char *baseName(const char *path)
+{
+    const char *b = path;
+    for (const char *p = path; *p; p++) if (*p == '/') b = p + 1;
+    return b;
+}
+
 static inline const char *getExtension(const char *name)
 {
     const char *dot = NULL;
@@ -169,4 +178,70 @@ static inline int deleteTree(const char *path, uint64_t *bytesFreed)
     cellFsClosedir(fd);
 
     return cellFsRmdir(path) == CELL_FS_SUCCEEDED ? 0 : -1;
+}
+
+// copies a single regular file src -> dst (created/truncated). buf is caller
+// scratch of bufSize bytes (e.g. 64 KB) - kept caller-provided so this stays
+// allocation-free and light on stack, safe to use from prx contexts.
+// returns 0 on success, -1 on failure.
+static inline int copyFile(const char *src, const char *dst, void *buf, int bufSize)
+{
+    int in;
+    if (cellFsOpen(src, CELL_FS_O_RDONLY, &in, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
+    int out;
+    if (cellFsOpen(dst, CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_TRUNC, &out, NULL, 0) != CELL_FS_SUCCEEDED) {
+        cellFsClose(in);
+        return -1;
+    }
+    int rc = 0;
+    for (;;) {
+        uint64_t got = 0;
+        if (cellFsRead(in, buf, (uint64_t)bufSize, &got) != CELL_FS_SUCCEEDED) { rc = -1; break; }
+        if (got == 0) break;
+        uint64_t put = 0;
+        if (cellFsWrite(out, buf, got, &put) != CELL_FS_SUCCEEDED || put != got) { rc = -1; break; }
+    }
+    cellFsClose(in);
+    cellFsClose(out);
+    return rc;
+}
+
+// recursively copies src (file or dir) to dst. buf/bufSize is caller scratch
+// for the file payload (see copyFile). returns 0 on success, -1 on failure.
+static inline int copyTree(const char *src, const char *dst, void *buf, int bufSize)
+{
+    CellFsStat st;
+    if (cellFsStat(src, &st) != CELL_FS_SUCCEEDED) return -1;
+    if (!(st.st_mode & CELL_FS_S_IFDIR)) return copyFile(src, dst, buf, bufSize);
+
+    if (makeDir(dst) != 0) return -1;
+
+    int fd;
+    if (cellFsOpendir(src, &fd) != CELL_FS_SUCCEEDED) return -1;
+
+    char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
+    CellFsDirent ent;
+    uint64_t n;
+    int rc = 0;
+    while (cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+        if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
+            (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
+        joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
+        joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
+        if (copyTree(childSrc, childDst, buf, bufSize) < 0) { rc = -1; break; }
+    }
+    cellFsClosedir(fd);
+    return rc;
+}
+
+// moves src -> dst: a same-volume rename when possible, otherwise a recursive
+// copy followed by deleting the source (cross-volume). does not pre-clear dst,
+// so an existing destination directory will make the rename fail; callers that
+// want overwrite semantics should deleteTree(dst) first. buf/bufSize is scratch
+// for the cross-volume copy. returns 0 on success, -1 on failure.
+static inline int moveTree(const char *src, const char *dst, void *buf, int bufSize)
+{
+    if (cellFsRename(src, dst) == CELL_FS_SUCCEEDED) return 0;
+    if (copyTree(src, dst, buf, bufSize) < 0) return -1;
+    return deleteTree(src, NULL);
 }

@@ -32,10 +32,12 @@ void moveLabel(Label *l, int x, int y)
     l->y = y;
 }
 
-void drawLabel(Label *l)
+void drawLabelAlpha(Label *l, int alpha)
 {
     if (l->tt.tex.w > 0) {
-        uint32_t tint = (l->color & 0xFF000000) | 0x00FFFFFF;
+        uint32_t tint = ((uint32_t)(alpha & 0xFF) << 24) | 0x00FFFFFF;
         drawGfxTexture(l->x, l->y, l->tt.tex.w, l->tt.tex.h, l->tt.tex, 0.0f, 0.0f, 1.0f, 1.0f, tint, GFX_FILTER_NEAREST);
     }
 }
+
+void drawLabel(Label *l) { drawLabelAlpha(l, (int)(l->color >> 24)); }

@@ -23,3 +23,6 @@ void initLabel(Label *l, Font *font, int x, int y, int width, int height, int si
 void setLabelText(Label *l, const char *text);
 void moveLabel(Label *l, int x, int y);
 void drawLabel(Label *l);
+
+// moves then draws in one call - handy when a label is repositioned every frame.
+static inline void drawLabelAt(Label *l, int x, int y) { moveLabel(l, x, y); drawLabel(l); }

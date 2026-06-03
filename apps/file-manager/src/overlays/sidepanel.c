@@ -44,7 +44,7 @@
 #define ROW_SUBTITLE_Y   57
 #define ROW_TITLE_SIZE   22
 #define ROW_SUBTITLE_SIZE 16
-#define HOVER_CAP        8
+#define HIGHLIGHT_CAP    5  // highlight sprite (14x14) 9-slice corner cap
 
 #define COLOR_PANEL_BG     0xFF01142B
 #define COLOR_PANEL_BORDER 0xFF4A566F
@@ -66,7 +66,7 @@ static Label rowTitles[SIDEPANEL_MAX_ACTIONS];
 static Label rowSubtitles[SIDEPANEL_MAX_ACTIONS];
 static Image headerIcon;
 static Image rowIcons[SIDEPANEL_MAX_ACTIONS];
-static Slice hover;
+static NineSlice hover;
 static GfxTexture spritesheet;
 static Audio *clickSfx;
 
@@ -76,7 +76,7 @@ void initSidepanel(GfxTexture sprites, Audio *sfx, SelectionActionHandler handle
     clickSfx      = sfx;
     actionHandler = handler;
 
-    initSlice(&hover, sprites, 0, 0, ROW_WIDTH, ROW_HEIGHT, spriteRegions[SPRITE_HOVER_MENU], HOVER_CAP);
+    initNineSlice(&hover, sprites, 0, 0, ROW_WIDTH, ROW_HEIGHT, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
 
     font = openSystemFont(FONT_POP);
     int headerLabelW = PANEL_WIDTH - TEXT_X    - TEXT_RIGHT_PAD;
@@ -161,18 +161,6 @@ static void update(void)
     updateAnim(&anims);
 }
 
-static void drawLabelAt(Label *l, int lx, int ly)
-{
-    moveLabel(l, lx, ly);
-    drawLabel(l);
-}
-
-static void drawImageAt(Image *img, int ix, int iy)
-{
-    moveImage(img, ix, iy);
-    drawImage(img);
-}
-
 static void draw(void)
 {
     int px = (int)x;
@@ -194,8 +182,8 @@ static void draw(void)
     for (int i = 0; i < actionCount; i++) {
         int rowY = rowOriginY + i * ROW_HEIGHT;
         if (i == selectedIndex) {
-            moveSlice(&hover, rowX, rowY);
-            drawSlice(&hover);
+            moveNineSlice(&hover, rowX, rowY);
+            drawNineSlice(&hover);
         }
         drawImageAt(&rowIcons[i],    rowX + ROW_ICON_OFFSET, rowY + ROW_ICON_OFFSET);
         drawLabelAt(&rowTitles[i],    rowX + ROW_TEXT_X, rowY + ROW_TITLE_Y);

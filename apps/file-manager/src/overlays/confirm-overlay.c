@@ -1,19 +1,143 @@
+// confirm-overlay - centered modal yes/no dialog over a dimmed screen.
 #include "overlays/confirm-overlay.h"
-#include "dbg.h"
+#include "gfx.h"
+#include "pad.h"
+#include "font.h"
+#include "audio.h"
+#include "colors.h"
+#include "ui/label.h"
+#include "ui/image.h"
+#include "ui/slice.h"
 #include "string-utilities.h"
+#include "sprite-regions.h"
 
+#define DIALOG_W       640
+#define DIALOG_H       266
+#define HIGHLIGHT_CAP  5    // highlight sprite (14x14) 9-slice corner cap
+#define TEXT_RIGHT_PAD 20
+
+// icons (dialog-relative)
+#define WARNING_X      53
+#define WARNING_Y      50
+#define WARNING_W      75
+#define WARNING_H      70
+#define CROSS_X        170
+#define CROSS_Y        192
+#define CIRCLE_X       386
+#define CIRCLE_Y       192
+#define BUTTON_ICON    39   // native cross/circle glyph size
+
+// texts (dialog-relative)
+#define TITLE_X        168
+#define TITLE_Y        50
+#define TITLE_SIZE     24
+#define MESSAGE_X      170
+#define MESSAGE_Y      100
+#define MESSAGE_SIZE   18
+#define YES_X          223
+#define YES_Y          202
+#define NO_X           441
+#define NO_Y           202
+#define BUTTON_SIZE    18
+
+// separator (dialog-relative)
+#define SEP_X          45
+#define SEP_Y          158
+#define SEP_W          550
+#define SEP_H          2
+
+#define COLOR_SCRIM     0xC8000000  // black at 200/255
+#define COLOR_DIALOG_BG 0xFF001636
+
+static Font            font;
+static Audio          *clickSfx;
 static ConfirmCallback pending;
+static int             armed;  // 0 on the frame we open so the opening press is ignored
 
-void askConfirm(const char *title, const char *message, ConfirmCallback onResult)
+static NineSlice panel;
+static Slice     separator;
+static Image     warningIcon, crossIcon, circleIcon;
+static Label     titleLabel, messageLabel, yesLabel, noLabel;
+
+void initConfirmOverlay(GfxTexture sprites, Audio *sfx)
 {
-    logInfo("[confirm] %s - %s\n", strOrEmpty(title), strOrEmpty(message));
-    pending = onResult;
+    clickSfx = sfx;
+    font     = openSystemFont(FONT_POP);
+
+    initNineSlice(&panel, sprites, 0, 0, DIALOG_W, DIALOG_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
+    initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
+
+    initImage(&warningIcon, sprites, 0, 0, WARNING_W,   WARNING_H,   spriteRegions[SPRITE_WARNING], GFX_FILTER_LINEAR);
+    initImage(&crossIcon,   sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_CROSS],   GFX_FILTER_LINEAR);
+    initImage(&circleIcon,  sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_CIRCLE],  GFX_FILTER_LINEAR);
+
+    int textW = DIALOG_W - TITLE_X - TEXT_RIGHT_PAD;
+    initLabel(&titleLabel,   &font, 0, 0, textW, AUTO, TITLE_SIZE,   COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
+    initLabel(&messageLabel, &font, 0, 0, textW, AUTO, MESSAGE_SIZE, COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
+    initLabel(&yesLabel,     &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
+    initLabel(&noLabel,      &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
 }
 
-static void show(void)   { confirmOverlay.status = OVERLAY_VISIBLE; }
-static void hide(void)   { confirmOverlay.status = OVERLAY_HIDDEN; }
-static void update(void) {}
-static void draw(void)   {}
-static void term(void)   { confirmOverlay.status = OVERLAY_TERMINATED; }
+void askConfirm(const char *title, const char *message, const char *yesText, const char *noText, ConfirmCallback onResult)
+{
+    pending = onResult;
+    setLabelText(&titleLabel,   strOrEmpty(title));
+    setLabelText(&messageLabel, strOrEmpty(message));
+    setLabelText(&yesLabel,     strOrEmpty(yesText));
+    setLabelText(&noLabel,      strOrEmpty(noText));
+    showOverlay(&confirmOverlay);
+}
+
+static void show(void) { armed = 0; confirmOverlay.status = OVERLAY_VISIBLE; }
+static void hide(void) { confirmOverlay.status = OVERLAY_HIDDEN; }
+
+static void resolve(bool confirmed)
+{
+    ConfirmCallback cb = pending;
+    pending = NULL;
+    playSfxOnce(clickSfx);
+    hideOverlay(&confirmOverlay);
+    if (cb) cb(confirmed);
+}
+
+static void update(void)
+{
+    if (!armed) { armed = 1; return; }  // swallow the press that opened the dialog
+    if (pad.btn.cross == BTN_PRESSED)       resolve(true);
+    else if (pad.btn.circle == BTN_PRESSED) resolve(false);
+}
+
+static void draw(void)
+{
+    int sw = getGfxScreenWidth();
+    int sh = getGfxScreenHeight();
+    int dialogX = (sw - DIALOG_W) / 2;
+    int dialogY = (sh - DIALOG_H) / 2;
+
+    // dim the screen, then the dialog body and its rounded highlight border.
+    // the border is drawn white-tinted, so the body colour comes from the fill.
+    fillGfxRectangle(0, 0, sw, sh, COLOR_SCRIM);
+    fillGfxRectangle(dialogX, dialogY, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG);
+    moveNineSlice(&panel, dialogX, dialogY);
+    drawNineSlice(&panel);
+
+    drawImageAt(&warningIcon,  dialogX + WARNING_X, dialogY + WARNING_Y);
+    drawLabelAt(&titleLabel,   dialogX + TITLE_X,   dialogY + TITLE_Y);
+    drawLabelAt(&messageLabel, dialogX + MESSAGE_X, dialogY + MESSAGE_Y);
+
+    moveSlice(&separator, dialogX + SEP_X, dialogY + SEP_Y);
+    drawSlice(&separator);
+
+    drawImageAt(&crossIcon,  dialogX + CROSS_X,  dialogY + CROSS_Y);
+    drawImageAt(&circleIcon, dialogX + CIRCLE_X, dialogY + CIRCLE_Y);
+    drawLabelAt(&yesLabel,   dialogX + YES_X,    dialogY + YES_Y);
+    drawLabelAt(&noLabel,    dialogX + NO_X,     dialogY + NO_Y);
+}
+
+static void term(void)
+{
+    closeFont(&font);
+    confirmOverlay.status = OVERLAY_TERMINATED;
+}
 
 Overlay confirmOverlay = { show, hide, update, draw, term, OVERLAY_TERMINATED };

@@ -18,33 +18,8 @@ namespace SpritePacker
                         g.DrawImage(s.Image, s.X, s.Y, s.Width, s.Height);
                 }
 
-                // draw green 1px border around each sprite in the padding area
-                Color green = Color.FromArgb(255, 0, 255, 0);
-                foreach (Sprite s in sprites)
-                {
-                    int left = s.X - 1;
-                    int top = s.Y - 1;
-                    int right = s.X + s.Width;
-                    int bottom = s.Y + s.Height;
-
-                    for (int x = left; x <= right; x++)
-                    {
-                        if (x >= 0 && x < width)
-                        {
-                            if (top >= 0) sheet.SetPixel(x, top, green);
-                            if (bottom < height) sheet.SetPixel(x, bottom, green);
-                        }
-                    }
-                    for (int y = top; y <= bottom; y++)
-                    {
-                        if (y >= 0 && y < height)
-                        {
-                            if (left >= 0) sheet.SetPixel(left, y, green);
-                            if (right < width) sheet.SetPixel(right, y, green);
-                        }
-                    }
-                }
-
+                // padding between sprites is left transparent (cleared above) so
+                // linear filtering at sprite edges never samples a neighbour colour.
                 sheet.Save(path, ImageFormat.Png);
             }
         }

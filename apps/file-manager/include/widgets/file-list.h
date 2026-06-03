@@ -23,3 +23,12 @@ void drawFileList(void);
 // the sidepanel just takes a snapshot of whatever is known at open time.
 const SelectionSummary *getSelectionSummary(void);
 const SelectionAction  *getAvailableActions(int *outCount);
+
+// number of items the current selection acts on: the checked rows, or 1 for the
+// active row when nothing is checked. 0 in an empty directory.
+int getSelectionCount(void);
+
+// deletes the current selection (all checked rows, or the active row when none
+// are checked), then refreshes the listing. the cursor lands on the row above
+// the topmost deleted item, or the row below it when that was the top of the list.
+void deleteSelection(void);

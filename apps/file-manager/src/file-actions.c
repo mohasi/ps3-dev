@@ -1,7 +1,26 @@
 #include "file-actions.h"
+#include "widgets/file-list.h"
+#include "overlays/confirm-overlay.h"
 #include "dbg.h"
+#include <stdio.h>
+
+static void onDeleteConfirmed(bool confirmed)
+{
+    if (confirmed) deleteSelection();
+}
 
 void dispatchAction(SelectionAction action)
 {
-    logInfo("[file-actions] dispatch: %s\n", getActionTitle(action));
+    switch (action) {
+        case ACTION_DELETE: {
+            int n = getSelectionCount();
+            char message[64];
+            snprintf(message, sizeof message, "Are you sure you want to delete %d %s?", n, n == 1 ? "item" : "items");
+            askConfirm("Delete Confirmation", message, "Yes", "No", onDeleteConfirmed);
+            break;
+        }
+        default:  // copy, cut: not implemented yet -- no-op
+            logInfo("[file-actions] %s: not implemented yet\n", getActionTitle(action));
+            break;
+    }
 }

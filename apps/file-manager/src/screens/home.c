@@ -38,6 +38,7 @@ static void initHome(void)
     initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
     initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 1200, 74, 24, COLOR_WHITE, &breadcrumb);
     initSidepanel(sprites, &clickSfx, dispatchAction);
+    initConfirmOverlay(sprites, &clickSfx);
 }
 
 static void resumeHome(void) {}
@@ -45,7 +46,7 @@ static void resumeHome(void) {}
 static void openSidepanel(void)
 {
     int count;
-    const SelectionAction  *actions = getAvailableActions(&count);
+    const SelectionAction *actions = getAvailableActions(&count);
     const SelectionSummary *summary = getSelectionSummary();
     setSidepanelContent(summary, actions, count);
     showOverlay(&sidepanel);
@@ -65,11 +66,16 @@ static inline int anyOverlayVisible(void)
 
 static void updateHome(void)
 {
+    // snapshot before updating overlays: an overlay that closes this frame
+    // (e.g. confirm on cross) must not let that same press fall through to the
+    // file list, so the world stays paused for the frame the overlay was up.
+    int overlayWasVisible = anyOverlayVisible();
+
     updateOverlay(&sidepanel);
     updateOverlay(&confirmOverlay);
     updateOverlay(&progressOverlay);
 
-    if (!anyOverlayVisible()) {
+    if (!overlayWasVisible) {
         handleInput();
         updateClockWidget();
         updateFreeSpaceWidget();

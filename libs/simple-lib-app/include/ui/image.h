@@ -44,3 +44,6 @@ static inline void drawImage(Image *img)
 {
     drawGfxTexture(img->x, img->y, img->w, img->h, img->tex, img->u0, img->v0, img->u1, img->v1, 0xFFFFFFFF, img->filter);
 }
+
+// moves then draws in one call - handy when an image is repositioned every frame.
+static inline void drawImageAt(Image *img, int x, int y) { moveImage(img, x, y); drawImage(img); }

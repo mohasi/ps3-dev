@@ -19,6 +19,7 @@
 #define NAME_LEN           256
 #define INITIAL_CAPACITY   256
 #define HISTORY_MAX        16
+#define HIGHLIGHT_CAP      5    // highlight sprite (14x14) 9-slice corner cap
 
 typedef struct {
     char name[NAME_LEN];
@@ -52,7 +53,7 @@ static Image checkboxes[FILE_LIST_PAGE_SIZE];
 static Image checkedBoxes[FILE_LIST_PAGE_SIZE];
 static Image fileIcons[FILE_TYPE_COUNT];
 static Slice separators[FILE_LIST_PAGE_SIZE];
-static Slice hover;
+static NineSlice hover;
 static Breadcrumb *breadcrumb;
 static Audio *clickSfx;
 static Audio *checkSfx;
@@ -273,7 +274,7 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
     labelsStale = 1;
     historyDepth = 0;
 
-    initSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HOVER], 8);
+    initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
     initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
 
     for (int t = 0; t < FILE_TYPE_COUNT; t++)
@@ -398,8 +399,8 @@ void drawFileList(void)
 
         // draw hover background for selected row
         if (idx == selectedIndex) {
-            moveSlice(&hover, 47, listY + i * listRowHeight);
-            drawSlice(&hover);
+            moveNineSlice(&hover, 47, listY + i * listRowHeight);
+            drawNineSlice(&hover);
         }
 
         // draw checkbox
@@ -435,14 +436,22 @@ void termFileList(void)
 
 static SelectionSummary summary;
 
+// counts checked rows; if lastChecked is non-null, stores the last checked
+// row index (or -1 when none are checked).
+static int countChecked(int *lastChecked)
+{
+    int count = 0, last = -1;
+    for (int i = 0; i < entryCount; i++) {
+        if (entries[i].checked) { count++; last = i; }
+    }
+    if (lastChecked) *lastChecked = last;
+    return count;
+}
+
 const SelectionSummary *getSelectionSummary(void)
 {
-    // count checked rows; remember the last one for the single-check case
-    int checkedCount = 0;
-    int lastChecked  = -1;
-    for (int i = 0; i < entryCount; i++) {
-        if (entries[i].checked) { checkedCount++; lastChecked = i; }
-    }
+    int lastChecked;
+    int checkedCount = countChecked(&lastChecked);
 
     static char title[NAME_LEN];
     static char subtitle[32];
@@ -501,12 +510,55 @@ const SelectionSummary *getSelectionSummary(void)
     return &summary;
 }
 
+// copy, cut, delete apply to any non-empty selection (one row or many). an
+// empty directory has nothing to act on, so no action is offered. the list is
+// derived from selection state here so it can grow type-sensitive later.
 const SelectionAction *getAvailableActions(int *outCount)
 {
-    static const SelectionAction list[] = {
-        ACTION_COPY, ACTION_CUT, ACTION_PASTE, ACTION_DELETE, ACTION_RENAME,
-        ACTION_NEW_FILE, ACTION_NEW_DIR, ACTION_EDIT, ACTION_PROPERTIES,
-    };
-    *outCount = (int)(sizeof(list) / sizeof(list[0]));
+    static const SelectionAction list[] = { ACTION_COPY, ACTION_CUT, ACTION_DELETE };
+    *outCount = entryCount > 0 ? (int)(sizeof(list) / sizeof(list[0])) : 0;
     return list;
+}
+
+// keeps the active row on screen after the index is moved programmatically.
+static void scrollToSelected(void)
+{
+    if (selectedIndex < scrollOffset)
+        scrollOffset = selectedIndex;
+    else if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE)
+        scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
+}
+
+int getSelectionCount(void)
+{
+    int checked = countChecked(NULL);
+    if (checked > 0) return checked;
+    return entryCount > 0 ? 1 : 0;  // the active row, if any
+}
+
+void deleteSelection(void)
+{
+    if (entryCount == 0) return;
+
+    int checkedCount = countChecked(NULL);
+
+    // target the checked rows, or just the active row when nothing is checked.
+    // remember the topmost target so the cursor can land on the row above it.
+    int topmost = -1;
+    char fullPath[MAX_PATH_LEN];
+    for (int i = 0; i < entryCount; i++) {
+        int targeted = checkedCount > 0 ? entries[i].checked : (i == selectedIndex);
+        if (!targeted) continue;
+        if (topmost < 0) topmost = i;
+        joinPath(fullPath, MAX_PATH_LEN, currentPath, entries[i].name);
+        deleteTree(fullPath, NULL);
+    }
+
+    loadDir(currentPath);  // resets selectedIndex/scrollOffset to 0
+
+    // row above the topmost deleted item; if that was the top of the list,
+    // index 0 is now the row that sat just below it.
+    selectedIndex = topmost > 0 ? topmost - 1 : 0;
+    scrollToSelected();
+    labelsStale = 1;
 }

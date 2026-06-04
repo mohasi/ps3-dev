@@ -45,6 +45,7 @@
     <ClCompile Include="src\ui\breadcrumb.c" />
     <ClCompile Include="src\ui\stats.c" />
     <ClCompile Include="src\timer.c" />
+    <ClCompile Include="src\osk-input.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\gfx.h" />
@@ -67,6 +68,7 @@
     <ClInclude Include="include\ui\slice.h" />
     <ClInclude Include="include\timer.h" />
     <ClInclude Include="include\button-repeat.h" />
+    <ClInclude Include="include\osk-input.h" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="fpshader.cg">

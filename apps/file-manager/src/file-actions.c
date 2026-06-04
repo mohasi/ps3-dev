@@ -1,12 +1,21 @@
 #include "file-actions.h"
 #include "widgets/file-list.h"
 #include "overlays/confirm-overlay.h"
+#include "osk-input.h"
 #include "dbg.h"
 #include <stdio.h>
 
 static void onDeleteConfirmed(bool confirmed)
 {
     if (confirmed) deleteSelection();
+}
+
+// keyboard closed: text is the confirmed name (already stripped of illegal
+// characters by the OSK filter), or NULL on cancel/empty. the active row is
+// unchanged while the keyboard is up, so renameActiveEntry still targets it.
+static void onRenameDone(const char *text)
+{
+    if (text) renameActiveEntry(text);
 }
 
 void dispatchAction(SelectionAction action)
@@ -31,6 +40,16 @@ void dispatchAction(SelectionAction action)
             askConfirm("Delete Confirmation", message, "Yes", "No", onDeleteConfirmed);
             break;
         }
+
+        case ACTION_RENAME: {
+            // rename targets the highlighted row only, ignoring checkboxes. show the
+            // keyboard pre-filled with the current name; it pumps on the main loop's
+            // sysutil callback and the result comes back through onRenameDone.
+            const char *name = getActiveEntryName();
+            if (name) oskInputBegin("Rename", name, onRenameDone);
+            break;
+        }
+
         default:
             logInfo("[file-actions] %s: not implemented yet\n", getActionTitle(action));
             break;

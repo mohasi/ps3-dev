@@ -28,6 +28,17 @@ const SelectionAction  *getAvailableActions(int *outCount);
 // active row when nothing is checked. 0 in an empty directory.
 int getSelectionCount(void);
 
+// name of the highlighted row, regardless of any checkbox marks; NULL in an empty
+// directory. used by rename, which targets the active row only. the pointer is
+// valid until the selection or directory changes.
+const char *getActiveEntryName(void);
+
+// renames the highlighted row to newName within the current directory (ignoring
+// checkboxes), then refreshes the listing with the cursor on the renamed item.
+// rejects an invalid name or one already in use (no overwrite); same name is a
+// no-op. returns 0 on success, -1 otherwise.
+int renameActiveEntry(const char *newName);
+
 // deletes the current selection (all checked rows, or the active row when none
 // are checked), then refreshes the listing. the cursor lands on the row above
 // the topmost deleted item, or the row below it when that was the top of the list.

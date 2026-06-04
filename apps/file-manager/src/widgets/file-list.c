@@ -525,16 +525,58 @@ const SelectionSummary *getSelectionSummary(void)
 
 // cut, copy and delete apply to any non-empty selection (one row or many).
 // paste is offered whenever the clipboard holds something - even in an empty
-// directory, since pasting there is valid. order is cut, copy, paste, delete.
+// directory, since pasting there is valid. rename follows delete and acts on the
+// active row alone (ignoring checkboxes), so it is offered whenever the directory
+// is non-empty. order is cut, copy, paste, delete, rename.
 const SelectionAction *getAvailableActions(int *outCount)
 {
-    static SelectionAction list[4];
+    static SelectionAction list[5];
     int n = 0;
     if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
     if (!clipboardIsEmpty())  list[n++] = ACTION_PASTE;
-    if (entryCount > 0)       list[n++] = ACTION_DELETE;
+    if (entryCount > 0)     { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
     *outCount = n;
     return list;
+}
+
+static void scrollToSelected(void);  // defined below; used by renameActiveEntry
+
+// name of the highlighted row, independent of any checkbox marks; NULL in an
+// empty directory. rename acts on this row alone, ignoring checked items.
+const char *getActiveEntryName(void)
+{
+    if (entryCount == 0) return NULL;
+    return entries[selectedIndex].name;
+}
+
+// renames the highlighted row to newName within the current directory, ignoring
+// any checkboxes. refuses an invalid name (see isValidFileName) or one that
+// already exists (no clobber), and treats renaming to the same name as a no-op.
+// on success refreshes the listing and leaves the cursor on the renamed item.
+// returns 0 on success, -1 otherwise.
+int renameActiveEntry(const char *newName)
+{
+    if (entryCount == 0) return -1;
+    if (!isValidFileName(newName)) return -1;
+
+    const char *old = entries[selectedIndex].name;
+    if (strEq(old, newName)) return 0;  // unchanged
+
+    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
+    joinPath(oldPath, MAX_PATH_LEN, currentPath, old);
+    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+
+    if (fileExists(newPath)) return -1;  // never overwrite on rename
+    // a rename within one directory is always same-volume, so the bare lv2
+    // rename is sufficient - no need for moveTree's cross-volume copy fallback.
+    if (cellFsRename(oldPath, newPath) != CELL_FS_SUCCEEDED) return -1;
+
+    loadDir(currentPath);  // resets selectedIndex/scrollOffset to 0
+    for (int i = 0; i < entryCount; i++)
+        if (strEq(entries[i].name, newName)) { selectedIndex = i; break; }
+    scrollToSelected();
+    labelsStale = 1;
+    return 0;
 }
 
 // keeps the active row on screen after the index is moved programmatically.

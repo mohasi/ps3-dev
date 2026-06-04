@@ -71,6 +71,24 @@ static inline const char *getExtension(const char *name)
     return dot ? dot + 1 : NULL;
 }
 
+// returns 1 if name is usable as a single path component: non-empty, shorter
+// than MAX_PATH_LEN, not the "." or ".." aliases, and free of control bytes and
+// the FAT/exFAT reserved characters (/ \ : * ? " < > |). use to vet names from
+// untrusted sources (e.g. on-screen keyboard input) before a create or rename.
+static inline int isValidFileName(const char *name)
+{
+    if (!name || name[0] == '\0') return 0;
+    if (strEq(name, ".") || strEq(name, "..")) return 0;
+    if (strLen(name) >= MAX_PATH_LEN) return 0;
+    for (const unsigned char *c = (const unsigned char *)name; *c; c++) {
+        if (*c < 0x20) return 0;  // control characters
+        if (*c == '/' || *c == '\\' || *c == ':' || *c == '*' || *c == '?' ||
+            *c == '"' || *c == '<'  || *c == '>' || *c == '|')
+            return 0;
+    }
+    return 1;
+}
+
 static inline int isDir(const char *path)
 {
     CellFsStat st;

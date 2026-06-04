@@ -20,7 +20,7 @@
 #define NAME_LEN           256
 #define INITIAL_CAPACITY   256
 #define HISTORY_MAX        16
-#define HIGHLIGHT_CAP      5    // highlight sprite (14x14) 9-slice corner cap
+#define HIGHLIGHT_CAP      7    // highlight sprite (16x16) 9-slice corner cap
 
 typedef struct {
     char name[NAME_LEN];

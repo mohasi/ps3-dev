@@ -44,7 +44,7 @@
 #define ROW_SUBTITLE_Y   57
 #define ROW_TITLE_SIZE   22
 #define ROW_SUBTITLE_SIZE 16
-#define HIGHLIGHT_CAP    5  // highlight sprite (14x14) 9-slice corner cap
+#define HIGHLIGHT_CAP    7    // highlight sprite (16x16) 9-slice corner cap
 
 #define COLOR_PANEL_BG     0xFF01142B
 #define COLOR_PANEL_BORDER 0xFF4A566F

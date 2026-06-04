@@ -13,7 +13,7 @@
 
 #define DIALOG_W       640
 #define DIALOG_H       266
-#define HIGHLIGHT_CAP  5    // highlight sprite (14x14) 9-slice corner cap
+#define HIGHLIGHT_CAP  7    // highlight sprite (16x16) 9-slice corner cap
 #define TEXT_RIGHT_PAD 20
 
 // icons (dialog-relative)

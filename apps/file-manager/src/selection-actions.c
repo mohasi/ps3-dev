@@ -19,7 +19,7 @@ static const ActionPresentation table[ACTION_COUNT] = {
     [ACTION_ZIP]        = { "Zip",        "Compress selected file(s) to archive.", SPRITE_COMPRESSED },
     [ACTION_UNZIP]      = { "Unzip",      "Extract the selected archive.",         SPRITE_PACKAGE    },
     [ACTION_MOUNT]      = { "Mount",      "Mount the selected disc image.",        SPRITE_DISC_ISO   },
-    [ACTION_PROPERTIES] = { "Properties", "Show details about the selection.",     SPRITE_PROPERTIES },
+    [ACTION_PROPERTIES] = { "Properties", "Show details about the selection.",     SPRITE_INFO       },
 };
 
 const char  *getActionTitle(SelectionAction a)    { return table[a].title; }

@@ -48,6 +48,7 @@
 
 #define COLOR_SCRIM     0xC8000000  // black at 200/255
 #define COLOR_DIALOG_BG 0xFF001636
+#define COLOR_SUBTITLE  0x80FFFFFF
 
 static Font            font;
 static Audio          *clickSfx;
@@ -73,7 +74,7 @@ void initConfirmOverlay(GfxTexture sprites, Audio *sfx)
 
     int textW = DIALOG_W - TITLE_X - TEXT_RIGHT_PAD;
     initLabel(&titleLabel,   &font, 0, 0, textW, AUTO, TITLE_SIZE,   COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
-    initLabel(&messageLabel, &font, 0, 0, textW, AUTO, MESSAGE_SIZE, COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
+    initLabel(&messageLabel, &font, 0, 0, textW, AUTO, MESSAGE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
     initLabel(&yesLabel,     &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
     initLabel(&noLabel,      &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
 }

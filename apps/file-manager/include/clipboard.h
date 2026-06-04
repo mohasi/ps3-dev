@@ -3,8 +3,11 @@
 // clipboard - holds a set of absolute paths marked for a move (cut) or a
 // duplicate (copy), plus the file operations that carry them out. the state
 // persists across directory navigation until pasted or replaced. file-list
-// drives this: it gathers the selected paths and reloads the listing; the
-// clipboard owns the paths and the actual rename/copy/delete work.
+// drives this: it gathers the selected paths (with the sizes it already knows)
+// and reloads the listing; the clipboard owns the paths and the actual
+// rename/copy/delete work.
+
+#include <stdint.h>
 
 typedef enum {
     CLIP_NONE,
@@ -13,27 +16,38 @@ typedef enum {
 } ClipboardMode;
 
 // starts a fresh cut or copy, discarding any previous clipboard contents.
-// follow with clipboardAdd() calls to populate it.
-void clipboardBegin(ClipboardMode mode);
+// follow with addToClipboard() calls to populate it.
+void beginClipboard(ClipboardMode mode);
 
-// appends one absolute path to the clipboard. returns 0, or -1 on alloc failure.
-int clipboardAdd(const char *absPath);
+// appends one absolute path plus its byte size. exact is 1 when the size is
+// known exactly (a file, or a fully-walked folder) and 0 when it is only a
+// lower bound (an unsized or budget-truncated folder). returns 0, or -1 on
+// allocation failure.
+int addToClipboard(const char *absPath, uint64_t size, int exact);
 
 // resets the clipboard to empty (CLIP_NONE); retains backing storage.
-void clipboardClear(void);
+void clearClipboard(void);
 
 // frees backing storage. call at shutdown.
-void clipboardTerm(void);
+void freeClipboard(void);
 
-int clipboardIsEmpty(void);
+int isClipboardEmpty(void);
 
 // non-zero when path is on the clipboard (cut or copy). used to ghost any item
 // pending a paste.
-int clipboardContains(const char *path);
+int isOnClipboard(const char *path);
 
-// carries the clipboard into destDir, then clears it. cut entries are moved,
-// overwriting an existing same-named target; an entry already living in destDir
-// is skipped. copy entries are never destructive: a name collision (including
-// copying into the source dir) produces a "<name> (n)" duplicate beside the
-// original. (a future variant can take a progress callback for a live overlay.)
-void clipboardPasteInto(const char *destDir);
+// the current clipboard mode (CLIP_NONE / CLIP_CUT / CLIP_COPY).
+ClipboardMode getClipboardMode(void);
+
+// sets the directory a subsequent pasteClipboardContents() will paste into.
+// call on the main thread before launching the task.
+void setPasteDest(const char *destDir);
+
+// task body: pastes into the dest set by setPasteDest, reporting bytes and
+// honouring cancel (reusing carried sizes, walking only lower-bound items).
+// copies never overwrite (collisions become "<name> (n)"); cuts move and
+// overwrite a same-named target. on cancel it drops the partial destination,
+// and for a move keeps the source unless the copy fully landed. does not clear
+// the clipboard - the finisher does, on the main thread.
+void pasteClipboardContents(void);

@@ -9,6 +9,8 @@
 #include "file-type.h"
 #include "clipboard.h"
 #include "file.h"
+#include "file-task.h"
+#include "overlays/progress-overlay.h"
 #include "pad.h"
 #include "audio.h"
 #include "button-repeat.h"
@@ -49,6 +51,20 @@ static int selectionHistory[HISTORY_MAX];
 static int scrollHistory[HISTORY_MAX];
 static int historyDepth;
 static ButtonRepeat scrollRepeat;
+
+// targets gathered for the in-flight delete; the worker reads these while the
+// task runs. size/exact mirror the listing's known sizes so the worker only
+// walks what it must. delTopmost is the topmost deleted row so the cursor can
+// land just above it once the listing refreshes.
+typedef struct {
+    char     path[MAX_PATH_LEN];
+    uint64_t size;
+    int      exact;
+} DeleteItem;
+static DeleteItem *delItems;
+static int         delCount;
+static int         delCapacity;
+static int         delTopmost;
 
 #define MARKED_ROW_ALPHA 0x80   // 50% opacity for rows pending a cut or copy
 
@@ -389,7 +405,7 @@ static int entryIsMarked(int idx)
 {
     char full[MAX_PATH_LEN];
     joinPath(full, MAX_PATH_LEN, currentPath, entries[idx].name);
-    return clipboardContains(full);
+    return isOnClipboard(full);
 }
 
 void drawFileList(void)
@@ -444,7 +460,11 @@ void termFileList(void)
     entries = NULL;
     entryCount = 0;
     entryCapacity = 0;
-    clipboardTerm();
+    free(delItems);
+    delItems = NULL;
+    delCount = 0;
+    delCapacity = 0;
+    freeClipboard();
 }
 
 static SelectionSummary summary;
@@ -533,7 +553,7 @@ const SelectionAction *getAvailableActions(int *outCount)
     static SelectionAction list[5];
     int n = 0;
     if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
-    if (!clipboardIsEmpty())  list[n++] = ACTION_PASTE;
+    if (!isClipboardEmpty())  list[n++] = ACTION_PASTE;
     if (entryCount > 0)     { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
     *outCount = n;
     return list;
@@ -602,30 +622,73 @@ static int entryTargeted(int i, int checkedCount)
     return checkedCount > 0 ? entries[i].checked : (i == selectedIndex);
 }
 
+static int delReserve(int n)
+{
+    if (n <= delCapacity) return 1;
+    int cap = delCapacity > 0 ? delCapacity : 64;
+    while (cap < n) cap *= 2;
+    void *grown = realloc(delItems, (size_t)cap * sizeof(DeleteItem));
+    if (!grown) return 0;
+    delItems = grown;
+    delCapacity = cap;
+    return 1;
+}
+
+// an entry's size is exact for files, and for folders only once the sizer has
+// fully walked them (sized and not budget-truncated).
+static int entrySizeIsExact(const FileEntry *e) { return e->sized && !e->approx; }
+
+// worker body: sum the bytes (reusing known sizes, walking only the lower-bound
+// ones), then delete each target with progress + cancel checks. delete is
+// atomic per item, so cancel just stops between items; nothing is half-deleted.
+static void deleteWorker(void)
+{
+    uint64_t total = 0;
+    for (int i = 0; i < delCount && !isCancelRequested(); i++)
+        total += delItems[i].exact ? delItems[i].size : measureTree(delItems[i].path, isCancelRequested);
+    setTotalBytes(total);
+
+    for (int i = 0; i < delCount; i++) {
+        if (isCancelRequested()) break;
+        deleteTreeProgress(delItems[i].path, addProcessedBytes, isCancelRequested);
+    }
+}
+
+// main-thread finisher: refresh the listing and reposition the cursor.
+static void onDeleteFinished(int cancelled)
+{
+    (void)cancelled;
+    clearClipboard();      // a delete invalidates any pending cut/copy
+    loadDir(currentPath);  // resets selectedIndex/scrollOffset to 0
+
+    // row above the topmost deleted item; if that was the top of the list,
+    // index 0 is now the row that sat just below it.
+    selectedIndex = delTopmost > 0 ? delTopmost - 1 : 0;
+    scrollToSelected();
+    labelsStale = 1;
+}
+
 void deleteSelection(void)
 {
     if (entryCount == 0) return;
 
     int checkedCount = countChecked(NULL);
 
-    // remember the topmost target so the cursor can land on the row above it.
-    int topmost = -1;
-    char fullPath[MAX_PATH_LEN];
+    delCount = 0;
+    delTopmost = -1;
     for (int i = 0; i < entryCount; i++) {
         if (!entryTargeted(i, checkedCount)) continue;
-        if (topmost < 0) topmost = i;
-        joinPath(fullPath, MAX_PATH_LEN, currentPath, entries[i].name);
-        deleteTree(fullPath, NULL);
+        if (delTopmost < 0) delTopmost = i;
+        if (!delReserve(delCount + 1)) break;
+        joinPath(delItems[delCount].path, MAX_PATH_LEN, currentPath, entries[i].name);
+        delItems[delCount].size  = entries[i].size;
+        delItems[delCount].exact = entrySizeIsExact(&entries[i]);
+        delCount++;
     }
+    if (delCount == 0) return;
 
-    clipboardClear();      // a delete invalidates any pending cut/copy
-    loadDir(currentPath);  // resets selectedIndex/scrollOffset to 0
-
-    // row above the topmost deleted item; if that was the top of the list,
-    // index 0 is now the row that sat just below it.
-    selectedIndex = topmost > 0 ? topmost - 1 : 0;
-    scrollToSelected();
-    labelsStale = 1;
+    startProgress("Deleting...", "Please wait while the selected items are deleted.",
+                  deleteWorker, onDeleteFinished);
 }
 
 // gathers the current selection (checked rows, or the active row when nothing
@@ -635,21 +698,34 @@ static void clipboardFromSelection(ClipboardMode mode)
     if (entryCount == 0) return;
     int checkedCount = countChecked(NULL);
 
-    clipboardBegin(mode);
+    beginClipboard(mode);
     char full[MAX_PATH_LEN];
     for (int i = 0; i < entryCount; i++) {
         if (!entryTargeted(i, checkedCount)) continue;
         joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name);
-        clipboardAdd(full);
+        addToClipboard(full, entries[i].size, entrySizeIsExact(&entries[i]));
     }
 }
 
 void cutSelection(void)  { clipboardFromSelection(CLIP_CUT); }
 void copySelection(void) { clipboardFromSelection(CLIP_COPY); }
 
+// a completed paste consumes the clipboard; a cancelled one keeps it for retry.
+static void onPasteFinished(int cancelled)
+{
+    if (!cancelled) clearClipboard();
+    loadDir(currentPath);
+    labelsStale = 1;
+}
+
 void pasteClipboard(void)
 {
-    if (clipboardIsEmpty()) return;
-    clipboardPasteInto(currentPath);  // moves/copies, then clears the clipboard
-    loadDir(currentPath);             // refresh; pasted items show, cut items un-dim
+    if (isClipboardEmpty()) return;
+    setPasteDest(currentPath);
+
+    int moving = (getClipboardMode() == CLIP_CUT);
+    startProgress(moving ? "Moving..." : "Copying...",
+                  moving ? "Please wait while the selected items are moved."
+                         : "Please wait while the selected items are copied.",
+                  pasteClipboardContents, onPasteFinished);
 }

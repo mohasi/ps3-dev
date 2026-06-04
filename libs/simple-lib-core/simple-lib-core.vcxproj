@@ -33,6 +33,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\printf.c" />
+    <ClCompile Include="src\file.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\printf.h" />

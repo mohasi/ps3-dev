@@ -35,6 +35,7 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "file-manager", "apps\file-manager\file-manager.vcxproj", "{B6F5E8C3-9D4A-4F2B-A1E5-3C8D7E2B9F5A}"
 	ProjectSection(ProjectDependencies) = postProject
 		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A} = {D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A}
+		{B2C3D4E5-6F7A-4B8C-9D0E-1F2A3B4C5D6E} = {B2C3D4E5-6F7A-4B8C-9D0E-1F2A3B4C5D6E}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-debug-bridge", "plugins\simple-debug-bridge\simple-debug-bridge.vcxproj", "{66E95ACB-FB4D-4DF7-BEE8-4F23B348C563}"

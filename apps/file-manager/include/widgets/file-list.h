@@ -51,6 +51,7 @@ void deleteSelection(void);
 void cutSelection(void);
 void copySelection(void);
 
-// applies the clipboard into the current directory then refreshes the listing.
-// see clipboardPasteInto for the move/copy/overwrite/no-op semantics.
+// applies the clipboard into the current directory via the progress overlay
+// (a background worker), then refreshes the listing. see pasteClipboardContents
+// for the move/copy/overwrite/no-op semantics.
 void pasteClipboard(void);

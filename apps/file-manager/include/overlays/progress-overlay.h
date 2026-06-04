@@ -1,9 +1,18 @@
 #pragma once
 
-#include "overlay.h"
+// progress-overlay - title, subtitle, a framed progress bar with a percentage,
+// a separator and a Cancel (circle) button for a background file task (see
+// file-task.h). startProgress spawns the task, shows the dialog, and calls
+// onDone on the main thread when it finishes. circle requests cancellation.
 
-void beginProgress(const char *title);
-void setProgress(int done, int total, const char *currentItem);
-void endProgress(void);
+#include "overlay.h"
+#include "gfx.h"
+#include "audio.h"
+#include "file-task.h"
+
+typedef void (*ProgressDoneCallback)(int cancelled);
+
+void initProgressOverlay(GfxTexture spritesheet, Audio *clickSfx);
+void startProgress(const char *title, const char *subtitle, TaskBody run, ProgressDoneCallback onDone);
 
 extern Overlay progressOverlay;

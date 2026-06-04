@@ -263,3 +263,17 @@ static inline int moveTree(const char *src, const char *dst, void *buf, int bufS
     if (copyTree(src, dst, buf, bufSize) < 0) return -1;
     return deleteTree(src, NULL);
 }
+
+// progress-reporting, cancellable cousins of the operations above (defined in
+// file.c). they call onBytes(n) as regular-file bytes are read/deleted and poll
+// cancelled() between entries/chunks; either callback may be NULL. allocation-
+// free and prx-safe like the inlines above. return values:
+//   measureTree        - sum of regular-file bytes under path (partial on cancel).
+//   copyTreeProgress   - 0 ok, -1 error, 1 cancelled. reports bytes per chunk.
+//   deleteTreeProgress - 0 ok, -1 error, 1 cancelled. reports bytes per file.
+// buf/bufSize is caller scratch for the copy payload (e.g. a 64 KB buffer).
+uint64_t measureTree(const char *path, int (*cancelled)(void));
+int      copyTreeProgress(const char *src, const char *dst, void *buf, int bufSize,
+                          void (*onBytes)(uint64_t), int (*cancelled)(void));
+int      deleteTreeProgress(const char *path,
+                            void (*onBytes)(uint64_t), int (*cancelled)(void));

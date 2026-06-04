@@ -39,6 +39,7 @@ static void initHome(void)
     initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 1200, 74, 24, COLOR_WHITE, &breadcrumb);
     initSidepanel(sprites, &clickSfx, dispatchAction);
     initConfirmOverlay(sprites, &clickSfx);
+    initProgressOverlay(sprites, &clickSfx);
 }
 
 static void resumeHome(void) {}

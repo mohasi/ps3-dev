@@ -33,7 +33,7 @@
     </ClCompile>
     <Link>
       <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app</AdditionalOptions>
+      <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core</AdditionalOptions>
       <GccOutputFormat>ELFFile</GccOutputFormat>
     </Link>
     <PreBuildEvent>
@@ -45,6 +45,7 @@
   <ItemGroup>
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\clipboard.c" />
+    <ClCompile Include="src\file-task.c" />
     <ClCompile Include="src\selection-actions.c" />
     <ClCompile Include="src\file-actions.c" />
     <ClCompile Include="src\folder-sizer.c" />
@@ -59,6 +60,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\clipboard.h" />
+    <ClInclude Include="include\file-task.h" />
     <ClInclude Include="include\selection-actions.h" />
     <ClInclude Include="include\file-actions.h" />
     <ClInclude Include="include\folder-sizer.h" />

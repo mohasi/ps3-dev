@@ -3,9 +3,9 @@
 // button-repeat - turns "press" + "hold" into a repeating fire signal.
 //
 // each axis the caller cares about (e.g. an up/down scroll axis) gets one
-// ButtonRepeat. call buttonRepeated() with the current pad state for each
-// button on that axis; it returns 1 the frame the button should fire. on
-// initial press it fires immediately, then while held it fires once after
+// ButtonRepeat. call isRepeatDue() with the current pad state for each button
+// on that axis; it returns true the frame the button should fire. on initial
+// press it fires immediately, then while held it fires once after
 // BUTTON_HOLD_INITIAL_US and then every BUTTON_HOLD_REPEAT_US.
 
 #include "pad.h"
@@ -20,14 +20,14 @@ typedef struct {
     int      repeats;
 } ButtonRepeat;
 
-static inline int buttonRepeated(ButtonRepeat *r, uint8_t state)
+static inline int isRepeatDue(ButtonRepeat *r, ButtonState state)
 {
-    if (state == BTN_PRESSED) {
+    if (state == BTN_STATE_PRESSED) {
         r->timer   = sys_time_get_system_time();
         r->repeats = 0;
         return 1;
     }
-    if (state == BTN_HELD) {
+    if (state == BTN_STATE_HELD) {
         uint64_t now       = sys_time_get_system_time();
         uint64_t threshold = r->repeats == 0 ? BUTTON_HOLD_INITIAL_US : BUTTON_HOLD_REPEAT_US;
         if (now - r->timer >= threshold) {

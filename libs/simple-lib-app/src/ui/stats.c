@@ -3,6 +3,7 @@
 #include "font.h"
 #include "gfx.h"
 #include "colors.h"
+#include "string-utilities.h"
 #include <string.h>
 #include <sys/sys_time.h>
 
@@ -66,7 +67,7 @@ void drawStats(void)
         buildBuf();
         if (strcmp(buf, lastBuf) != 0) {
             renderFont(&tt, &font, fontSize, buf, color, AUTO, TEXT_NOWRAP);
-            strncpy(lastBuf, buf, sizeof(lastBuf));
+            strCopy(lastBuf, sizeof lastBuf, buf);
         }
     }
     if (tt.tex.w > 0)

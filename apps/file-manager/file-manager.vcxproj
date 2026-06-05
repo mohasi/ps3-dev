@@ -45,7 +45,8 @@
   <ItemGroup>
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\clipboard.c" />
-    <ClCompile Include="src\file-task.c" />
+    <ClCompile Include="src\paste.c" />
+    <ClCompile Include="src\delete.c" />
     <ClCompile Include="src\selection-actions.c" />
     <ClCompile Include="src\file-actions.c" />
     <ClCompile Include="src\folder-sizer.c" />
@@ -60,7 +61,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\clipboard.h" />
-    <ClInclude Include="include\file-task.h" />
+    <ClInclude Include="include\paste.h" />
+    <ClInclude Include="include\delete.h" />
     <ClInclude Include="include\selection-actions.h" />
     <ClInclude Include="include\file-actions.h" />
     <ClInclude Include="include\folder-sizer.h" />

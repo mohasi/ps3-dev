@@ -294,11 +294,11 @@ static void writeHookManifest(int fd)
     int sn = snprintf(line, sizeof line,
                       "slots\trequested=%u armed=%u dropped=%u\n"
                       "events\twritten=%u ring_dropped=%u\n",
-                      (unsigned)hookSlotsRequested(),
-                      (unsigned)hookSlotsArmed(),
-                      (unsigned)hookSlotsDropped(),
+                      (unsigned)getHookSlotsRequested(),
+                      (unsigned)getHookSlotsArmed(),
+                      (unsigned)getHookSlotsDropped(),
                       (unsigned)hookDrainWritten,
-                      (unsigned)hookDropCount());
+                      (unsigned)getHookDropCount());
     if (sn > 0) cellFsWrite(fd, line, (uint64_t)sn, &w);
     static const char tail[] = "==END==\n";
     cellFsWrite(fd, tail, sizeof tail - 1, &w);
@@ -433,12 +433,12 @@ static void cmdModuleTraceOn(int cli, const char *args)
                                   "hmod\t%s\tslots=%u\n",
                                   mod->name, (unsigned)mod->count);
     }
-    if (hookSlotsDropped() > 0) {
+    if (getHookSlotsDropped() > 0) {
         off += (uint32_t)snprintf(replyBuf + off, REPLY_BUF_BYTES - off,
                                   "htrunc\trequested=%u armed=%u dropped=%u\n",
-                                  (unsigned)hookSlotsRequested(),
-                                  (unsigned)hookSlotsArmed(),
-                                  (unsigned)hookSlotsDropped());
+                                  (unsigned)getHookSlotsRequested(),
+                                  (unsigned)getHookSlotsArmed(),
+                                  (unsigned)getHookSlotsDropped());
     }
     off += (uint32_t)snprintf(replyBuf + off, REPLY_BUF_BYTES - off,
                               "hsum\tmods=%u\tslots=%u\n",
@@ -473,7 +473,7 @@ static void cmdModuleTraceOff(int cli, const char *args)
         hookDrainFd = -1;
     }
 
-    uint32_t dropped = hookDropCount();
+    uint32_t dropped = getHookDropCount();
     uint32_t total   = hookDrainWritten + dropped;
     char     reply[160];
     int      n = snprintf(reply, sizeof reply,

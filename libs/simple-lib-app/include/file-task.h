@@ -14,16 +14,14 @@
 
 typedef void (*TaskBody)(void);
 
-// --- main thread ---------------------------------------------------------
-
+// main thread
 void     startTask(TaskBody body);     // spawn the worker; resets progress + cancel
 int      isTaskRunning(void);          // 1 until the task body returns
 void     cancelTask(void);             // ask the task to stop at its next check
 uint64_t getProcessedBytes(void);      // bytes processed so far
 uint64_t getTotalBytes(void);          // total bytes to process
 
-// --- task body -----------------------------------------------------------
-
+// task body
 void     setTotalBytes(uint64_t total);
 void     addProcessedBytes(uint64_t bytes);  // pass as the onBytes callback
 int      isCancelRequested(void);            // pass as the cancelled callback

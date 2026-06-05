@@ -17,6 +17,7 @@
 typedef struct {
     CellFont font;
     int      open;
+    void    *buffer;  // backing memory for openFontFile (cellFont keeps using it); NULL for system fonts
 } Font;
 
 typedef enum {

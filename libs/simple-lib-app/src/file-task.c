@@ -42,6 +42,6 @@ void     cancelTask(void)        { cancel = 1; }
 uint64_t getProcessedBytes(void) { return processedBytes; }
 uint64_t getTotalBytes(void)     { return totalBytes; }
 
-void     setTotalBytes(uint64_t t)     { totalBytes = t; }
-void     addProcessedBytes(uint64_t b) { processedBytes += b; }
+void     setTotalBytes(uint64_t total)     { totalBytes = total; }
+void     addProcessedBytes(uint64_t bytes) { processedBytes += bytes; }
 int      isCancelRequested(void)       { return cancel; }

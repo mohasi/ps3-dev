@@ -1,5 +1,5 @@
-// screen - lifecycle-managed UI element
-#include "screen.h"
+// screen-manager - owns the active screen + stack and drives the active screen (see screen-manager.h).
+#include "screen-manager.h"
 #include "gfx.h"
 #include <stddef.h>
 
@@ -8,7 +8,7 @@
 static Screen *screenStack[SCREEN_MAX_STACK];
 static size_t  vramMarks[SCREEN_MAX_STACK];
 static int screenDepth = 0;
-Screen *currentScreen = NULL;
+static Screen *currentScreen = NULL;
 
 void changeScreen(Screen *newScreen)
 {
@@ -57,4 +57,5 @@ void popScreen(void)
     }
 }
 
-
+void updateScreen(void) { if (currentScreen && currentScreen->update) currentScreen->update(); }
+void drawScreen(void)   { if (currentScreen && currentScreen->draw) currentScreen->draw(); }

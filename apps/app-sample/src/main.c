@@ -6,7 +6,7 @@
 #include "pad.h"
 #include "audio.h"
 #include "font.h"
-#include "screen.h"
+#include "screen-manager.h"
 #include "screens/demo.h"
 #include "ui/stats.h"
 
@@ -17,36 +17,36 @@ SYS_PROCESS_PARAM(PROCESS_PRIORITY_DEFAULT, PROCESS_STACK_SIZE_64KB)
 
 int main(int argc, char **argv)
 {
-	(void)argc;
-	(void)argv;
+    (void)argc;
+    (void)argv;
 
-	appRegisterExitCallback();
+    appRegisterExitCallback();
 
-	if (initGfx(GFX_VSYNC_OFF) != 0) return 1;
-	if (initSfx() != 0) return 1;
-	if (initFont() != 0) return 1;
-	initPad();
+    if (initGfx(GFX_VSYNC_OFF) != 0) return 1;
+    if (initSfx() != 0) return 1;
+    if (initFont() != 0) return 1;
+    initPad();
 
-	initStats(5, 5, 14, COLOR_AMBER_300);
+    initStats(5, 5, 14, COLOR_AMBER_300);
 
-	changeScreen(&demoScreen);
+    changeScreen(&demoScreen);
 
-	while (!appExitRequested) {
-		appPoll();
-		updatePad();
+    while (!appExitRequested) {
+        appPoll();
+        updatePad();
 
-		updateScreen();
+        updateScreen();
 
-		beginGfxFrame();
-		clearGfx(COLOR_SLATE_900);
-		drawScreen();
-		drawStats();
-		endGfxFrame();
-	}
+        beginGfxFrame();
+        clearGfx(COLOR_SLATE_900);
+        drawScreen();
+        drawStats();
+        endGfxFrame();
+    }
 
-	changeScreen(NULL);
-	termSfx();
-	termFont();
-	termGfx();
-	return 0;
+    changeScreen(NULL);
+    termSfx();
+    termFont();
+    termGfx();
+    return 0;
 }

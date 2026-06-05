@@ -1,6 +1,7 @@
 // breadcrumb - navigable path display
 #include "ui/breadcrumb.h"
 #include "colors.h"
+#include "string-utilities.h"
 #include <string.h>
 
 void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, SpriteRegion chevronSrc, int fontSize)
@@ -34,8 +35,7 @@ void setBreadcrumbPath(Breadcrumb *b, const char *path)
     b->depth = 0;
 
     char buf[512];
-    strncpy(buf, path, 511);
-    buf[511] = '\0';
+    strCopy(buf, sizeof buf, path);
 
     char *p = buf;
     if (*p == '/') p++;
@@ -43,8 +43,7 @@ void setBreadcrumbPath(Breadcrumb *b, const char *path)
     // root shows as "/". everything below root shows bare segments
     // ("dev_hdd0" > "PS3" > ...), no leading slash on the first.
     if (!*p) {
-        strncpy(b->segments[0], "/", BREADCRUMB_MAX_NAME - 1);
-        b->segments[0][BREADCRUMB_MAX_NAME - 1] = '\0';
+        strCopy(b->segments[0], BREADCRUMB_MAX_NAME, "/");
         b->depth = 1;
     }
 
@@ -54,8 +53,7 @@ void setBreadcrumbPath(Breadcrumb *b, const char *path)
         char saved = *slash;
         *slash = '\0';
         if (p[0] != '\0') {
-            strncpy(b->segments[b->depth], p, BREADCRUMB_MAX_NAME - 1);
-            b->segments[b->depth][BREADCRUMB_MAX_NAME - 1] = '\0';
+            strCopy(b->segments[b->depth], BREADCRUMB_MAX_NAME, p);
             b->depth++;
         }
         if (saved) p = slash + 1;

@@ -55,14 +55,14 @@ static void openSidepanel(void)
 
 static void handleInput(void)
 {
-    if (pad.btn.triangle == BTN_PRESSED) openSidepanel();
+    if (isButtonPressed(BTN_TRIANGLE)) openSidepanel();
 }
 
 static inline int anyOverlayVisible(void)
 {
-    return sidepanel.status        == OVERLAY_VISIBLE
-        || confirmOverlay.status   == OVERLAY_VISIBLE
-        || progressOverlay.status  == OVERLAY_VISIBLE;
+    return isOverlayVisible(&sidepanel)
+        || isOverlayVisible(&confirmOverlay)
+        || isOverlayVisible(&progressOverlay);
 }
 
 static void updateHome(void)

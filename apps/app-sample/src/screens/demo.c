@@ -15,6 +15,7 @@
 #include "anim.h"
 #include "overlays/sidepanel.h"
 #include "screens/palette.h"
+#include "screen-manager.h"
 
 static GfxTexture makoto;
 static Audio sfxMakoto;
@@ -66,29 +67,29 @@ static void updateDemo(void)
 {
     updateAnim(&anims);
 
-    if (pad.btn.cross == BTN_PRESSED)
+    if (isButtonPressed(BTN_CROSS))
         playSfx(&sfxMakoto, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, SFX_LOOP);
 
-    if (pad.btn.start == BTN_PRESSED) {
+    if (isButtonPressed(BTN_START)) {
         if (bgm.state == SFX_STATE_PLAYING)
             stopSfx(&bgm);
         else
             playSfx(&bgm, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 1);
     }
 
-    if (pad.btn.up == BTN_PRESSED)
+    if (isButtonPressed(BTN_UP))
         raiseSfxMasterVolume(0.1f);
 
-    if (pad.btn.down == BTN_PRESSED)
+    if (isButtonPressed(BTN_DOWN))
         lowerSfxMasterVolume(0.1f);
 
-    if (pad.btn.right == BTN_PRESSED) {
+    if (isButtonPressed(BTN_RIGHT)) {
         pushScreen(&paletteScreen);
         return;
     }
 
-    if (pad.btn.select == BTN_PRESSED) {
-        if (sidepanel.status == OVERLAY_VISIBLE)
+    if (isButtonPressed(BTN_SELECT)) {
+        if (isOverlayVisible(&sidepanel))
             hideOverlay(&sidepanel);
         else
             showOverlay(&sidepanel);

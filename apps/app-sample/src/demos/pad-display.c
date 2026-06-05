@@ -33,22 +33,22 @@ void drawPadDisplay(void)
 {
     int pos = 0;
     buf[pos++] = 'B'; buf[pos++] = 'T'; buf[pos++] = 'N'; buf[pos++] = ':';
-    if (pad.btn.up)       { buf[pos++] = ' '; buf[pos++] = 'U'; }
-    if (pad.btn.down)     { buf[pos++] = ' '; buf[pos++] = 'D'; }
-    if (pad.btn.left)     { buf[pos++] = ' '; buf[pos++] = 'L'; }
-    if (pad.btn.right)    { buf[pos++] = ' '; buf[pos++] = 'R'; }
-    if (pad.btn.cross)    { buf[pos++] = ' '; buf[pos++] = 'X'; }
-    if (pad.btn.circle)   { buf[pos++] = ' '; buf[pos++] = 'O'; }
-    if (pad.btn.square)   { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='Q'; }
-    if (pad.btn.triangle) { buf[pos++]=' '; buf[pos++]='T'; buf[pos++]='R'; }
-    if (pad.btn.l1)       { buf[pos++]=' '; buf[pos++]='L'; buf[pos++]='1'; }
-    if (pad.btn.r1)       { buf[pos++]=' '; buf[pos++]='R'; buf[pos++]='1'; }
-    if (pad.btn.l2)       { buf[pos++]=' '; buf[pos++]='L'; buf[pos++]='2'; }
-    if (pad.btn.r2)       { buf[pos++]=' '; buf[pos++]='R'; buf[pos++]='2'; }
-    if (pad.btn.start)    { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='T'; }
-    if (pad.btn.select)   { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='E'; }
-    if (pad.btn.l3)       { buf[pos++]=' '; buf[pos++]='L'; buf[pos++]='3'; }
-    if (pad.btn.r3)       { buf[pos++]=' '; buf[pos++]='R'; buf[pos++]='3'; }
+    if (getButtonState(BTN_UP))       { buf[pos++] = ' '; buf[pos++] = 'U'; }
+    if (getButtonState(BTN_DOWN))     { buf[pos++] = ' '; buf[pos++] = 'D'; }
+    if (getButtonState(BTN_LEFT))     { buf[pos++] = ' '; buf[pos++] = 'L'; }
+    if (getButtonState(BTN_RIGHT))    { buf[pos++] = ' '; buf[pos++] = 'R'; }
+    if (getButtonState(BTN_CROSS))    { buf[pos++] = ' '; buf[pos++] = 'X'; }
+    if (getButtonState(BTN_CIRCLE))   { buf[pos++] = ' '; buf[pos++] = 'O'; }
+    if (getButtonState(BTN_SQUARE))   { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='Q'; }
+    if (getButtonState(BTN_TRIANGLE)) { buf[pos++]=' '; buf[pos++]='T'; buf[pos++]='R'; }
+    if (getButtonState(BTN_L1))       { buf[pos++]=' '; buf[pos++]='L'; buf[pos++]='1'; }
+    if (getButtonState(BTN_R1))       { buf[pos++]=' '; buf[pos++]='R'; buf[pos++]='1'; }
+    if (getButtonState(BTN_L2))       { buf[pos++]=' '; buf[pos++]='L'; buf[pos++]='2'; }
+    if (getButtonState(BTN_R2))       { buf[pos++]=' '; buf[pos++]='R'; buf[pos++]='2'; }
+    if (getButtonState(BTN_START))    { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='T'; }
+    if (getButtonState(BTN_SELECT))   { buf[pos++]=' '; buf[pos++]='S'; buf[pos++]='E'; }
+    if (getButtonState(BTN_L3))       { buf[pos++]=' '; buf[pos++]='L'; buf[pos++]='3'; }
+    if (getButtonState(BTN_R3))       { buf[pos++]=' '; buf[pos++]='R'; buf[pos++]='3'; }
     if (pos == 4) { buf[pos++] = ' '; buf[pos++] = '-'; }
     buf[pos] = 0;
     renderFont(&ttButtons, padFont, padSize, buf, padColor, AUTO, TEXT_NOWRAP);
@@ -57,9 +57,9 @@ void drawPadDisplay(void)
 
     pos = 0;
     buf[pos++]='L'; buf[pos++]=':';
-    appendInt(&pos, pad.lStick.x); buf[pos++]=','; appendInt(&pos, pad.lStick.y);
+    appendInt(&pos, getLeftStick().x); buf[pos++]=','; appendInt(&pos, getLeftStick().y);
     buf[pos++]=' '; buf[pos++]='R'; buf[pos++]=':';
-    appendInt(&pos, pad.rStick.x); buf[pos++]=','; appendInt(&pos, pad.rStick.y);
+    appendInt(&pos, getRightStick().x); buf[pos++]=','; appendInt(&pos, getRightStick().y);
     buf[pos] = 0;
     renderFont(&ttSticks, padFont, padSize, buf, padColor, AUTO, TEXT_NOWRAP);
     if (ttSticks.tex.w > 0)

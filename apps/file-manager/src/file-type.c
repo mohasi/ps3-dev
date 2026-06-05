@@ -65,5 +65,5 @@ FileType classifyFileType(const char *name, int isDir)
     return FILE_TYPE_GENERIC;
 }
 
-const char *fileTypeName(FileType type)   { return names[type]; }
-int         fileTypeSprite(FileType type) { return sprites[type]; }
+const char *getFileTypeName(FileType type)   { return names[type]; }
+int         getFileTypeSprite(FileType type) { return sprites[type]; }

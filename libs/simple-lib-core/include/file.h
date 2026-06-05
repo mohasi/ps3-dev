@@ -45,7 +45,7 @@ static inline char *joinPath(char *buf, int bufSize, const char *dir, const char
 // "/" stays "/". no-op on empty paths.
 static inline void toParentPath(char *path)
 {
-    int len = strLen(path);
+    int len = getStrLen(path);
     if (len <= 1) return;
     if (path[len - 1] == '/') len--;
     while (len > 1 && path[len - 1] != '/') len--;
@@ -55,7 +55,7 @@ static inline void toParentPath(char *path)
 
 // returns the final path component (the name) of path. for "/a/b/c" -> "c",
 // for "/a/b/" -> "" (trailing slash), for "name" -> "name". points into path.
-static inline const char *baseName(const char *path)
+static inline const char *getBaseName(const char *path)
 {
     const char *b = path;
     for (const char *p = path; *p; p++) if (*p == '/') b = p + 1;
@@ -79,7 +79,7 @@ static inline int isValidFileName(const char *name)
 {
     if (!name || name[0] == '\0') return 0;
     if (strEq(name, ".") || strEq(name, "..")) return 0;
-    if (strLen(name) >= MAX_PATH_LEN) return 0;
+    if (getStrLen(name) >= MAX_PATH_LEN) return 0;
     for (const unsigned char *c = (const unsigned char *)name; *c; c++) {
         if (*c < 0x20) return 0;  // control characters
         if (*c == '/' || *c == '\\' || *c == ':' || *c == '*' || *c == '?' ||
@@ -117,6 +117,17 @@ static inline void formatSize(uint64_t bytes, char *buf)
     }
     p = intToDec((int)bytes, buf);
     buf[p++] = ' '; buf[p++] = 'B'; buf[p] = '\0';
+}
+
+// like formatSize, but appends a trailing '+' when the byte count is only a
+// lower bound (e.g. a folder walk that hit its time budget). buf must hold >= 16.
+static inline void formatSizeApprox(uint64_t bytes, int approx, char *buf)
+{
+    formatSize(bytes, buf);
+    if (!approx) return;
+    int n = getStrLen(buf);
+    buf[n]     = '+';
+    buf[n + 1] = '\0';
 }
 
 // reads up to cap-1 bytes into buf and NUL-terminates. returns bytes read, or -1.

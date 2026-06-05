@@ -55,7 +55,7 @@ typedef struct {
 
 // ring sized for the worst burst between 20ms drains. 8KB / 16B per
 // event = 512 events; observed nas peak ~800 events / 20ms hits the
-// edge, so a hot burst may drop - reported via hookDropCount(). cut
+// edge, so a hot burst may drop - reported via getHookDropCount(). cut
 // the drain period to 10ms first if it ever fires.
 #define HOOK_RING_BYTES   (8u * 1024u)
 #define HOOK_EVENT_BYTES  16u
@@ -171,9 +171,9 @@ static inline int isHookArmed(void) { return activeArm.arenaAddr != 0; }
 
 // truncation telemetry: how many requested slots didn't fit. zero on a
 // clean arm.
-static inline uint32_t hookSlotsRequested(void) { return activeArm.slotsRequested; }
-static inline uint32_t hookSlotsArmed(void)     { return activeArm.slotCursor; }
-static inline uint32_t hookSlotsDropped(void)   { return activeArm.slotsDropped; }
+static inline uint32_t getHookSlotsRequested(void) { return activeArm.slotsRequested; }
+static inline uint32_t getHookSlotsArmed(void)     { return activeArm.slotCursor; }
+static inline uint32_t getHookSlotsDropped(void)   { return activeArm.slotsDropped; }
 
 // allocate the single 64KB arena and lay out ring header, mods[], slots[]
 // inside it. `requestedSlots` is the caller's pre-count of all import
@@ -403,7 +403,7 @@ static inline void freeHookArm(void)
 // readIdx in the ring control header, hands one contiguous (or two
 // when wrapping) span of 16-byte events to `sink`. `count` is the
 // number of EVENTS (not words). returns the count of events drained
-// this call. ring overruns are reported via hookDropCount().
+// this call. ring overruns are reported via getHookDropCount().
 typedef int (*HookSpanSink)(void *cookie, const uint32_t *events, uint32_t count);
 
 static inline uint32_t drainHookEvents(HookSpanSink sink, void *cookie)
@@ -436,7 +436,7 @@ static inline uint32_t drainHookEvents(HookSpanSink sink, void *cookie)
 }
 
 // drop count = events that were overwritten before the drain caught up.
-static inline uint32_t hookDropCount(void)
+static inline uint32_t getHookDropCount(void)
 {
     if (hookRingCtrl == 0) return 0;
     uint32_t write = hookRingCtrl->writeIdx;

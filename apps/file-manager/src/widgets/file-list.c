@@ -8,8 +8,11 @@
 #include "folder-sizer.h"
 #include "file-type.h"
 #include "clipboard.h"
+#include "paste.h"
+#include "delete.h"
 #include "file.h"
 #include "file-task.h"
+#include "dynarray.h"
 #include "overlays/progress-overlay.h"
 #include "pad.h"
 #include "audio.h"
@@ -52,19 +55,10 @@ static int scrollHistory[HISTORY_MAX];
 static int historyDepth;
 static ButtonRepeat scrollRepeat;
 
-// targets gathered for the in-flight delete; the worker reads these while the
-// task runs. size/exact mirror the listing's known sizes so the worker only
-// walks what it must. delTopmost is the topmost deleted row so the cursor can
-// land just above it once the listing refreshes.
-typedef struct {
-    char     path[MAX_PATH_LEN];
-    uint64_t size;
-    int      exact;
-} DeleteItem;
-static DeleteItem *delItems;
-static int         delCount;
-static int         delCapacity;
-static int         delTopmost;
+// topmost deleted row, remembered during the gather so the cursor can land
+// just above it once the listing refreshes. the delete set itself lives in the
+// delete module (see delete.h); the listing only gathers into it.
+static int delTopmost;
 
 #define MARKED_ROW_ALPHA 0x80   // 50% opacity for rows pending a cut or copy
 
@@ -100,7 +94,7 @@ static void sizerApplyResult(int i, uint64_t bytes, int files, int approx)
     labelsStale          = 1;
 }
 
-static const FolderSizerSource sizerSource = { sizerCount, sizerNeedsSizing, sizerApplyResult };
+static const FolderSizeCallbacks sizerCallbacks = { sizerCount, sizerNeedsSizing, sizerApplyResult };
 
 // folders before files, then case-insensitive by name. insertion sort:
 // directory listings are small and already mostly-sorted on most fs's.
@@ -214,14 +208,7 @@ static void loadDir(const char *path)
             cellFsClosedir(probe);
         }
 
-        if (entryCount >= entryCapacity) {
-            int newCap = entryCapacity * 2;
-            FileEntry *grown = (FileEntry *)realloc(entries, newCap * sizeof(FileEntry));
-            if (!grown) break;
-            entries = grown;
-            entryCapacity = newCap;
-        }
-
+        if (!growArray(entries, &entryCapacity, entryCount + 1)) break;
         populateEntry(&entries[entryCount++], ent.d_name, full);
     }
     cellFsClosedir(fd);
@@ -230,17 +217,6 @@ static void loadDir(const char *path)
     labelsStale = 1;
 
     if (breadcrumb) setBreadcrumbPath(breadcrumb, currentPath);
-}
-
-// formats bytes as a human size with a trailing '+' if the value is only a
-// lower bound (folder walker hit its time budget). buf must hold >= 16.
-static void formatSizeApprox(uint64_t bytes, int approx, char *buf)
-{
-    formatSize(bytes, buf);
-    if (!approx) return;
-    int n = strlen(buf);
-    buf[n]     = '+';
-    buf[n + 1] = '\0';
 }
 
 static void rebuildLabels(void)
@@ -255,7 +231,7 @@ static void rebuildLabels(void)
             continue;
         }
         setLabelText(&labels[i],     entries[idx].name);
-        setLabelText(&typeLabels[i], fileTypeName(entries[idx].type));
+        setLabelText(&typeLabels[i], getFileTypeName(entries[idx].type));
 
         if (!entries[idx].sized) {
             setLabelText(&sizeLabels[i], EM_DASH);
@@ -288,6 +264,7 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
     entryCount = 0;
     entryCapacity = INITIAL_CAPACITY;
     entries = (FileEntry *)malloc(entryCapacity * sizeof(FileEntry));
+    if (!entries) entryCapacity = 0;  // let the first growArray() allocate (and fail safely) instead of writing through NULL
     selectedIndex = 0;
     scrollOffset = 0;
     labelsStale = 1;
@@ -297,7 +274,7 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
     initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
 
     for (int t = 0; t < FILE_TYPE_COUNT; t++)
-        initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[fileTypeSprite(t)], GFX_FILTER_LINEAR);
+        initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);
 
     for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
         int ry = y + i * rowHeight;
@@ -334,13 +311,13 @@ static void handleCheckInput(int hasSelection)
     static uint64_t pressedUs;
     static int      holdFired;
 
-    if (pad.btn.square == BTN_PRESSED) {
+    if (isButtonPressed(BTN_SQUARE)) {
         pressedUs = sys_time_get_system_time();
         holdFired = 0;
         return;
     }
 
-    if (pad.btn.square == BTN_HELD && !holdFired && entryCount > 0 &&
+    if (isButtonHeld(BTN_SQUARE) && !holdFired && entryCount > 0 &&
         sys_time_get_system_time() - pressedUs >= SQUARE_HOLD_MS * 1000ULL) {
         setAllChecked(!allEntriesChecked());
         labelsStale = 1;
@@ -349,7 +326,7 @@ static void handleCheckInput(int hasSelection)
         return;
     }
 
-    if (pad.btn.square == BTN_RELEASED && !holdFired && hasSelection) {
+    if (isButtonReleased(BTN_SQUARE) && !holdFired && hasSelection) {
         entries[selectedIndex].checked = !entries[selectedIndex].checked;
         labelsStale = 1;
         playSfxOnce(checkSfx);
@@ -358,7 +335,7 @@ static void handleCheckInput(int hasSelection)
 
 void updateFileList(void)
 {
-    if (buttonRepeated(&scrollRepeat, pad.btn.down) && selectedIndex < entryCount - 1) {
+    if (isRepeatDue(&scrollRepeat, getButtonState(BTN_DOWN)) && selectedIndex < entryCount - 1) {
         selectedIndex++;
         if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE) {
             scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
@@ -366,7 +343,7 @@ void updateFileList(void)
         }
         playSfxOnce(clickSfx);
     }
-    else if (buttonRepeated(&scrollRepeat, pad.btn.up) && selectedIndex > 0) {
+    else if (isRepeatDue(&scrollRepeat, getButtonState(BTN_UP)) && selectedIndex > 0) {
         selectedIndex--;
         if (selectedIndex < scrollOffset) {
             scrollOffset = selectedIndex;
@@ -380,7 +357,7 @@ void updateFileList(void)
     handleCheckInput(hasSelection);
 
     // cross: enter selected directory
-    if (pad.btn.cross == BTN_PRESSED && hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER) {
+    if (isButtonPressed(BTN_CROSS) && hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER) {
         playSfxOnce(clickSfx);
         pushNavHistory();
         char next[MAX_PATH_LEN];
@@ -389,7 +366,7 @@ void updateFileList(void)
     }
 
     // circle: go up one directory
-    if (pad.btn.circle == BTN_PRESSED && strlen(currentPath) > 1) {
+    if (isButtonPressed(BTN_CIRCLE) && strlen(currentPath) > 1) {
         playSfxOnce(clickSfx);
         toParentPath(currentPath);
         loadDir(currentPath);
@@ -397,7 +374,7 @@ void updateFileList(void)
     }
 
     if (labelsStale) rebuildLabels();
-    updateFolderSizer(&sizerSource);
+    updateFolderSizer(&sizerCallbacks);
 }
 
 // non-zero if entry idx is currently on the clipboard (cut or copy).
@@ -460,10 +437,7 @@ void termFileList(void)
     entries = NULL;
     entryCount = 0;
     entryCapacity = 0;
-    free(delItems);
-    delItems = NULL;
-    delCount = 0;
-    delCapacity = 0;
+    freeDelete();
     freeClipboard();
 }
 
@@ -537,9 +511,9 @@ const SelectionSummary *getSelectionSummary(void)
         formatSize(e->size, detail);
     }
     summary.title    = e->name;
-    summary.subtitle = fileTypeName(e->type);
+    summary.subtitle = getFileTypeName(e->type);
     summary.detail   = detail;
-    summary.icon     = spriteRegions[fileTypeSprite(e->type)];
+    summary.icon     = spriteRegions[getFileTypeSprite(e->type)];
     return &summary;
 }
 
@@ -622,37 +596,9 @@ static int entryTargeted(int i, int checkedCount)
     return checkedCount > 0 ? entries[i].checked : (i == selectedIndex);
 }
 
-static int delReserve(int n)
-{
-    if (n <= delCapacity) return 1;
-    int cap = delCapacity > 0 ? delCapacity : 64;
-    while (cap < n) cap *= 2;
-    void *grown = realloc(delItems, (size_t)cap * sizeof(DeleteItem));
-    if (!grown) return 0;
-    delItems = grown;
-    delCapacity = cap;
-    return 1;
-}
-
 // an entry's size is exact for files, and for folders only once the sizer has
 // fully walked them (sized and not budget-truncated).
 static int entrySizeIsExact(const FileEntry *e) { return e->sized && !e->approx; }
-
-// worker body: sum the bytes (reusing known sizes, walking only the lower-bound
-// ones), then delete each target with progress + cancel checks. delete is
-// atomic per item, so cancel just stops between items; nothing is half-deleted.
-static void deleteWorker(void)
-{
-    uint64_t total = 0;
-    for (int i = 0; i < delCount && !isCancelRequested(); i++)
-        total += delItems[i].exact ? delItems[i].size : measureTree(delItems[i].path, isCancelRequested);
-    setTotalBytes(total);
-
-    for (int i = 0; i < delCount; i++) {
-        if (isCancelRequested()) break;
-        deleteTreeProgress(delItems[i].path, addProcessedBytes, isCancelRequested);
-    }
-}
 
 // main-thread finisher: refresh the listing and reposition the cursor.
 static void onDeleteFinished(int cancelled)
@@ -674,21 +620,21 @@ void deleteSelection(void)
 
     int checkedCount = countChecked(NULL);
 
-    delCount = 0;
+    beginDelete();
     delTopmost = -1;
+    int gathered = 0;
+    char full[MAX_PATH_LEN];
     for (int i = 0; i < entryCount; i++) {
         if (!entryTargeted(i, checkedCount)) continue;
         if (delTopmost < 0) delTopmost = i;
-        if (!delReserve(delCount + 1)) break;
-        joinPath(delItems[delCount].path, MAX_PATH_LEN, currentPath, entries[i].name);
-        delItems[delCount].size  = entries[i].size;
-        delItems[delCount].exact = entrySizeIsExact(&entries[i]);
-        delCount++;
+        joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name);
+        if (addToDelete(full, entries[i].size, entrySizeIsExact(&entries[i])) != 0) break;
+        gathered++;
     }
-    if (delCount == 0) return;
+    if (gathered == 0) return;
 
     startProgress("Deleting...", "Please wait while the selected items are deleted.",
-                  deleteWorker, onDeleteFinished);
+                  runDelete, onDeleteFinished);
 }
 
 // gathers the current selection (checked rows, or the active row when nothing
@@ -727,5 +673,5 @@ void pasteClipboard(void)
     startProgress(moving ? "Moving..." : "Copying...",
                   moving ? "Please wait while the selected items are moved."
                          : "Please wait while the selected items are copied.",
-                  pasteClipboardContents, onPasteFinished);
+                  runPaste, onPasteFinished);
 }

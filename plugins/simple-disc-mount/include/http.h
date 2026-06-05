@@ -37,7 +37,7 @@ static const char httpRespAutoClose[] =
 
 static void httpWriteLastMount(const char *path)
 {
-    writeFile(pathLastMount, path, (uint64_t)strLen(path));
+    writeFile(pathLastMount, path, (uint64_t)getStrLen(path));
 }
 
 // Parses the request in `buf` and, if it's a well-formed mount URL whose

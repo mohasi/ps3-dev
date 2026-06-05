@@ -22,6 +22,6 @@ static const ActionPresentation table[ACTION_COUNT] = {
     [ACTION_PROPERTIES] = { "Properties", "Show details about the selection.",     SPRITE_INFO       },
 };
 
-const char  *getActionTitle(SelectionAction a)    { return table[a].title; }
-const char  *getActionSubtitle(SelectionAction a) { return table[a].subtitle; }
-SpriteRegion getActionIcon(SelectionAction a)     { return spriteRegions[table[a].spriteId]; }
+const char  *getActionTitle(SelectionAction action)    { return table[action].title; }
+const char  *getActionSubtitle(SelectionAction action) { return table[action].subtitle; }
+SpriteRegion getActionIcon(SelectionAction action)     { return spriteRegions[table[action].spriteId]; }

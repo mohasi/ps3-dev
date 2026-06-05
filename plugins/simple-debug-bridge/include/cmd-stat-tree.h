@@ -165,7 +165,7 @@ static void statTreeEmit(StatTreeCtx *c, char kind, uint64_t size, int64_t mtime
     statTreeAppendChar(c, '\t');
     statTreeAppendBytes(c, sha40, 40);
     statTreeAppendChar(c, '\t');
-    statTreeAppendBytes(c, c->path, (uint32_t)strLen(c->path));
+    statTreeAppendBytes(c, c->path, (uint32_t)getStrLen(c->path));
     statTreeAppendChar(c, '\n');
 }
 
@@ -175,7 +175,7 @@ static void statTreeEmit(StatTreeCtx *c, char kind, uint64_t size, int64_t mtime
 static void statTreeVisitChild(StatTreeCtx *c, const char *name, uint8_t d_type)
 {
     uint32_t parentLen = c->stack[c->depth - 1].pathLen;
-    uint32_t nameLen   = (uint32_t)strLen(name);
+    uint32_t nameLen   = (uint32_t)getStrLen(name);
 
     if (parentLen + 1 + nameLen + 1 > STAT_TREE_PATH_MAX) return;
 
@@ -294,7 +294,7 @@ static void cmdStatTree(int cli, const char *args)
         return;
     }
 
-    uint32_t rlen = (uint32_t)strLen(root);
+    uint32_t rlen = (uint32_t)getStrLen(root);
     while (rlen > 1 && root[rlen - 1] == '/') rlen--;
     if (rlen >= STAT_TREE_PATH_MAX) {
         cellFsClose(c->outFd);

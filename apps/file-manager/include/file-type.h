@@ -22,5 +22,5 @@ typedef enum {
 } FileType;
 
 FileType    classifyFileType(const char *name, int isDir);
-const char *fileTypeName(FileType type);
-int         fileTypeSprite(FileType type);
+const char *getFileTypeName(FileType type);
+int         getFileTypeSprite(FileType type);

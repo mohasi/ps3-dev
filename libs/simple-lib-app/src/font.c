@@ -116,6 +116,7 @@ Font openFontFile(const char *path)
 
     if (cellFontOpenFontMemory(fontLib, buf, size, 0, 0, &f.font) == CELL_OK) {
         f.open = 1;
+        f.buffer = buf;  // cellFont keeps reading buf for the font's life; closeFont frees it
         cellFontSetResolutionDpi(&f.font, 72, 72);
     } else {
         free(buf);
@@ -130,6 +131,8 @@ void closeFont(Font *f)
         cellFontCloseFont(&f->font);
         f->open = 0;
     }
+    free(f->buffer);  // backing memory for openFontFile; NULL (safe) for system fonts
+    f->buffer = NULL;
 }
 
 // decodes one utf-8 codepoint, advances *pp past it. returns codepoint.

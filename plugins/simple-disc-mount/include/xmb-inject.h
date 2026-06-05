@@ -90,7 +90,7 @@ static int buildSdmXml(char *buf, int cap)
                 (ent.d_name[1] == '.' && ent.d_name[2] == 0))) continue;
             if (!endsWithICase(ent.d_name, ".iso")) continue;
 
-            int nlen = strLen(ent.d_name);
+            int nlen = getStrLen(ent.d_name);
             if (poolOff + nlen + 1 > NAME_POOL_SIZE) break;
             nameOff[count] = poolOff;
             for (int i = 0; i <= nlen; i++) namePool[poolOff + i] = ent.d_name[i];
@@ -212,9 +212,9 @@ static int writeSdmXml(void)
 // past the following newline, before splicing.
 static int spliceAfterAnchor(const char *viewOpen, int curLen)
 {
-    int vLen   = strLen(viewOpen);
-    int aLen   = strLen(injectAnchor);
-    int injLen = strLen(injectLine);
+    int vLen   = getStrLen(viewOpen);
+    int aLen   = getStrLen(injectAnchor);
+    int injLen = getStrLen(injectLine);
 
     int vPos = findBytes(xmlBuf, curLen, viewOpen, vLen);
     if (vPos < 0) return curLen;
@@ -254,7 +254,7 @@ static int patchCategoryGameXml(void)
     if (len <= 0) { logError("[sdm] read category_game.xml failed\n"); return PATCH_FAILED; }
 
     // Already up to date? Verbatim match on the exact injectLine.
-    int injLen = strLen(injectLine);
+    int injLen = getStrLen(injectLine);
     if (findBytes(xmlBuf, len, injectLine, injLen) >= 0) {
         logInfo("[sdm] category_game.xml already up to date\n");
         return PATCH_EXISTS;

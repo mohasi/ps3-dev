@@ -39,7 +39,7 @@ static uint32_t moduleIds[MODULE_IDS_MAX];
 //                     to produce the n bytes (capture, pull-file, module-list).
 static inline int sendReply(int fd, const char *status, const char *text)
 {
-    return sendFrame(fd, status, text, (int)strLen(text));
+    return sendFrame(fd, status, text, (int)getStrLen(text));
 }
 
 // shorthand for "<label> rc=0x<hex>" error replies. used by every

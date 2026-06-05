@@ -52,6 +52,6 @@ void cutSelection(void);
 void copySelection(void);
 
 // applies the clipboard into the current directory via the progress overlay
-// (a background worker), then refreshes the listing. see pasteClipboardContents
+// (a background worker), then refreshes the listing. see runPaste (paste.h)
 // for the move/copy/overwrite/no-op semantics.
 void pasteClipboard(void);

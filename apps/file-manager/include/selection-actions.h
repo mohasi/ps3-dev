@@ -29,6 +29,6 @@ typedef struct {
     SpriteRegion icon;
 } SelectionSummary;
 
-const char  *getActionTitle(SelectionAction a);
-const char  *getActionSubtitle(SelectionAction a);
-SpriteRegion getActionIcon(SelectionAction a);
+const char  *getActionTitle(SelectionAction action);
+const char  *getActionSubtitle(SelectionAction action);
+SpriteRegion getActionIcon(SelectionAction action);

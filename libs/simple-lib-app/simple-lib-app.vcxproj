@@ -39,12 +39,13 @@
     <ClCompile Include="src\font.c" />
     <ClCompile Include="src\audio.c" />
     <ClCompile Include="src\pad.c" />
-    <ClCompile Include="src\screen.c" />
+    <ClCompile Include="src\screen-manager.c" />
     <ClCompile Include="src\anim.c" />
     <ClCompile Include="src\ui\label.c" />
     <ClCompile Include="src\ui\breadcrumb.c" />
     <ClCompile Include="src\ui\stats.c" />
     <ClCompile Include="src\timer.c" />
+    <ClCompile Include="src\file-task.c" />
     <ClCompile Include="src\osk-input.c" />
   </ItemGroup>
   <ItemGroup>
@@ -53,6 +54,7 @@
     <ClInclude Include="include\audio.h" />
     <ClInclude Include="include\pad.h" />
     <ClInclude Include="include\screen.h" />
+    <ClInclude Include="include\screen-manager.h" />
     <ClInclude Include="include\overlay.h" />
     <ClInclude Include="include\anim.h" />
     <ClInclude Include="include\colors.h" />
@@ -68,6 +70,8 @@
     <ClInclude Include="include\ui\slice.h" />
     <ClInclude Include="include\timer.h" />
     <ClInclude Include="include\button-repeat.h" />
+    <ClInclude Include="include\dynarray.h" />
+    <ClInclude Include="include\file-task.h" />
     <ClInclude Include="include\osk-input.h" />
   </ItemGroup>
   <ItemGroup>

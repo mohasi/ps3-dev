@@ -1,5 +1,6 @@
 // palette - displays grid of all colors from colors.h
 #include "screens/palette.h"
+#include "screen-manager.h"
 #include "gfx.h"
 #include "colors.h"
 #include "font.h"
@@ -110,7 +111,7 @@ static void resumePalette(void) {}
 
 static void updatePalette(void)
 {
-    if (pad.btn.left == BTN_PRESSED) {
+    if (isButtonPressed(BTN_LEFT)) {
         popScreen();
     }
 }

@@ -104,8 +104,8 @@ static void resolve(bool confirmed)
 static void update(void)
 {
     if (!armed) { armed = 1; return; }  // swallow the press that opened the dialog
-    if (pad.btn.cross == BTN_PRESSED)       resolve(true);
-    else if (pad.btn.circle == BTN_PRESSED) resolve(false);
+    if (isButtonPressed(BTN_CROSS))       resolve(true);
+    else if (isButtonPressed(BTN_CIRCLE)) resolve(false);
 }
 
 static void draw(void)

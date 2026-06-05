@@ -1,37 +1,47 @@
 #pragma once
 
-// pad - reads controller state
+// pad - hidden controller state with button/stick accessors
 
 #include <stdint.h>
 
-// button state per frame
-#define BTN_UP       0  // not held
-#define BTN_PRESSED  1  // just pressed this frame
-#define BTN_HELD     2  // held from previous frame
-#define BTN_RELEASED 3  // just released this frame
+typedef enum {
+   BTN_STATE_UP,
+   BTN_STATE_PRESSED,
+   BTN_STATE_HELD,
+   BTN_STATE_RELEASED
+} ButtonState;
+
+typedef enum {
+   BTN_UP,
+   BTN_DOWN,
+   BTN_LEFT,
+   BTN_RIGHT,
+   BTN_CROSS,
+   BTN_CIRCLE,
+   BTN_SQUARE,
+   BTN_TRIANGLE,
+   BTN_L1,
+   BTN_R1,
+   BTN_L2,
+   BTN_R2,
+   BTN_START,
+   BTN_SELECT,
+   BTN_L3,
+   BTN_R3
+} Button;
+
+#define BUTTON_COUNT 16
 
 typedef struct {
-	uint8_t cross;
-	uint8_t circle;
-	uint8_t square;
-	uint8_t triangle;
-	uint8_t l1, r1, l2, r2;
-	uint8_t up, down, left, right;
-	uint8_t start, select;
-	uint8_t l3, r3;
-} Buttons;
-
-typedef struct {
-	int x, y; // -128 to 127
+   int x;
+   int y;
 } Stick;
-
-typedef struct {
-	Buttons btn;
-	Stick   lStick;
-	Stick   rStick;
-} PadState;
-
-extern PadState pad;
 
 void initPad(void);
 void updatePad(void);
+ButtonState getButtonState(Button button);
+int isButtonPressed(Button button);
+int isButtonHeld(Button button);
+int isButtonReleased(Button button);
+Stick getLeftStick(void);
+Stick getRightStick(void);

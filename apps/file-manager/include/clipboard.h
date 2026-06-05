@@ -1,11 +1,11 @@
 #pragma once
 
 // clipboard - holds a set of absolute paths marked for a move (cut) or a
-// duplicate (copy), plus the file operations that carry them out. the state
-// persists across directory navigation until pasted or replaced. file-list
-// drives this: it gathers the selected paths (with the sizes it already knows)
-// and reloads the listing; the clipboard owns the paths and the actual
-// rename/copy/delete work.
+// duplicate (copy). pure storage: it remembers what was cut/copied and its
+// known sizes, and persists across directory navigation until pasted or
+// replaced. the paste module reads it through the getters below to carry the
+// items across; file-list gathers the selection into it and queries it to
+// ghost rows pending a paste.
 
 #include <stdint.h>
 
@@ -40,14 +40,10 @@ int isOnClipboard(const char *path);
 // the current clipboard mode (CLIP_NONE / CLIP_CUT / CLIP_COPY).
 ClipboardMode getClipboardMode(void);
 
-// sets the directory a subsequent pasteClipboardContents() will paste into.
-// call on the main thread before launching the task.
-void setPasteDest(const char *destDir);
-
-// task body: pastes into the dest set by setPasteDest, reporting bytes and
-// honouring cancel (reusing carried sizes, walking only lower-bound items).
-// copies never overwrite (collisions become "<name> (n)"); cuts move and
-// overwrite a same-named target. on cancel it drops the partial destination,
-// and for a move keeps the source unless the copy fully landed. does not clear
-// the clipboard - the finisher does, on the main thread.
-void pasteClipboardContents(void);
+// read access for the paste module: the count of held items and, per index,
+// the absolute path, its byte size, and whether that size is exact (vs a lower
+// bound that paste must walk to total up).
+int         getClipboardCount(void);
+const char *getClipboardPath(int index);
+uint64_t    getClipboardSize(int index);
+int         isClipboardSizeExact(int index);

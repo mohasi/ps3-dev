@@ -19,6 +19,7 @@ typedef struct Overlay {
     OverlayStatus status;
 } Overlay;
 
+static inline int  isOverlayVisible(const Overlay *o) { return o->status == OVERLAY_VISIBLE; }
 static inline void showOverlay(Overlay *o)   { if (o->status != OVERLAY_VISIBLE && o->show) o->show(); }
 static inline void hideOverlay(Overlay *o)   { if (o->status == OVERLAY_VISIBLE && o->hide) o->hide(); }
 static inline void updateOverlay(Overlay *o) { if (o->status == OVERLAY_VISIBLE && o->update) o->update(); }

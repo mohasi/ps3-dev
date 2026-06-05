@@ -188,7 +188,7 @@ static void replyQuotedPath(FtpSession *session, int code, const char *path)
 static void normalizePath(char *path)
 {
     // In-place: collapse //, resolve . and .., ensure leading /, strip trailing /.
-    int n = strLen(path);
+    int n = getStrLen(path);
     char tmp[FTP_PATHBUF];
     int ti = 0;
     int i  = 0;
@@ -244,7 +244,7 @@ static void resolvePath(FtpSession *session, const char *in, char *out)
 // the input and the parent at the same time.
 static void derivePathParent(const char *in, char *out)
 {
-    int n = strLen(in);
+    int n = getStrLen(in);
     while (n > 1 && in[n - 1] == '/') n--;
     while (n > 0 && in[n - 1] != '/') n--;
     if (n > 1) n--;
@@ -372,7 +372,7 @@ static int statIsDir(const CellFsStat *st)
 static int emitMlsdEntry(int dataFd, char *buf, int cap, int *off,
                          const char *type, const CellFsStat *st, const char *name)
 {
-    int needed = strLen(name) + 128;  // facts + CRLF + cushion
+    int needed = getStrLen(name) + 128;  // facts + CRLF + cushion
     if (*off > 0 && *off + needed > cap) {
         if (ftpSendAll(dataFd, buf, *off) < 0) return -1;
         *off = 0;
@@ -471,7 +471,7 @@ static void handleFeat(FtpSession *session, const char *arg)
         " MLST type*;size*;sizd*;modify*;UNIX.mode*;UNIX.uid*;UNIX.gid*;\r\n"
         " UTF8\r\n"
         "211 End.\r\n";
-    ftpSendAll(session->ctrl, feat, strLen(feat));
+    ftpSendAll(session->ctrl, feat, getStrLen(feat));
 }
 
 static void handleNoop(FtpSession *session, const char *arg)

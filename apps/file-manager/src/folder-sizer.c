@@ -88,12 +88,12 @@ static void walkPath(char *path, int pathLen, int *files, uint64_t *bytes, uint6
 
 static void worker(uint64_t arg)
 {
-    const FolderSizerSource *src = (const FolderSizerSource *)(uintptr_t)arg;
-    int count = src->count();
+    const FolderSizeCallbacks *callbacks = (const FolderSizeCallbacks *)(uintptr_t)arg;
+    int count = callbacks->count();
     char path[MAX_PATH_LEN];
 
     for (int i = 0; i < count && !cancel; i++) {
-        if (!src->needsSizing(i, path, MAX_PATH_LEN)) continue;
+        if (!callbacks->needsSizing(i, path, MAX_PATH_LEN)) continue;
 
         int files = 0;
         uint64_t bytes = 0;
@@ -101,24 +101,24 @@ static void worker(uint64_t arg)
         walkPath(path, (int)strlen(path), &files, &bytes, deadline);
 
         if (cancel) break;
-        src->applyResult(i, bytes, files, sys_time_get_system_time() > deadline);
+        callbacks->applyResult(i, bytes, files, sys_time_get_system_time() > deadline);
     }
     busy = 0;
     exitThread();
 }
 
-void updateFolderSizer(const FolderSizerSource *source)
+void updateFolderSizer(const FolderSizeCallbacks *callbacks)
 {
     if (busy) return;   // previous walker still draining; will exit on its own
     cancel = 0;         // safe now -- no walker is running
 
-    int count = source->count();
+    int count = callbacks->count();
     for (int i = 0; i < count; i++) {
         char path[MAX_PATH_LEN];
-        if (!source->needsSizing(i, path, MAX_PATH_LEN)) continue;
+        if (!callbacks->needsSizing(i, path, MAX_PATH_LEN)) continue;
         busy = 1;
         sys_ppu_thread_t tid;
-        spawnThread(&tid, worker, (uint64_t)(uintptr_t)source, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "folder-sizer");
+        spawnThread(&tid, worker, (uint64_t)(uintptr_t)callbacks, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "folder-sizer");
         return;
     }
 }

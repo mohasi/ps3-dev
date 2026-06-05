@@ -7,7 +7,7 @@
 #define EM_DASH "\xe2\x80\x94"
 
 // Returns length of a string.
-static inline int strLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }
+static inline int getStrLen(const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 
 // Byte-wise copy. Use instead of libc memcpy in code that links against a
 // stripped libc (e.g. vsh prx imports — memcpy is not exported there).
@@ -41,7 +41,7 @@ static inline int strCmpICase(const char *a, const char *b)
 // Returns 1 if s ends with suf (case-insensitive).
 static inline int endsWithICase(const char *s, const char *suf)
 {
-    int ls = strLen(s), lsuf = strLen(suf);
+    int ls = getStrLen(s), lsuf = getStrLen(suf);
     if (lsuf > ls) return 0;
     return strCmpICase(s + ls - lsuf, suf) == 0;
 }

@@ -5,18 +5,22 @@
 #include "dbg.h"
 #include <stdio.h>
 
-static void onDeleteConfirmed(bool confirmed)
+// default field text the keyboard opens with for each kind of create.
+#define NEW_FILE_DEFAULT    "New File.txt"
+#define NEW_FOLDER_DEFAULT  "New Folder"
+
+static void onDeleteConfirmed(ConfirmChoice choice)
 {
-    if (confirmed) deleteSelection();
+    if (choice == CONFIRM_CROSS) deleteSelection();
 }
 
-// keyboard closed: text is the confirmed name (already stripped of illegal
-// characters by the OSK filter), or NULL on cancel/empty. the active row is
-// unchanged while the keyboard is up, so renameActiveEntry still targets it.
-static void onRenameDone(const char *text)
-{
-    if (text) renameActiveEntry(text);
-}
+// keyboard results. text is the confirmed name, or NULL on cancel/empty. each
+// just hands off to file-list, which owns validation, collision handling and any
+// follow-up prompt (overwrite / merge). the active row is unchanged while the
+// keyboard is up, so renameActiveTo still targets it.
+static void onRenameDone(const char *text)    { if (text) renameActiveTo(text); }
+static void onNewFileDone(const char *text)    { if (text) createFile(text); }
+static void onNewFolderDone(const char *text)  { if (text) createFolder(text); }
 
 void dispatchAction(SelectionAction action)
 {
@@ -37,18 +41,25 @@ void dispatchAction(SelectionAction action)
             int n = getSelectionCount();
             char message[64];
             snprintf(message, sizeof message, "Are you sure you want to delete %d %s?", n, n == 1 ? "item" : "items");
-            askConfirm("Delete Confirmation", message, "Yes", "No", onDeleteConfirmed);
+            askConfirm("Delete Confirmation", message, "Yes", NULL, "No", onDeleteConfirmed);
             break;
         }
 
         case ACTION_RENAME: {
-            // rename targets the highlighted row only, ignoring checkboxes. show the
-            // keyboard pre-filled with the current name; it pumps on the main loop's
-            // sysutil callback and the result comes back through onRenameDone.
+            // rename targets the highlighted row only; pre-fill the keyboard with
+            // its current name and let file-list resolve the result.
             const char *name = getActiveEntryName();
             if (name) oskInputBegin("Rename", name, onRenameDone);
             break;
         }
+
+        case ACTION_NEW_FILE:
+            oskInputBegin("New File", NEW_FILE_DEFAULT, onNewFileDone);
+            break;
+
+        case ACTION_NEW_FOLDER:
+            oskInputBegin("New Folder", NEW_FOLDER_DEFAULT, onNewFolderDone);
+            break;
 
         default:
             logInfo("[file-actions] %s: not implemented yet\n", getActionTitle(action));

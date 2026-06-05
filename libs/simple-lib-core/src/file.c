@@ -87,6 +87,80 @@ int copyTreeProgress(const char *src, const char *dst, void *buf, int bufSize,
     return rc;
 }
 
+int mergeTreeProgress(const char *src, const char *dst, int replaceExisting,
+                      void *buf, int bufSize,
+                      void (*onBytes)(uint64_t), int (*cancelled)(void))
+{
+    if (cancelled && cancelled()) return 1;
+
+    CellFsStat st;
+    if (cellFsStat(src, &st) != CELL_FS_SUCCEEDED) return -1;
+
+    if (!(st.st_mode & CELL_FS_S_IFDIR)) {
+        // file leaf: on a collision, replace or keep the destination per the flag.
+        if (!replaceExisting && fileExists(dst)) {
+            if (onBytes) onBytes((uint64_t)st.st_size);  // still part of the total
+            return 0;
+        }
+        return copyFileProgress(src, dst, buf, bufSize, onBytes, cancelled);
+    }
+
+    if (makeDir(dst) != 0) return -1;  // no-op when dst already exists
+
+    int fd;
+    if (cellFsOpendir(src, &fd) != CELL_FS_SUCCEEDED) return -1;
+
+    char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
+    CellFsDirent ent;
+    uint64_t n;
+    int rc = 0;
+    while (cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+        if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
+            (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
+        if (cancelled && cancelled()) { rc = 1; break; }
+        joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
+        joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
+        rc = mergeTreeProgress(childSrc, childDst, replaceExisting, buf, bufSize, onBytes, cancelled);
+        if (rc != 0) break;
+    }
+    cellFsClosedir(fd);
+    return rc;
+}
+
+int countTreeConflicts(const char *src, const char *dst, int cap)
+{
+    if (cap <= 0) return 0;
+
+    CellFsStat ss;
+    if (cellFsStat(src, &ss) != CELL_FS_SUCCEEDED) return 0;
+
+    CellFsStat ds;
+    int dstExists = (cellFsStat(dst, &ds) == CELL_FS_SUCCEEDED);
+
+    if (!(ss.st_mode & CELL_FS_S_IFDIR))
+        return dstExists ? 1 : 0;       // a file leaf conflicts if anything is at dst
+
+    if (!dstExists) return 0;           // dir merging into nothing: all new
+    if (!(ds.st_mode & CELL_FS_S_IFDIR)) return 1;  // dir vs existing file: one clash
+
+    int fd;
+    if (cellFsOpendir(src, &fd) != CELL_FS_SUCCEEDED) return 0;
+
+    char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
+    CellFsDirent ent;
+    uint64_t n;
+    int count = 0;
+    while (count < cap && cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+        if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
+            (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
+        joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
+        joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
+        count += countTreeConflicts(childSrc, childDst, cap - count);
+    }
+    cellFsClosedir(fd);
+    return count;
+}
+
 int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancelled)(void))
 {
     if (cancelled && cancelled()) return 1;

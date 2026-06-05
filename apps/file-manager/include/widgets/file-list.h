@@ -33,11 +33,19 @@ int getSelectionCount(void);
 // valid until the selection or directory changes.
 const char *getActiveEntryName(void);
 
-// renames the highlighted row to newName within the current directory (ignoring
-// checkboxes), then refreshes the listing with the cursor on the renamed item.
-// rejects an invalid name or one already in use (no overwrite); same name is a
-// no-op. returns 0 on success, -1 otherwise.
-int renameActiveEntry(const char *newName);
+// renames the highlighted row (ignoring checkboxes) to newName in the current
+// directory. validates the name and no-ops on an unchanged name; a free name
+// renames at once, while a collision opens a Merge / Replace / Cancel prompt
+// (Merge folds two folders together, Replace clobbers the target, Cancel aborts).
+// the work and any prompts are owned here; the cursor lands on the result.
+void renameActiveTo(const char *newName);
+
+// creates a new file / folder named name in the current directory and parks the
+// cursor on it. validation lives here. New File replaces an existing file only
+// after a Replace / Cancel prompt and never replaces a folder; New Folder merges
+// into an existing entry, which for an empty folder is just a no-op + select.
+void createFile(const char *name);
+void createFolder(const char *name);
 
 // deletes the current selection (all checked rows, or the active row when none
 // are checked), then refreshes the listing. the cursor lands on the row above

@@ -16,10 +16,17 @@ to link into `vsh.self` PRXs; apps link it the same way.
   line after the disk write. Defines `BacklogLine` / `LOG_LINE_MAX`
   used by every pre-connect log ring.
 - **file** — cellFs helpers (`readFile`, `writeFile`, `fileExists`,
-  `makeDir`, `deleteFile`, `deleteTree`) plus libc-free path utilities
-  (`joinPath`, `toParentPath`, `getExtension`, `isDir`, `formatSize`,
-  `MAX_PATH_LEN`) and the `mountDevBlind` LV2 syscall stub (cobra
-  /dev_blind mount via raw inline asm — prx-safe).
+  `makeDir`, `deleteFile`, `deleteTree`, `copyFile`, `copyTree`,
+  `moveTree`) plus libc-free path utilities (`joinPath`, `toParentPath`,
+  `getExtension`, `getBaseName`, `isValidFileName`, `isDir`,
+  `formatSize`, `MAX_PATH_LEN`) and the `mountDevBlind` LV2 syscall stub
+  (cobra /dev_blind mount via raw inline asm — prx-safe). The inline
+  helpers are header-only; the cancellable, byte-reporting tree
+  operations live in `src/file.c`: `measureTree`, `copyTreeProgress`,
+  `deleteTreeProgress`, `mergeTreeProgress` (merge into an existing tree,
+  replacing or keeping colliding file leaves), and `countTreeConflicts`
+  (how many files a merge would land on, capped for a quick none/one/many
+  check). Each takes `onBytes` / `cancelled` callbacks (either may be NULL).
 - **thread** — `spawnThread()` PPU-thread spawn helper and stack-size
   constants.
 - **string-utilities** — bounded copy / uppercase, length, case-
@@ -54,7 +61,8 @@ simple-lib-core/
 │   ├── log-backlog.h
 │   └── bridge-client.h
 └── src/
-    └── printf.c
+    ├── printf.c
+    └── file.c            # cancellable tree ops (measure/copy/delete/merge/count)
 ```
 
 ## Usage
@@ -72,8 +80,9 @@ simple-lib-core/
 
 ## Design
 
-Header-only utilities (`dbg.h`, `file.h`, `thread.h`,
-`string-utilities.h`, `wire.h`, `log-backlog.h`, `bridge-client.h`) are
-`static inline`. The only compiled unit is `printf.c`. The library has
-no dependencies on `simple-lib-plugin` or `simple-lib-app` — those
-depend on it, not the other way around.
+Most utilities (`dbg.h`, `thread.h`, `string-utilities.h`, `wire.h`,
+`log-backlog.h`, `bridge-client.h`, and the lighter half of `file.h`) are
+`static inline`. The compiled units are `printf.c` and `file.c` (the
+latter holds the recursive tree operations, which are too large to inline).
+The library has no dependencies on `simple-lib-plugin` or `simple-lib-app`
+— those depend on it, not the other way around.

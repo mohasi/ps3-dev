@@ -288,3 +288,20 @@ int      copyTreeProgress(const char *src, const char *dst, void *buf, int bufSi
                           void (*onBytes)(uint64_t), int (*cancelled)(void));
 int      deleteTreeProgress(const char *path,
                             void (*onBytes)(uint64_t), int (*cancelled)(void));
+
+// merges src into dst, creating dst if absent and descending into it if it is an
+// existing directory (makeDir is a no-op on an existing folder). for regular-file
+// leaves that already exist at dst, replaceExisting != 0 overwrites them while
+// replaceExisting == 0 leaves the destination file untouched - a skipped file's
+// bytes are still reported through onBytes so a progress total stays consistent.
+// like copyTreeProgress: 0 ok, -1 error, 1 cancelled. buf/bufSize is copy scratch.
+int      mergeTreeProgress(const char *src, const char *dst, int replaceExisting,
+                           void *buf, int bufSize,
+                           void (*onBytes)(uint64_t), int (*cancelled)(void));
+
+// counts the regular-file leaves of src that would land on top of an existing
+// entry if src were merged into dst (i.e. how many files a merge would replace).
+// counting stops once cap is reached, so pass a small cap (e.g. 2) when only the
+// "none / one / many" distinction matters. a directory whose dst counterpart does
+// not exist contributes no conflicts (the whole subtree is new).
+int      countTreeConflicts(const char *src, const char *dst, int cap);

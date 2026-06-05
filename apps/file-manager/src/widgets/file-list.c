@@ -14,7 +14,9 @@
 #include "file-task.h"
 #include "dynarray.h"
 #include "overlays/progress-overlay.h"
+#include "overlays/confirm-overlay.h"
 #include "pad.h"
+#include <stdio.h>
 #include "audio.h"
 #include "button-repeat.h"
 #include "string-utilities.h"
@@ -524,16 +526,19 @@ const SelectionSummary *getSelectionSummary(void)
 // is non-empty. order is cut, copy, paste, delete, rename.
 const SelectionAction *getAvailableActions(int *outCount)
 {
-    static SelectionAction list[5];
+    static SelectionAction list[7];
     int n = 0;
     if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
     if (!isClipboardEmpty())  list[n++] = ACTION_PASTE;
     if (entryCount > 0)     { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
+    // creation always applies to the current directory, even when it is empty.
+    list[n++] = ACTION_NEW_FILE;
+    list[n++] = ACTION_NEW_FOLDER;
     *outCount = n;
     return list;
 }
 
-static void scrollToSelected(void);  // defined below; used by renameActiveEntry
+static void scrollToSelected(void);  // defined below; used by the create/rename helpers
 
 // name of the highlighted row, independent of any checkbox marks; NULL in an
 // empty directory. rename acts on this row alone, ignoring checked items.
@@ -543,36 +548,6 @@ const char *getActiveEntryName(void)
     return entries[selectedIndex].name;
 }
 
-// renames the highlighted row to newName within the current directory, ignoring
-// any checkboxes. refuses an invalid name (see isValidFileName) or one that
-// already exists (no clobber), and treats renaming to the same name as a no-op.
-// on success refreshes the listing and leaves the cursor on the renamed item.
-// returns 0 on success, -1 otherwise.
-int renameActiveEntry(const char *newName)
-{
-    if (entryCount == 0) return -1;
-    if (!isValidFileName(newName)) return -1;
-
-    const char *old = entries[selectedIndex].name;
-    if (strEq(old, newName)) return 0;  // unchanged
-
-    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
-    joinPath(oldPath, MAX_PATH_LEN, currentPath, old);
-    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
-
-    if (fileExists(newPath)) return -1;  // never overwrite on rename
-    // a rename within one directory is always same-volume, so the bare lv2
-    // rename is sufficient - no need for moveTree's cross-volume copy fallback.
-    if (cellFsRename(oldPath, newPath) != CELL_FS_SUCCEEDED) return -1;
-
-    loadDir(currentPath);  // resets selectedIndex/scrollOffset to 0
-    for (int i = 0; i < entryCount; i++)
-        if (strEq(entries[i].name, newName)) { selectedIndex = i; break; }
-    scrollToSelected();
-    labelsStale = 1;
-    return 0;
-}
-
 // keeps the active row on screen after the index is moved programmatically.
 static void scrollToSelected(void)
 {
@@ -580,6 +555,192 @@ static void scrollToSelected(void)
         scrollOffset = selectedIndex;
     else if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE)
         scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
+}
+
+// moves the cursor to the existing row named name (if present) and scrolls it
+// into view; no filesystem change. used when a create/rename lands on something
+// that must not be replaced, so the cursor still ends up on the conflicting item.
+static void selectEntryByName(const char *name)
+{
+    for (int i = 0; i < entryCount; i++)
+        if (strEq(entries[i].name, name)) { selectedIndex = i; break; }
+    scrollToSelected();
+    labelsStale = 1;
+}
+
+// creates an empty file or a folder named name in the current directory. a file
+// of the same name is truncated (writeFile uses O_CREAT | O_TRUNC); makeDir is a
+// no-op on an existing folder. the listing is reloaded from disk - which resets
+// the cursor - so the new item is found by name and the cursor parked on it.
+static int createNewEntry(const char *name, int isFolder)
+{
+    if (!isValidFileName(name)) return -1;
+
+    char path[MAX_PATH_LEN];
+    joinPath(path, MAX_PATH_LEN, currentPath, name);
+
+    int rc = isFolder ? makeDir(path) : writeFile(path, "", 0);
+    if (rc != 0) return -1;
+
+    loadDir(currentPath);          // resets selectedIndex / scrollOffset to 0
+    selectEntryByName(name);       // park the cursor on the new item
+    return 0;
+}
+
+// the name a pending create/rename dialog is resolving. one dialog is up at a
+// time (the overlay is modal), so a single buffer is enough. sized to a full path
+// since isValidFileName admits names up to MAX_PATH_LEN.
+static char pendingName[MAX_PATH_LEN];
+static char mergeBuf[64 * 1024];   // payload scratch for a synchronous rename-merge
+
+// how a merge resolves a file-leaf collision; also what the cross/circle answer
+// of a merge prompt maps to.
+enum { KEEP_EXISTING = 0, REPLACE_EXISTING = 1 };
+
+// the prompt only distinguishes no / one / many collisions, so a scan can stop
+// as soon as it reaches this count - two or more all read as "many".
+#define MANY_CONFLICTS 2
+
+// cross means replace the existing file; anything else (circle) means keep it.
+static int replaceChosen(ConfirmChoice choice)
+{
+    return choice == CONFIRM_CROSS ? REPLACE_EXISTING : KEEP_EXISTING;
+}
+
+// asks how to resolve file collisions for a merge and hands the answer to
+// onResult: nothing to ask when none collide (resolves immediately, replace being
+// moot), a single Replace/Keep for one, Replace All/Keep All for several. shared
+// by paste and rename so the wording lives in one place.
+static void promptMergeConflicts(int conflicts, ConfirmCallback onResult)
+{
+    if (conflicts <= 0)
+        onResult(CONFIRM_CROSS);
+    else if (conflicts == 1)
+        askConfirm("Replace File", "A file already exists. Replace it?",
+                   "Replace", NULL, "Keep", onResult);
+    else
+        askConfirm("Replace Files", "Some files already exist. Replace them?",
+                   "Replace All", NULL, "Keep All", onResult);
+}
+
+// plain same-directory rename of the active row to newName (no collision: the
+// caller has cleared the destination or knows it is free). same-volume, so the
+// bare lv2 rename suffices. refreshes and parks the cursor on the result.
+static void renamePlain(const char *newName)
+{
+    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
+    joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+    if (cellFsRename(oldPath, newPath) != CELL_FS_SUCCEEDED) return;
+    loadDir(currentPath);
+    selectEntryByName(newName);
+}
+
+// wipe whatever sits at newName, then rename onto it. this is the only rename path
+// that deletes a populated target, and only ever on an explicit Replace.
+static void renameReplace(const char *newName)
+{
+    char newPath[MAX_PATH_LEN];
+    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+    deleteTree(newPath, NULL);
+    renamePlain(newName);
+}
+
+// fold the active folder's contents into the existing folder newName (replacing
+// or keeping colliding files per replaceConflicts), then drop the now redundant
+// source folder. runs synchronously - fine for this rare action, though a very
+// large merge briefly blocks the UI (no progress bar).
+static void renameMerge(const char *newName, int replaceConflicts)
+{
+    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
+    joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+    if (mergeTreeProgress(oldPath, newPath, replaceConflicts, mergeBuf, sizeof mergeBuf, NULL, NULL) == 0)
+        deleteTree(oldPath, NULL);
+    loadDir(currentPath);
+    selectEntryByName(newName);
+}
+
+// New File: the field collided with an existing file and the user chose. Cancel
+// does nothing at all - the cursor stays where it was.
+static void onReplaceFileConfirmed(ConfirmChoice choice)
+{
+    if (choice == CONFIRM_CROSS) createNewEntry(pendingName, 0);  // writeFile truncates the old file
+}
+
+// New File create. validates, then: free name -> create; collides with a folder
+// -> never replaced, just select it; collides with a file -> Replace / Cancel.
+void createFile(const char *name)
+{
+    if (!isValidFileName(name)) return;
+
+    char path[MAX_PATH_LEN];
+    joinPath(path, MAX_PATH_LEN, currentPath, name);
+
+    if (!fileExists(path)) { createNewEntry(name, 0); return; }
+    if (isDir(path))       { selectEntryByName(name); return; }  // can't replace a folder with a file
+
+    strCopy(pendingName, sizeof pendingName, name);
+    char msg[MAX_PATH_LEN + 32];
+    snprintf(msg, sizeof msg, "\"%s\" already exists. Replace it?", name);
+    askConfirm("Replace File", msg, "Replace", NULL, "Cancel", onReplaceFileConfirmed);
+}
+
+// New Folder create. validates, then: free name -> create the folder; name taken
+// (folder or file) -> merge route, which for an empty new folder is a no-op, so
+// just select the existing item. never deletes anything.
+void createFolder(const char *name)
+{
+    if (!isValidFileName(name)) return;
+
+    char path[MAX_PATH_LEN];
+    joinPath(path, MAX_PATH_LEN, currentPath, name);
+
+    if (!fileExists(path)) createNewEntry(name, 1);
+    else                   selectEntryByName(name);
+}
+
+// inner step of a rename-merge: replace or keep the colliding files, then merge.
+static void onRenameMergeResolved(ConfirmChoice choice)
+{
+    renameMerge(pendingName, replaceChosen(choice));
+}
+
+// the user picked Merge / Replace / Cancel for a rename onto an existing item.
+static void onRenameCollision(ConfirmChoice choice)
+{
+    if (choice == CONFIRM_CIRCLE) return;  // Cancel: do nothing, leave the cursor put
+
+    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
+    joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+    joinPath(newPath, MAX_PATH_LEN, currentPath, pendingName);
+
+    // Replace, or Merge with a non-folder on either side (merging files is
+    // meaningless), both collapse to a clean replace of the destination.
+    if (choice == CONFIRM_SQUARE || !(isDir(oldPath) && isDir(newPath)))
+        renameReplace(pendingName);
+    else
+        promptMergeConflicts(countTreeConflicts(oldPath, newPath, MANY_CONFLICTS), onRenameMergeResolved);
+}
+
+// renames the highlighted row to newName within the current directory (ignoring
+// checkboxes). an invalid name or a rename to the same name is a no-op. a free
+// destination renames immediately; an existing one opens a Merge / Replace /
+// Cancel prompt (Merge folds folders together, Replace clobbers, Cancel aborts).
+void renameActiveTo(const char *newName)
+{
+    if (entryCount == 0) return;
+    if (!isValidFileName(newName)) return;
+    if (strEq(entries[selectedIndex].name, newName)) return;  // unchanged
+
+    char newPath[MAX_PATH_LEN];
+    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+    if (!fileExists(newPath)) { renamePlain(newName); return; }
+
+    strCopy(pendingName, sizeof pendingName, newName);
+    char msg[MAX_PATH_LEN + 32];
+    snprintf(msg, sizeof msg, "\"%s\" already exists.", newName);
+    askConfirm("Rename", msg, "Merge", "Replace", "Cancel", onRenameCollision);
 }
 
 int getSelectionCount(void)
@@ -659,19 +820,46 @@ void copySelection(void) { clipboardFromSelection(CLIP_COPY); }
 // a completed paste consumes the clipboard; a cancelled one keeps it for retry.
 static void onPasteFinished(int cancelled)
 {
-    if (!cancelled) clearClipboard();
     loadDir(currentPath);
+
+    // land the cursor on the topmost pasted item: the first row (in sort order)
+    // whose name matches a pasted source's base name. a move or a copy into
+    // another folder lands the destination under that name; a same-folder copy is
+    // suffixed, so this finds the original it sits beside. read the clipboard
+    // before it is cleared below.
+    int clipCount = getClipboardCount();
+    for (int i = 0; i < entryCount; i++) {
+        int hit = 0;
+        for (int c = 0; c < clipCount && !hit; c++)
+            hit = strEq(entries[i].name, getBaseName(getClipboardPath(c)));
+        if (hit) { selectedIndex = i; break; }
+    }
+    scrollToSelected();
+
+    if (!cancelled) clearClipboard();
     labelsStale = 1;
 }
 
-void pasteClipboard(void)
+// launches the paste worker with the conflict policy already chosen.
+static void startPasteRun(int replaceExisting)
 {
-    if (isClipboardEmpty()) return;
-    setPasteDest(currentPath);
-
+    setPasteReplaceOnConflict(replaceExisting);
     int moving = (getClipboardMode() == CLIP_CUT);
     startProgress(moving ? "Moving..." : "Copying...",
                   moving ? "Please wait while the selected items are moved."
                          : "Please wait while the selected items are copied.",
                   runPaste, onPasteFinished);
+}
+
+// the Replace/Keep (or Replace All/Keep All) answer for a conflicting paste.
+static void onPasteConflictResolved(ConfirmChoice choice) { startPasteRun(replaceChosen(choice)); }
+
+void pasteClipboard(void)
+{
+    if (isClipboardEmpty()) return;
+    setPasteDest(currentPath);  // countClipboardConflicts and runPaste both read this
+
+    // ask how to resolve collisions up front (and only when they exist) via the
+    // shared prompt, then run the paste with the chosen policy.
+    promptMergeConflicts(countClipboardConflicts(MANY_CONFLICTS), onPasteConflictResolved);
 }

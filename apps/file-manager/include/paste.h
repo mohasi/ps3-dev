@@ -9,10 +9,25 @@
 // before launching the task.
 void setPasteDest(const char *destDir);
 
+// chooses how runPaste resolves file-leaf collisions when merging into an
+// existing destination: replace != 0 overwrites the destination file, replace == 0
+// keeps it. set on the main thread before launching. it has no effect where there
+// is no collision - a copy back into the source dir still gets a "<name> (n)"
+// duplicate, and a brand-new destination is just created.
+void setPasteReplaceOnConflict(int replace);
+
+// counts the existing files the pending paste would land on (how many a merge
+// would touch), so the caller can decide whether and how to prompt. returns 0, 1,
+// or up to cap (counting stops there). call after setPasteDest, on the main
+// thread, before launching. items pasted back into their own directory are
+// excluded (a copy is suffixed, a move is a no-op), so they never count.
+int  countClipboardConflicts(int cap);
+
 // task body: pastes the clipboard into the dest set by setPasteDest, reporting
 // bytes and honouring cancel (reusing carried sizes, walking only lower-bound
-// items). copies never overwrite (collisions become "<name> (n)"); cuts move
-// and overwrite a same-named target. on cancel it drops the partial
-// destination, and for a move keeps the source unless the copy fully landed.
-// does not clear the clipboard - the finisher does, on the main thread.
+// items). a copy back into the source dir duplicates as "<name> (n)"; otherwise a
+// pre-existing destination is merged into (file leaves replaced or kept per
+// setPasteReplaceOnConflict) and a brand-new one is created. a move deletes the source once
+// its copy has fully landed. on cancel it drops a partial fresh copy and keeps the
+// source. does not clear the clipboard - the finisher does, on the main thread.
 void runPaste(void);

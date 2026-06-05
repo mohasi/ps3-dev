@@ -15,18 +15,29 @@ to link into `vsh.self` PRXs; apps link it the same way.
   `logError`. Optional sink (`setLogSink`) forwards each fully-formatted
   line after the disk write. Defines `BacklogLine` / `LOG_LINE_MAX`
   used by every pre-connect log ring.
+- **syscall** — the whole LV2 syscall layer (moved here from
+  simple-lib-plugin so apps and plugins share one copy). Generic inline-asm
+  trampolines (`scCall1..scCall6`, `r11`=number / `r3..` args / `r3`
+  result); the filesystem-device syscalls `mountDevBlind` (837, cobra
+  /dev_blind mount) and `syncDevice` (839, `sys_fs_sync` — flush a volume's
+  data + metadata + free-block bitmap to disk); and the prx/power/memory
+  wrappers `sysPower` (379), `getPrxModuleIdByAddress` (461),
+  `prxFinalizeSelf` (482), `prxList`/`prxName`/`prxInfo`/`prxLinkage`
+  (494/495), `sysMemAllocate`/`sysMemFree` (348/349). prx-safe,
+  header-only. (VSH-only NID stubs stay in `simple-lib-plugin/vsh.h`.)
 - **file** — cellFs helpers (`readFile`, `writeFile`, `fileExists`,
   `makeDir`, `deleteFile`, `deleteTree`, `copyFile`, `copyTree`,
   `moveTree`) plus libc-free path utilities (`joinPath`, `toParentPath`,
-  `getExtension`, `getBaseName`, `isValidFileName`, `isDir`,
-  `formatSize`, `MAX_PATH_LEN`) and the `mountDevBlind` LV2 syscall stub
-  (cobra /dev_blind mount via raw inline asm — prx-safe). The inline
-  helpers are header-only; the cancellable, byte-reporting tree
-  operations live in `src/file.c`: `measureTree`, `copyTreeProgress`,
-  `deleteTreeProgress`, `mergeTreeProgress` (merge into an existing tree,
-  replacing or keeping colliding file leaves), and `countTreeConflicts`
-  (how many files a merge would land on, capped for a quick none/one/many
-  check). Each takes `onBytes` / `cancelled` callbacks (either may be NULL).
+  `getExtension`, `getBaseName`, `deviceRootOf`, `isValidFileName`,
+  `isDir`, `formatSize`, `MAX_PATH_LEN`). The inline helpers are
+  header-only; the cancellable, byte-reporting tree operations live in
+  `src/file.c`: `measureTree`, `copyTreeProgress`, `deleteTreeProgress`,
+  `mergeTreeProgress` (merge into an existing tree, replacing or keeping
+  colliding file leaves), and `countTreeConflicts` (how many files a merge
+  would land on, capped for a quick none/one/many check). Each takes
+  `onBytes` / `cancelled` callbacks (either may be NULL). Copy/delete/move
+  each issue one `syncDevice` at the batch boundary for crash-durability
+  and accurate free-space reporting.
 - **thread** — `spawnThread()` PPU-thread spawn helper and stack-size
   constants.
 - **string-utilities** — bounded copy / uppercase, length, case-

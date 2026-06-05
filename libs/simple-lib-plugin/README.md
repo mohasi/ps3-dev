@@ -8,23 +8,20 @@ lib and `simple-lib-app`.
 
 ## What it provides
 
-- **syscall** � generic LV2 inline-asm trampolines (`scCall1..scCall5`)
-  and reusable wrappers: `sysPower` (379),
-  `prxGetModuleIdByAddress` (461), `prxFinalizeSelf` (482),
-  `prxList` (494), `prxName` (495). Cross-checked against
-  [psdevwiki LV2 syscalls](https://www.psdevwiki.com/ps3/LV2_Functions_and_Syscalls)
-  and RPCS3 sys_prx struct layouts.
-  (`mountDevBlind` (837) lives in `simple-lib-core/file.h` — it is
-  prx-safe and apps need it too.)
 - **vsh** � VSH-only NID stub exports: XMB readiness check
   (`isXmbReady`), VSH notification (`vshNotify`). Only resolvable inside
-  `vsh.self`; non-VSH code should use `syscall.h` instead.
+  `vsh.self`; non-VSH code should use `syscall.h` (in `simple-lib-core`)
+  instead.
 
-For logging (`dbg.h`), formatted I/O (`printf.h`), threads
-(`thread.h`), file I/O (`file.h`), string utilities, the framed
-wire protocol (`wire.h`), the pre-connect log ring (`log-backlog.h`),
-or the producer-side bridge client (`bridge-client.h`), include those
-headers from `simple-lib-core` directly.
+The LV2 syscall layer (`syscall.h`) now lives in `simple-lib-core` — it
+holds the generic `scCall1..scCall6` trampolines, the prx/power/memory
+wrappers (`sysPower`, `prxList`, `prxName`, `prxLinkage`, `sysMemAllocate`,
+…) and the filesystem-device syscalls (`mountDevBlind` 837, `syncDevice`
+839). For that, plus logging (`dbg.h`), formatted I/O (`printf.h`), threads
+(`thread.h`), file I/O (`file.h`), string utilities, the framed wire
+protocol (`wire.h`), the pre-connect log ring (`log-backlog.h`), or the
+producer-side bridge client (`bridge-client.h`), include those headers from
+`simple-lib-core` directly.
 
 ## Usage
 
@@ -33,7 +30,8 @@ headers from `simple-lib-core` directly.
 2. No archive to link � this lib is header-only. The single compiled
    unit (`printf.c`) lives in `simple-lib-core`; link
    `libsimple-lib-core.a` for that.
-3. Include headers as needed: `#include "syscall.h"`, `#include "vsh.h"`.
+3. Include headers as needed: `#include "vsh.h"` (this lib), or
+   `#include "syscall.h"` (now in `simple-lib-core`).
 
 ## Layout
 

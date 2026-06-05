@@ -659,6 +659,16 @@ static void handleRetr(FtpSession *session, const char *arg)
     ftpReply(session->ctrl, err ? 550 : 226, err ? "Transfer aborted." : "Transfer complete.");
 }
 
+// FS-durability for the mutating commands. lv2 buffers writes/metadata and
+// flushes lazily, so a STOR/DELE/RMD/RNTO can be acked to the client while the
+// volume is still only in cache — a power loss then leaves stale free space and
+// a half-updated filesystem (the long-standing FTP-on-PS3 bug). each mutating
+// handler below calls syncPath() (from file.h) on success to force the touched
+// volume to disk. one syncDevice per command: FTP is lockstep (a round-trip per
+// command), so a single unlink's worth of metadata flush is cheap relative to
+// that latency. if bulk transfers ever show a measurable regression, revisit
+// with a debounce that coalesces a burst into one flush when the client idles.
+
 static void handleStorOrAppe(FtpSession *session, const char *arg, int append)
 {
     char tgt[FTP_PATHBUF];
@@ -690,6 +700,7 @@ static void handleStorOrAppe(FtpSession *session, const char *arg, int append)
             || wrote != (uint64_t)n) { err = 1; break; }
     }
     cellFsClose(fd);
+    syncPath(tgt);  // file was created/written; force it to disk
     ftpCloseSock(&d);
     ftpReply(session->ctrl, err ? 550 : 226, err ? "Transfer aborted." : "Transfer complete.");
 }
@@ -720,9 +731,10 @@ static void handleDele(FtpSession *session, const char *arg)
 {
     char tgt[FTP_PATHBUF];
     resolvePath(session, arg, tgt);
-    if (cellFsUnlink(tgt) == CELL_FS_SUCCEEDED)
+    if (cellFsUnlink(tgt) == CELL_FS_SUCCEEDED) {
+        syncPath(tgt);
         ftpReply(session->ctrl, 250, "File deleted.");
-    else
+    } else
         ftpReply(session->ctrl, 550, "Delete failed.");
 }
 
@@ -734,6 +746,7 @@ static void handleMkd(FtpSession *session, const char *arg)
         ftpReply(session->ctrl, 550, "Mkdir failed.");
         return;
     }
+    syncPath(tgt);
     replyQuotedPath(session, 257, tgt);
 }
 
@@ -741,9 +754,10 @@ static void handleRmd(FtpSession *session, const char *arg)
 {
     char tgt[FTP_PATHBUF];
     resolvePath(session, arg, tgt);
-    if (cellFsRmdir(tgt) == CELL_FS_SUCCEEDED)
+    if (cellFsRmdir(tgt) == CELL_FS_SUCCEEDED) {
+        syncPath(tgt);
         ftpReply(session->ctrl, 250, "Directory removed.");
-    else
+    } else
         ftpReply(session->ctrl, 550, "Rmdir failed.");
 }
 
@@ -764,9 +778,13 @@ static void handleRnto(FtpSession *session, const char *arg)
     if (session->rnfr[0] == 0) { ftpReply(session->ctrl, 503, "Send RNFR first."); return; }
     char tgt[FTP_PATHBUF];
     resolvePath(session, arg, tgt);
-    if (cellFsRename(session->rnfr, tgt) == CELL_FS_SUCCEEDED)
+    if (cellFsRename(session->rnfr, tgt) == CELL_FS_SUCCEEDED) {
+        // cellFsRename can't cross volumes (it errors), so a success is always
+        // same-volume — syncing the dest root flushes the source dir's entry
+        // removal too.
+        syncPath(tgt);
         ftpReply(session->ctrl, 250, "Rename complete.");
-    else
+    } else
         ftpReply(session->ctrl, 550, "Rename failed.");
     session->rnfr[0] = 0;
 }

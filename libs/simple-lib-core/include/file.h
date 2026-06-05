@@ -4,31 +4,9 @@
 #include <cell/fs/cell_fs_file_api.h>
 #include <cell/fs/cell_fs_errno.h>
 #include "string-utilities.h"
+#include "syscall.h"  // scCall trampolines, mountDevBlind (837), syncDevice (839)
 
 #define MAX_PATH_LEN 512
-
-// lv2 syscall 837. idempotent -- second call returns an error that is safe
-// to ignore. raw inline asm so this works from vsh prx where libc/sony
-// stubs are not linked.
-static inline int64_t mountDevBlind(void)
-{
-    register uint64_t r3  __asm__("3")  = (uint64_t)(uintptr_t)"CELL_FS_IOS:BUILTIN_FLSH1";
-    register uint64_t r4  __asm__("4")  = (uint64_t)(uintptr_t)"CELL_FS_FAT";
-    register uint64_t r5  __asm__("5")  = (uint64_t)(uintptr_t)"/dev_blind";
-    register uint64_t r6  __asm__("6")  = 0;
-    register uint64_t r7  __asm__("7")  = 0;
-    register uint64_t r8  __asm__("8")  = 0;
-    register uint64_t r9  __asm__("9")  = 0;
-    register uint64_t r10 __asm__("10") = 0;
-    register uint64_t r11 __asm__("11") = 837;
-
-    __asm__ volatile ("sc\n"
-        : "+r"(r3)
-        : "r"(r4), "r"(r5), "r"(r6), "r"(r7),
-          "r"(r8), "r"(r9), "r"(r10), "r"(r11)
-        : "r0", "r12", "cr0", "ctr", "xer", "memory");
-    return (int64_t)r3;
-}
 
 // joins dir + name into buf with exactly one separator. libc-free, prx-safe.
 static inline char *joinPath(char *buf, int bufSize, const char *dir, const char *name)
@@ -60,6 +38,32 @@ static inline const char *getBaseName(const char *path)
     const char *b = path;
     for (const char *p = path; *p; p++) if (*p == '/') b = p + 1;
     return b;
+}
+
+// copies the device mount root of an absolute path into out (size >= 16):
+// "/dev_usb000/x/y" -> "/dev_usb000", "/dev_hdd0/..." -> "/dev_hdd0",
+// "/dev_blind" -> "/dev_blind". a bare root or a path with no second '/' is
+// copied whole. pass the result to syncDevice. returns out.
+static inline char *deviceRootOf(const char *path, char *out, int outSize)
+{
+    int o = 0;
+    if (path[0] == '/' && o < outSize - 1) {
+        out[o++] = '/';
+        for (int i = 1; path[i] && path[i] != '/' && o < outSize - 1; i++)
+            out[o++] = path[i];
+    }
+    out[o] = '\0';
+    return out;
+}
+
+// flushes the volume that path lives on (syncDevice on its device root). use
+// after a write/unlink/rename so the change is durable and the free-size the
+// XMB reports is accurate. for a genuine cross-volume operation (e.g. moveTree)
+// sync each root separately -- this only touches the one path's volume.
+static inline void syncPath(const char *path)
+{
+    char root[16];
+    syncDevice(deviceRootOf(path, root, sizeof root));
 }
 
 static inline const char *getExtension(const char *name)
@@ -270,9 +274,24 @@ static inline int copyTree(const char *src, const char *dst, void *buf, int bufS
 // for the cross-volume copy. returns 0 on success, -1 on failure.
 static inline int moveTree(const char *src, const char *dst, void *buf, int bufSize)
 {
-    if (cellFsRename(src, dst) == CELL_FS_SUCCEEDED) return 0;
-    if (copyTree(src, dst, buf, bufSize) < 0) return -1;
-    return deleteTree(src, NULL);
+    int rc;
+    if (cellFsRename(src, dst) == CELL_FS_SUCCEEDED) {
+        rc = 0;
+    } else {
+        rc = copyTree(src, dst, buf, bufSize);   // may leave partial data on dst
+        if (rc == 0) rc = deleteTree(src, NULL);
+    }
+
+    // flush both ends, regardless of rc: the destination gained entries/data
+    // (or a failed cross-volume copy left a partial tree there) and the source
+    // lost them. rename re-links within one volume; a cross-volume move touches
+    // two, so sync the source root too when it differs.
+    char srcRoot[16], dstRoot[16];
+    deviceRootOf(src, srcRoot, sizeof srcRoot);
+    deviceRootOf(dst, dstRoot, sizeof dstRoot);
+    syncDevice(dstRoot);
+    if (!strEq(srcRoot, dstRoot)) syncDevice(srcRoot);
+    return rc;
 }
 
 // progress-reporting, cancellable cousins of the operations above (defined in

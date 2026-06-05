@@ -11,6 +11,10 @@
 //   r3 = result
 // keep these as static inline so callers pay no link cost and the file
 // stays usable from any prx without pulling new objects into the build.
+//
+// this is the base layer in simple-lib-core, shared by apps and plugins.
+// vsh-only NID stub exports (isXmbReady, vshNotify) live in
+// simple-lib-plugin/vsh.h, not here.
 
 #include <stdint.h>
 
@@ -94,6 +98,41 @@ static inline int64_t scCall6(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a
                       : "r0","r9","r10","r12",
                         "cr0","ctr","xer","memory");
     return (int64_t)r3;
+}
+
+// lv2 syscall 837 - mount BUILTIN_FLSH1 (dev_flash) read-write at /dev_blind.
+// idempotent -- a second call returns an error that is safe to ignore. kept as
+// explicit asm rather than a trampoline because it deliberately zeroes r6..r10
+// (the trailing mount args), which the generic scCallN forms leave undefined.
+static inline int64_t mountDevBlind(void)
+{
+    register uint64_t r3  __asm__("3")  = (uint64_t)(uintptr_t)"CELL_FS_IOS:BUILTIN_FLSH1";
+    register uint64_t r4  __asm__("4")  = (uint64_t)(uintptr_t)"CELL_FS_FAT";
+    register uint64_t r5  __asm__("5")  = (uint64_t)(uintptr_t)"/dev_blind";
+    register uint64_t r6  __asm__("6")  = 0;
+    register uint64_t r7  __asm__("7")  = 0;
+    register uint64_t r8  __asm__("8")  = 0;
+    register uint64_t r9  __asm__("9")  = 0;
+    register uint64_t r10 __asm__("10") = 0;
+    register uint64_t r11 __asm__("11") = 837;
+
+    __asm__ volatile ("sc\n"
+        : "+r"(r3)
+        : "r"(r4), "r"(r5), "r"(r6), "r"(r7),
+          "r"(r8), "r"(r9), "r"(r10), "r"(r11)
+        : "r0", "r12", "cr0", "ctr", "xer", "memory");
+    return (int64_t)r3;
+}
+
+// lv2 syscall 839 - sys_fs_sync(const char *device). forces every dirty buffer
+// for the device -- file data, directory entries and the free-block bitmap --
+// out to the platter, so the on-disk state and the XMB free-size match what the
+// app just did and a power loss can't leave a half-updated volume. pass a device
+// root like "/dev_hdd0" or "/dev_usb000" (see deviceRootOf in file.h). relies on
+// the cobra fs syscalls being present. best-effort: callers ignore the return.
+static inline int64_t syncDevice(const char *deviceRoot)
+{
+    return scCall1(839, (uint64_t)(uintptr_t)deviceRoot);
 }
 
 // lv2 syscall 379 - sys_sm_shutdown. modes (per psdevwiki):
@@ -328,4 +367,3 @@ static inline int32_t sysMemFree(uint32_t addr)
 {
     return (int32_t)scCall1(349, (uint64_t)addr);
 }
-

@@ -56,8 +56,8 @@ static int copyFileProgress(const char *src, const char *dst, void *buf, int buf
     return rc;
 }
 
-int copyTreeProgress(const char *src, const char *dst, void *buf, int bufSize,
-                     void (*onBytes)(uint64_t), int (*cancelled)(void))
+static int copyTreeRecursively(const char *src, const char *dst, void *buf, int bufSize,
+                               void (*onBytes)(uint64_t), int (*cancelled)(void))
 {
     if (cancelled && cancelled()) return 1;
 
@@ -80,16 +80,28 @@ int copyTreeProgress(const char *src, const char *dst, void *buf, int bufSize,
         if (cancelled && cancelled()) { rc = 1; break; }
         joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
         joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
-        rc = copyTreeProgress(childSrc, childDst, buf, bufSize, onBytes, cancelled);
+        rc = copyTreeRecursively(childSrc, childDst, buf, bufSize, onBytes, cancelled);
         if (rc != 0) break;
     }
     cellFsClosedir(fd);
     return rc;
 }
 
-int mergeTreeProgress(const char *src, const char *dst, int replaceExisting,
-                      void *buf, int bufSize,
-                      void (*onBytes)(uint64_t), int (*cancelled)(void))
+int copyTreeProgress(const char *src, const char *dst, void *buf, int bufSize,
+                     void (*onBytes)(uint64_t), int (*cancelled)(void))
+{
+    int rc = copyTreeRecursively(src, dst, buf, bufSize, onBytes, cancelled);
+
+    // one flush at the true batch boundary: makes every byte just written durable
+    // and the next free-size read accurate. run even on error/cancel, since a
+    // partial copy still left data on the volume. best-effort -- never fails the op.
+    syncPath(dst);
+    return rc;
+}
+
+static int mergeTreeRecursively(const char *src, const char *dst, int replaceExisting,
+                                void *buf, int bufSize,
+                                void (*onBytes)(uint64_t), int (*cancelled)(void))
 {
     if (cancelled && cancelled()) return 1;
 
@@ -120,10 +132,20 @@ int mergeTreeProgress(const char *src, const char *dst, int replaceExisting,
         if (cancelled && cancelled()) { rc = 1; break; }
         joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
         joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
-        rc = mergeTreeProgress(childSrc, childDst, replaceExisting, buf, bufSize, onBytes, cancelled);
+        rc = mergeTreeRecursively(childSrc, childDst, replaceExisting, buf, bufSize, onBytes, cancelled);
         if (rc != 0) break;
     }
     cellFsClosedir(fd);
+    return rc;
+}
+
+int mergeTreeProgress(const char *src, const char *dst, int replaceExisting,
+                      void *buf, int bufSize,
+                      void (*onBytes)(uint64_t), int (*cancelled)(void))
+{
+    int rc = mergeTreeRecursively(src, dst, replaceExisting, buf, bufSize, onBytes, cancelled);
+
+    syncPath(dst);
     return rc;
 }
 
@@ -161,7 +183,7 @@ int countTreeConflicts(const char *src, const char *dst, int cap)
     return count;
 }
 
-int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancelled)(void))
+static int deleteTreeRecursively(const char *path, void (*onBytes)(uint64_t), int (*cancelled)(void))
 {
     if (cancelled && cancelled()) return 1;
 
@@ -189,11 +211,21 @@ int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancel
             (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
         if (cancelled && cancelled()) { rc = 1; break; }
         joinPath(child, MAX_PATH_LEN, path, ent.d_name);
-        rc = deleteTreeProgress(child, onBytes, cancelled);
+        rc = deleteTreeRecursively(child, onBytes, cancelled);
         if (rc != 0) break;
     }
     cellFsClosedir(fd);
     if (rc != 0) return rc;
 
     return cellFsRmdir(path) == CELL_FS_SUCCEEDED ? 0 : -1;
+}
+
+int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancelled)(void))
+{
+    int rc = deleteTreeRecursively(path, onBytes, cancelled);
+
+    // flush the directory-entry removals and freed blocks to disk once, so the
+    // volume can't be left mid-update and the freed space shows up immediately.
+    syncPath(path);
+    return rc;
 }

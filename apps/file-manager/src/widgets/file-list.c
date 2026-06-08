@@ -33,6 +33,7 @@
 typedef struct {
     char name[NAME_LEN];
     uint64_t size;
+    uint64_t modified;
     int fileCount;    // 1 for files; recursive count for folders (valid when sized)
     FileType type;
     int checked;
@@ -49,6 +50,7 @@ static int scrollOffset;
 static Label labels[FILE_LIST_PAGE_SIZE];
 static Label sizeLabels[FILE_LIST_PAGE_SIZE];
 static Label typeLabels[FILE_LIST_PAGE_SIZE];
+static Label modifiedLabels[FILE_LIST_PAGE_SIZE];
 static Label counterLabel;
 static int listY, listRowHeight;
 static int labelsStale;
@@ -122,16 +124,17 @@ static void sortEntries(void)
     }
 }
 
-// fills entry from a single stat() of the full path. directories defer
-// their size to the background folder-sizer (sized=0); files are complete
-// up front. unreadable entries are kept as a generic 0-byte placeholder
-// so the row still shows up rather than being silently dropped.
+// fills entry from a single stat() of the full path. size and modified time
+// come from that one stat call; directories still defer their recursive size
+// to the background folder-sizer (sized=0). unreadable entries are kept as a
+// generic 0-byte placeholder so the row still shows up rather than dropping.
 static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
 {
     strCopy(e->name, NAME_LEN, name);
     e->checked   = 0;
     e->fileCount = 0;
     e->approx    = 0;
+    e->modified  = 0;
 
     CellFsStat st;
     if (cellFsStat(fullPath, &st) != CELL_FS_SUCCEEDED) {
@@ -144,6 +147,7 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
 
     int isDir = (st.st_mode & CELL_FS_S_IFDIR) != 0;
     e->type = classifyFileType(name, isDir);
+    e->modified = st.st_mtime;
     if (isDir) {
         e->size  = 0;
         e->sized = 0;  // folder-sizer fills this in
@@ -224,13 +228,14 @@ static void loadDir(const char *path)
 
 static void rebuildLabels(void)
 {
-    // row labels (name, type, size)
+    // row labels (name, type, size, modified local time)
     for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
         int idx = scrollOffset + i;
         if (idx >= entryCount) {
             setLabelText(&labels[i], "");
             setLabelText(&sizeLabels[i], "");
             setLabelText(&typeLabels[i], "");
+            setLabelText(&modifiedLabels[i], "");
             continue;
         }
         setLabelText(&labels[i],     entries[idx].name);
@@ -243,6 +248,10 @@ static void rebuildLabels(void)
             formatSizeApprox(entries[idx].size, entries[idx].approx, buf);
             setLabelText(&sizeLabels[i], buf);
         }
+
+        char modifiedText[20];
+        formatDateTimeLocal(modifiedText, sizeof(modifiedText), entries[idx].modified);
+        setLabelText(&modifiedLabels[i], modifiedText);
     }
 
     // checked / total counter
@@ -317,8 +326,9 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
         int cy = ry + (rowHeight - 25) / 2;
 
         initLabel(&labels[i], font, x, ry + 25, maxWidth, AUTO, fontSize, color, TEXT_NOWRAP_ELLIPSIS, NULL);
-        initLabel(&sizeLabels[i], font, 1467, ry + 25, 200, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-        initLabel(&typeLabels[i], font, 1722, ry + 25, 150, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+        initLabel(&typeLabels[i], font, 1240, ry + 25, 140, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+        initLabel(&sizeLabels[i], font, 1430, ry + 25, 130, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+        initLabel(&modifiedLabels[i], font, 1635, ry + 25, 240, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
         initImage(&checkboxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX], GFX_FILTER_LINEAR);
         initImage(&checkedBoxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX_CHECKED], GFX_FILTER_LINEAR);
         initSlice(&separators[i], spritesheet, 47, ry - 1, 1884 - 47, 2, spriteRegions[SPRITE_SEPARATOR], 1);
@@ -424,7 +434,7 @@ void drawFileList(void)
 
         // draw hover background for selected row
         if (idx == selectedIndex) {
-            moveNineSlice(&hover, 47, listY + i * listRowHeight);
+            moveNineSlice(&hover, 42, listY + i * listRowHeight);
             drawNineSlice(&hover);
         }
 
@@ -446,6 +456,7 @@ void drawFileList(void)
         drawLabelAlpha(&labels[i], alpha);
         drawLabelAlpha(&sizeLabels[i], alpha);
         drawLabelAlpha(&typeLabels[i], alpha);
+        drawLabelAlpha(&modifiedLabels[i], alpha);
     }
 
     drawLabel(&counterLabel);

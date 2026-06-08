@@ -43,7 +43,7 @@ static void initHome(void)
     checkSfx = loadSfx("/dev_hdd0/game/FILEMGR01/USRDIR/check.wav", SFX_MEMORY);
 
     initImage(&background, bg, 0, 0, AUTO, AUTO, SPRITE_FULL, GFX_FILTER_LINEAR);
-    initBreadcrumb(&breadcrumb, &pop, 75, 130, COLOR_WHITE, sprites, spriteRegions[SPRITE_CHEVRON], 20);
+    initBreadcrumb(&breadcrumb, &pop, 70, 130, COLOR_WHITE, sprites, spriteRegions[SPRITE_CHEVRON], 20);
     initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
     initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
     initFooterWidget(&pop, sprites);

@@ -6,6 +6,7 @@ PS3 homebrew file browser with a sprite-based UI. Sony official SDK 4.75, target
 
 - **Directory browsing** — navigates the full filesystem starting from `/`
 - **File-type icons** — classifies files into 12 types (folder, text, audio, video, image, executable, compressed, disc ISO, package, document, database, generic) with per-type sprite icons
+- **File metadata columns** — rows show `Type | Size | Modified`, with Modified displayed in local time as `DD/MM/YY HH:MM`
 - **Breadcrumb navigation** — path-driven breadcrumb bar with chevron separators, rebuilt on directory change
 - **Selection** — per-row checkboxes with checked counter. Tap square toggles the focused row; hold square (≥ 400 ms) checks all rows in the directory, or unchecks if all are already checked.
 - **Folder sizes** — folder rows show recursively-totalled size alongside files

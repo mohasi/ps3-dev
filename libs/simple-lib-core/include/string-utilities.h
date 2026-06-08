@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdint.h>
+#include <time.h>
+#include <cell/rtc.h>
 
 // utf-8 em dash (U+2014). used in ui as a "value not known yet" placeholder
 // (e.g. folder size while the background sizer is still walking).
@@ -163,6 +165,46 @@ static inline void strCopy(char *dst, int cap, const char *src)
     int i = 0;
     while (i < cap - 1 && src[i]) { dst[i] = src[i]; i++; }
     dst[i] = 0;
+}
+
+// Formats a unix timestamp as local time using the compact UI style "DD/MM/YY HH:MM".
+// Returns 1 on success, 0 on conversion failure or insufficient output space.
+static inline int formatDateTimeLocal(char *dst, int cap, uint64_t unixTime)
+{
+    if (!dst || cap < 15) {
+        if (dst && cap > 0) dst[0] = 0;
+        return 0;
+    }
+
+    CellRtcDateTime utc;
+    CellRtcTick utcTick;
+    CellRtcTick localTick;
+    CellRtcDateTime local;
+    if (cellRtcSetTime_t(&utc, (time_t)unixTime) < 0 ||
+        cellRtcGetTick(&utc, &utcTick) < 0 ||
+        cellRtcConvertUtcToLocalTime(&utcTick, &localTick) < 0 ||
+        cellRtcSetTick(&local, &localTick) < 0) {
+        dst[0] = 0;
+        return 0;
+    }
+
+    int p = 0;
+    dst[p++] = '0' + (local.day / 10);
+    dst[p++] = '0' + (local.day % 10);
+    dst[p++] = '/';
+    dst[p++] = '0' + (local.month / 10);
+    dst[p++] = '0' + (local.month % 10);
+    dst[p++] = '/';
+    dst[p++] = '0' + ((local.year / 10) % 10);
+    dst[p++] = '0' + (local.year % 10);
+    dst[p++] = ' ';
+    dst[p++] = '0' + (local.hour / 10);
+    dst[p++] = '0' + (local.hour % 10);
+    dst[p++] = ':';
+    dst[p++] = '0' + (local.minute / 10);
+    dst[p++] = '0' + (local.minute % 10);
+    dst[p] = 0;
+    return 1;
 }
 
 // Returns s, or "" if s is NULL. Useful for printf/setLabelText calls

@@ -119,7 +119,7 @@ static void update(void)
         return;
     }
 
-    if (!cancelling && isButtonPressed(BTN_CIRCLE)) {
+    if (!cancelling && isPadButtonPressed(PAD_BTN_CIRCLE)) {
         playSfxOnce(clickSfx);
         cancelling = 1;
         cancelTask();

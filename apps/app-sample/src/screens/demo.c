@@ -67,28 +67,28 @@ static void updateDemo(void)
 {
     updateAnim(&anims);
 
-    if (isButtonPressed(BTN_CROSS))
+    if (isPadButtonPressed(PAD_BTN_CROSS))
         playSfx(&sfxMakoto, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, SFX_LOOP);
 
-    if (isButtonPressed(BTN_START)) {
+    if (isPadButtonPressed(PAD_BTN_START)) {
         if (bgm.state == SFX_STATE_PLAYING)
             stopSfx(&bgm);
         else
             playSfx(&bgm, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 1);
     }
 
-    if (isButtonPressed(BTN_UP))
+    if (isPadButtonPressed(PAD_BTN_UP))
         raiseSfxMasterVolume(0.1f);
 
-    if (isButtonPressed(BTN_DOWN))
+    if (isPadButtonPressed(PAD_BTN_DOWN))
         lowerSfxMasterVolume(0.1f);
 
-    if (isButtonPressed(BTN_RIGHT)) {
+    if (isPadButtonPressed(PAD_BTN_RIGHT)) {
         pushScreen(&paletteScreen);
         return;
     }
 
-    if (isButtonPressed(BTN_SELECT)) {
+    if (isPadButtonPressed(PAD_BTN_SELECT)) {
         if (isOverlayVisible(&sidepanel))
             hideOverlay(&sidepanel);
         else

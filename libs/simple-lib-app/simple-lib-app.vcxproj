@@ -41,6 +41,7 @@
     <ClCompile Include="src\pad.c" />
     <ClCompile Include="src\screen-manager.c" />
     <ClCompile Include="src\anim.c" />
+    <ClCompile Include="src\ui\button.c" />
     <ClCompile Include="src\ui\label.c" />
     <ClCompile Include="src\ui\breadcrumb.c" />
     <ClCompile Include="src\ui\stats.c" />
@@ -60,6 +61,7 @@
     <ClInclude Include="include\colors.h" />
     <ClInclude Include="include\app.h" />
     <ClInclude Include="include\ui\image.h" />
+    <ClInclude Include="include\ui\button.h" />
     <ClInclude Include="include\ui\label.h" />
     <ClInclude Include="include\ui\breadcrumb.h" />
     <ClInclude Include="include\ui\stats.h" />

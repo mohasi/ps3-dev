@@ -134,21 +134,21 @@ static void hide(void)
 
 static void handleInput(void)
 {
-    if (isButtonPressed(BTN_TRIANGLE) || isButtonPressed(BTN_CIRCLE)) {
+    if (isPadButtonPressed(PAD_BTN_TRIANGLE) || isPadButtonPressed(PAD_BTN_CIRCLE)) {
         hideOverlay(&sidepanel);
         return;
     }
     if (actionCount == 0) return;
     static ButtonRepeat repeat;
-    if (isRepeatDue(&repeat, getButtonState(BTN_UP))) {
+    if (isRepeatDue(&repeat, getPadButtonState(PAD_BTN_UP))) {
         selectedIndex = (selectedIndex - 1 + actionCount) % actionCount;
         playSfxOnce(clickSfx);
     }
-    else if (isRepeatDue(&repeat, getButtonState(BTN_DOWN))) {
+    else if (isRepeatDue(&repeat, getPadButtonState(PAD_BTN_DOWN))) {
         selectedIndex = (selectedIndex + 1) % actionCount;
         playSfxOnce(clickSfx);
     }
-    if (isButtonPressed(BTN_CROSS)) {
+    if (isPadButtonPressed(PAD_BTN_CROSS)) {
         SelectionAction picked = actions[selectedIndex];
         hideOverlay(&sidepanel);
         if (actionHandler) actionHandler(picked);

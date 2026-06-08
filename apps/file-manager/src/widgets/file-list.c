@@ -4,6 +4,7 @@
 #include "ui/image.h"
 #include "ui/slice.h"
 #include "ui/breadcrumb.h"
+#include "widgets/footer-widget.h"
 #include "sprite-regions.h"
 #include "folder-sizer.h"
 #include "file-type.h"
@@ -256,6 +257,36 @@ static void rebuildLabels(void)
     labelsStale = 0;
 }
 
+static void enterSelectedDir(void)
+{
+    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
+    if (entries[selectedIndex].type != FILE_TYPE_FOLDER) return;
+
+    playSfxOnce(clickSfx);
+    pushNavHistory();
+    char next[MAX_PATH_LEN];
+    joinPath(next, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+    loadDir(next);
+}
+
+static void goToParentDir(void)
+{
+    if (strlen(currentPath) <= 1) return;
+
+    playSfxOnce(clickSfx);
+    toParentPath(currentPath);
+    loadDir(currentPath);
+    popNavHistory();
+}
+
+static void syncFooterButtons(void)
+{
+    int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
+    setFooterButtonEnabled(PAD_BTN_CROSS, hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER);
+    setFooterButtonEnabled(PAD_BTN_CIRCLE, strlen(currentPath) > 1);
+    setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);
+}
+
 void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check, int x, int y, int maxWidth, int rowHeight, int fontSize, uint32_t color, Breadcrumb *bc)
 {
     breadcrumb = bc;
@@ -274,6 +305,9 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
 
     initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
     initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
+    addFooterButton(PAD_BTN_CROSS,  spriteRegions[SPRITE_CROSS],  "Enter", enterSelectedDir);
+    addFooterButton(PAD_BTN_CIRCLE, spriteRegions[SPRITE_CIRCLE], "Back",  goToParentDir);
+    addFooterButton(PAD_BTN_SQUARE, spriteRegions[SPRITE_SQUARE], "Mark",  NULL);
 
     for (int t = 0; t < FILE_TYPE_COUNT; t++)
         initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);
@@ -291,6 +325,7 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
     }
 
     loadDir("/");
+    syncFooterButtons();
 }
 
 // square: tap toggles the focused row, hold toggles the whole directory.
@@ -313,13 +348,13 @@ static void handleCheckInput(int hasSelection)
     static uint64_t pressedUs;
     static int      holdFired;
 
-    if (isButtonPressed(BTN_SQUARE)) {
+    if (isPadButtonPressed(PAD_BTN_SQUARE)) {
         pressedUs = sys_time_get_system_time();
         holdFired = 0;
         return;
     }
 
-    if (isButtonHeld(BTN_SQUARE) && !holdFired && entryCount > 0 &&
+    if (isPadButtonHeld(PAD_BTN_SQUARE) && !holdFired && entryCount > 0 &&
         sys_time_get_system_time() - pressedUs >= SQUARE_HOLD_MS * 1000ULL) {
         setAllChecked(!allEntriesChecked());
         labelsStale = 1;
@@ -328,7 +363,7 @@ static void handleCheckInput(int hasSelection)
         return;
     }
 
-    if (isButtonReleased(BTN_SQUARE) && !holdFired && hasSelection) {
+    if (isPadButtonReleased(PAD_BTN_SQUARE) && !holdFired && hasSelection) {
         entries[selectedIndex].checked = !entries[selectedIndex].checked;
         labelsStale = 1;
         playSfxOnce(checkSfx);
@@ -337,7 +372,7 @@ static void handleCheckInput(int hasSelection)
 
 void updateFileList(void)
 {
-    if (isRepeatDue(&scrollRepeat, getButtonState(BTN_DOWN)) && selectedIndex < entryCount - 1) {
+    if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_DOWN)) && selectedIndex < entryCount - 1) {
         selectedIndex++;
         if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE) {
             scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
@@ -345,7 +380,7 @@ void updateFileList(void)
         }
         playSfxOnce(clickSfx);
     }
-    else if (isRepeatDue(&scrollRepeat, getButtonState(BTN_UP)) && selectedIndex > 0) {
+    else if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_UP)) && selectedIndex > 0) {
         selectedIndex--;
         if (selectedIndex < scrollOffset) {
             scrollOffset = selectedIndex;
@@ -358,24 +393,8 @@ void updateFileList(void)
 
     handleCheckInput(hasSelection);
 
-    // cross: enter selected directory
-    if (isButtonPressed(BTN_CROSS) && hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER) {
-        playSfxOnce(clickSfx);
-        pushNavHistory();
-        char next[MAX_PATH_LEN];
-        joinPath(next, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
-        loadDir(next);
-    }
-
-    // circle: go up one directory
-    if (isButtonPressed(BTN_CIRCLE) && strlen(currentPath) > 1) {
-        playSfxOnce(clickSfx);
-        toParentPath(currentPath);
-        loadDir(currentPath);
-        popNavHistory();
-    }
-
     if (labelsStale) rebuildLabels();
+    syncFooterButtons();
     updateFolderSizer(&sizerCallbacks);
 }
 

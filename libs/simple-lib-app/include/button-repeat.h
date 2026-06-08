@@ -20,14 +20,14 @@ typedef struct {
     int      repeats;
 } ButtonRepeat;
 
-static inline int isRepeatDue(ButtonRepeat *r, ButtonState state)
+static inline int isRepeatDue(ButtonRepeat *r, PadButtonState state)
 {
-    if (state == BTN_STATE_PRESSED) {
+    if (state == PAD_BUTTON_STATE_PRESSED) {
         r->timer   = sys_time_get_system_time();
         r->repeats = 0;
         return 1;
     }
-    if (state == BTN_STATE_HELD) {
+    if (state == PAD_BUTTON_STATE_HELD) {
         uint64_t now       = sys_time_get_system_time();
         uint64_t threshold = r->repeats == 0 ? BUTTON_HOLD_INITIAL_US : BUTTON_HOLD_REPEAT_US;
         if (now - r->timer >= threshold) {

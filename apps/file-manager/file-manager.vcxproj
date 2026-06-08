@@ -56,6 +56,7 @@
     <ClCompile Include="src\overlays\confirm-overlay.c" />
     <ClCompile Include="src\overlays\progress-overlay.c" />
     <ClCompile Include="src\widgets\clock-widget.c" />
+    <ClCompile Include="src\widgets\footer-widget.c" />
     <ClCompile Include="src\widgets\free-space-widget.c" />
     <ClCompile Include="src\widgets\file-list.c" />
   </ItemGroup>
@@ -72,6 +73,7 @@
     <ClInclude Include="include\overlays\confirm-overlay.h" />
     <ClInclude Include="include\overlays\progress-overlay.h" />
     <ClInclude Include="include\widgets\clock-widget.h" />
+    <ClInclude Include="include\widgets\footer-widget.h" />
     <ClInclude Include="include\widgets\free-space-widget.h" />
     <ClInclude Include="include\widgets\file-list.h" />
     <ClInclude Include="include\sprite-regions.h" />

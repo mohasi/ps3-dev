@@ -3,10 +3,10 @@
 #include "audio.h"
 #include "colors.h"
 #include "font.h"
-#include "pad.h"
 #include "ui/image.h"
 #include "ui/breadcrumb.h"
 #include "widgets/clock-widget.h"
+#include "widgets/footer-widget.h"
 #include "widgets/free-space-widget.h"
 #include "widgets/file-list.h"
 #include "overlays/sidepanel.h"
@@ -14,7 +14,6 @@
 #include "overlays/progress-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
-#include <string.h>
 
 static Font pop;
 static GfxTexture bg;
@@ -23,6 +22,17 @@ static Image background;
 static Breadcrumb breadcrumb;
 static Audio clickSfx;
 static Audio checkSfx;
+
+static void startFtpServer(void) {}
+
+static void openSidepanel(void)
+{
+    int count;
+    const SelectionAction *actions = getAvailableActions(&count);
+    const SelectionSummary *summary = getSelectionSummary();
+    setSidepanelContent(summary, actions, count);
+    showOverlay(&sidepanel);
+}
 
 static void initHome(void)
 {
@@ -36,27 +46,17 @@ static void initHome(void)
     initBreadcrumb(&breadcrumb, &pop, 75, 130, COLOR_WHITE, sprites, spriteRegions[SPRITE_CHEVRON], 20);
     initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
     initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
+    initFooterWidget(&pop, sprites);
     initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 1200, 74, 24, COLOR_WHITE, &breadcrumb);
     initSidepanel(sprites, &clickSfx, dispatchAction);
     initConfirmOverlay(sprites, &clickSfx);
     initProgressOverlay(sprites, &clickSfx);
+    addFooterButton(PAD_BTN_TRIANGLE, spriteRegions[SPRITE_TRIANGLE], "Options", openSidepanel);
+    addFooterButton(PAD_BTN_SELECT, spriteRegions[SPRITE_SELECT], "Start FTP Server", startFtpServer);
+    setFooterButtonEnabled(PAD_BTN_SELECT, 0); // disable for now
 }
 
 static void resumeHome(void) {}
-
-static void openSidepanel(void)
-{
-    int count;
-    const SelectionAction *actions = getAvailableActions(&count);
-    const SelectionSummary *summary = getSelectionSummary();
-    setSidepanelContent(summary, actions, count);
-    showOverlay(&sidepanel);
-}
-
-static void handleInput(void)
-{
-    if (isButtonPressed(BTN_TRIANGLE)) openSidepanel();
-}
 
 static inline int anyOverlayVisible(void)
 {
@@ -77,7 +77,7 @@ static void updateHome(void)
     updateOverlay(&progressOverlay);
 
     if (!overlayWasVisible) {
-        handleInput();
+        updateFooterWidget();
         updateClockWidget();
         updateFreeSpaceWidget();
         updateFileList();
@@ -91,6 +91,7 @@ static void drawHome(void)
     drawClockWidget();
     drawFreeSpaceWidget();
     drawFileList();
+    drawFooterWidget();
     drawOverlay(&sidepanel);
     drawOverlay(&confirmOverlay);
     drawOverlay(&progressOverlay);

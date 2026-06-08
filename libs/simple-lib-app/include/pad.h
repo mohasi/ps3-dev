@@ -5,32 +5,32 @@
 #include <stdint.h>
 
 typedef enum {
-   BTN_STATE_UP,
-   BTN_STATE_PRESSED,
-   BTN_STATE_HELD,
-   BTN_STATE_RELEASED
-} ButtonState;
+   PAD_BUTTON_STATE_UP,
+   PAD_BUTTON_STATE_PRESSED,
+   PAD_BUTTON_STATE_HELD,
+   PAD_BUTTON_STATE_RELEASED
+} PadButtonState;
 
 typedef enum {
-   BTN_UP,
-   BTN_DOWN,
-   BTN_LEFT,
-   BTN_RIGHT,
-   BTN_CROSS,
-   BTN_CIRCLE,
-   BTN_SQUARE,
-   BTN_TRIANGLE,
-   BTN_L1,
-   BTN_R1,
-   BTN_L2,
-   BTN_R2,
-   BTN_START,
-   BTN_SELECT,
-   BTN_L3,
-   BTN_R3
-} Button;
+   PAD_BTN_UP,
+   PAD_BTN_DOWN,
+   PAD_BTN_LEFT,
+   PAD_BTN_RIGHT,
+   PAD_BTN_CROSS,
+   PAD_BTN_CIRCLE,
+   PAD_BTN_SQUARE,
+   PAD_BTN_TRIANGLE,
+   PAD_BTN_L1,
+   PAD_BTN_R1,
+   PAD_BTN_L2,
+   PAD_BTN_R2,
+   PAD_BTN_START,
+   PAD_BTN_SELECT,
+   PAD_BTN_L3,
+   PAD_BTN_R3
+} PadButton;
 
-#define BUTTON_COUNT 16
+#define PAD_BUTTON_COUNT 16
 
 typedef struct {
    int x;
@@ -39,9 +39,9 @@ typedef struct {
 
 void initPad(void);
 void updatePad(void);
-ButtonState getButtonState(Button button);
-int isButtonPressed(Button button);
-int isButtonHeld(Button button);
-int isButtonReleased(Button button);
-Stick getLeftStick(void);
-Stick getRightStick(void);
+PadButtonState getPadButtonState(PadButton button);
+int isPadButtonPressed(PadButton button);
+int isPadButtonHeld(PadButton button);
+int isPadButtonReleased(PadButton button);
+Stick getPadLeftStick(void);
+Stick getPadRightStick(void);

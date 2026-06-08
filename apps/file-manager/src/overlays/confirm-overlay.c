@@ -110,9 +110,9 @@ static void resolve(ConfirmChoice choice)
 static void update(void)
 {
     if (!armed) { armed = 1; return; }  // swallow the press that opened the dialog
-    if (isButtonPressed(BTN_CROSS))                    resolve(CONFIRM_CROSS);
-    else if (showSquare && isButtonPressed(BTN_SQUARE)) resolve(CONFIRM_SQUARE);
-    else if (isButtonPressed(BTN_CIRCLE))              resolve(CONFIRM_CIRCLE);
+    if (isPadButtonPressed(PAD_BTN_CROSS))                       resolve(CONFIRM_CROSS);
+    else if (showSquare && isPadButtonPressed(PAD_BTN_SQUARE))   resolve(CONFIRM_SQUARE);
+    else if (isPadButtonPressed(PAD_BTN_CIRCLE))                 resolve(CONFIRM_CIRCLE);
 }
 
 static void draw(void)

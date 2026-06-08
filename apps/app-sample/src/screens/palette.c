@@ -111,7 +111,7 @@ static void resumePalette(void) {}
 
 static void updatePalette(void)
 {
-    if (isButtonPressed(BTN_LEFT)) {
+    if (isPadButtonPressed(PAD_BTN_LEFT)) {
         popScreen();
     }
 }

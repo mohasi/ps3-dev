@@ -29,7 +29,7 @@ int main(int argc, char **argv)
     initNet();
     registerWithBridge("app", "file-manager");
 
-    if (initGfx(GFX_VSYNC_OFF) != 0) return 1;
+    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
     if (initSfx() != 0) return 1;
     if (initFont() != 0) return 1;
     initPad();

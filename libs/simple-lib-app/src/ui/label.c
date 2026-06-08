@@ -6,6 +6,7 @@
 
 void initLabel(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color, TextWrap wrap, const char *text)
 {
+    memset(l, 0, sizeof(*l));
     l->font = font;
     l->x = x;
     l->y = y;

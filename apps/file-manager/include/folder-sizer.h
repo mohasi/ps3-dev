@@ -16,8 +16,8 @@
 
 typedef struct FolderSizeCallbacks {
     int  (*count)(void);                                          // total entries
-    int  (*needsSizing)(int index, char *outPath, int cap);       // 1 if entry is an unsized folder; fills full path
-    void (*applyResult)(int index, uint64_t bytes, int files, int approx);
+    int  (*needsSizing)(int index, char *outPath, int cap, int *outGeneration);  // 1 if entry is an unsized folder; fills full path and generation
+    void (*applyResult)(int index, uint64_t bytes, int files, int approx, int generation);
 } FolderSizeCallbacks;
 
 void updateFolderSizer(const FolderSizeCallbacks *callbacks);

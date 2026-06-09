@@ -23,6 +23,17 @@ static int pastingIntoOwnDir(const char *src)
     return strEq(parent, destDir);
 }
 
+// true when destDir is inside src's subtree. pasting /a into /a/b would recurse
+// forever as the copy descends into the directory it's creating. reject the whole
+// batch if any clipboard item is an ancestor of the destination.
+static int pastingIntoOwnSubtree(const char *src)
+{
+    if (!startsWith(destDir, src)) return 0;
+    int srcLen = getStrLen(src);
+    // destDir must either equal src, or continue with / (path separator)
+    return destDir[srcLen] == '\0' || destDir[srcLen] == '/';
+}
+
 // writes destDir/<name> into out, but if that already exists, finds the lowest
 // n >= 1 such that "<stem> (n)<ext>" is free and uses that instead. for files
 // the extension (text after the last interior dot) is preserved; directories
@@ -72,7 +83,8 @@ int countClipboardConflicts(int cap)
     int conflicts = 0;
     for (int i = 0; i < count && conflicts < cap; i++) {
         const char *src = getClipboardPath(i);
-        if (pastingIntoOwnDir(src)) continue;   // suffixed (copy) or no-op (move)
+        if (pastingIntoOwnSubtree(src)) return 0;  // invalid paste, no conflicts to count
+        if (pastingIntoOwnDir(src)) continue;      // suffixed (copy) or no-op (move)
         joinPath(dst, MAX_PATH_LEN, destDir, getBaseName(src));
         conflicts += countTreeConflicts(src, dst, cap - conflicts);
     }
@@ -83,6 +95,14 @@ void runPaste(void)
 {
     int copying = (getClipboardMode() == CLIP_COPY);
     int count   = getClipboardCount();
+
+    // reject any paste where destDir is inside a clipboard item's subtree.
+    // without this guard, copying /a into /a/b descends into the directory
+    // being created and recurses until path truncation, then deletes the
+    // source on a move. check all items up front so the operation never starts.
+    for (int i = 0; i < count; i++) {
+        if (pastingIntoOwnSubtree(getClipboardPath(i))) return;
+    }
 
     // phase 1: total bytes for the percentage - reuse known sizes, walk only
     // the items whose size is a lower bound.
@@ -127,7 +147,11 @@ void runPaste(void)
 
         if (!fileExists(dst)) {
             // brand-new destination: an instant same-volume rename when possible.
-            if (cellFsRename(src, dst) == CELL_FS_SUCCEEDED) { addProcessedBytes(sz); continue; }
+            if (cellFsRename(src, dst) == CELL_FS_SUCCEEDED) {
+                syncPath(dst);  // flush the rename so the change is durable
+                addProcessedBytes(sz);
+                continue;
+            }
             // cross-volume: copy then delete the source, but only once the copy has
             // fully landed. on cancel mid-copy, remove the partial dest and leave
             // the source intact so nothing is lost.

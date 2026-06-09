@@ -77,21 +77,28 @@ static Breadcrumb *breadcrumb;
 static Audio *clickSfx;
 static Audio *checkSfx;
 
+// folder-sizer generation counter: incremented on every loadDir so stale
+// applyResult calls from a cancelled worker that already passed its cancel
+// check don't land on the wrong entry in the new listing.
+static int sizerGeneration;
+
 // folder-sizer source: lets the background walker visit unsized folders in
 // this directory and write results back into the matching entry.
 static int sizerCount(void) { return entryCount; }
 
-static int sizerNeedsSizing(int i, char *outPath, int cap)
+static int sizerNeedsSizing(int i, char *outPath, int cap, int *outGeneration)
 {
     if (i < 0 || i >= entryCount) return 0;
     if (entries[i].sized) return 0;
     if (entries[i].type != FILE_TYPE_FOLDER) return 0;
     joinPath(outPath, cap, currentPath, entries[i].name);
+    *outGeneration = sizerGeneration;
     return 1;
 }
 
-static void sizerApplyResult(int i, uint64_t bytes, int files, int approx)
+static void sizerApplyResult(int i, uint64_t bytes, int files, int approx, int generation)
 {
+    if (generation != sizerGeneration) return;  // stale result from a cancelled worker
     if (i < 0 || i >= entryCount) return;
     entries[i].size      = bytes;
     entries[i].fileCount = files;
@@ -160,11 +167,19 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
 }
 
 // remembers the cursor/scroll position of the current directory so circle
-// can restore it when popping back. silently drops oldest entries past
-// HISTORY_MAX -- we just lose precise scroll memory beyond that depth.
+// can restore it when popping back. beyond HISTORY_MAX depth, drops the
+// oldest entry and shifts everything down so the most recent N levels stay
+// valid. this keeps the history aligned with the actual directory stack.
 static void pushNavHistory(void)
 {
-    if (historyDepth >= HISTORY_MAX) return;
+    if (historyDepth >= HISTORY_MAX) {
+        // shift out the oldest entry to make room
+        for (int i = 0; i < HISTORY_MAX - 1; i++) {
+            selectionHistory[i] = selectionHistory[i + 1];
+            scrollHistory[i]    = scrollHistory[i + 1];
+        }
+        historyDepth = HISTORY_MAX - 1;
+    }
     selectionHistory[historyDepth] = selectedIndex;
     scrollHistory[historyDepth]    = scrollOffset;
     historyDepth++;
@@ -185,6 +200,7 @@ static void popNavHistory(void)
 static void loadDir(const char *path)
 {
     cancelFolderSizer();  // any in-flight walker bails before we mutate entries
+    sizerGeneration++;    // invalidate any stale results still in flight
 
     strCopy(currentPath, MAX_PATH_LEN, path);
     entryCount = 0;
@@ -205,7 +221,9 @@ static void loadDir(const char *path)
     CellFsDirent ent;
     uint64_t readBytes;
     while (cellFsReaddir(fd, &ent, &readBytes) == CELL_FS_SUCCEEDED && readBytes > 0) {
-        if (ent.d_name[0] == '.') continue;
+        // skip . and .. but allow other dotfiles (.bashrc, .hidden, etc.)
+        if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
+            (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
 
         char full[MAX_PATH_LEN];
         joinPath(full, MAX_PATH_LEN, path, ent.d_name);

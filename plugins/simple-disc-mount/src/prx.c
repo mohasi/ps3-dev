@@ -103,7 +103,7 @@ static void pluginThread(uint64_t arg)
     // Hand off to the HTTP listener. It owns :8947 (loopback) and turns
     // incoming GET /mount/<name> into cobraMountIso calls.
     sys_ppu_thread_t httpTid;
-    spawnJoinableThread(&httpTid, httpListenerThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "disc-mount-http");
+    spawnThread(&httpTid, httpListenerThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "disc-mount-http");
 
     logInfo("[sdm] done\n");
     exitThread();
@@ -116,6 +116,6 @@ int _start(uint64_t arg)
     logInfo("[sdm] _start\n");
 
     sys_ppu_thread_t tid;
-    spawnJoinableThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "disc-mount-main");
+    spawnThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "disc-mount-main");
     return SYS_PRX_RESIDENT;
 }

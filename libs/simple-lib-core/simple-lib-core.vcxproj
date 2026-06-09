@@ -33,6 +33,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\ftp.c" />
+    <ClCompile Include="src\dbg.c" />
     <ClCompile Include="src\network.c" />
     <ClCompile Include="src\printf.c" />
     <ClCompile Include="src\file.c" />

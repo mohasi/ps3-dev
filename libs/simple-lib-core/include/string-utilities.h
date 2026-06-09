@@ -33,6 +33,13 @@ static inline int strEq(const char *a, const char *b)
    return *a == *b;
 }
 
+// Returns 1 if s starts with prefix, 0 otherwise.
+static inline int startsWith(const char *s, const char *prefix)
+{
+   while (*prefix && *s && *s == *prefix) { s++; prefix++; }
+   return *prefix == '\0';
+}
+
 // ASCII-only uppercase for a single character.
 static inline char toUpperChar(char c)
 {

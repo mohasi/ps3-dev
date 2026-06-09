@@ -47,6 +47,6 @@ int _start(uint64_t arg)
     logInfo("[ftp] _start\n");
 
     sys_ppu_thread_t tid;
-    spawnJoinableThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "ftp-main");
+    spawnThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "ftp-main");
     return SYS_PRX_RESIDENT;
 }

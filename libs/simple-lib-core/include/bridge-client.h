@@ -40,6 +40,12 @@
 // reach the host's Logs tab. drained on successful REGISTER.
 static LogBacklog bridgeBacklog;
 
+// write lock: sendFrame is two send() calls (header + payload) and logs can
+// fire concurrently (plugin main thread + HTTP listener, FTP listener + session
+// threads, ...). without this lock two frames can interleave and corrupt the stream.
+static sys_lwmutex_t bridgeWriteLock;
+static int bridgeWriteLockInit = 0;
+
 typedef struct {
    const char *kind;
    const char *name;
@@ -67,7 +73,9 @@ static inline void pushLogToBridge(const char *line, int len)
       return;
    }
 
+   lock(&bridgeWriteLock);
    int success = sendFrame(bridgeSocket, "LOG", line, len) == 0;
+   unlock(&bridgeWriteLock);
    if (!success) dropBridgeConnection();
 }
 
@@ -134,8 +142,11 @@ static void runBridgeRegistration(uint64_t arg)
       goto done;
    }
 
+   // drain the backlog BEFORE flipping bridgeSocket to live, so pushLogToBridge
+   // keeps queueing instead of racing with sendBacklogLine. once the drain finishes
+   // bridgeSocket becomes visible and live logs start flowing directly.
+   drainLogBacklog(&bridgeBacklog, sendBacklogLine, &connectedSocket);
    bridgeSocket = connectedSocket;
-   drainLogBacklog(&bridgeBacklog, sendBacklogLine, &bridgeSocket);
 
    // first line emitted through the sink -- confirms registration end-to-end
    // and gives the host a guaranteed marker even for silent plugins.
@@ -161,6 +172,11 @@ done:
 static inline void registerWithBridge(const char *kind, const char *name)
 {
    if (isBridgeConnected()) return;
+
+   if (!bridgeWriteLockInit) {
+      createLock(&bridgeWriteLock);
+      bridgeWriteLockInit = 1;
+   }
 
    setLogCallback(pushLogToBridge);
 

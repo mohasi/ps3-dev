@@ -15,11 +15,13 @@
 
 // Optional live-log callback. If set, every logInfo/Warn/Error call hands
 // the fully-formatted line (timestamp + level + body) to the callback
-// AFTER the file write. Unset == file only. Per-PRX static — each plugin
-// owns its own callback. simple-debug-bridge wires this to push to the
-// host.
+// AFTER the file write. Unset == file only. One process-wide definition
+// lives in src/dbg.c so every translation unit shares the same sink — a
+// callback installed in one file (e.g. by registerWithBridge) captures
+// logs emitted from all of them. simple-debug-bridge wires this to push
+// to the host.
 typedef void (*LogCallback)(const char *line, int len);
-static LogCallback logCallback = 0;
+extern LogCallback logCallback;
 
 static inline void setLogCallback(LogCallback fn) { logCallback = fn; }
 

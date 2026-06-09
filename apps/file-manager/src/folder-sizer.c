@@ -93,7 +93,8 @@ static void worker(uint64_t arg)
     char path[MAX_PATH_LEN];
 
     for (int i = 0; i < count && !cancel; i++) {
-        if (!callbacks->needsSizing(i, path, MAX_PATH_LEN)) continue;
+        int generation = 0;
+        if (!callbacks->needsSizing(i, path, MAX_PATH_LEN, &generation)) continue;
 
         int files = 0;
         uint64_t bytes = 0;
@@ -101,7 +102,7 @@ static void worker(uint64_t arg)
         walkPath(path, (int)strlen(path), &files, &bytes, deadline);
 
         if (cancel) break;
-        callbacks->applyResult(i, bytes, files, sys_time_get_system_time() > deadline);
+        callbacks->applyResult(i, bytes, files, sys_time_get_system_time() > deadline, generation);
     }
     busy = 0;
     exitThread();
@@ -115,7 +116,8 @@ void updateFolderSizer(const FolderSizeCallbacks *callbacks)
     int count = callbacks->count();
     for (int i = 0; i < count; i++) {
         char path[MAX_PATH_LEN];
-        if (!callbacks->needsSizing(i, path, MAX_PATH_LEN)) continue;
+        int generation = 0;
+        if (!callbacks->needsSizing(i, path, MAX_PATH_LEN, &generation)) continue;
         busy = 1;
         sys_ppu_thread_t tid;
         spawnThread(&tid, worker, (uint64_t)(uintptr_t)callbacks, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "folder-sizer");

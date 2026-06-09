@@ -31,6 +31,15 @@ static inline void toParentPath(char *path)
     else          { path[len] = '\0'; }
 }
 
+// copies the parent of path into parent without mutating the input.
+static inline void getParentPath(const char *path, char *parent, int cap)
+{
+    if (!path || !parent || cap <= 0) return;
+
+    strCopy(parent, cap, path);
+    toParentPath(parent);
+}
+
 // returns the final path component (the name) of path. for "/a/b/c" -> "c",
 // for "/a/b/" -> "" (trailing slash), for "name" -> "name". points into path.
 static inline const char *getBaseName(const char *path)

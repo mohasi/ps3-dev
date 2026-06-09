@@ -19,8 +19,7 @@ void setPasteReplaceOnConflict(int replace)  { replaceOnConflict = replace ? 1 :
 static int pastingIntoOwnDir(const char *src)
 {
     char parent[MAX_PATH_LEN];
-    strCopy(parent, sizeof parent, src);
-    toParentPath(parent);
+    getParentPath(src, parent, sizeof parent);
     return strEq(parent, destDir);
 }
 

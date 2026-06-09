@@ -8,7 +8,7 @@ The goal is to be as simple as possible — one job, no bloat. An FTP plugin sho
 
 ## What it does
 
-The plugin starts with the VSH, opens a listener on port 21, and mounts `/dev_blind` so that `/dev_flash` is writable over the connection (the same "Enable /dev_blind on startup" behaviour webMAN-MOD exposes as an option). Once you're connected you can browse, download, upload, delete, rename, and make directories anywhere on the filesystem. Every error path logs a timestamped line to `/dev_hdd0/tmp/dbg.txt` — if something goes wrong, that's the first place to look.
+The plugin starts with the VSH, waits for XMB readiness, then starts the shared `simple-lib-core` FTP server on port 21. The shared server best-effort mounts `/dev_blind` so that `/dev_flash` is writable over the connection (the same "Enable /dev_blind on startup" behaviour webMAN-MOD exposes as an option). Once you're connected you can browse, download, upload, delete, rename, and make directories anywhere on the filesystem. Every error path logs a timestamped line to `/dev_hdd0/tmp/dbg.txt` — if something goes wrong, that's the first place to look.
 
 ## Installation
 
@@ -24,7 +24,7 @@ Port 21 is a hard requirement — if another FTP server is already bound there (
 
 ## How it works
 
-There's one listener thread sitting on port 21. When a client connects, the plugin grabs a slot from a fixed two-entry session pool and spawns a dedicated PPU thread for that session. The session thread parses the control channel, opens an OS-assigned PASV data socket per transfer, and runs until the client sends `QUIT` or the connection drops. Up to two concurrent sessions are supported — one is too tight for WinSCP, which opens a second control channel for its editor flows.
+The PRX side is deliberately thin now: it registers with the debug bridge, waits for XMB, and calls the shared `simple-lib-core` FTP startup API on port 21. The shared server owns one listener thread, a fixed two-entry session pool, and a dedicated PPU thread per accepted client. Each session thread parses the control channel, opens an OS-assigned PASV data socket per transfer, and runs until the client sends `QUIT` or the connection drops. Up to two concurrent sessions are supported — one is too tight for WinSCP, which opens a second control channel for its editor flows.
 
 Directory listings are RFC 3659 only (`MLSD` / `MLST` / `MDTM`). `LIST` and `NLST` aren't implemented. Every modern client prefers MLSD when `FEAT` advertises it, and dropping the old listing formats removes a lot of ls-style formatting and timezone bookkeeping that MLSD doesn't need. Timestamps are sourced from the Cell RTC rather than libc's `time()`/`gmtime()`, which don't reliably resolve from a PRX.
 

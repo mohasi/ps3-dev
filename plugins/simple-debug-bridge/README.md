@@ -64,7 +64,7 @@ lines in a bounded ring and replays them on the next host-connect, so the
 cold-boot window is not lost.
 
 Producers integrate via `bridge.h` in `simple-lib-plugin`:
-`registerWithBridge("plugin", "simple-ftp")` from `_start()` installs the
+`registerWithBridge("plugin", "ftp")` from `_start()` installs the
 sink synchronously and spawns a background thread that handles connect +
 REGISTER + backlog drain. Plugin work runs in parallel — registration
 never blocks startup.

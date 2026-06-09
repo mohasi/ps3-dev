@@ -28,7 +28,7 @@ to link into `vsh.self` PRXs; apps link it the same way.
 - **file** — cellFs helpers (`readFile`, `writeFile`, `fileExists`,
   `makeDir`, `deleteFile`, `deleteTree`, `copyFile`, `copyTree`,
   `moveTree`) plus libc-free path utilities (`joinPath`, `toParentPath`,
-  `getExtension`, `getBaseName`, `deviceRootOf`, `isValidFileName`,
+  `getParentPath`, `getExtension`, `getBaseName`, `deviceRootOf`, `isValidFileName`,
   `isDir`, `formatSize`, `MAX_PATH_LEN`). The inline helpers are
   header-only; the cancellable, byte-reporting tree operations live in
   `src/file.c`: `measureTree`, `copyTreeProgress`, `deleteTreeProgress`,
@@ -40,6 +40,11 @@ to link into `vsh.self` PRXs; apps link it the same way.
   and accurate free-space reporting.
 - **thread** — `spawnThread()` PPU-thread spawn helper and stack-size
   constants.
+- **ftp** — shared anonymous FTP server with handle-based startup/shutdown
+  (`isFtpPortAvailable`, `startFtpServer`, `stopFtpServer`). The server is
+  reusable from both apps and PRXs, keeps `/dev_blind` mount as a best-effort
+  startup step, and leaves caller-specific boot policy (for example XMB
+  readiness waits) outside the core module.
 - **string-utilities** — bounded copy / uppercase, length, case-
   insensitive compare, URL encode/decode, XML escaping, byte search,
   integer formatting.
@@ -66,12 +71,14 @@ simple-lib-core/
 │   ├── printf.h
 │   ├── dbg.h
 │   ├── file.h
+│   ├── ftp.h
 │   ├── thread.h
 │   ├── string-utilities.h
 │   ├── wire.h
 │   ├── log-backlog.h
 │   └── bridge-client.h
 └── src/
+    ├── ftp.c             # shared FTP server implementation
     ├── printf.c
     └── file.c            # cancellable tree ops (measure/copy/delete/merge/count)
 ```
@@ -93,7 +100,7 @@ simple-lib-core/
 
 Most utilities (`dbg.h`, `thread.h`, `string-utilities.h`, `wire.h`,
 `log-backlog.h`, `bridge-client.h`, and the lighter half of `file.h`) are
-`static inline`. The compiled units are `printf.c` and `file.c` (the
-latter holds the recursive tree operations, which are too large to inline).
-The library has no dependencies on `simple-lib-plugin` or `simple-lib-app`
-— those depend on it, not the other way around.
+`static inline`. The compiled units are `printf.c`, `file.c`, and `ftp.c`
+(`file.c` holds the recursive tree operations; `ftp.c` holds the shared
+FTP server implementation). The library has no dependencies on
+`simple-lib-plugin` or `simple-lib-app` — those depend on it, not the other way around.

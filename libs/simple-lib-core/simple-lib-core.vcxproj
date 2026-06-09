@@ -32,10 +32,12 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\ftp.c" />
     <ClCompile Include="src\printf.c" />
     <ClCompile Include="src\file.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\ftp.h" />
     <ClInclude Include="include\printf.h" />
     <ClInclude Include="include\dbg.h" />
     <ClInclude Include="include\file.h" />

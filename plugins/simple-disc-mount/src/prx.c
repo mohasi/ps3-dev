@@ -112,7 +112,7 @@ static void pluginThread(uint64_t arg)
 int _start(uint64_t arg)
 {
     (void)arg;
-    registerWithBridge("plugin", "simple-disc-mount");
+    registerWithBridge("plugin", "sdm");
     logInfo("[sdm] _start\n");
 
     sys_ppu_thread_t tid;

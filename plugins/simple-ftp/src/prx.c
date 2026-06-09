@@ -1,6 +1,6 @@
 // simple-ftp — minimal FTP server for PS3 VSH.
-// Anonymous, binary-only, PASV-mode only. Listens on :21.
-// See ftp.h for the server itself; this file is just the plugin entry.
+// Anonymous, binary-only, PASV-mode only. Shared core FTP server on :21;
+// this file only handles plugin boot concerns.
 
 #include <sys/prx.h>
 #include <sys/ppu_thread.h>
@@ -13,6 +13,10 @@
 #include "thread.h"
 #include "bridge-client.h"
 
+#define FTP_PORT 21
+
+static FtpServer *ftpServer;
+
 SYS_MODULE_INFO(SimpleFtp, 0, 1, 1);
 SYS_MODULE_START(_start);
 
@@ -21,17 +25,7 @@ static void pluginThread(uint64_t arg)
     (void)arg;
     logInfo("[ftp] plugin thread start\n");
 
-    // Mount /dev_blind so FTP clients can write to /dev_flash via that
-    // mount point. webMAN-MOD exposes this as an "Enable /dev_blind on
-    // startup" option; we enable it unconditionally because the whole
-    // point of this plugin is unrestricted filesystem access. The mount
-    // syscall is idempotent-ish — a second call just returns an error,
-    // which we log for visibility but otherwise ignore.
-    int64_t mountRc = mountDevBlind();
-    if (mountRc == 0) logInfo ("[ftp] mount /dev_blind rc 0x%x\n", (int)mountRc);
-    else              logError("[ftp] mount /dev_blind rc 0x%x\n", (int)mountRc);
-
-    // Wait for XMB readiness so the network stack is up. 60s budget.
+    // wait for XMB readiness so the network stack is up. 60s budget.
     int ticks = 0;
     while (!isXmbReady()) {
         sys_timer_sleep(1);
@@ -43,10 +37,9 @@ static void pluginThread(uint64_t arg)
     }
     logInfo("[ftp] xmb ready\n");
 
-    // Hand control to the FTP listener thread.
-    // and spawns a session thread per accepted client.
-    sys_ppu_thread_t tid;
-    spawnJoinableThread(&tid, ftpListenerThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "ftp-listener");
+    // listener thread will retry socket creation until network is ready.
+    ftpServer = startFtpServer(FTP_PORT);
+    if (!ftpServer) logError("[ftp] failed to start ftp server on :%d\n", FTP_PORT);
 
     exitThread();
 }
@@ -54,7 +47,7 @@ static void pluginThread(uint64_t arg)
 int _start(uint64_t arg)
 {
     (void)arg;
-    registerWithBridge("plugin", "simple-ftp");
+    registerWithBridge("plugin", "ftp");
     logInfo("[ftp] _start\n");
 
     sys_ppu_thread_t tid;

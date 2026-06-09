@@ -13,6 +13,7 @@
 #include "string-utilities.h"
 #include "sprite-regions.h"
 
+#define SIDEPANEL_MAX_ACTIONS 9
 #define PANEL_WIDTH      474
 #define PANEL_BORDER     2
 #define SLIDE_MS         300

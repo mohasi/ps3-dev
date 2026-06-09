@@ -6,12 +6,12 @@
 #include "gfx.h"
 #include "pad.h"
 
-#define FOOTER_MAX_BUTTONS 8
-
 typedef void (*FooterButtonHandler)(void);
 
 void initFooterWidget(Font *font, GfxTexture spritesheet);
 void addFooterButton(PadButton padButton, SpriteRegion iconRegion, const char *text, FooterButtonHandler onPress);
 void setFooterButtonEnabled(PadButton padButton, int enabled);
+void setFooterButtonVisible(PadButton padButton, int visible);
+void setFooterButtonText(PadButton padButton, const char *text);
 void updateFooterWidget(void);
 void drawFooterWidget(void);

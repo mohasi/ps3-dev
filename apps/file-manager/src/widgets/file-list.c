@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <sys/sys_time.h>
 
+#define FILE_LIST_PAGE_SIZE 9
 #define NAME_LEN           256
 #define INITIAL_CAPACITY   256
 #define HISTORY_MAX        16

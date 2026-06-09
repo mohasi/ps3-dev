@@ -33,6 +33,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\ftp.c" />
+    <ClCompile Include="src\network.c" />
     <ClCompile Include="src\printf.c" />
     <ClCompile Include="src\file.c" />
   </ItemGroup>
@@ -48,6 +49,7 @@
     <ClInclude Include="include\log-backlog.h" />
     <ClInclude Include="include\bridge-client.h" />
     <ClInclude Include="include\sha1.h" />
+    <ClInclude Include="include\network.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />

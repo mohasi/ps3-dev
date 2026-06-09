@@ -30,8 +30,6 @@ typedef enum {
    PAD_BTN_R3
 } PadButton;
 
-#define PAD_BUTTON_COUNT 16
-
 typedef struct {
    int x;
    int y;

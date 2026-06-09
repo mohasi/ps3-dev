@@ -8,7 +8,6 @@
 
 #define BREADCRUMB_MAX_DEPTH 16
 #define BREADCRUMB_MAX_NAME  64
-#define BREADCRUMB_CHEVRON_GAP 14
 
 typedef struct {
     char segments[BREADCRUMB_MAX_DEPTH][BREADCRUMB_MAX_NAME];

@@ -8,8 +8,6 @@
 #include "ui/breadcrumb.h"
 #include "selection-actions.h"
 
-#define FILE_LIST_PAGE_SIZE  9
-
 void initFileList(Font *font, GfxTexture spritesheet, Audio *clickSfx, Audio *checkSfx, int x, int y, int maxWidth, int rowHeight, int fontSize, uint32_t color, Breadcrumb *bc);
 void termFileList(void);
 void updateFileList(void);

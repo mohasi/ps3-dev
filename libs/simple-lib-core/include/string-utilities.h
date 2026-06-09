@@ -285,6 +285,20 @@ static inline int appendUint64(char *buf, int cap, int o, uint64_t v)
    return o;
 }
 
+// Formats an IPv4 address (network byte order, as in sockaddr_in.s_addr) as
+// dotted-decimal "a.b.c.d". NUL-terminates within cap; returns the string length.
+static inline int formatIpv4(char *dst, int cap, uint32_t addr)
+{
+   if (!dst || cap < 16) { if (dst && cap > 0) dst[0] = 0; return 0; }
+   int p = 0;
+   for (int shift = 24; shift >= 0; shift -= 8) {
+      p += intToDec((int)((addr >> shift) & 0xff), dst + p);
+      if (shift) dst[p++] = '.';
+   }
+   dst[p] = 0;
+   return p;
+}
+
 // Converts a UTF-8 string to UTF-16, emitting surrogate pairs for astral code
 // points and skipping malformed bytes. Writes at most maxUnits code units plus a
 // NUL terminator. The PS3 system APIs (e.g. cellOskDialog) speak UTF-16.

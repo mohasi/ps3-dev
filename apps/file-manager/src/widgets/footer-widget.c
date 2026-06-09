@@ -5,6 +5,7 @@
 #include "ui/image.h"
 #include "ui/label.h"
 
+#define FOOTER_MAX_BUTTONS      8
 #define FOOTER_X               95
 #define FOOTER_Y             1015
 #define FOOTER_TEXT_SIZE       20
@@ -14,6 +15,7 @@ typedef struct {
 	PadButton           padButton;
 	Button              button;
 	FooterButtonHandler onPress;
+	int                 visible;
 } FooterEntry;
 
 static FooterEntry entries[FOOTER_MAX_BUTTONS];
@@ -50,6 +52,7 @@ void addFooterButton(PadButton padButton, SpriteRegion iconRegion, const char *t
 
 	entry->padButton = padButton;
 	entry->onPress   = onPress;
+	entry->visible   = 1;
 	initButton(&entry->button, icon, label, BUTTON_ENABLED);
 }
 
@@ -60,9 +63,24 @@ void setFooterButtonEnabled(PadButton padButton, int enabled)
 	setButtonState(&entry->button, enabled ? BUTTON_ENABLED : BUTTON_DISABLED);
 }
 
+void setFooterButtonVisible(PadButton padButton, int visible)
+{
+	FooterEntry *entry = findFooterEntry(padButton);
+	if (!entry) return;
+	entry->visible = visible;
+}
+
+void setFooterButtonText(PadButton padButton, const char *text)
+{
+	FooterEntry *entry = findFooterEntry(padButton);
+	if (!entry) return;
+	setLabelText(&entry->button.label, text);
+}
+
 void updateFooterWidget(void)
 {
 	for (int i = 0; i < entryCount; i++) {
+		if (!entries[i].visible) continue;
 		if (!entries[i].onPress) continue;
 		if (entries[i].button.state == BUTTON_DISABLED) continue;
 		if (!isPadButtonPressed(entries[i].padButton)) continue;
@@ -75,6 +93,7 @@ void drawFooterWidget(void)
 {
 	int x = FOOTER_X;
 	for (int i = 0; i < entryCount; i++) {
+		if (!entries[i].visible) continue;
 		moveButton(&entries[i].button, x, FOOTER_Y);
 		drawButton(&entries[i].button);
 		x += getButtonWidth(&entries[i].button);

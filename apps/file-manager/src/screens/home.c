@@ -3,6 +3,7 @@
 #include "audio.h"
 #include "colors.h"
 #include "font.h"
+#include "ftp.h"
 #include "ui/image.h"
 #include "ui/breadcrumb.h"
 #include "widgets/clock-widget.h"
@@ -14,6 +15,8 @@
 #include "overlays/progress-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
+#include "string-utilities.h"
+#include "network.h"
 
 static Font pop;
 static GfxTexture bg;
@@ -23,7 +26,36 @@ static Breadcrumb breadcrumb;
 static Audio clickSfx;
 static Audio checkSfx;
 
-static void startFtpServer(void) {}
+// Sets the SELECT button label to "<prefix> / <ip>:<port>", or just "<prefix>"
+// if the local IP can't be resolved.
+static void setFtpButtonLabel(const char *prefix)
+{
+    char label[48];
+    int length = 0;
+    appendStr(label, sizeof label, &length, prefix);
+
+    uint32_t ip;
+    if (getLocalIpv4(&ip) == 0) {
+        appendStr(label, sizeof label, &length, " / ");
+        length += formatIpv4(label + length, (int)sizeof label - length, ip);
+        if (length < (int)sizeof label - 1) label[length++] = ':';
+        length = appendUint64(label, sizeof label, length, FTP_DEFAULT_PORT);
+    }
+    label[length] = 0;
+    setFooterButtonText(PAD_BTN_SELECT, label);
+}
+
+static void toggleFtpServer(void)
+{
+    if (isFtpServerRunning() == FTP_STARTED) {
+        stopFtpServer();
+        setFooterButtonText(PAD_BTN_SELECT, "Start FTP Server");
+        return;
+    }
+
+    if (startFtpServer(FTP_DEFAULT_PORT) != FTP_OK) return;
+    setFtpButtonLabel("Stop FTP Server");
+}
 
 static void openSidepanel(void)
 {
@@ -52,8 +84,18 @@ static void initHome(void)
     initConfirmOverlay(sprites, &clickSfx);
     initProgressOverlay(sprites, &clickSfx);
     addFooterButton(PAD_BTN_TRIANGLE, spriteRegions[SPRITE_TRIANGLE], "Options", openSidepanel);
-    addFooterButton(PAD_BTN_SELECT, spriteRegions[SPRITE_SELECT], "Start FTP Server", startFtpServer);
-    setFooterButtonEnabled(PAD_BTN_SELECT, 0); // disable for now
+    addFooterButton(PAD_BTN_SELECT, spriteRegions[SPRITE_SELECT], "Start FTP Server", toggleFtpServer);
+
+    if (!isNetworkAvailable()) {
+        // No usable network: there is nothing to serve, so disable the toggle.
+        setFooterButtonText(PAD_BTN_SELECT, "FTP Server / No Network");
+        setFooterButtonEnabled(PAD_BTN_SELECT, 0);
+    } else if (!isFtpPortAvailable(FTP_DEFAULT_PORT)) {
+        // Another FTP server already owns the port: show where it's reachable
+        // but leave the button disabled — we don't own it and can't toggle it.
+        setFtpButtonLabel("FTP Server");
+        setFooterButtonEnabled(PAD_BTN_SELECT, 0);
+    }
 }
 
 static void resumeHome(void) {}
@@ -101,6 +143,7 @@ static void suspendHome(void) {}
 
 static void termHome(void)
 {
+    stopFtpServer();
     termOverlay(&progressOverlay);
     termOverlay(&confirmOverlay);
     termOverlay(&sidepanel);

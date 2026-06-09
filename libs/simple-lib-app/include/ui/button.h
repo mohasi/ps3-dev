@@ -5,9 +5,6 @@
 #include "ui/image.h"
 #include "ui/label.h"
 
-#define BUTTON_ICON_LABEL_GAP 14
-#define BUTTON_DISABLED_ALPHA 0x66
-
 typedef enum {
 	BUTTON_ENABLED = 0,
 	BUTTON_DISABLED

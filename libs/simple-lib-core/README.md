@@ -40,11 +40,15 @@ to link into `vsh.self` PRXs; apps link it the same way.
   and accurate free-space reporting.
 - **thread** — `spawnThread()` PPU-thread spawn helper and stack-size
   constants.
-- **ftp** — shared anonymous FTP server with handle-based startup/shutdown
-  (`isFtpPortAvailable`, `startFtpServer`, `stopFtpServer`). The server is
-  reusable from both apps and PRXs, keeps `/dev_blind` mount as a best-effort
-  startup step, and leaves caller-specific boot policy (for example XMB
-  readiness waits) outside the core module.
+- **ftp** — shared anonymous FTP server, managed as a singleton
+  (`startFtpServer` → `FtpResult`, `stopFtpServer`, `isFtpServerRunning`,
+  `isFtpPortAvailable`). The
+  server is reusable from both apps and PRXs, keeps `/dev_blind` mount as a
+  best-effort startup step, and leaves caller-specific boot policy (for example
+  XMB readiness waits) outside the core module.
+- **network** — `getLocalIpv4()` resolves the console's primary IPv4 address
+  (the FTP listener binds to all interfaces, so the address is resolved here on
+  demand rather than owned by the server).
 - **string-utilities** — bounded copy / uppercase, length, case-
   insensitive compare, URL encode/decode, XML escaping, byte search,
   integer formatting.

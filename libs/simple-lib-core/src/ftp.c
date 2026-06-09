@@ -5,7 +5,7 @@
 // (RETR/STOR/APPE), and standard file operations (DELE/MKD/RMD/RNFR/RNTO).
 // Best-effort /dev_blind mount on startup.
 //
-// API: startFtpServer(port) → handle, stopFtpServer(handle).
+// API: startFtpServer(port) → FtpResult, stopFtpServer(), isFtpServerRunning().
 // Listener thread retries socket creation until the network stack is ready.
 
 #include "ftp.h"
@@ -38,8 +38,10 @@ enum {
    FTP_CTRL_TIMEOUT_S = 600,
 };
 
+// lv2 mount (syscall 837) returns EINVAL when the target is already mounted.
+static const uint32_t MOUNT_ALREADY_MOUNTED = 0x80010002;
+
 typedef struct {
-   FtpServer *server;
    int ctrlSocket;
    int pasvSocket;
    int dataSocket;
@@ -53,15 +55,15 @@ typedef struct {
    volatile int alive;
 } FtpSession;
 
-struct FtpServer {
-   uint16_t port;
+// The FTP server is a singleton; all of its live state is private to this file.
+typedef struct {
    int listenSocket;
    volatile int stopping;
    volatile int listenerAlive;
    sys_ppu_thread_t listenerThread;
-};
+} FtpServer;
 
-static FtpServer ftpServerState = { 0, -1, 0, 0, 0 };
+static FtpServer server = { .listenSocket = -1 };
 static FtpSession sessionPool[FTP_MAX_SESSIONS];
 static volatile int sessionPoolUsed[FTP_MAX_SESSIONS];
 
@@ -82,10 +84,15 @@ static void closeSocket(int *socketValue)
    }
 }
 
-static int listenOnPort(uint16_t port)
+// Returns a bound+listening socket, or -1. On failure, *reason (if non-NULL)
+// distinguishes a missing network stack from an already-claimed port.
+static int listenOnPort(uint16_t port, FtpResult *reason)
 {
    int listenSocket = socket(AF_INET, SOCK_STREAM, 0);
-   if (listenSocket < 0) return -1;
+   if (listenSocket < 0) {
+      if (reason) *reason = FTP_NETWORK_UNAVAILABLE;
+      return -1;
+   }
 
    struct sockaddr_in address;
    memSet(&address, 0, sizeof address);
@@ -95,11 +102,13 @@ static int listenOnPort(uint16_t port)
 
    if (bind(listenSocket, (struct sockaddr *)&address, sizeof address) < 0) {
       socketclose(listenSocket);
+      if (reason) *reason = FTP_PORT_IN_USE;
       return -1;
    }
 
    if (listen(listenSocket, FTP_MAX_SESSIONS) < 0) {
       socketclose(listenSocket);
+      if (reason) *reason = FTP_PORT_IN_USE;
       return -1;
    }
 
@@ -108,10 +117,15 @@ static int listenOnPort(uint16_t port)
 
 int isFtpPortAvailable(uint16_t port)
 {
-   int listenSocket = listenOnPort(port);
+   int listenSocket = listenOnPort(port, NULL);
    if (listenSocket < 0) return 0;
    closeSocket(&listenSocket);
    return 1;
+}
+
+FtpState isFtpServerRunning(void)
+{
+   return (server.listenSocket >= 0 || server.listenerAlive) ? FTP_STARTED : FTP_STOPPED;
 }
 
 static int sendAll(int socketValue, const char *buffer, int length)
@@ -158,12 +172,11 @@ static void replyQuotedPath(FtpSession *session, int code, const char *path)
    sendAll(session->ctrlSocket, buffer, length);
 }
 
-static FtpSession *acquireSession(FtpServer *server)
+static FtpSession *acquireSession(void)
 {
    for (int index = 0; index < FTP_MAX_SESSIONS; index++) {
       if (!sessionPoolUsed[index]) {
          sessionPoolUsed[index] = 1;
-         sessionPool[index].server = server;
          return &sessionPool[index];
       }
    }
@@ -808,7 +821,7 @@ static void runFtpSession(FtpSession *session)
    session->dataSocket = -1;
 
    // Command recv/parse/dispatch loop.
-   while (session->alive && !session->server->stopping) {
+   while (session->alive && !server.stopping) {
       int space = FTP_CMDBUF - session->commandLength - 1;
       if (space <= 0) {
          session->commandLength = 0;
@@ -831,7 +844,7 @@ static void runFtpSession(FtpSession *session)
          session->commandBuffer[commandEnd] = 0;
          dispatchCommand(session, session->commandBuffer + scan);
          scan = lineEnd + 1;
-         if (!session->alive || session->server->stopping) break;
+         if (!session->alive || server.stopping) break;
       }
 
       // Shift remaining partial line to start of buffer.
@@ -858,46 +871,21 @@ static void ftpSessionThread(uint64_t arg)
 
 static void ftpListenerThread(uint64_t arg)
 {
-   FtpServer *server = (FtpServer *)(uintptr_t)arg;
-   server->listenerAlive = 1;
-
-   // Retry socket creation — network stack may not be ready yet.
-   int listenFd = -1;
-   int retries = 0;
-   while (listenFd < 0 && retries < 5) {
-      if (server->stopping) {
-         server->listenerAlive = 0;
-         exitThread();
-         return;
-      }
-      listenFd = listenOnPort(server->port);
-      if (listenFd < 0) {
-         logWarn("[ftp] listen failed, retrying\n");
-         sys_timer_sleep(2);
-         retries++;
-      }
-   }
-   if (listenFd < 0) {
-      logError("[ftp] giving up — port %d unavailable\n", (int)server->port);
-      server->listenerAlive = 0;
-      exitThread();
-      return;
-   }
-   server->listenSocket = listenFd;
-   logInfo("[ftp] listening on :%d\n", (int)server->port);
+   (void)arg;
+   server.listenerAlive = 1;
 
    // Accept loop: spawn a session thread for each connection.
-   while (!server->stopping) {
+   while (!server.stopping) {
       struct sockaddr_in remoteAddress;
       socklen_t remoteAddressLength = sizeof remoteAddress;
-      int controlSocket = accept(server->listenSocket, (struct sockaddr *)&remoteAddress, &remoteAddressLength);
+      int controlSocket = accept(server.listenSocket, (struct sockaddr *)&remoteAddress, &remoteAddressLength);
       if (controlSocket < 0) {
-         if (server->stopping) break;
+         if (server.stopping) break;
          sys_timer_usleep(100000);
          continue;
       }
 
-      FtpSession *session = acquireSession(server);
+      FtpSession *session = acquireSession();
       if (!session) {
          replyLine(controlSocket, 421, "Too many connections.");
          shutdown(controlSocket, SHUT_RDWR);
@@ -920,46 +908,61 @@ static void ftpListenerThread(uint64_t arg)
       }
    }
 
-   server->listenerAlive = 0;
+   server.listenerAlive = 0;
    exitThread();
 }
 
-FtpServer *startFtpServer(uint16_t port)
+FtpResult startFtpServer(uint16_t port)
 {
-   FtpServer *server = &ftpServerState;
-   if (server->listenSocket >= 0 || server->listenerAlive) return NULL;
+   if (server.listenSocket >= 0 || server.listenerAlive) return FTP_ALREADY_RUNNING;
 
-   memSet(server, 0, sizeof(*server));
-   server->listenSocket = -1;
-
+   memSet(&server, 0, sizeof server);
+   server.listenSocket = -1;
    memSet(sessionPool, 0, sizeof(sessionPool));
    memSet((void *)sessionPoolUsed, 0, sizeof(sessionPoolUsed));
 
-   server->port = port;
-
-   // Best-effort mount /dev_blind before listener starts.
+   // Best-effort mount /dev_blind before listening. The mount is idempotent:
+   // 0x80010002 (EINVAL) just means it was already mounted (e.g. the host app
+   // mounted it at startup), which is fine — only flag other failures.
    int64_t mountRc = mountDevBlind();
    if (mountRc == 0) logInfo("[ftp] mount /dev_blind ok\n");
+   else if ((uint32_t)mountRc == MOUNT_ALREADY_MOUNTED) logInfo("[ftp] /dev_blind already mounted\n");
    else logError("[ftp] mount /dev_blind rc 0x%x\n", (int)mountRc);
 
-   // Listener thread will retry socket creation until the network is ready.
-   int result = spawnJoinableThread(&server->listenerThread, ftpListenerThread, (uint64_t)(uintptr_t)server,
+   // Create the listen socket, retrying only while the network stack is still
+   // coming up. A port already in use won't free itself, so fail fast on that.
+   FtpResult reason = FTP_NETWORK_UNAVAILABLE;
+   int listenFd = -1;
+   for (int retries = 0; retries < 5; retries++) {
+      listenFd = listenOnPort(port, &reason);
+      if (listenFd >= 0 || reason != FTP_NETWORK_UNAVAILABLE) break;
+      logWarn("[ftp] network not ready, retrying\n");
+      sys_timer_sleep(2);
+   }
+   if (listenFd < 0) {
+      logError("[ftp] giving up — port %d unavailable\n", (int)port);
+      return reason;
+   }
+   server.listenSocket = listenFd;
+   logInfo("[ftp] listening on :%d\n", (int)port);
+
+   // Accept loop runs on its own thread.
+   int result = spawnJoinableThread(&server.listenerThread, ftpListenerThread, 0,
       THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "ftp-listener");
    if (result != 0) {
       logError("[ftp] listener thread create failed rc=0x%x\n", result);
-      return NULL;
+      closeSocket(&server.listenSocket);
+      return FTP_THREAD_CREATE_FAILED;
    }
 
-   return server;
+   return FTP_OK;
 }
 
-void stopFtpServer(FtpServer *server)
+void stopFtpServer(void)
 {
-   if (!server) return;
-
-   server->stopping = 1;
-   closeSocket(&server->listenSocket);
-   if (server->listenerAlive) joinThread(server->listenerThread);
+   server.stopping = 1;
+   closeSocket(&server.listenSocket);
+   if (server.listenerAlive) joinThread(server.listenerThread);
 
    for (int index = 0; index < FTP_MAX_SESSIONS; index++) {
       if (!sessionPoolUsed[index]) continue;
@@ -981,6 +984,6 @@ void stopFtpServer(FtpServer *server)
       sleepMs(10);
    }
 
-   memSet(server, 0, sizeof(*server));
-   server->listenSocket = -1;
+   memSet(&server, 0, sizeof server);
+   server.listenSocket = -1;
 }

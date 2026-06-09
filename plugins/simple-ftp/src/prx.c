@@ -13,10 +13,6 @@
 #include "thread.h"
 #include "bridge-client.h"
 
-#define FTP_PORT 21
-
-static FtpServer *ftpServer;
-
 SYS_MODULE_INFO(SimpleFtp, 0, 1, 1);
 SYS_MODULE_START(_start);
 
@@ -37,9 +33,9 @@ static void pluginThread(uint64_t arg)
     }
     logInfo("[ftp] xmb ready\n");
 
-    // listener thread will retry socket creation until network is ready.
-    ftpServer = startFtpServer(FTP_PORT);
-    if (!ftpServer) logError("[ftp] failed to start ftp server on :%d\n", FTP_PORT);
+    // startFtpServer retries socket creation while the network stack comes up.
+    FtpResult result = startFtpServer(FTP_DEFAULT_PORT);
+    if (result != FTP_OK) logError("[ftp] failed to start ftp server on :%d (rc %d)\n", FTP_DEFAULT_PORT, (int)result);
 
     exitThread();
 }

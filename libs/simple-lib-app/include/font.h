@@ -12,8 +12,6 @@
 #define FONT_SANS      2
 #define FONT_SERIF     3
 
-#define FONT_MAX_RENDER_W 1024
-
 typedef struct {
     CellFont font;
     int      open;

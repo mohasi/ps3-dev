@@ -1,6 +1,12 @@
 // button - icon + label button with enabled/disabled rendering
 #include "ui/button.h"
 
+static const int BUTTON_ICON_LABEL_GAP = 14;
+static const int BUTTON_DISABLED_ALPHA = 0x66;
+// label sits this many px below the icon's vertical centre — the text texture
+// includes ascender padding above the glyphs.
+static const int BUTTON_LABEL_Y_OFFSET = 3;
+
 void initButton(Button *button, Image icon, Label label, ButtonState state)
 {
 	button->icon  = icon;
@@ -15,7 +21,7 @@ void setButtonState(Button *button, ButtonState state)
 
 void moveButton(Button *button, int x, int y)
 {
-	int labelY = y + (button->icon.h - button->label.tt.tex.h) / 2;
+	int labelY = y + (button->icon.h - button->label.tt.tex.h) / 2 + BUTTON_LABEL_Y_OFFSET;
 	moveImage(&button->icon, x, y);
 	moveLabel(&button->label, x + button->icon.w + BUTTON_ICON_LABEL_GAP, labelY);
 }

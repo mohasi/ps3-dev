@@ -8,8 +8,6 @@
 #include "audio.h"
 #include "selection-actions.h"
 
-#define SIDEPANEL_MAX_ACTIONS 9
-
 typedef void (*SelectionActionHandler)(SelectionAction action);
 
 void initSidepanel(GfxTexture spritesheet, Audio *clickSfx, SelectionActionHandler handler);

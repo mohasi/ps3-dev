@@ -3,6 +3,8 @@
 #include <cell/pad.h>
 #include <string.h>
 
+#define PAD_BUTTON_COUNT 16
+
 static CellPadData current;
 static PadButtonState buttonStates[PAD_BUTTON_COUNT];
 static Stick leftStick;

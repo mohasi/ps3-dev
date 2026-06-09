@@ -9,6 +9,8 @@
 #include "gfx.h"
 #include "colors.h"
 
+static const int FONT_MAX_RENDER_W = 1024;
+
 static const CellFontLibrary *fontLib = NULL;
 static CellFontRenderer       fontRenderer;
 static int                    fontInited = 0;

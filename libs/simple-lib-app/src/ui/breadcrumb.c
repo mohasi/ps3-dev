@@ -4,6 +4,8 @@
 #include "string-utilities.h"
 #include <string.h>
 
+static const int BREADCRUMB_CHEVRON_GAP = 14;
+
 void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, SpriteRegion chevronSrc, int fontSize)
 {
     memset(b, 0, sizeof(*b));

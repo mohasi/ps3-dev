@@ -10,6 +10,10 @@
 #include <stdlib.h>
 #include <math.h>
 
+#define SFX_MAX_STREAMS    8
+#define SFX_SAMPLE_RATE    48000
+#define SFX_BLOCK_SAMPLES  CELL_AUDIO_BLOCK_SAMPLES
+
 // reads entire file into a malloc'd buffer. caller frees. NULL on failure.
 static uint8_t *readFileAlloc(const char *path, uint32_t *outSize)
 {

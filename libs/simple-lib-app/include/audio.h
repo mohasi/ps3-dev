@@ -9,10 +9,6 @@
 #define SFX_DEFAULT_SPEED   1.0f
 #define SFX_LOOP    0
 
-#define SFX_MAX_STREAMS     8
-#define SFX_SAMPLE_RATE     48000
-#define SFX_BLOCK_SAMPLES   CELL_AUDIO_BLOCK_SAMPLES
-
 struct stb_vorbis;
 
 typedef enum {

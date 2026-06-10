@@ -5,6 +5,7 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 ## Features
 
 - **gfx** - RSX 2D renderer: batched textured quads, PNG loading, sprites, circles, rectangles, VRAM lifetime management (persistent/per-frame)
+- **image-loader** - asynchronous PNG/JPEG decoder: background worker thread decodes to heap ARGB8888 buffer, main thread uploads to VRAM. Prevents UI freezes on large images. Codec downscaling for oversized JPEGs, size validation to prevent RSX hangs. Includes directory listing of supported images (sorted case-insensitive).
 - **font** - system font rendering via libfont/FreeType: word wrap, ellipsis, text measurement, bake-to-texture
 - **audio** - WAV playback (memory-loaded), OGG Vorbis streaming, master volume control
 - **pad-input** - controller polling with press/release/held state tracking
@@ -36,6 +37,7 @@ simple-lib-app/
 +-- fpshader.cg             # RSX fragment shader source
 +-- include/                # public headers
 |   +-- gfx.h
+|   +-- image-loader.h
 |   +-- font.h
 |   +-- audio.h
 |   +-- pad-input.h
@@ -54,6 +56,7 @@ simple-lib-app/
 |       +-- triangle.h
 +-- src/                    # implementation
 |   +-- gfx.c
+|   +-- image-loader.c
 |   +-- font.c
 |   +-- audio.c
 |   +-- pad-input.c
@@ -70,6 +73,7 @@ simple-lib-app/
 - Shaders (`vpshader.cg`, `fpshader.cg`) are compiled as custom build steps within this library. Consuming apps no longer need their own shader build steps.
 - `vorbis.c` is stb_vorbis (public domain), `#include`d directly by `audio.c` - not compiled separately.
 - UI components under `ui/` are self-contained drawing helpers. Header-only components (circle, image, line, rectangle, triangle) define inline draw functions; label and breadcrumb have separate implementation files.
+- `image-loader` uses a persistent background worker thread (spawned lazily on first request) to decode PNG/JPEG images without blocking the UI. The worker produces heap ARGB8888 buffers; the caller uploads to VRAM on the main thread. Generation-based request superseding lets the caller retarget in-flight decodes. Max texture dimension is capped at 4096×4096 (RSX limit); JPEGs are codec-downscaled (1/2/4/8) to fit, PNGs are rejected if oversized.
 - This lib depends on `simple-lib-core` for the cross-context
   primitives (printf, dbg, file, thread, string utilities, wire,
   log-backlog, bridge-client). It does **not** depend on

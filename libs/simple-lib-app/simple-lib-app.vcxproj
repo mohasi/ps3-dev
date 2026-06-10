@@ -36,6 +36,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\gfx.c" />
+    <ClCompile Include="src\image-loader.c" />
     <ClCompile Include="src\font.c" />
     <ClCompile Include="src\audio.c" />
     <ClCompile Include="src\pad.c" />
@@ -51,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\gfx.h" />
+    <ClInclude Include="include\image-loader.h" />
     <ClInclude Include="include\font.h" />
     <ClInclude Include="include\audio.h" />
     <ClInclude Include="include\pad.h" />

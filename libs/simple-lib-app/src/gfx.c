@@ -140,6 +140,7 @@ int initGfx(GfxVsync vsync)
 	}
 
 	cellSysmoduleLoadModule(CELL_SYSMODULE_PNGDEC);
+	cellSysmoduleLoadModule(CELL_SYSMODULE_JPGDEC);
 
 	// allocate host-side command buffer pool
 	void *hostAddr = memalign(1024 * 1024, HOST_MEM_SIZE);
@@ -531,6 +532,14 @@ void endGfxFrame(void)
 	cellGcmSetWaitFlip(CTX);
 
 	backBuffer = (backBuffer + 1) % FRAME_COUNT;
+}
+
+void finishGfx(void)
+{
+	if (!initialized) return;
+	static uint32_t finishRef = 0;
+	flushBatch();              // emit any pending quads first
+	cellGcmFinish(CTX, ++finishRef);  // block until the RSX drains the command buffer
 }
 
 int getGfxScreenWidth(void)  { return screenW; }

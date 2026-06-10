@@ -13,6 +13,7 @@
 #include "overlays/sidepanel.h"
 #include "overlays/confirm-overlay.h"
 #include "overlays/progress-overlay.h"
+#include "overlays/image-viewer-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
 #include "string-utilities.h"
@@ -104,7 +105,8 @@ static inline int anyOverlayVisible(void)
 {
     return isOverlayVisible(&sidepanel)
         || isOverlayVisible(&confirmOverlay)
-        || isOverlayVisible(&progressOverlay);
+        || isOverlayVisible(&progressOverlay)
+        || isOverlayVisible(&imageViewerOverlay);
 }
 
 static void updateHome(void)
@@ -117,6 +119,7 @@ static void updateHome(void)
     updateOverlay(&sidepanel);
     updateOverlay(&confirmOverlay);
     updateOverlay(&progressOverlay);
+    updateOverlay(&imageViewerOverlay);
 
     if (!overlayWasVisible) {
         updateFooterWidget();
@@ -134,6 +137,7 @@ static void drawHome(void)
     drawFreeSpaceWidget();
     drawFileList();
     drawFooterWidget();
+    drawOverlay(&imageViewerOverlay);
     drawOverlay(&sidepanel);
     drawOverlay(&confirmOverlay);
     drawOverlay(&progressOverlay);
@@ -144,6 +148,7 @@ static void suspendHome(void) {}
 static void termHome(void)
 {
     stopFtpServer();
+    termOverlay(&imageViewerOverlay);
     termOverlay(&progressOverlay);
     termOverlay(&confirmOverlay);
     termOverlay(&sidepanel);

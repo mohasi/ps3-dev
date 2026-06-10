@@ -16,6 +16,8 @@
 #include "dynarray.h"
 #include "overlays/progress-overlay.h"
 #include "overlays/confirm-overlay.h"
+#include "overlays/image-viewer-overlay.h"
+#include "image-loader.h"
 #include "pad.h"
 #include <stdio.h>
 #include "audio.h"
@@ -297,6 +299,33 @@ static void enterSelectedDir(void)
     loadDir(next);
 }
 
+// whether the selected row is an image the viewer can actually open.
+static int selectedIsViewableImage(void)
+{
+    if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
+    return entries[selectedIndex].type == FILE_TYPE_IMAGE &&
+           isSupportedImageFormat(entries[selectedIndex].name);
+}
+
+// cross handler: folders enter, supported images open in the viewer. anything
+// else has no default action (the button is disabled for it, see
+// syncFooterButtons), so this is a no-op in that case.
+static void activateSelectedEntry(void)
+{
+    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
+
+    if (entries[selectedIndex].type == FILE_TYPE_FOLDER) {
+        enterSelectedDir();
+        return;
+    }
+
+    if (selectedIsViewableImage()) {
+        char full[MAX_PATH_LEN];
+        joinPath(full, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+        openImageViewer(full);
+    }
+}
+
 static void goToParentDir(void)
 {
     if (strlen(currentPath) <= 1) return;
@@ -310,7 +339,22 @@ static void goToParentDir(void)
 static void syncFooterButtons(void)
 {
     int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
-    setFooterButtonEnabled(PAD_BTN_CROSS, hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER);
+    int isFolder   = hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER;
+    int isAnyImage = hasSelection && entries[selectedIndex].type == FILE_TYPE_IMAGE;
+    int isViewable = selectedIsViewableImage();  // png/jpeg only
+
+    // enabled for folders and openable images; any image (even unsupported)
+    // still reads "Open", just greyed out when we can't decode it.
+    setFooterButtonEnabled(PAD_BTN_CROSS, isFolder || isViewable);
+
+    // only retouch the label when the cross action actually changes, so we
+    // don't re-rasterize the glyphs every frame.
+    static int crossShowsOpen = -1;
+    if (isAnyImage != crossShowsOpen) {
+        setFooterButtonText(PAD_BTN_CROSS, isAnyImage ? "Open" : "Enter");
+        crossShowsOpen = isAnyImage;
+    }
+
     setFooterButtonEnabled(PAD_BTN_CIRCLE, strlen(currentPath) > 1);
     setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);
 }
@@ -333,7 +377,7 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
 
     initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
     initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
-    addFooterButton(PAD_BTN_CROSS,  spriteRegions[SPRITE_CROSS],  "Enter", enterSelectedDir);
+    addFooterButton(PAD_BTN_CROSS,  spriteRegions[SPRITE_CROSS],  "Enter", activateSelectedEntry);
     addFooterButton(PAD_BTN_CIRCLE, spriteRegions[SPRITE_CIRCLE], "Back",  goToParentDir);
     addFooterButton(PAD_BTN_SQUARE, spriteRegions[SPRITE_SQUARE], "Mark",  NULL);
 

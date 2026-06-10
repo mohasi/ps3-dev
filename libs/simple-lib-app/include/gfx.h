@@ -40,6 +40,11 @@ void drawGfxLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb);
 void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float v0, float u1, float v1, uint32_t tint, GfxFilter filter);
 void endGfxFrame(void);
 
+// Blocks until the RSX has finished all submitted commands. Call before reusing
+// or freeing VRAM that a previous frame drew from, so the GPU is never reading
+// memory while the CPU overwrites it.
+void finishGfx(void);
+
 GfxTexture loadGfxTexture(const char *path);
 uint32_t   uploadGfxTexture(const void *rgba, int w, int h, int srcPitch);
 void       updateGfxTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH);

@@ -13,9 +13,12 @@ PS3 homebrew file browser with a sprite-based UI. Sony official SDK 4.75, target
 - **Hold-to-scroll** — press-and-hold D-pad for continuous scrolling with repeat delay
 - **Sidepanel** — triangle opens a slide-in action menu (copy, cut, paste, delete, rename, new file/dir, edit, properties) with a header summarizing the current selection (single file, single folder with recursive file count, or multi-selection totals)
 - **File operations** — copy / cut / paste (move), delete, rename, and create new file / folder, all via the on-screen keyboard where a name is needed. Name collisions are resolved with a consistent merge/replace/keep model (see below); after a paste the cursor lands on the topmost pasted item.
+- **Image viewer** — full-screen viewer for PNG and JPEG images. Opens when X is pressed on a supported image file. Features L1/R1 navigation through sibling images in the directory, L2/R2 zoom (center-pinned, 10%–500%), D-pad pan, and Circle to close. Images decode asynchronously on a background worker (no UI freeze), with a single-image VRAM footprint (mark/reset reclaim). Oversized images are rejected with a persistent error caption; VRAM upload failures show "(out of VRAM)".
 - **Sprite atlas** — all UI sprites packed into a single texture, generated at build time
 
 ## File operations & conflict resolution
+
+Image files (`.png`, `.jpg`, `.jpeg`, `.bmp`, `.gif`, `.tga`, `.tiff`) are classified as FILE_TYPE_IMAGE and display an image icon in the file list. Only PNG and JPEG formats can be opened in the viewer; unsupported formats keep the icon but have the X button disabled (no default action).
 
 Creating, renaming and pasting all share one merge/conflict model. Names are validated (`isValidFileName`) before any filesystem change, and the only operation that ever deletes a populated folder is an explicit **Replace**.
 
@@ -48,8 +51,9 @@ Conflicts are pre-scanned on the main thread before the background paste worker 
 `home.c` is the screen orchestrator: it owns shared resources (font,
 spritesheet, click sfx), wires the widgets and overlays, and routes
 input. Widgets (`file-list`, `clock-widget`, `free-space-widget`) and
-overlays (`sidepanel`, `confirm-overlay`, `progress-overlay`) borrow
-those resources via init functions and never own them.
+overlays (`sidepanel`, `confirm-overlay`, `progress-overlay`,
+`image-viewer-overlay`) borrow those resources via init functions and
+never own them.
 
 `selection-actions.h` is the shared vocabulary between `file-list`
 (which produces the selection summary and the available action list)
@@ -61,6 +65,15 @@ name validation and all conflict prompts. The actual byte-moving
 behind `progress-overlay`; `paste.c` and `delete.c` are those task
 bodies. `confirm-overlay` provides the modal prompts — two buttons, or
 three when a middle (square) option like rename's Merge is needed.
+
+The image viewer (`image-viewer-overlay`) decodes PNG/JPEG images
+asynchronously via a background worker in `image-loader` (from
+`simple-lib-app`). It scans the opened image's directory for sibling
+supported images and provides L1/R1 navigation with slide-in animation,
+L2/R2 zoom, and D-pad pan. VRAM is reclaimed via mark/reset before each
+upload, so only a single image is resident at a time. Decode failures
+and upload failures display persistent error captions ("(image too
+large)", "(out of VRAM)").
 
 ## Layout
 
@@ -83,7 +96,7 @@ file-manager/
 │   ├── file-type.h         # name → file-type classification
 │   ├── screens/            # home
 │   ├── widgets/            # clock, free-space, file-list
-│   └── overlays/           # sidepanel, confirm-overlay, progress-overlay
+│   └── overlays/           # sidepanel, confirm-overlay, progress-overlay, image-viewer-overlay
 ├── src/
 │   ├── main.c
 │   ├── selection-actions.c # action title/subtitle/icon lookup
@@ -95,7 +108,7 @@ file-manager/
 │   ├── file-type.c         # file-type classification
 │   ├── screens/home.c
 │   ├── widgets/            # clock, free-space, file-list
-│   └── overlays/           # sidepanel, confirm-overlay, progress-overlay
+│   └── overlays/           # sidepanel, confirm-overlay, progress-overlay, image-viewer-overlay
 ├── res/                    # runtime assets (background.png, sprites.png, click.wav)
 ├── bin/<Cfg>/              # OutDir + package staging
 └── obj/<Cfg>/              # IntDir

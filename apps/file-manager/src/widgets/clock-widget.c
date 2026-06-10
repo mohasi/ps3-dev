@@ -49,3 +49,8 @@ void drawClockWidget(void)
 {
     drawLabel(&label);
 }
+
+void termClockWidget(void)
+{
+    freeLabel(&label);
+}

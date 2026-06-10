@@ -131,6 +131,16 @@ static void termDemo(void)
 {
     termOverlay(&sidepanel);
     cancelAllAnims(&anims);
+
+    termAnimatedSprite();
+    termPadDisplay();
+    freeLabel(&titleText);
+    freeLabel(&wrapText);
+    freeLabel(&ellipsisText);
+
+    finishGfx();
+    freeGfxTexture(&makoto);
+
     closeFont(&pop);
     freeSfx(&sfxMakoto);
     freeSfx(&bgm);

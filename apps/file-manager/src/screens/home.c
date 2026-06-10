@@ -153,7 +153,17 @@ static void termHome(void)
     termOverlay(&confirmOverlay);
     termOverlay(&sidepanel);
     termFileList();
+    termFooterWidget();
+    termClockWidget();
+    termFreeSpaceWidget();
     termBreadcrumb(&breadcrumb);
+
+    // release the screen's own textures (the RSX is already idle after the
+    // widget teardown above, but make sure before reclaiming their VRAM).
+    finishGfx();
+    freeGfxTexture(&bg);
+    freeGfxTexture(&sprites);
+
     freeSfx(&clickSfx);
     freeSfx(&checkSfx);
     closeFont(&pop);

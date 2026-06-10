@@ -35,6 +35,7 @@ int main(int argc, char **argv)
         appPoll();
         updatePad();
 
+        updateStats();
         updateScreen();
 
         beginGfxFrame();
@@ -45,6 +46,7 @@ int main(int argc, char **argv)
     }
 
     changeScreen(NULL);
+    termStats();
     termSfx();
     termFont();
     termGfx();

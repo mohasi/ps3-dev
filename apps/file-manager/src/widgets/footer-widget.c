@@ -40,7 +40,9 @@ void initFooterWidget(Font *font, GfxTexture spritesheet)
 void addFooterButton(PadButton padButton, SpriteRegion iconRegion, const char *text, FooterButtonHandler onPress)
 {
 	FooterEntry *entry = findFooterEntry(padButton);
-	if (!entry) {
+	if (entry) {
+		freeButton(&entry->button);  // release the previous label before replacing it
+	} else {
 		if (entryCount >= FOOTER_MAX_BUTTONS) return;
 		entry = &entries[entryCount++];
 	}
@@ -87,6 +89,13 @@ void updateFooterWidget(void)
 
 		entries[i].onPress();
 	}
+}
+
+void termFooterWidget(void)
+{
+	for (int i = 0; i < entryCount; i++)
+		freeButton(&entries[i].button);
+	entryCount = 0;
 }
 
 void drawFooterWidget(void)

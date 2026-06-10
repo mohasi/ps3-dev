@@ -86,6 +86,8 @@ void drawBreadcrumb(Breadcrumb *b)
 
 void termBreadcrumb(Breadcrumb *b)
 {
+    for (int i = 0; i < BREADCRUMB_MAX_DEPTH; i++)
+        freeTextTexture(&b->segTex[i]);
     b->depth = 0;
     b->dirty = 0;
 }

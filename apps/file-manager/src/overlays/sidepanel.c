@@ -195,6 +195,13 @@ static void draw(void)
 static void term(void)
 {
     cancelAllAnims(&anims);
+    freeLabel(&headerTitle);
+    freeLabel(&headerSubtitle);
+    freeLabel(&headerDetail);
+    for (int i = 0; i < SIDEPANEL_MAX_ACTIONS; i++) {
+        freeLabel(&rowTitles[i]);
+        freeLabel(&rowSubtitles[i]);
+    }
     closeFont(&font);
     sidepanel.status = OVERLAY_TERMINATED;
 }

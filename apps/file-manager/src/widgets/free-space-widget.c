@@ -44,3 +44,8 @@ void drawFreeSpaceWidget(void)
 {
     drawLabel(&label);
 }
+
+void termFreeSpaceWidget(void)
+{
+    freeLabel(&label);
+}

@@ -39,7 +39,19 @@ static uint32_t  backBuffer = 0;
 
 static uint8_t  *vramBase = 0;
 static size_t    vramSize = 0;
-static size_t    vramUsed = 0;
+
+// free-list allocator state. The list tiles the whole VRAM region contiguously
+// in address order, so list-adjacent blocks are memory-adjacent and can be
+// coalesced on free. Node metadata lives in main RAM (malloc), not VRAM.
+typedef struct VramBlock {
+	void   *addr;   // start address of this block
+	size_t  size;   // span of this block in bytes (== memory it covers)
+	int     isFree; // 1 if free, 0 if allocated
+	struct VramBlock *next;
+} VramBlock;
+
+static VramBlock *blockListHead = NULL;
+static size_t     vramAllocated = 0;  // sum of allocated block sizes
 
 // double-buffered vertex batch (write one while GPU reads the other)
 static GfxVertex *batchVerts[FRAME_COUNT];
@@ -75,18 +87,95 @@ static int      batchTexLinear = 0;
 
 static void flushBatch(void);
 
-void *vramAlloc(size_t size, size_t alignment)
+void *allocateVram(size_t size, size_t alignment)
 {
-	size_t base = (size_t)vramBase + vramUsed;
-	size_t aligned = (base + alignment - 1) & ~(alignment - 1);
-	size_t newUsed = (aligned - (size_t)vramBase) + size;
+	if (size == 0) return NULL;
+	if (alignment == 0) alignment = 1;
 
-	if (newUsed > vramSize) {
-		printf("[gfx] vramAlloc: out of VRAM\n");
-		return 0;
+	// first call: one free block covering the whole region.
+	if (blockListHead == NULL) {
+		blockListHead = (VramBlock *)malloc(sizeof(VramBlock));
+		if (!blockListHead) return NULL;
+		blockListHead->addr = vramBase;
+		blockListHead->size = vramSize;
+		blockListHead->isFree = 1;
+		blockListHead->next = NULL;
 	}
-	vramUsed = newUsed;
-	return (void *)aligned;
+
+	VramBlock *prev = NULL;
+	for (VramBlock *block = blockListHead; block; prev = block, block = block->next) {
+		if (!block->isFree) continue;
+
+		size_t base    = (size_t)block->addr;
+		size_t aligned = (base + alignment - 1) & ~(alignment - 1);
+		size_t padding = aligned - base;
+		if (padding + size > block->size) continue;  // doesn't fit
+
+		// carve the alignment padding off the front as its own free block,
+		// linked in just before this one (prev is the predecessor) so the list
+		// stays address-ordered.
+		if (padding > 0) {
+			VramBlock *padBlock = (VramBlock *)malloc(sizeof(VramBlock));
+			if (!padBlock) return NULL;
+			padBlock->addr = block->addr;
+			padBlock->size = padding;
+			padBlock->isFree = 1;
+			padBlock->next = block;
+			if (prev) prev->next = padBlock;
+			else      blockListHead = padBlock;
+			block->addr  = (void *)aligned;
+			block->size -= padding;
+		}
+
+		// carve any leftover off the back as its own free block.
+		if (block->size > size) {
+			VramBlock *tailBlock = (VramBlock *)malloc(sizeof(VramBlock));
+			if (!tailBlock) return NULL;
+			tailBlock->addr = (uint8_t *)block->addr + size;
+			tailBlock->size = block->size - size;
+			tailBlock->isFree = 1;
+			tailBlock->next = block->next;
+			block->next = tailBlock;
+			block->size = size;
+		}
+
+		block->isFree = 0;
+		vramAllocated += block->size;
+		return block->addr;
+	}
+
+	printf("[gfx] allocateVram: out of VRAM (%zu bytes)\n", size);
+	return NULL;
+}
+
+void freeVram(void *ptr)
+{
+	if (!ptr) return;
+
+	VramBlock *prev = NULL;
+	for (VramBlock *block = blockListHead; block; prev = block, block = block->next) {
+		if (block->addr != ptr) continue;
+		if (block->isFree) return;  // double-free: ignore
+
+		block->isFree = 1;
+		vramAllocated -= block->size;
+
+		// merge with the following block if it is free (memory-adjacent).
+		if (block->next && block->next->isFree) {
+			VramBlock *next = block->next;
+			block->size += next->size;
+			block->next  = next->next;
+			free(next);
+		}
+
+		// merge into the preceding block if it is free.
+		if (prev && prev->isFree) {
+			prev->size += block->size;
+			prev->next  = block->next;
+			free(block);
+		}
+		return;
+	}
 }
 
 static void waitFlip(void)
@@ -188,14 +277,13 @@ int initGfx(GfxVsync vsync)
 	cellGcmGetConfiguration(&config);
 	vramBase = (uint8_t *)config.localAddress;
 	vramSize = (size_t)config.localSize;
-	vramUsed = 0;
 
 	// allocate frame buffers in vram
 	uint32_t bufferHeight = cellGcmAlign(CELL_GCM_ZCULL_ALIGN_HEIGHT, screenH);
 	uint32_t colorSize    = framePitch * bufferHeight;
 
 	for (int i = 0; i < FRAME_COUNT; ++i) {
-		void *addr = vramAlloc(colorSize, CELL_GCM_TILE_ALIGN_OFFSET);
+		void *addr = allocateVram(colorSize, CELL_GCM_TILE_ALIGN_OFFSET);
 		if (!addr) {
 			return -1;
 		}
@@ -231,7 +319,7 @@ int initGfx(GfxVsync vsync)
 	uint32_t fpSize;
 	cellGcmCgGetUCode(shaderFp, &fpUcode, &fpSize);
 
-	shaderFpUcode = vramAlloc(fpSize, 64);
+	shaderFpUcode = allocateVram(fpSize, 64);
 	if (!shaderFpUcode) return -1;
 	memcpy(shaderFpUcode, fpUcode, fpSize);
 	cellGcmAddressToOffset(shaderFpUcode, &shaderFpOffset);
@@ -247,21 +335,21 @@ int initGfx(GfxVsync vsync)
 	shaderTexUnit = cellGcmCgGetParameterResource(shaderFp, texParam) - CG_TEXUNIT0;
 
 	// 1x1 white texture (64-byte pitch minimum for RSX)
-	uint32_t *whitePix = (uint32_t *)vramAlloc(64, 64);
+	uint32_t *whitePix = (uint32_t *)allocateVram(64, 64);
 	if (!whitePix) return -1;
 	*whitePix = COLOR_WHITE;
 	cellGcmAddressToOffset(whitePix, &whiteTexOffset);
 
 	// allocate quad batch buffer in vram
 	for (int i = 0; i < FRAME_COUNT; ++i) {
-		batchVerts[i] = (GfxVertex *)vramAlloc(MAX_VERTS * sizeof(GfxVertex), 128);
+		batchVerts[i] = (GfxVertex *)allocateVram(MAX_VERTS * sizeof(GfxVertex), 128);
 		if (!batchVerts[i]) return -1;
 		cellGcmAddressToOffset(&batchVerts[i][0].x, &batchOffset[i]);
 		cellGcmAddressToOffset(&batchVerts[i][0].rgba, &batchColOffset[i]);
 		cellGcmAddressToOffset(&batchVerts[i][0].u, &batchUvOffset[i]);
 	}
 
-	printf("[gfx] ready: %d x %d, pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, framePitch, vramUsed, vramSize);
+	printf("[gfx] ready: %d x %d, pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, framePitch, getUsedVram(), vramSize);
 	return 0;
 }
 
@@ -273,6 +361,19 @@ void termGfx(void)
 	// wait for last flip to complete
 	cellGcmSetWaitFlip(CTX);
 	cellGcmFinish(CTX, 1);
+
+	// release all allocator metadata. The VRAM region itself is owned by libgcm;
+	// dropping the block list (incl. the permanent frame/shader/batch blocks)
+	// resets the allocator so a later initGfx() rebuilds it from scratch.
+	VramBlock *block = blockListHead;
+	while (block) {
+		VramBlock *next = block->next;
+		free(block);
+		block = next;
+	}
+	blockListHead = NULL;
+	vramAllocated = 0;
+
 	initialized = 0;
 }
 
@@ -545,14 +646,33 @@ void finishGfx(void)
 int getGfxScreenWidth(void)  { return screenW; }
 int getGfxScreenHeight(void) { return screenH; }
 
-void resetGfxVram(size_t mark)
+size_t getUsedVram(void)
 {
-	vramUsed = mark;
+	return vramAllocated;
 }
 
-size_t getUsedGfxVram(void)
+size_t getFreeVram(void)
 {
-	return vramUsed;
+	size_t total = 0;
+	for (VramBlock *block = blockListHead; block; block = block->next)
+		if (block->isFree) total += block->size;
+	return total;
+}
+
+size_t getLargestFreeBlock(void)
+{
+	size_t largest = 0;
+	for (VramBlock *block = blockListHead; block; block = block->next)
+		if (block->isFree && block->size > largest) largest = block->size;
+	return largest;
+}
+
+void freeGfxTexture(GfxTexture *tex)
+{
+	// offset 0 is frame buffer 0, never a texture, so it doubles as "empty".
+	if (!tex || tex->offset == 0) return;
+	freeVram((uint8_t *)vramBase + tex->offset);
+	memset(tex, 0, sizeof(*tex));
 }
 
 // pngdec callbacks
@@ -644,7 +764,7 @@ GfxTexture loadGfxTexture(const char *path)
 	// copy to VRAM with 64-byte aligned pitch
 	uint32_t alignedPitch = (stride + 63) & ~63;
 	uint32_t size = alignedPitch * h;
-	void *pixels = vramAlloc(size, 64);
+	void *pixels = allocateVram(size, 64);
 	if (!pixels) { free(tempBuf); return result; }
 
 	uint8_t *dst = (uint8_t *)pixels;
@@ -665,7 +785,7 @@ uint32_t uploadGfxTexture(const void *rgba, int w, int h, int srcPitch)
 {
 	uint32_t alignedPitch = ((uint32_t)(w * 4) + 63) & ~63;
 	uint32_t size = alignedPitch * (uint32_t)h;
-	void *pixels = vramAlloc(size, 64);
+	void *pixels = allocateVram(size, 64);
 	if (!pixels) return 0;
 
 	uint8_t *dst = (uint8_t *)pixels;

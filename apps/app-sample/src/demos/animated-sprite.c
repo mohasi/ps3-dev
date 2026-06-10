@@ -29,6 +29,12 @@ void updateAnimatedSprite(void)
     }
 }
 
+void termAnimatedSprite(void)
+{
+    finishGfx();
+    freeGfxTexture(&spriteTex);
+}
+
 void drawAnimatedSprite(int x, int y)
 {
     if (spriteTex.w > 0) {

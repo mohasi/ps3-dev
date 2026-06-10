@@ -5,7 +5,7 @@ PS3 homebrew demo showcasing engine features. Sony official SDK 4.75, targets EV
 ## Features
 
 - **RSX 2D renderer** - batched textured quads, PNG loading, sprite sheet animation, circles, rectangles
-- **VRAM management** - lifetime-typed allocator (persistent/per-frame), screen-managed reclaim via mark/reset
+- **VRAM management** - coalescing free-list allocator with explicit per-allocation free; each screen/overlay/widget frees its own VRAM in `term()`
 - **System font rendering** - libfont/FreeType with word wrap, ellipsis truncation, text measurement, and bake-to-texture
 - **Audio** - WAV playback (memory-loaded), OGG Vorbis streaming, master volume control
 - **Animation** - easing curves (quad/cubic/back/bounce/elastic), ping-pong/once modes, completion callbacks

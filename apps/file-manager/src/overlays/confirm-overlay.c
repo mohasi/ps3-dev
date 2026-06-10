@@ -163,6 +163,11 @@ static void draw(void)
 
 static void term(void)
 {
+    freeLabel(&titleLabel);
+    freeLabel(&messageLabel);
+    freeLabel(&yesLabel);
+    freeLabel(&squareLabel);
+    freeLabel(&noLabel);
     closeFont(&font);
     confirmOverlay.status = OVERLAY_TERMINATED;
 }

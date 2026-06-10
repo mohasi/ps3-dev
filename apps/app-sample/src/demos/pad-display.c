@@ -29,6 +29,12 @@ void initPadDisplay(Font *f, int x, int y, int size, uint32_t color)
     padColor = color;
 }
 
+void termPadDisplay(void)
+{
+    freeTextTexture(&ttButtons);
+    freeTextTexture(&ttSticks);
+}
+
 void drawPadDisplay(void)
 {
     int pos = 0;

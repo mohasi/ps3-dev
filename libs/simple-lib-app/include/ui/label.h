@@ -21,6 +21,10 @@ typedef struct {
 
 void initLabel(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color, TextWrap wrap, const char *text);
 void setLabelText(Label *l, const char *text);
+
+// releases the label's text-texture VRAM; the label can be reused afterwards
+// (setLabelText re-renders it).
+void freeLabel(Label *l);
 void moveLabel(Label *l, int x, int y);
 void drawLabel(Label *l);
 

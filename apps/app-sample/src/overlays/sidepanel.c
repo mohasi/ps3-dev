@@ -68,6 +68,8 @@ static void draw(void)
 static void term(void)
 {
     cancelAllAnims(&anims);
+    freeLabel(&titleText);
+    freeLabel(&bodyText);
     closeFont(&font);
     sidepanel.status = OVERLAY_TERMINATED;
 }

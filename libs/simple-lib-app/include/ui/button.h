@@ -17,6 +17,7 @@ typedef struct {
 } Button;
 
 void initButton(Button *button, Image icon, Label label, ButtonState state);
+void freeButton(Button *button);
 void setButtonState(Button *button, ButtonState state);
 void moveButton(Button *button, int x, int y);
 int  getButtonWidth(Button *button);

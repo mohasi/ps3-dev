@@ -52,7 +52,15 @@ void       updateGfxTexture(uint32_t offset, const void *rgba, int w, int h, int
 int getGfxScreenWidth(void);
 int getGfxScreenHeight(void);
 
-void      *vramAlloc(size_t size, size_t alignment);
-void       resetGfxVram(size_t mark);
-size_t     getUsedGfxVram(void);
+// free-list VRAM allocator. allocateVram returns an aligned pointer into RSX
+// local memory; freeVram releases it and coalesces adjacent free space. Each
+// owner frees what it allocated (no global mark/reset).
+void      *allocateVram(size_t size, size_t alignment);
+void       freeVram(void *ptr);
+size_t     getUsedVram(void);            // bytes currently allocated
+size_t     getFreeVram(void);            // total free bytes (may be fragmented)
+size_t     getLargestFreeBlock(void);    // largest single free run
+
+// frees the VRAM backing a texture and zeroes it. safe on a zeroed/empty tex.
+void       freeGfxTexture(GfxTexture *tex);
 

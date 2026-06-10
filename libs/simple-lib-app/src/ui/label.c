@@ -28,6 +28,12 @@ void setLabelText(Label *l, const char *text)
     renderFont(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
 }
 
+void freeLabel(Label *l)
+{
+    freeTextTexture(&l->tt);
+    l->text[0] = '\0';  // force a re-render if the label is reused
+}
+
 void moveLabel(Label *l, int x, int y)
 {
     l->x = x;

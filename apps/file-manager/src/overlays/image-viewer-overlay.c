@@ -42,13 +42,11 @@ typedef enum {
     SLIDE_TO_PREV    // new image slides in from the left
 } SlideDirection;
 
-// Only one image is ever held in VRAM at a time. VRAM has no per-allocation
-// free (gfx.c is a bump allocator), so we capture a mark on open and reset back
-// to it before each upload -- reclaiming the previous image's memory and reusing
-// it, exactly as screen-manager.c does across screens. That keeps usage flat at
-// one image no matter how many are viewed, instead of leaking until VRAM runs
-// out. The trade-off vs. the old design: no two-image cross-slide; the new image
-// slides in over the dimmed background while the old one is released.
+// Only one image is ever held in VRAM at a time: before uploading the next one
+// we freeVram() the current texture (gfx.c is a free-list allocator with
+// per-allocation free), so usage stays flat at one image no matter how many are
+// viewed. The new image slides in over the dimmed background while the old one
+// is released (no two-image cross-slide).
 static struct {
     char dir[MAX_PATH_LEN];
     char names[MAX_IMAGES][IMAGE_NAME_MAX];  // supported images in dir, sorted
@@ -76,9 +74,16 @@ static Font   nameFont;
 static int    nameFontReady;
 static Label  nameLabel;
 
-// VRAM high-water mark captured on open; image uploads sit above it and are
-// reclaimed by resetting back to it (see note above).
-static size_t imgVramMark;
+// frees the currently displayed image texture, if any. Waits for the RSX first
+// so we never release VRAM the GPU is still sampling.
+static void freeCurrentImage(void)
+{
+    if (state.currentTex.offset != 0) {
+        finishGfx();
+        freeGfxTexture(&state.currentTex);
+    }
+    memset(&state.currentTex, 0, sizeof(state.currentTex));
+}
 
 // forward decls (referenced by the Overlay table below, defined further down)
 static void show(void);
@@ -154,11 +159,9 @@ static void zoomTo(float newZoom)
     clampPan();
 }
 
-// opens the caption font once. Kept separate from setCaption so the caller can
-// capture the VRAM mark *after* the font is allocated (so the font lives below
-// the mark and survives the per-image resets). The label's text texture is
-// rendered above the mark and re-rendered as needed (renderFont self-heals a
-// slot whose offset falls past a reset).
+// opens the caption font once, lazily, and keeps it across re-opens. The
+// caption label's text texture is owned by renderFont, which frees and
+// reallocates its slot as the text changes.
 static void ensureCaptionFont(void)
 {
     if (nameFontReady) return;
@@ -191,31 +194,6 @@ static void setCaption(int index, const char *suffix)
     int isLoading = (suffix && strCmpICase(suffix, "(loading...)") == 0);
     state.captionIsError = (suffix && !isLoading);
     if (!suffix) state.captionShownUs = sys_time_get_system_time();
-}
-
-// drops the caption's text-texture slot so the next setCaption() allocates a
-// fresh one. Required after a VRAM reset: renderFont reuses a slot whose offset
-// is still < getUsedGfxVram(), and a stale offset can land inside the image we
-// just uploaded. Clearing the cached text also forces a re-render.
-static void invalidateCaption(void)
-{
-    if (!nameFontReady) return;
-    nameLabel.tt.tex.offset = 0;
-    nameLabel.tt.tex.w = 0;
-    nameLabel.tt.tex.h = 0;
-    nameLabel.tt.slotW = 0;
-    nameLabel.tt.slotH = 0;
-    nameLabel.text[0] = '\0';
-}
-
-// reclaims all image/caption VRAM back to the open-time mark. Waits for the RSX
-// first, so we never overwrite or free a texture the GPU is still drawing from
-// (doing so corrupts the display and can hang the GPU).
-static void reclaimImageVram(void)
-{
-    finishGfx();
-    resetGfxVram(imgVramMark);
-    invalidateCaption();
 }
 
 // begins an async load of names[index]. dir is how it should appear once ready:
@@ -256,13 +234,7 @@ int openImageViewer(const char *imagePath)
         state.currentIndex = 0;
     }
 
-    // Capture the VRAM reclaim point AFTER the caption font is allocated, so the
-    // font sits below the mark and survives the per-image resets. Image textures
-    // (and the caption's text slot) live above it and are reclaimed by resetting
-    // back here before each upload. Captured fresh each open so we never sit
-    // below whatever the home screen allocated since we last closed.
     ensureCaptionFont();
-    imgVramMark = getUsedGfxVram();
 
     // start with no image; the first decode lands via the async path below
     memset(&state.currentTex, 0, sizeof(state.currentTex));
@@ -281,19 +253,19 @@ static void show(void) { imageViewerOverlay.status = OVERLAY_VISIBLE; }
 
 static void hide(void)
 {
-    // reclaim the image (and caption-text) VRAM so we don't hold a large
-    // texture while the user is back in the file list. The font stays (it lives
-    // below the mark); the caption re-renders on the next open.
-    reclaimImageVram();
-    memset(&state.currentTex, 0, sizeof(state.currentTex));
+    // free the image so we don't hold a large texture while the user is back in
+    // the file list. The caption text slot is freed too; the font stays and the
+    // caption re-renders on the next open.
+    freeCurrentImage();
+    freeLabel(&nameLabel);
     imageViewerOverlay.status = OVERLAY_HIDDEN;
 }
 
 static void term(void)
 {
-    // Image VRAM is reclaimed on hide(); the screen teardown that follows resets
-    // VRAM anyway. Here we just release the font and clear our state.
+    freeCurrentImage();
     if (nameFontReady) {
+        freeLabel(&nameLabel);
         closeFont(&nameFont);
         nameFontReady = 0;
     }
@@ -330,10 +302,9 @@ static void update(void)
         ImageBuffer buf;
         int r = pollImageAsync(&buf);
         if (r == 1) {
-            // reclaim the previous image's VRAM before allocating the new one,
-            // so only a single image is ever resident (no growth, no spike).
-            reclaimImageVram();
-            memset(&state.currentTex, 0, sizeof(state.currentTex));
+            // free the previous image before allocating the new one, so only a
+            // single image is ever resident (no growth, no spike).
+            freeCurrentImage();
 
             GfxTexture tex = uploadImageBuffer(&buf);
             freeImageBuffer(&buf);
@@ -363,8 +334,7 @@ static void update(void)
             // instead of repeatedly retrying the same unloadable image.
             state.loading = 0;
             logError("[image-viewer] decode failed: %s\n", state.names[state.pendingIndex]);
-            reclaimImageVram();
-            memset(&state.currentTex, 0, sizeof(state.currentTex));
+            freeCurrentImage();
             state.currentIndex = state.pendingIndex;
             state.slideDir     = SLIDE_NONE;
             setCaption(state.currentIndex, "(image too large)");

@@ -14,6 +14,11 @@ void initButton(Button *button, Image icon, Label label, ButtonState state)
 	button->state = state;
 }
 
+void freeButton(Button *button)
+{
+	freeLabel(&button->label);
+}
+
 void setButtonState(Button *button, ButtonState state)
 {
 	button->state = state;

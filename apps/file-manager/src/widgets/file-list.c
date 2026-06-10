@@ -528,6 +528,16 @@ void drawFileList(void)
 void termFileList(void)
 {
     cancelFolderSizer();
+
+    // release the text VRAM owned by every row label and the counter.
+    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
+        freeLabel(&labels[i]);
+        freeLabel(&sizeLabels[i]);
+        freeLabel(&typeLabels[i]);
+        freeLabel(&modifiedLabels[i]);
+    }
+    freeLabel(&counterLabel);
+
     free(entries);
     entries = NULL;
     entryCount = 0;

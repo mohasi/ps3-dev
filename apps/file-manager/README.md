@@ -13,7 +13,7 @@ PS3 homebrew file browser with a sprite-based UI. Sony official SDK 4.75, target
 - **Hold-to-scroll** — press-and-hold D-pad for continuous scrolling with repeat delay
 - **Sidepanel** — triangle opens a slide-in action menu (copy, cut, paste, delete, rename, new file/dir, edit, properties) with a header summarizing the current selection (single file, single folder with recursive file count, or multi-selection totals)
 - **File operations** — copy / cut / paste (move), delete, rename, and create new file / folder, all via the on-screen keyboard where a name is needed. Name collisions are resolved with a consistent merge/replace/keep model (see below); after a paste the cursor lands on the topmost pasted item.
-- **Image viewer** — full-screen viewer for PNG and JPEG images. Opens when X is pressed on a supported image file. Features L1/R1 navigation through sibling images in the directory, L2/R2 zoom (center-pinned, 10%–500%), D-pad pan, and Circle to close. Images decode asynchronously on a background worker (no UI freeze), with a single-image VRAM footprint (mark/reset reclaim). Oversized images are rejected with a persistent error caption; VRAM upload failures show "(out of VRAM)".
+- **Image viewer** — full-screen viewer for PNG and JPEG images. Opens when X is pressed on a supported image file. Features L1/R1 navigation through sibling images in the directory, L2/R2 zoom (center-pinned, 10%–500%), D-pad pan, and Circle to close. Images decode asynchronously on a background worker (no UI freeze), with a single-image VRAM footprint (the previous image is freed before each load). Oversized images are rejected with a persistent error caption; VRAM upload failures show "(out of VRAM)".
 - **Sprite atlas** — all UI sprites packed into a single texture, generated at build time
 
 ## File operations & conflict resolution
@@ -70,7 +70,7 @@ The image viewer (`image-viewer-overlay`) decodes PNG/JPEG images
 asynchronously via a background worker in `image-loader` (from
 `simple-lib-app`). It scans the opened image's directory for sibling
 supported images and provides L1/R1 navigation with slide-in animation,
-L2/R2 zoom, and D-pad pan. VRAM is reclaimed via mark/reset before each
+L2/R2 zoom, and D-pad pan. The previous image's VRAM is freed before each
 upload, so only a single image is resident at a time. Decode failures
 and upload failures display persistent error captions ("(image too
 large)", "(out of VRAM)").

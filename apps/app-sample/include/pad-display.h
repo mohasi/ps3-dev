@@ -7,3 +7,4 @@
 
 void initPadDisplay(Font *f, int x, int y, int size, uint32_t color);
 void drawPadDisplay(void);
+void termPadDisplay(void);

@@ -15,3 +15,4 @@ void setFooterButtonVisible(PadButton padButton, int visible);
 void setFooterButtonText(PadButton padButton, const char *text);
 void updateFooterWidget(void);
 void drawFooterWidget(void);
+void termFooterWidget(void);

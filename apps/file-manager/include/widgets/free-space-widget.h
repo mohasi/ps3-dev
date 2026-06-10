@@ -7,3 +7,4 @@
 void initFreeSpaceWidget(Font *font, int x, int y, int size, uint32_t color, int width);
 void updateFreeSpaceWidget(void);
 void drawFreeSpaceWidget(void);
+void termFreeSpaceWidget(void);

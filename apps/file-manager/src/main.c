@@ -9,6 +9,7 @@
 #include "font.h"
 #include "screen-manager.h"
 #include "screens/home.h"
+#include "ui/stats.h"
 #include "bridge-client.h"
 
 #define PROCESS_PRIORITY_DEFAULT 1001
@@ -33,19 +34,24 @@ int main(int argc, char **argv)
     if (initFont() != 0) return 1;
     initPad();
 
+    initStats(5, 5, 14, COLOR_AMBER_300);
+
     changeScreen(&homeScreen);
 
     while (!appExitRequested) {
         appPoll();
         updatePad();
+        updateStats();
         updateScreen();
 
         beginGfxFrame();
         drawScreen();
+        drawStats();
         endGfxFrame();
     }
 
     changeScreen(NULL);
+    termStats();
     termSfx();
     termFont();
     termGfx();

@@ -4,7 +4,7 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 
 ## Features
 
-- **gfx** - RSX 2D renderer: batched textured quads, PNG loading, sprites, circles, rectangles, VRAM lifetime management (persistent/per-frame)
+- **gfx** - RSX 2D renderer: batched textured quads, PNG loading, sprites, circles, rectangles, and a coalescing free-list VRAM allocator (`allocateVram`/`freeVram`) where each owner frees what it allocated
 - **image-loader** - asynchronous PNG/JPEG decoder: background worker thread decodes to heap ARGB8888 buffer, main thread uploads to VRAM. Prevents UI freezes on large images. Codec downscaling for oversized JPEGs, size validation to prevent RSX hangs. Includes directory listing of supported images (sorted case-insensitive).
 - **font** - system font rendering via libfont/FreeType: word wrap, ellipsis, text measurement, bake-to-texture
 - **audio** - WAV playback (memory-loaded), OGG Vorbis streaming, master volume control
@@ -17,7 +17,7 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 - **file** - cellFs helpers come from `simple-lib-core/file.h` (path utilities, mountDevBlind, etc.); apps include `"file.h"` and get the core copy via the include path. App-only heap helpers live alongside their single caller.
 - **ui** - reusable UI components (label, breadcrumb, image, slice, circle, line, rectangle, triangle)
 - **timer** - polling interval timer using RTC
-- **stats** - FPS counter and free-space display helpers
+- **stats** - toggleable on-screen diagnostics: FPS and VRAM used/free/largest-block, shown/hidden with L3+R3
 - **shaders** - RSX vertex/fragment shader compilation (vpshader.cg, fpshader.cg) built as part of the library
 
 ## Usage

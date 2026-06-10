@@ -345,9 +345,25 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
     return buf;
 }
 
+void freeTextTexture(TextTexture *tt)
+{
+    if (tt->valid) {
+        finishGfx();               // never free VRAM the RSX may still be reading
+        freeGfxTexture(&tt->tex);  // also zeroes tt->tex
+        tt->valid = 0;
+    }
+    tt->slotW = 0;
+    tt->slotH = 0;
+}
+
 void renderFont(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap)
 {
-    if (!f->open || !text || !text[0]) {
+    if (!f->open) return;
+
+    // clear case: hide the texture but keep the slot for reuse (a permanently
+    // empty label is released at teardown via freeTextTexture, not here, so we
+    // don't stall the RSX clearing rows during scrolling).
+    if (!text || !text[0]) {
         tt->tex.w = 0;
         tt->tex.h = 0;
         return;
@@ -356,28 +372,41 @@ void renderFont(TextTexture *tt, Font *f, int size, const char *text, uint32_t c
     int drawW, drawH, surfW;
     uint8_t *buf = rasterize(f, size, text, color, maxWidth, wrap, &drawW, &drawH, &surfW);
     if (!buf) {
+        // nothing rasterized (e.g. all-whitespace after wrapping): keep any
+        // existing slot but show nothing.
         tt->tex.w = 0;
         tt->tex.h = 0;
         return;
     }
 
-    // can we reuse the existing VRAM slot?
-    int slotValid = tt->tex.offset != 0 && tt->tex.offset < getUsedGfxVram();
-    if (slotValid && drawW <= tt->slotW && drawH <= tt->slotH) {
+    // reuse the existing slot when the new content still fits its high-water size.
+    if (tt->valid && drawW <= tt->slotW && drawH <= tt->slotH) {
         // overwrite in place -- updateGfxTexture clears stale pixels
         updateGfxTexture(tt->tex.offset, buf, drawW, drawH, surfW * 4, tt->slotW, tt->slotH);
         tt->tex.w = drawW;
         tt->tex.h = drawH;
         tt->tex.pitch = (tt->slotW * 4 + 63) & ~63;
-    } else {
-        // allocate a new (larger) slot
-        tt->tex.offset = uploadGfxTexture(buf, drawW, drawH, surfW * 4);
-        tt->tex.w = drawW;
-        tt->tex.h = drawH;
-        tt->tex.pitch = (drawW * 4 + 63) & ~63;
-        tt->slotW = drawW;
-        tt->slotH = drawH;
+        free(buf);
+        return;
     }
 
+    // need a bigger slot: release the old one (after the RSX drains) and allocate.
+    freeTextTexture(tt);
+
+    uint32_t offset = uploadGfxTexture(buf, drawW, drawH, surfW * 4);
     free(buf);
+    if (offset == 0) {
+        // upload failed (out of VRAM): leave the slot empty.
+        tt->tex.w = 0;
+        tt->tex.h = 0;
+        return;
+    }
+
+    tt->tex.offset = offset;
+    tt->tex.w = drawW;
+    tt->tex.h = drawH;
+    tt->tex.pitch = (drawW * 4 + 63) & ~63;
+    tt->slotW = drawW;
+    tt->slotH = drawH;
+    tt->valid = 1;
 }

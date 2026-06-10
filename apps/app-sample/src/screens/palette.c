@@ -134,6 +134,7 @@ static void suspendPalette(void) {}
 
 static void termPalette(void)
 {
+    freeLabel(&titleText);
     closeFont(&font);
 }
 

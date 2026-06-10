@@ -184,6 +184,10 @@ static void draw(void)
 
 static void term(void)
 {
+    freeLabel(&titleLabel);
+    freeLabel(&subtitleLabel);
+    freeLabel(&pctLabel);
+    freeLabel(&cancelLabel);
     closeFont(&font);
     progressOverlay.status = OVERLAY_TERMINATED;
 }

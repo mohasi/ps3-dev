@@ -5,7 +5,7 @@ Packs a directory of .png sprites into a single power-of-2 spritesheet and gener
 ## Usage
 
 ```
-sprite-packer <inputDir> [-o outputDir] [-n name] [-h headerDir]
+sprite-packer <inputDir> [-o outputDir] [-n name] [-h headerDir] [-p prefix]
 ```
 
 Or drag a folder onto the exe.
@@ -15,15 +15,16 @@ Or drag a folder onto the exe.
 | `-o` | Output directory for the .png | input directory |
 | `-n` | Base name for the .png file (without extension) | input directory name |
 | `-h` | Output directory for the .h file | same as `-o` |
+| `-p` | Prefix for the enum, table, and header filename | `sprite` |
 
-The header is always named `sprite-regions.h` and the array is always `spriteRegions[n]`.
+By default the header is named `sprite-regions.h` and the table is `spriteRegions[n]`.
+With `-p foo` they become `foo-regions.h` and `fooRegions[n]` (enum `FooId`, members `FOO_*`).
 
 ## What it does
 
-1. Loads all .png files from the input directory (sorted alphabetically)
-2. Packs into the smallest power-of-2 sheet using a shelf algorithm with 1px padding
-3. Draws a 1px green border around each sprite region (debug visibility)
-4. Outputs the spritesheet .png and a C header (`sprite-regions.h`) with `SpriteRegion` coordinates
+1. Loads all .png files from the input directory (sorted alphabetically), each copied to 32bpp ARGB
+2. Packs into the smallest power-of-2 sheet using a shelf algorithm with 1px transparent padding
+3. Outputs the spritesheet .png and a C header with `SpriteRegion` coordinates
 
 ## Generated header
 

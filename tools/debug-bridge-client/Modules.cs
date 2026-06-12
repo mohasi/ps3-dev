@@ -182,28 +182,12 @@ namespace DebugBridgeClient
         public readonly List<ModuleLib>     Imports  = new List<ModuleLib>();
     }
 
-    // parses the text payload returned by the bridge's module-list and
-    // module-info commands. format is tab-separated, one record per line:
-    //   module-info: id, name, file, seg, libent, libstub,
-    //                ent+ef+ev (exports), stub+sf+sv (imports)
-    //   module-list: <name>\t<file>  (one line per module)
+    // parses the text payload returned by the bridge's module-info command.
+    // format is tab-separated, one record per line:
+    //   id, name, file, seg, libent, libstub,
+    //   ent+ef+ev (exports), stub+sf+sv (imports)
     public static class ModuleParser
     {
-        public static ModuleSummary[] ParseList(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return new ModuleSummary[0];
-            string[] lines = text.Split('\n');
-            var list = new List<ModuleSummary>(lines.Length);
-            foreach (string raw in lines) {
-                string line = raw.TrimEnd('\r');
-                if (line.Length == 0) continue;
-                string[] f = line.Split('\t');
-                if (f.Length < 2) continue;
-                list.Add(new ModuleSummary { Name = f[0], File = f[1] });
-            }
-            return list.ToArray();
-        }
-
         public static ModuleDetails ParseInfo(string text)
         {
             var d = new ModuleDetails();

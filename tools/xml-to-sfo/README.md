@@ -16,8 +16,8 @@ xml-to-sfo <paramsfo.xml> [outputPath]
 case `PARAM.SFO` is appended). When omitted it defaults to the input's
 directory. Missing parent directories are created.
 
-Targets .NET Framework 3.5 — only because it works out of the box on a
-Windows 7 VM where the PS3 SDK is installed, no other reason.
+Targets .NET Framework 4.0 (full profile) — works out of the box on the
+Windows 7 VM where the PS3 SDK is installed.
 
 ## XML schema
 

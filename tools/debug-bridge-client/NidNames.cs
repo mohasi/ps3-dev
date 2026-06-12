@@ -1,6 +1,4 @@
-using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 
 namespace DebugBridgeClient
@@ -40,32 +38,11 @@ namespace DebugBridgeClient
             if (map != null) return;
             lock (loadLock) {
                 if (map != null) return;
-                string localPath = FindJsonPath("nid_names_local.json");
+                string localPath = NidJson.FindFile("nid_names_local.json");
                 mapLocal = localPath != null ? Parse(localPath) : new Dictionary<uint, string>();
-                string bulkPath  = FindJsonPath("nid_names.json");
+                string bulkPath  = NidJson.FindFile("nid_names.json");
                 map      = bulkPath  != null ? Parse(bulkPath)  : new Dictionary<uint, string>();
             }
-        }
-
-        // Search order, relative to the exe directory:
-        //   ./<file>                next to the exe (deployed copy)
-        //   ./nid-dump/<file>       exe sits in tools/, json in tools/nid-dump/
-        //   ../nid-dump/<file>      exe sits in tools/<peer>/, json in tools/nid-dump/
-        //   ../../nid-dump/<file>   exe sits in tools/debug-bridge-client/bin/
-        private static string FindJsonPath(string fileName)
-        {
-            string exeDir = AppDomain.CurrentDomain.BaseDirectory ?? ".";
-            string[] candidates = new[] {
-                Path.Combine(exeDir, fileName),
-                Path.Combine(exeDir, @"nid-dump\" + fileName),
-                Path.Combine(exeDir, @"..\nid-dump\" + fileName),
-                Path.Combine(exeDir, @"..\..\nid-dump\" + fileName),
-            };
-            foreach (string c in candidates) {
-                try { if (File.Exists(c)) return Path.GetFullPath(c); }
-                catch { }
-            }
-            return null;
         }
 
         // Minimal parser for the exact shape the file uses:
@@ -74,7 +51,7 @@ namespace DebugBridgeClient
         //     ...
         //   }
         // One pair per line, no nested objects, no escaped quotes in names.
-        // Fast (single pass, no regex) and dependency-free on .NET 3.5.
+        // Fast (single pass, no regex) and dependency-free.
         private static Dictionary<uint, string> Parse(string path)
         {
             var result = new Dictionary<uint, string>(32768);
@@ -92,11 +69,8 @@ namespace DebugBridgeClient
                         if (q4 < 0) continue;
                         string key  = line.Substring(q1 + 1, q2 - q1 - 1);
                         string name = line.Substring(q3 + 1, q4 - q3 - 1);
-                        if (key.Length > 2 && (key[1] == 'x' || key[1] == 'X')) key = key.Substring(2);
                         uint nid;
-                        if (uint.TryParse(key, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out nid)) {
-                            result[nid] = name;
-                        }
+                        if (NidJson.TryParseKey(key, out nid)) result[nid] = name;
                     }
                 }
             } catch {

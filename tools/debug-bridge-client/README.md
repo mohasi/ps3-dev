@@ -17,7 +17,7 @@ WPF companion app for the `simple-debug-bridge` PS3 plugin.
 - **Logs** tab — live PS3-side log lines forwarded by the bridge (LOG frames from
   every registered producer plugin/app — `[sdb]`, `[sdm]`, `[ftp]`, ...)
 - **Screen** tab — renders captures live as they come back from the bridge
-- **Modules** tab — process-first tree over `process-list` → `module-list` →
+- **Modules** tab — process-first tree over `process-list` → `process-info` →
   `module-info`. Top-level nodes are processes the bridge can see (always
   `vsh`, plus any registered app); expanding a process lists its loaded PRXs,
   and expanding a module lazily fetches its ELF segments, linkage tables,
@@ -66,6 +66,7 @@ debug-bridge-client/
 ├── TraceCapture.cs              # parser for /dev_hdd0/tmp/trace-capture.bin frames
 ├── TraceHeatmap.cs              # per-module call heatmap colouring for the grid
 ├── NidNames.cs / NidProtos.cs   # offline NID → name / prototype lookup
+├── NidJson.cs                   # shared NID-json file finder + key parser
 ├── Ps3Connection.cs             # tcp transport + auto-connect probe
 ├── Ps3Reply.cs                  # framed reply value type
 ├── HttpBridge.cs                # local http proxy (port 8786)
@@ -75,4 +76,4 @@ debug-bridge-client/
 
 ## build
 
-requires .NET Framework 3.5. builds with MSBuild / Visual Studio.
+requires .NET Framework 4.0. builds with MSBuild / Visual Studio.

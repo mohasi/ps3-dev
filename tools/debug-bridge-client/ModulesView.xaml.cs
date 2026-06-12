@@ -91,9 +91,7 @@ namespace DebugBridgeClient
             };
             // sort by name so the list is scannable; bridge emits load order.
             List<ModuleSummary> sorted = new List<ModuleSummary>(d.Modules);
-            sorted.Sort(delegate(ModuleSummary a, ModuleSummary b) {
-                return string.Compare(a.Name, b.Name, System.StringComparison.OrdinalIgnoreCase);
-            });
+            sorted.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
             foreach (ModuleSummary m in sorted) mods.Items.Add(BuildModuleNode(source, m));
             node.Items.Add(mods);
         }

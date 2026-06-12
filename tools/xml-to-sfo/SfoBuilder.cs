@@ -1,126 +1,145 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace XmlToSfo
 {
-    // Writes a PSF (PARAM.SFO) file from an SfoModel. Layout:
-    //
-    //   header (0x14 bytes)
-    //   index  (0x10 bytes per entry)
-    //   key table   (null-terminated keys, padded to 4-byte align)
-    //   data table  (each slot = MaxLength bytes, zero-padded after Payload)
-    //
-    // Header fields are little-endian. Entries are sorted by key so the output
-    // matches what Sony's tools produce (and what existing PARAM.SFOs in the
-    // wild look like — TITLE_ID after TITLE, alphabetical).
-    internal static class SfoBuilder
-    {
-        private const uint HeaderMagic   = 0x46535000u; // "\0PSF" in LE
-        private const uint HeaderVersion = 0x00000101u; // 1.1
+   // writes a psf (param.sfo) binary from an sfomodel. on-disk layout, in order:
+   //
+   //   header     0x14 bytes  - magic, version, table offsets, entry count
+   //   index      0x10 bytes per entry
+   //   key table  - null-terminated keys, padded to 4-byte alignment
+   //   data table - one slot per entry; the slot is maxlength bytes, zero-padded
+   //
+   // every integer is little-endian, which is binarywriter's native byte order.
+   // entries are sorted by key so the output matches sony's tools (TITLE_ID after
+   // TITLE, alphabetical) and the param.sfos already in the wild.
+   internal static class SfoBuilder
+   {
+      private const uint Magic = 0x46535000u;     // "\0PSF"
+      private const uint Version = 0x00000101u;   // 1.1
+      private const int HeaderSize = 0x14;
+      private const int IndexEntrySize = 0x10;
 
-        public static void Write(SfoModel model, string outputPath)
-        {
-            // Stable alphabetical order.
-            model.Params.Sort(delegate(SfoParam a, SfoParam b)
-            {
-                return string.CompareOrdinal(a.Key, b.Key);
-            });
+      // an entry together with where its key and data slot land in the file.
+      private sealed class PlacedEntry
+      {
+         public SfoParam Param;
+         public byte[] KeyBytes;     // ascii key, without the null terminator
+         public ushort KeyOffset;    // offset within the key table
+         public uint DataOffset;     // offset within the data table
+      }
 
-            int n = model.Params.Count;
+      private sealed class Layout
+      {
+         public List<PlacedEntry> Entries;
+         public uint KeyTableStart;
+         public uint DataTableStart;
+      }
 
-            // --- key table layout ---
-            // Each key is stored as ASCII + 1 null byte. Compute offsets.
-            ushort[] keyOffsets = new ushort[n];
-            int keyTableLen = 0;
-            byte[][] keyBytes = new byte[n][];
-            for (int i = 0; i < n; i++)
-            {
-                keyBytes[i] = Encoding.ASCII.GetBytes(model.Params[i].Key);
-                keyOffsets[i] = (ushort)keyTableLen;
-                keyTableLen += keyBytes[i].Length + 1;
-                if (keyOffsets[i] != keyTableLen - keyBytes[i].Length - 1)
-                    throw new InvalidOperationException("key table overflows ushort range");
-            }
-            int keyTableLenPadded = AlignUp(keyTableLen, 4);
+      public static void Write(SfoModel model, string outputPath)
+      {
+         List<SfoParam> sorted = model.Params.OrderBy(param => param.Key, StringComparer.Ordinal).ToList();
+         Layout layout = PlanLayout(sorted);
 
-            // --- data table layout ---
-            uint[] dataOffsets = new uint[n];
-            int dataCursor = 0;
-            for (int i = 0; i < n; i++)
-            {
-                dataOffsets[i] = (uint)dataCursor;
-                dataCursor += model.Params[i].MaxLength;
-            }
-            int dataTableLen = dataCursor;
+         using (var stream = new MemoryStream())
+         using (var writer = new BinaryWriter(stream))
+         {
+            WriteHeader(writer, sorted.Count, layout);
+            WriteIndex(writer, layout);
+            WriteKeyTable(writer, layout);
+            WriteDataTable(writer, layout);
+            File.WriteAllBytes(outputPath, stream.ToArray());
+         }
+      }
 
-            // --- absolute offsets ---
-            int headerLen = 0x14;
-            int indexLen = n * 0x10;
-            uint keyTableStart = (uint)(headerLen + indexLen);
-            uint dataTableStart = (uint)(keyTableStart + keyTableLenPadded);
-            int totalLen = (int)dataTableStart + dataTableLen;
+      // works out every offset up front, so the header and index can point at the
+      // key and data tables before those tables are actually written.
+      private static Layout PlanLayout(List<SfoParam> sorted)
+      {
+         var entries = new List<PlacedEntry>(sorted.Count);
 
-            byte[] buf = new byte[totalLen];
+         // key table: each key is ascii plus one null byte, laid end to end.
+         int keyCursor = 0;
+         foreach (SfoParam param in sorted)
+         {
+            byte[] keyBytes = Encoding.ASCII.GetBytes(param.Key);
+            entries.Add(new PlacedEntry { Param = param, KeyBytes = keyBytes, KeyOffset = checked((ushort)keyCursor) });
+            keyCursor += keyBytes.Length + 1;
+         }
 
-            // header
-            WriteUInt32(buf, 0x00, HeaderMagic);
-            WriteUInt32(buf, 0x04, HeaderVersion);
-            WriteUInt32(buf, 0x08, keyTableStart);
-            WriteUInt32(buf, 0x0C, dataTableStart);
-            WriteUInt32(buf, 0x10, (uint)n);
+         // data table: one maxlength-sized slot per entry, laid end to end.
+         uint dataCursor = 0;
+         foreach (PlacedEntry entry in entries)
+         {
+            entry.DataOffset = dataCursor;
+            dataCursor += (uint)entry.Param.MaxLength;
+         }
 
-            // index entries
-            for (int i = 0; i < n; i++)
-            {
-                int eOff = headerLen + i * 0x10;
-                var p = model.Params[i];
-                WriteUInt16(buf, eOff + 0x00, keyOffsets[i]);
-                WriteUInt16(buf, eOff + 0x02, (ushort)p.Type);
-                WriteUInt32(buf, eOff + 0x04, (uint)p.Payload.Length);
-                WriteUInt32(buf, eOff + 0x08, (uint)p.MaxLength);
-                WriteUInt32(buf, eOff + 0x0C, dataOffsets[i]);
-            }
+         uint keyTableStart = (uint)(HeaderSize + sorted.Count * IndexEntrySize);
+         uint dataTableStart = keyTableStart + (uint)AlignUp(keyCursor, 4);
+         return new Layout { Entries = entries, KeyTableStart = keyTableStart, DataTableStart = dataTableStart };
+      }
 
-            // key table
-            int keyCursor = (int)keyTableStart;
-            for (int i = 0; i < n; i++)
-            {
-                Buffer.BlockCopy(keyBytes[i], 0, buf, keyCursor, keyBytes[i].Length);
-                keyCursor += keyBytes[i].Length;
-                buf[keyCursor++] = 0; // null terminator
-            }
-            // remaining bytes up to dataTableStart are already 0 (zeroed by new[])
+      private static void WriteHeader(BinaryWriter writer, int entryCount, Layout layout)
+      {
+         writer.Write(Magic);
+         writer.Write(Version);
+         writer.Write(layout.KeyTableStart);
+         writer.Write(layout.DataTableStart);
+         writer.Write((uint)entryCount);
+      }
 
-            // data table
-            for (int i = 0; i < n; i++)
-            {
-                int absOff = (int)dataTableStart + (int)dataOffsets[i];
-                Buffer.BlockCopy(model.Params[i].Payload, 0, buf, absOff, model.Params[i].Payload.Length);
-                // remaining bytes already zero
-            }
+      private static void WriteIndex(BinaryWriter writer, Layout layout)
+      {
+         foreach (PlacedEntry entry in layout.Entries)
+         {
+            writer.Write(entry.KeyOffset);                   // key offset within key table
+            writer.Write((ushort)entry.Param.Type);          // data format
+            writer.Write((uint)entry.Param.Payload.Length);  // used bytes
+            writer.Write((uint)entry.Param.MaxLength);        // slot size
+            writer.Write(entry.DataOffset);                  // data offset within data table
+         }
+      }
 
-            File.WriteAllBytes(outputPath, buf);
-        }
+      private static void WriteKeyTable(BinaryWriter writer, Layout layout)
+      {
+         foreach (PlacedEntry entry in layout.Entries)
+         {
+            writer.Write(entry.KeyBytes);
+            writer.Write((byte)0);   // null terminator
+         }
+         PadTo(writer, layout.DataTableStart);   // align up to the data table
+      }
 
-        private static int AlignUp(int value, int alignment)
-        {
-            int rem = value % alignment;
-            return rem == 0 ? value : value + (alignment - rem);
-        }
+      private static void WriteDataTable(BinaryWriter writer, Layout layout)
+      {
+         foreach (PlacedEntry entry in layout.Entries)
+         {
+            writer.Write(entry.Param.Payload);
+            PadBytes(writer, entry.Param.MaxLength - entry.Param.Payload.Length);   // zero-fill the rest of the slot
+         }
+      }
 
-        private static void WriteUInt16(byte[] buf, int off, ushort v)
-        {
-            buf[off + 0] = (byte)(v & 0xFF);
-            buf[off + 1] = (byte)((v >> 8) & 0xFF);
-        }
+      // ---- low-level helpers ----
 
-        private static void WriteUInt32(byte[] buf, int off, uint v)
-        {
-            buf[off + 0] = (byte)(v & 0xFF);
-            buf[off + 1] = (byte)((v >> 8) & 0xFF);
-            buf[off + 2] = (byte)((v >> 16) & 0xFF);
-            buf[off + 3] = (byte)((v >> 24) & 0xFF);
-        }
-    }
+      private static void PadTo(BinaryWriter writer, long targetPosition)
+      {
+         PadBytes(writer, (int)(targetPosition - writer.BaseStream.Position));
+      }
+
+      private static void PadBytes(BinaryWriter writer, int count)
+      {
+         if (count > 0)
+            writer.Write(new byte[count]);
+      }
+
+      private static int AlignUp(int value, int alignment)
+      {
+         int remainder = value % alignment;
+         return remainder == 0 ? value : value + (alignment - remainder);
+      }
+   }
 }

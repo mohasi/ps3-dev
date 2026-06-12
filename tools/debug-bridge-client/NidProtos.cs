@@ -1,8 +1,5 @@
-using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
-using System.Text;
 
 namespace DebugBridgeClient
 {
@@ -19,7 +16,7 @@ namespace DebugBridgeClient
     //   }
     //
     // One entry per line, same flat-object style as nid_names.json, so a
-    // tiny line-oriented parser keeps us dependency-free on .NET 3.5.
+    // tiny line-oriented parser keeps us dependency-free.
     public static class NidProtos
     {
         public class Proto
@@ -44,27 +41,9 @@ namespace DebugBridgeClient
             if (map != null) return;
             lock (loadLock) {
                 if (map != null) return;
-                string path = FindJsonPath("nid_protos.json");
+                string path = NidJson.FindFile("nid_protos.json");
                 map = path != null ? Parse(path) : new Dictionary<uint, Proto>();
             }
-        }
-
-        // Same search order as NidNames.FindJsonPath; kept in sync but
-        // local so the two resolvers stay independent.
-        private static string FindJsonPath(string fileName)
-        {
-            string exeDir = AppDomain.CurrentDomain.BaseDirectory ?? ".";
-            string[] candidates = new[] {
-                Path.Combine(exeDir, fileName),
-                Path.Combine(exeDir, @"nid-dump\" + fileName),
-                Path.Combine(exeDir, @"..\nid-dump\" + fileName),
-                Path.Combine(exeDir, @"..\..\nid-dump\" + fileName),
-            };
-            foreach (string c in candidates) {
-                try { if (File.Exists(c)) return Path.GetFullPath(c); }
-                catch { }
-            }
-            return null;
         }
 
         // Parse one entry per line. We don't need a general JSON parser:
@@ -96,9 +75,7 @@ namespace DebugBridgeClient
             int q1 = line.IndexOf('"'); if (q1 < 0) return false;
             int q2 = line.IndexOf('"', q1 + 1); if (q2 < 0) return false;
             string key = line.Substring(q1 + 1, q2 - q1 - 1);
-            if (key.Length > 2 && (key[1] == 'x' || key[1] == 'X')) key = key.Substring(2);
-            if (!uint.TryParse(key, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out nid))
-                return false;
+            if (!NidJson.TryParseKey(key, out nid)) return false;
 
             // ret: "ret": "<value>"
             int retTag = line.IndexOf("\"ret\"", q2);

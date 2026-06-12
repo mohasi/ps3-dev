@@ -9,7 +9,8 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>DebugBridgeClient</RootNamespace>
     <AssemblyName>debug-bridge-client</AssemblyName>
-    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkProfile></TargetFrameworkProfile>
     <FileAlignment>512</FileAlignment>
     <StartupObject>DebugBridgeClient.App</StartupObject>
   </PropertyGroup>
@@ -25,6 +26,9 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Configuration" />
+    <Reference Include="System.Xaml">
+      <RequiredTargetFramework>4.0</RequiredTargetFramework>
+    </Reference>
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
@@ -67,6 +71,7 @@
     <Compile Include="TraceCapture.cs" />
     <Compile Include="TraceHeatmap.cs" />
     <Compile Include="Modules.cs" />
+    <Compile Include="NidJson.cs" />
     <Compile Include="NidNames.cs" />
     <Compile Include="NidProtos.cs" />
     <Compile Include="Ps3Connection.cs" />

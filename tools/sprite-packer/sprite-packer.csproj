@@ -9,7 +9,8 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>SpritePacker</RootNamespace>
     <AssemblyName>sprite-packer</AssemblyName>
-    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkProfile></TargetFrameworkProfile>
     <FileAlignment>512</FileAlignment>
     <StartupObject>SpritePacker.Program</StartupObject>
   </PropertyGroup>
@@ -23,13 +24,13 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
+    <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="Sprite.cs" />
     <Compile Include="SpriteLoader.cs" />
-    <Compile Include="Trimmer.cs" />
     <Compile Include="Packer.cs" />
     <Compile Include="SheetWriter.cs" />
     <Compile Include="HeaderWriter.cs" />

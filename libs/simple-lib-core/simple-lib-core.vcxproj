@@ -37,12 +37,14 @@
     <ClCompile Include="src\network.c" />
     <ClCompile Include="src\printf.c" />
     <ClCompile Include="src\file.c" />
+    <ClCompile Include="src\dir-playlist.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\ftp.h" />
     <ClInclude Include="include\printf.h" />
     <ClInclude Include="include\dbg.h" />
     <ClInclude Include="include\file.h" />
+    <ClInclude Include="include\dir-playlist.h" />
     <ClInclude Include="include\syscall.h" />
     <ClInclude Include="include\thread.h" />
     <ClInclude Include="include\string-utilities.h" />

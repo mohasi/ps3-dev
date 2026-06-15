@@ -14,6 +14,7 @@
 #include "overlays/confirm-overlay.h"
 #include "overlays/progress-overlay.h"
 #include "overlays/image-viewer-overlay.h"
+#include "overlays/audio-player-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
 #include "string-utilities.h"
@@ -84,6 +85,7 @@ static void initHome(void)
     initSidepanel(sprites, &clickSfx, dispatchAction);
     initConfirmOverlay(sprites, &clickSfx);
     initProgressOverlay(sprites, &clickSfx);
+    initAudioPlayerOverlay(sprites);
     addFooterButton(PAD_BTN_TRIANGLE, spriteRegions[SPRITE_TRIANGLE], "Options", openSidepanel);
     addFooterButton(PAD_BTN_SELECT, spriteRegions[SPRITE_SELECT], "Start FTP Server", toggleFtpServer);
 
@@ -106,7 +108,8 @@ static inline int anyOverlayVisible(void)
     return isOverlayVisible(&sidepanel)
         || isOverlayVisible(&confirmOverlay)
         || isOverlayVisible(&progressOverlay)
-        || isOverlayVisible(&imageViewerOverlay);
+        || isOverlayVisible(&imageViewerOverlay)
+        || isOverlayVisible(&audioPlayerOverlay);
 }
 
 static void updateHome(void)
@@ -120,6 +123,7 @@ static void updateHome(void)
     updateOverlay(&confirmOverlay);
     updateOverlay(&progressOverlay);
     updateOverlay(&imageViewerOverlay);
+    updateOverlay(&audioPlayerOverlay);
 
     if (!overlayWasVisible) {
         updateFooterWidget();
@@ -138,6 +142,7 @@ static void drawHome(void)
     drawFileList();
     drawFooterWidget();
     drawOverlay(&imageViewerOverlay);
+    drawOverlay(&audioPlayerOverlay);
     drawOverlay(&sidepanel);
     drawOverlay(&confirmOverlay);
     drawOverlay(&progressOverlay);
@@ -148,6 +153,7 @@ static void suspendHome(void) {}
 static void termHome(void)
 {
     stopFtpServer();
+    termOverlay(&audioPlayerOverlay);
     termOverlay(&imageViewerOverlay);
     termOverlay(&progressOverlay);
     termOverlay(&confirmOverlay);

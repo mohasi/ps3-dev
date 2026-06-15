@@ -95,7 +95,10 @@
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
-    <None Include="src\vorbis.c" />
+    <None Include="include\vorbis.h" />
+    <None Include="include\mp3.h" />
+    <None Include="include\flac.h" />
+    <None Include="include\wav.h" />
     <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

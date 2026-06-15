@@ -17,6 +17,7 @@
 #include "overlays/progress-overlay.h"
 #include "overlays/confirm-overlay.h"
 #include "overlays/image-viewer-overlay.h"
+#include "overlays/audio-player-overlay.h"
 #include "image-loader.h"
 #include "pad.h"
 #include <stdio.h>
@@ -307,8 +308,16 @@ static int selectedIsViewableImage(void)
            isSupportedImageFormat(entries[selectedIndex].name);
 }
 
-// cross handler: folders enter, supported images open in the viewer. anything
-// else has no default action (the button is disabled for it, see
+// whether the selected row is an audio file the player can actually decode (wav/ogg).
+static int selectedIsPlayableAudio(void)
+{
+    if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
+    return entries[selectedIndex].type == FILE_TYPE_AUDIO &&
+           isPlayableAudioFile(entries[selectedIndex].name);
+}
+
+// cross handler: folders enter, supported images open in the viewer, playable audio opens in
+// the player. anything else has no default action (the button is disabled for it, see
 // syncFooterButtons), so this is a no-op in that case.
 static void activateSelectedEntry(void)
 {
@@ -319,11 +328,11 @@ static void activateSelectedEntry(void)
         return;
     }
 
-    if (selectedIsViewableImage()) {
-        char full[MAX_PATH_LEN];
-        joinPath(full, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
-        openImageViewer(full);
-    }
+    char full[MAX_PATH_LEN];
+    joinPath(full, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+
+    if (selectedIsViewableImage())      openImageViewer(full);
+    else if (selectedIsPlayableAudio()) openAudioPlayer(full);
 }
 
 static void goToParentDir(void)
@@ -341,18 +350,20 @@ static void syncFooterButtons(void)
     int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
     int isFolder   = hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER;
     int isAnyImage = hasSelection && entries[selectedIndex].type == FILE_TYPE_IMAGE;
-    int isViewable = selectedIsViewableImage();  // png/jpeg only
+    int isAnyAudio = hasSelection && entries[selectedIndex].type == FILE_TYPE_AUDIO;
+    int isOpenable = selectedIsViewableImage() || selectedIsPlayableAudio();
 
-    // enabled for folders and openable images; any image (even unsupported)
+    // enabled for folders and openable media; any image/audio (even an unsupported codec)
     // still reads "Open", just greyed out when we can't decode it.
-    setFooterButtonEnabled(PAD_BTN_CROSS, isFolder || isViewable);
+    setFooterButtonEnabled(PAD_BTN_CROSS, isFolder || isOpenable);
 
     // only retouch the label when the cross action actually changes, so we
     // don't re-rasterize the glyphs every frame.
     static int crossShowsOpen = -1;
-    if (isAnyImage != crossShowsOpen) {
-        setFooterButtonText(PAD_BTN_CROSS, isAnyImage ? "Open" : "Enter");
-        crossShowsOpen = isAnyImage;
+    int showsOpen = isAnyImage || isAnyAudio;
+    if (showsOpen != crossShowsOpen) {
+        setFooterButtonText(PAD_BTN_CROSS, showsOpen ? "Open" : "Enter");
+        crossShowsOpen = showsOpen;
     }
 
     setFooterButtonEnabled(PAD_BTN_CIRCLE, strlen(currentPath) > 1);

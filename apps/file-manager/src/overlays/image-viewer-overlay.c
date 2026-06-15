@@ -1,12 +1,12 @@
 // image-viewer-overlay - full-screen still-image viewer.
 // Scans the chosen image's directory for sibling supported images, decodes them
-// asynchronously (one in VRAM at a time), and lets the user pan/zoom and slide
-// between them. Drawn on top of the home screen; closes on Circle.
+// asynchronously, and lets the user pan/zoom and step between them. One image is held
+// in VRAM at a time; stepping swaps it in place. Drawn on top of the home screen;
+// closes on Circle.
 #include "overlays/image-viewer-overlay.h"
 #include "image-loader.h"
 #include "gfx.h"
 #include "pad.h"
-#include "anim.h"              // applyEasing
 #include "font.h"
 #include "ui/label.h"
 #include "file.h"              // joinPath, getParentPath, getBaseName, MAX_PATH_LEN
@@ -17,8 +17,6 @@
 #include <sys/sys_time.h>
 
 #define COLOR_SCRIM        0xC8000000u  // ~78% black behind the image
-#define SLIDE_DURATION_US  350000ULL    // 350ms slide
-#define SLIDE_EASING       EASE_IN_OUT_CUBIC  // gentle start, accelerate, settle
 #define ZOOM_STEP          0.02f        // per-frame zoom rate while L2/R2 held
 #define ZOOM_MIN_FIT       0.1f         // safety floor below fit-to-screen
 #define ZOOM_MAX           5.0f         // 500%
@@ -36,17 +34,9 @@
 #define CAPTION_PAD_Y      6
 #define CAPTION_VISIBLE_US 3000000ULL      // caption auto-hides after 3s
 
-typedef enum {
-    SLIDE_NONE,      // settled (or initial open): no motion
-    SLIDE_TO_NEXT,   // new image slides in from the right
-    SLIDE_TO_PREV    // new image slides in from the left
-} SlideDirection;
-
-// Only one image is ever held in VRAM at a time: before uploading the next one
-// we freeVram() the current texture (gfx.c is a free-list allocator with
-// per-allocation free), so usage stays flat at one image no matter how many are
-// viewed. The new image slides in over the dimmed background while the old one
-// is released (no two-image cross-slide).
+// Only one image is ever held in VRAM at a time: before uploading the next one we
+// freeVram() the current texture (gfx.c is a free-list allocator with per-allocation
+// free), so usage stays flat at one image no matter how many are viewed.
 static struct {
     char dir[MAX_PATH_LEN];
     char names[MAX_IMAGES][IMAGE_NAME_MAX];  // supported images in dir, sorted
@@ -54,12 +44,9 @@ static struct {
     int  currentIndex;
 
     GfxTexture currentTex;
-    SlideDirection slideDir;   // a slide-in is animating when != SLIDE_NONE
-    uint64_t slideStartUs;
 
     int  loading;              // an async decode is in flight
     int  pendingIndex;         // names[] index being loaded
-    SlideDirection pendingDir; // how to reveal it once ready
     uint64_t captionShownUs;   // when the caption was last (re)set; for auto-hide
     int  captionIsError;       // caption shows an error; never auto-hide
 
@@ -196,17 +183,14 @@ static void setCaption(int index, const char *suffix)
     if (!suffix) state.captionShownUs = sys_time_get_system_time();
 }
 
-// begins an async load of names[index]. dir is how it should appear once ready:
-// SLIDE_NONE replaces the current image in place (initial open), otherwise it
-// slides in from that direction. supersedes any load already in flight.
-static void requestLoad(int index, SlideDirection dir)
+// begins an async load of names[index]. supersedes any load already in flight.
+static void requestLoad(int index)
 {
     char full[MAX_PATH_LEN];
     joinPath(full, MAX_PATH_LEN, state.dir, state.names[index]);
 
-    state.loading     = 1;
+    state.loading      = 1;
     state.pendingIndex = index;
-    state.pendingDir  = dir;
     requestImageAsync(full);
     setCaption(index, "(loading...)");
 }
@@ -238,12 +222,10 @@ int openImageViewer(const char *imagePath)
 
     // start with no image; the first decode lands via the async path below
     memset(&state.currentTex, 0, sizeof(state.currentTex));
-    state.slideDir = SLIDE_NONE;
     state.zoom = 1.0f;
     state.panX = state.panY = 0;
 
-    // decode the opening image asynchronously (SLIDE_NONE = drop straight in)
-    requestLoad(state.currentIndex, SLIDE_NONE);
+    requestLoad(state.currentIndex);
 
     showOverlay(&imageViewerOverlay);
     return 0;
@@ -295,8 +277,8 @@ static void update(void)
     if (state.loading) {
         // navigation while loading retargets (supersedes) the current load
         if (state.imageCount > 1) {
-            if (isPadButtonPressed(PAD_BTN_L1)) { requestLoad(wrapIndex(state.pendingIndex, -1), SLIDE_TO_PREV); return; }
-            if (isPadButtonPressed(PAD_BTN_R1)) { requestLoad(wrapIndex(state.pendingIndex, +1), SLIDE_TO_NEXT); return; }
+            if (isPadButtonPressed(PAD_BTN_L1)) { requestLoad(wrapIndex(state.pendingIndex, -1)); return; }
+            if (isPadButtonPressed(PAD_BTN_R1)) { requestLoad(wrapIndex(state.pendingIndex, +1)); return; }
         }
 
         ImageBuffer buf;
@@ -312,11 +294,9 @@ static void update(void)
 
             if (tex.offset == 0) {
                 // legal size but the upload failed (e.g. out of VRAM): land on
-                // this entry with a blank background (the old image was already
-                // released above) so the user can still navigate past it.
+                // this entry with a blank background so the user can navigate past it.
                 logError("[image-viewer] VRAM upload failed: %s\n", state.names[state.pendingIndex]);
                 state.currentIndex = state.pendingIndex;
-                state.slideDir     = SLIDE_NONE;
                 setCaption(state.currentIndex, "(out of vram)");
                 return;
             }
@@ -324,8 +304,6 @@ static void update(void)
             state.currentTex   = tex;
             state.currentIndex = state.pendingIndex;
             computeFitView(&state.currentTex, &state.zoom, &state.panX, &state.panY);
-            state.slideDir     = state.pendingDir;  // SLIDE_NONE on initial open = no motion
-            state.slideStartUs = sys_time_get_system_time();
             setCaption(state.currentIndex, NULL);  // success: caption auto-hides
         } else if (r == -1) {
             // can't decode (e.g. rejected as too large for the RSX): land on this
@@ -336,27 +314,19 @@ static void update(void)
             logError("[image-viewer] decode failed: %s\n", state.names[state.pendingIndex]);
             freeCurrentImage();
             state.currentIndex = state.pendingIndex;
-            state.slideDir     = SLIDE_NONE;
             setCaption(state.currentIndex, "(image too large)");
         }
         return;  // no zoom/pan while loading
     }
 
-    // let an in-progress slide-in finish; ignore other input until it settles
-    if (state.slideDir != SLIDE_NONE) {
-        if (sys_time_get_system_time() - state.slideStartUs >= SLIDE_DURATION_US)
-            state.slideDir = SLIDE_NONE;
-        return;
-    }
-
-    // L1 / R1 navigate (wrapping): kick off an async load, keeping the current
-    // image on screen until the new one is ready.
+    // L1 / R1 step (wrapping): kick off an async load, keeping the current image
+    // on screen until the new one is ready, then swap it in.
     if (isPadButtonPressed(PAD_BTN_L1) && state.imageCount > 1) {
-        requestLoad(wrapIndex(state.currentIndex, -1), SLIDE_TO_PREV);
+        requestLoad(wrapIndex(state.currentIndex, -1));
         return;
     }
     if (isPadButtonPressed(PAD_BTN_R1) && state.imageCount > 1) {
-        requestLoad(wrapIndex(state.currentIndex, +1), SLIDE_TO_NEXT);
+        requestLoad(wrapIndex(state.currentIndex, +1));
         return;
     }
 
@@ -387,21 +357,7 @@ static void draw(void)
     if (state.currentTex.offset) {
         int scaledW = (int)(state.currentTex.w * state.zoom);
         int scaledH = (int)(state.currentTex.h * state.zoom);
-
-        // during a slide-in the new image enters from the side over the dimmed
-        // background (the previous image has already been released).
-        int offsetX = 0;
-        if (state.slideDir != SLIDE_NONE) {
-            uint64_t elapsed = sys_time_get_system_time() - state.slideStartUs;
-            float t = (float)elapsed / (float)SLIDE_DURATION_US;
-            if (t > 1.0f) t = 1.0f;
-            float e = applyEasing(t, SLIDE_EASING);
-            float from = (state.slideDir == SLIDE_TO_NEXT) ? (float)state.screenW
-                                                           : -(float)state.screenW;
-            offsetX = (int)(from * (1.0f - e));
-        }
-
-        drawGfxTexture(state.panX + offsetX, state.panY, scaledW, scaledH,
+        drawGfxTexture(state.panX, state.panY, scaledW, scaledH,
                        state.currentTex, 0.0f, 0.0f, 1.0f, 1.0f,
                        0xFFFFFFFF, GFX_FILTER_LINEAR);
     }

@@ -7,7 +7,7 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
 - **gfx** - RSX 2D renderer: batched textured quads, PNG loading, sprites, circles, rectangles, and a coalescing free-list VRAM allocator (`allocateVram`/`freeVram`) where each owner frees what it allocated
 - **image-loader** - asynchronous PNG/JPEG decoder: background worker thread decodes to heap ARGB8888 buffer, main thread uploads to VRAM. Prevents UI freezes on large images. Codec downscaling for oversized JPEGs, size validation to prevent RSX hangs. Includes directory listing of supported images (sorted case-insensitive).
 - **font** - system font rendering via libfont/FreeType: word wrap, ellipsis, text measurement, bake-to-texture
-- **audio** - WAV playback (memory-loaded), OGG Vorbis streaming, master volume control
+- **audio** - multi-stream mixer playing WAV, OGG Vorbis, MP3 and FLAC. Streamed playback (WAV read from disk via dr_wav callbacks; OGG/MP3/FLAC decoded on demand from their compressed bytes) or fully memory-loaded for short SFX. Per-stream and master volume, seeking, a rolling waveform envelope for visualisers, and track-title (ID3 / Vorbis comment) extraction
 - **pad-input** - controller polling with press/release/held state tracking
 - **screen** - stack-based screen lifecycle (init/resume/update/draw/suspend/term)
 - **overlay** - persistent UI layer type (init/show/hide/update/draw/term)
@@ -40,6 +40,10 @@ simple-lib-app/
 |   +-- image-loader.h
 |   +-- font.h
 |   +-- audio.h
+|   +-- vorbis.h            # vendored single-header decoders (stb_vorbis / dr_libs),
+|   +-- mp3.h               #   #included by audio.c, not compiled on their own
+|   +-- flac.h
+|   +-- wav.h
 |   +-- pad-input.h
 |   +-- screen.h
 |   +-- overlay.h
@@ -62,7 +66,6 @@ simple-lib-app/
 |   +-- pad-input.c
 |   +-- screen.c
 |   +-- anim.c
-|   +-- vorbis.c           # stb_vorbis, included by audio.c
 |   +-- ui/
 |       +-- breadcrumb.c
 |       +-- label.c
@@ -71,7 +74,7 @@ simple-lib-app/
 ## Notes
 
 - Shaders (`vpshader.cg`, `fpshader.cg`) are compiled as custom build steps within this library. Consuming apps no longer need their own shader build steps.
-- `vorbis.c` is stb_vorbis (public domain), `#include`d directly by `audio.c` - not compiled separately.
+- The audio decoders are vendored single-header libraries `#include`d directly by `audio.c` (not compiled separately): `vorbis.h` (stb_vorbis) and `mp3.h`/`flac.h`/`wav.h` (the dr_libs). `audio.c` defines each one's `*_IMPLEMENTATION` before including it.
 - UI components under `ui/` are self-contained drawing helpers. Header-only components (circle, image, line, rectangle, triangle) define inline draw functions; label and breadcrumb have separate implementation files.
 - `image-loader` uses a persistent background worker thread (spawned lazily on first request) to decode PNG/JPEG images without blocking the UI. The worker produces heap ARGB8888 buffers; the caller uploads to VRAM on the main thread. Generation-based request superseding lets the caller retarget in-flight decodes. Max texture dimension is capped at 4096×4096 (RSX limit); JPEGs are codec-downscaled (1/2/4/8) to fit, PNGs are rejected if oversized.
 - This lib depends on `simple-lib-core` for the cross-context

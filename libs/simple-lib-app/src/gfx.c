@@ -392,7 +392,7 @@ void beginGfxFrame(void)
 
 	cellGcmSetScissor(CTX, 0, 0, screenW, screenH);
 	cellGcmSetDepthTestEnable(CTX, CELL_GCM_FALSE);
-	cellGcmSetFragmentProgramGammaEnable(CTX, CELL_GCM_TRUE);
+	cellGcmSetFragmentProgramGammaEnable(CTX, CELL_GCM_FALSE);
 
 	batchVertCount = 0;
 	batchFlushStart = 0;

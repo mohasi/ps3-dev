@@ -197,19 +197,24 @@ static void seekStream(Audio *a, uint32_t frame) {
     else if (a->wav)  drwav_seek_to_pcm_frame((drwav *)a->wav, frame);
 }
 
+// Applies a pending user seek (seekRequest, in source frames) on the mixer thread, which owns the
+// decoder. No-op when none is pending. Resets the resample carry and syncs playPos to the target.
+static void applyStreamSeek(Audio *a) {
+    if (a->seekRequest < 0) return;
+    seekStream(a, (uint32_t)a->seekRequest);
+    a->playPos        = (double)a->seekRequest;
+    a->seekRequest    = -1;
+    a->srcCarryFrames = 0;
+    a->srcCarryPos    = 0.0;
+}
+
 // one mixer block for a pull-decoder stream. The resample carry (decoded-but-unconsumed frames +
 // fractional position) persists across blocks, so resampling stays phase-continuous instead of
 // restarting (and dropping a couple of frames) every block.
 static void mixStreamBlock(Audio *a, float *mix, double step, float vol) {
     int ch = streamChannels(a);
 
-    if (a->seekRequest >= 0) {
-        seekStream(a, (uint32_t)a->seekRequest);
-        a->playPos = (double)a->seekRequest;
-        a->seekRequest = -1;
-        a->srcCarryFrames = 0;
-        a->srcCarryPos = 0.0;
-    }
+    applyStreamSeek(a);   // honor a pending user seek before decoding this block
 
     // top up the carry buffer so it covers this block's resample span (fractional pos + 256*step)
     int need = (int)(a->srcCarryPos + SFX_BLOCK_SAMPLES * step) + 2;
@@ -242,7 +247,11 @@ static void mixStreamBlock(Audio *a, float *mix, double step, float vol) {
         a->playPos += consumed;
     }
 
-    if (ended && a->srcCarryFrames == 0 && !a->loop) a->state = SFX_STATE_STOPPED;
+    // EOF: stop once the carry is down to its last frame. mixSamples can't interpolate the final
+    // frame (it needs frame p+1), so ~1 frame always remains at end-of-stream. Requiring exactly 0
+    // left the stream stuck PLAYING at the end forever, so X toggled pause instead of restarting.
+    // Dropping that one inaudible frame lets the stream reach STOPPED so a finished track replays.
+    if (ended && !a->loop && a->srcCarryFrames <= 1) a->state = SFX_STATE_STOPPED;
 }
 
 static void audioMixerThread(uint64_t arg) {
@@ -269,7 +278,11 @@ static void audioMixerThread(uint64_t arg) {
             // store is visible just below and we bail -- so we never touch a decoder being freed.
             mixingStream = a;
             __sync_synchronize();
-            if (a->state != SFX_STATE_PLAYING) { mixingStream = NULL; continue; }
+            if (a->state != SFX_STATE_PLAYING) {
+                applyStreamSeek(a);   // honor a seek made while paused/stopped (mixer owns decoder)
+                mixingStream = NULL;
+                continue;
+            }
 
             // advance a volume fade by one block, if one is running
             if (a->fadeStep != 0.0f) {
@@ -594,7 +607,12 @@ static size_t wavRead(void *user, void *out, size_t bytes) {
 }
 static drwav_bool32 wavSeek(void *user, int offset, drwav_seek_origin origin) {
     uint64_t pos;
-    int whence = (origin == DRWAV_SEEK_CUR) ? CELL_FS_SEEK_CUR : CELL_FS_SEEK_SET;
+    // dr_wav (>= v0.14) seeks from the end to validate the data-chunk size against the real file
+    // length. All three origins must be mapped -- treating a from-end seek as from-start makes the
+    // file look 0 bytes long, so dr_wav reports a garbage frame count (a ~49-hour duration here).
+    int whence = (origin == DRWAV_SEEK_CUR) ? CELL_FS_SEEK_CUR
+               : (origin == DRWAV_SEEK_END) ? CELL_FS_SEEK_END
+               : CELL_FS_SEEK_SET;
     return cellFsLseek((int)(intptr_t)user, offset, whence, &pos) == CELL_FS_SUCCEEDED;
 }
 static drwav_bool32 wavTell(void *user, drwav_int64 *cursor) {
@@ -679,18 +697,27 @@ void playSfx(Audio *a, float volume, float speed, int loop) {
     a->srcCarryPos = 0.0;
     a->fadeTarget = volume;     // start with no fade in progress
     a->fadeStep   = 0.0f;
-    a->state  = SFX_STATE_PLAYING;
+    a->seekRequest = -1;        // clear before the wait so the mixer can't apply a stale seek below
+
+    // A replay restarts a stream that is still in the mix list. Wait out any block the mixer is
+    // running on it, then rewind the decoder and go live LAST -- otherwise the mixer could decode
+    // (a slow cellFs-backed wav especially) while this rewind is mid-seek, leaving the replay silent.
+    __sync_synchronize();
+    while (mixingStream == a) sys_timer_usleep(100);
 
     if (a->mode == SFX_STREAM) {
-        // rewind the decoder to the start (vorbis has a dedicated reset; the rest seek to frame 0)
         if (a->vorbis) stb_vorbis_seek_start(a->vorbis);
         else           seekStream(a, 0);
     }
 
+    int present = 0;
     for (int i = 0; i < streamCount; i++)
-        if (streams[i] == a) return;
-    if (streamCount < SFX_MAX_STREAMS)
+        if (streams[i] == a) { present = 1; break; }
+    if (!present && streamCount < SFX_MAX_STREAMS)
         streams[streamCount++] = a;
+
+    __sync_synchronize();
+    a->state = SFX_STATE_PLAYING;   // live only once the decoder is rewound and we are registered
 }
 
 void stopSfx(Audio *a) {
@@ -737,9 +764,11 @@ void seekSfx(Audio *a, float seconds) {
         a->playPos = pos;
     } else if (a->mode == SFX_STREAM && (a->vorbis || a->mp3 || a->flac || a->wav)) {
         // stream: hand the target frame to the mixer thread, which owns the decoder / file reads.
-        long target = (long)(seconds * (float)a->sampleRate);
-        if (a->pcmSamples && target > (long)a->pcmSamples - 1) target = (long)a->pcmSamples - 1;
-        if (target < 0) target = 0;
+        // Clamp in double -- pcmSamples is uint32, so a (long) cast can go negative on PS3 (32-bit
+        // long) for very large counts and collapse every seek to 0.
+        double target = (double)seconds * (double)a->sampleRate;
+        if (target < 0.0) target = 0.0;
+        if (a->pcmSamples && target > (double)(a->pcmSamples - 1)) target = (double)(a->pcmSamples - 1);
         a->seekRequest = (int)target;
     }
 }

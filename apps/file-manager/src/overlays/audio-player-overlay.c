@@ -509,10 +509,17 @@ static void formatSidedMS(char *buf, int cap, int secs, char sign)
 // re-renders the time/volume labels only when their displayed value changes.
 static void syncLabels(void)
 {
-    int total   = (int)(getSfxDurationSeconds(&state.audio) + 0.5f);
-    int elapsed = (int)displayPosSeconds();
-    int remain  = total - elapsed;
-    if (remain < 0) remain = 0;
+    // total is rounded but elapsed is floored, and a finished stream sits a frame short of the full
+    // length -- computing remain as total-elapsed then left it at +0:01 at the very end. Round the
+    // remaining time off the real position so it lands on 0, and snap elapsed to total when done.
+    float duration = getSfxDurationSeconds(&state.audio);
+    float pos      = displayPosSeconds();
+    if (pos > duration) pos = duration;
+    int total   = (int)(duration + 0.5f);
+    int elapsed = (int)pos;                       // floor: counts up like a stopwatch
+    int remain  = (int)((duration - pos) + 0.5f); // round: lands on 0 exactly at the end
+    if (remain <= 0) { remain = 0; elapsed = total; }   // finished: show the track fully elapsed
+    if (elapsed > total) elapsed = total;
 
     if (elapsed != lastElapsed || total != lastTotal) {
         char elapsedStr[16], totalStr[16], combined[40];

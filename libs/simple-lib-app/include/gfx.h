@@ -31,6 +31,31 @@ typedef struct {
 int  initGfx(GfxVsync vsync);
 void termGfx(void);
 
+// Offscreen render target (render-to-texture). Draw a scene into one of these instead of
+// the display buffer, then sample `tex` like any other texture (cross-fades, post effects,
+// UI/scene caching, screenshots). Generic: not tied to any one app.
+//   createGfxRenderTarget  allocate an w*h RGBA color surface (0 on success)
+//   beginGfxRenderTarget   redirect subsequent draws into rt (flushes the current batch);
+//                          drawing coordinates are relative to the target's own w*h
+//   endGfxRenderTarget     restore drawing to the frame's display buffer
+//   freeGfxRenderTarget    release the surface VRAM
+// begin/end do NOT clear -- call clearGfx() after begin if you want a known background.
+// Targets are valid between beginGfxFrame/endGfxFrame; do not flip while one is bound.
+typedef struct {
+    GfxTexture tex;     // sample this after endGfxRenderTarget (tex.offset/w/h/pitch)
+} GfxRenderTarget;
+
+int  createGfxRenderTarget(GfxRenderTarget *rt, int w, int h);
+void beginGfxRenderTarget(GfxRenderTarget *rt);
+void endGfxRenderTarget(void);
+void freeGfxRenderTarget(GfxRenderTarget *rt);
+
+// Screenshot: returns a CPU-readable pointer to the FRONT (currently displayed) framebuffer in local
+// memory -- the last fully-rendered+flipped frame -- and writes the screen width/height + row pitch
+// (bytes). Pixels are A8R8G8B8. Valid until the next flip; NULL if gfx isn't initialised. (On RPCS3
+// needs the "Write Color Buffers" GPU option; on real PS3 local memory is readable directly.)
+const void *getGfxDisplayBuffer(int *w, int *h, int *pitch);
+
 void beginGfxFrame(void);
 void clearGfx(uint32_t argb);
 void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb);
@@ -45,7 +70,13 @@ void endGfxFrame(void);
 // memory while the CPU overwrites it.
 void finishGfx(void);
 
+// Loads a PNG or JPEG file into a VRAM texture (dispatches by extension). Returns a
+// zero-initialised texture on failure (check .offset). Implemented in image-loader.c.
 GfxTexture loadGfxTexture(const char *path);
+
+// Loads an in-memory PNG/JPEG (format sniffed from magic bytes) into a VRAM texture.
+// Returns a zero-initialised texture on failure (check .offset). Implemented in image-loader.c.
+GfxTexture loadGfxTextureMem(const void *data, uint32_t size);
 uint32_t   uploadGfxTexture(const void *rgba, int w, int h, int srcPitch);
 void       updateGfxTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH);
 

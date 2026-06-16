@@ -6,8 +6,10 @@
 #include <cell/cell_fs.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 #include "gfx.h"
 #include "colors.h"
+#include "dbg.h"
 
 static const int FONT_MAX_RENDER_W = 1024;
 
@@ -29,11 +31,18 @@ int initFont(void)
     cellSysmoduleLoadModule(CELL_SYSMODULE_FONTFT);
 
     static uint32_t fontFileCache[256 * 1024 / sizeof(uint32_t)];
+    // Slots for user fonts opened via openFontFile/openFontMemory. CellFontConfig_initialize
+    // defaults userFontEntryMax to 0, so without this any user-font open returns
+    // CELL_FONT_ERROR_FONT_OPEN_MAX (0x8054000d). (System fonts don't use these slots.)
+    static CellFontEntry userFontEntries[8];
+
     CellFontConfig fconfig;
     CellFontConfig_initialize(&fconfig);
     fconfig.FileCache.buffer = fontFileCache;
     fconfig.FileCache.size   = sizeof(fontFileCache);
     fconfig.flags = 0;
+    fconfig.userFontEntryMax  = 8;
+    fconfig.userFontEntrys    = userFontEntries;
     if (cellFontInit(&fconfig) != CELL_OK) return -1;
 
     CellFontLibraryConfigFT config;
@@ -95,6 +104,42 @@ Font openSystemFont(int type)
     return f;
 }
 
+// cellFont caches opened faces by the `uniqueId` passed to cellFontOpenFont*; if two different
+// fonts share an id (the old hardcoded 0) the second open returns the FIRST cached face. Hand out a
+// fresh id per open so every font is distinct (e.g. the dialogue font and the in-game chat font).
+static int nextFontUid(void) { static int uid = 1; return uid++; }
+
+// Parse the SFNT (TrueType/OpenType) header for the hhea ascender/descender + head unitsPerEm, which is
+// what FreeType (and hence Ren'Py, ftfont.pyx) uses for the line height (ascender - descender). cellFont's
+// CellFontHorizontalLayout instead uses the OS/2 usWin* metrics, which over-space some OTF fonts. SFNT is
+// big-endian. Fills f->unitsPerEm/hheaAscent/hheaDescent; unitsPerEm stays 0 if the tables aren't found.
+static uint16_t sfntU16(const uint8_t *p) { return (uint16_t)((p[0] << 8) | p[1]); }
+static int16_t  sfntS16(const uint8_t *p) { return (int16_t)((p[0] << 8) | p[1]); }
+static uint32_t sfntU32(const uint8_t *p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
+static void parseSfntMetrics(Font *f, const uint8_t *buf, uint32_t size)
+{
+    f->unitsPerEm = 0; f->hheaAscent = 0; f->hheaDescent = 0;
+    if (!buf || size < 12) return;
+    uint16_t numTables = sfntU16(buf + 4);     // offset table: u32 tag, u16 numTables, ...
+    uint32_t headOff = 0, hheaOff = 0;
+    for (uint16_t i = 0; i < numTables; i++)
+    {
+        uint32_t rec = 12u + (uint32_t)i * 16u;   // each table record: tag(4) checksum(4) offset(4) length(4)
+        if (rec + 16u > size) break;
+        const uint8_t *tag = buf + rec;
+        uint32_t off = sfntU32(buf + rec + 8);
+        if (tag[0]=='h'&&tag[1]=='e'&&tag[2]=='a'&&tag[3]=='d') headOff = off;
+        else if (tag[0]=='h'&&tag[1]=='h'&&tag[2]=='e'&&tag[3]=='a') hheaOff = off;
+    }
+    int upm = (headOff && headOff + 20u <= size) ? sfntU16(buf + headOff + 18) : 0;   // head.unitsPerEm @ +18
+    if (hheaOff && hheaOff + 10u <= size && upm > 0)
+    {
+        f->hheaAscent  = sfntS16(buf + hheaOff + 4);   // hhea.ascender  @ +4
+        f->hheaDescent = sfntS16(buf + hheaOff + 6);   // hhea.descender @ +6
+        if (f->hheaAscent != 0 || f->hheaDescent != 0) f->unitsPerEm = upm;
+    }
+}
+
 Font openFontFile(const char *path)
 {
     Font f;
@@ -116,12 +161,54 @@ Font openFontFile(const char *path)
     cellFsRead(fd, buf, size, &nread);
     cellFsClose(fd);
 
-    if (cellFontOpenFontMemory(fontLib, buf, size, 0, 0, &f.font) == CELL_OK) {
+    if (cellFontOpenFontMemory(fontLib, buf, size, 0, nextFontUid(), &f.font) == CELL_OK) {
         f.open = 1;
         f.buffer = buf;  // cellFont keeps reading buf for the font's life; closeFont frees it
         cellFontSetResolutionDpi(&f.font, 72, 72);
+        parseSfntMetrics(&f, buf, size);   // hhea/head metrics for the faithful (Ren'Py) line height
     } else {
         free(buf);
+    }
+
+    return f;
+}
+
+Font openFontMemory(const void *buf, uint32_t size)
+{
+    Font f;
+    memset(&f, 0, sizeof(f));
+
+    if (!fontInited) initFont();
+    if (!buf || size == 0) return f;
+
+    // cellFont keeps reading the buffer for the font's lifetime, so own a private copy.
+    void *own = malloc(size);
+    if (!own) return f;
+    memcpy(own, buf, size);
+
+    int ret = cellFontOpenFontMemory(fontLib, own, size, 0, nextFontUid(), &f.font);
+    if (ret == CELL_OK) {
+        f.open = 1;
+        f.buffer = own;  // closeFont frees it
+        cellFontSetResolutionDpi(&f.font, 72, 72);
+        parseSfntMetrics(&f, (const uint8_t *)own, size);   // hhea/head metrics for the faithful line height
+        // DIAGNOSTIC (data-driven, not a guess): cellFont is FreeType-backed, so its advance for a glyph
+        // should equal the font's hmtx advance scaled. Log cellFont's advance for 'M'/'a'/' ' at em=1000
+        // so it can be compared directly to the font's hmtx (font units): if cellFont reports MORE, it is
+        // rendering this (OTF/CFF) font wider than its metrics -> the early-wrap cause + the size factor.
+        {
+            cellFontSetScalePixel(&f.font, 1000.0f, 1000.0f);
+            CellFontGlyphMetrics gm; float aM=0,aa=0,asp=0;
+            if (cellFontGetCharGlyphMetrics(&f.font, 'M', &gm) == CELL_OK) aM = gm.Horizontal.advance;
+            if (cellFontGetCharGlyphMetrics(&f.font, 'a', &gm) == CELL_OK) aa = gm.Horizontal.advance;
+            if (cellFontGetCharGlyphMetrics(&f.font, ' ', &gm) == CELL_OK) asp = gm.Horizontal.advance;
+            // NOTE: the homebrew printf has no %f -> log integers (x10 for one decimal of resolution).
+            logInfo("[font] upm=%d hheaAsc=%d hheaDesc=%d  cellFont adv@em1000 x10: M=%d a=%d space=%d\n",
+                    f.unitsPerEm, f.hheaAscent, f.hheaDescent, (int)(aM*10+0.5f), (int)(aa*10+0.5f), (int)(asp*10+0.5f));
+        }
+    } else {
+        logError("[font] cellFontOpenFontMemory failed: 0x%x (size=%u)\n", ret, size);
+        free(own);
     }
 
     return f;
@@ -135,6 +222,34 @@ void closeFont(Font *f)
     }
     free(f->buffer);  // backing memory for openFontFile; NULL (safe) for system fonts
     f->buffer = NULL;
+}
+
+void setFontMetrics(Font *f, FontMetricsMode mode, float grid)
+{
+    f->metricsMode = (int)mode;
+    f->metricsGrid = grid > 0.0f ? grid : 0.0f;
+}
+
+// Applies the font's advance model to a raw advance (see FontMetricsMode). The small
+// epsilon keeps an exact multiple from ceiling up a step due to float error.
+static float quantAdvance(const Font *f, float adv)
+{
+    if (f->metricsMode != FONT_METRICS_GRID_CEIL || f->metricsGrid <= 0.0f) return adv;
+    float cells = ceilf(adv / f->metricsGrid - 0.001f);
+    return cells * f->metricsGrid;
+}
+
+// Kerning between two glyphs at the current scale, per the font's metrics mode.
+// NATIVE mode reports 0 (fractional-advance stacks don't kern); GRID_CEIL floors the
+// offset to the grid, matching classic stacks' integer `delta.x >> 6`.
+static float fontKern(Font *f, uint32_t prev, uint32_t code)
+{
+    if (f->metricsMode != FONT_METRICS_GRID_CEIL || prev == 0) return 0.0f;
+    CellFontKerning k;
+    if (cellFontGetKerning(&f->font, prev, code, &k) != CELL_OK) return 0.0f;
+    if (k.offsetX == 0.0f) return 0.0f;
+    float g = f->metricsGrid > 0.0f ? f->metricsGrid : 1.0f;
+    return floorf(k.offsetX / g + 0.001f) * g;
 }
 
 // decodes one utf-8 codepoint, advances *pp past it. returns codepoint.
@@ -166,14 +281,16 @@ float measureFontText(Font *f, int size, const char *text)
     cellFontSetScalePixel(&f->font, fsize, fsize);
 
     float w = 0.0f;
+    uint32_t prev = 0;
     const uint8_t *p = (const uint8_t *)text;
     while (*p) {
         uint32_t code = decodeUtf8(&p);
         CellFontGlyphMetrics metrics;
         if (cellFontGetCharGlyphMetrics(&f->font, code, &metrics) == CELL_OK)
-            w += metrics.Horizontal.advance;
+            w += quantAdvance(f, metrics.Horizontal.advance) + fontKern(f, prev, code);
         else
             w += fsize;
+        prev = code;
     }
     return w;
 }
@@ -184,58 +301,259 @@ float measureFontChar(Font *f, int size, uint32_t code)
     cellFontSetScalePixel(&f->font, fsize, fsize);
     CellFontGlyphMetrics metrics;
     if (cellFontGetCharGlyphMetrics(&f->font, code, &metrics) == CELL_OK)
-        return metrics.Horizontal.advance;
+        return quantAdvance(f, metrics.Horizontal.advance);
     return fsize;
+}
+
+// ---- inline style tags: {i} {b} {color=#rrggbb} (+ {{ and [[ escapes) ----
+// Lightweight inline markup for styled runs inside one string. Text is pre-parsed into
+// styled glyph items so tag handling stays separate from the (already fiddly)
+// wrapping/layout logic, which then just walks the item array.
+typedef struct { uint32_t code; uint8_t italic; uint8_t bold; uint32_t color; } GlyphItem;
+
+// Parses text into items[] (<= maxItems). baseColor is the default colour. Nested {i}/{b}
+// are counted; {color} uses a small stack. Unknown tags ({w},{p},{size=..},...) are skipped.
+static int parseStyledText(const char *text, uint32_t baseColor, GlyphItem *items, int maxItems)
+{
+    int italic = 0, bold = 0;
+    uint32_t colorStack[8];
+    int colorTop = 0;
+    colorStack[0] = baseColor;
+
+    int n = 0;
+    const uint8_t *p = (const uint8_t *)text;
+    while (*p && n < maxItems) {
+        if (p[0] == '{' && p[1] == '{') {           // literal brace
+            items[n].code = '{'; items[n].italic = (uint8_t)(italic>0); items[n].bold = (uint8_t)(bold>0); items[n].color = colorStack[colorTop]; n++; p += 2; continue;
+        }
+        if (p[0] == '[' && p[1] == '[') {           // literal bracket
+            items[n].code = '['; items[n].italic = (uint8_t)(italic>0); items[n].bold = (uint8_t)(bold>0); items[n].color = colorStack[colorTop]; n++; p += 2; continue;
+        }
+        if (p[0] == '{') {                          // a tag
+            const uint8_t *q = p + 1;
+            while (*q && *q != '}') q++;
+            int len = (int)(q - (p + 1));
+            const char *t = (const char *)(p + 1);
+            if      (len == 1 && t[0] == 'i') italic++;
+            else if (len == 2 && t[0] == '/' && t[1] == 'i') { if (italic > 0) italic--; }
+            else if (len == 1 && t[0] == 'b') bold++;
+            else if (len == 2 && t[0] == '/' && t[1] == 'b') { if (bold > 0) bold--; }
+            else if (len >= 7 && strncmp(t, "color=#", 7) == 0) {
+                // colour literal parsing lives in colors.h (shared with manifest parsing etc.)
+                if (colorTop < 7) { colorTop++; colorStack[colorTop] = parseColorSpan(t + 7, len - 7, colorStack[colorTop - 1]); }
+            }
+            else if (len == 6 && strncmp(t, "/color", 6) == 0) { if (colorTop > 0) colorTop--; }
+            // other tags carry no glyph: skip
+            p = (*q == '}') ? q + 1 : q;
+            continue;
+        }
+        if (p[0] == '\n') {
+            items[n].code = '\n'; items[n].italic = (uint8_t)(italic>0); items[n].bold = (uint8_t)(bold>0); items[n].color = colorStack[colorTop]; n++; p++; continue;
+        }
+        uint32_t code = decodeUtf8(&p);
+        items[n].code = code; items[n].italic = (uint8_t)(italic > 0); items[n].bold = (uint8_t)(bold > 0); items[n].color = colorStack[colorTop];
+        n++;
+    }
+    return n;
+}
+
+static float glyphAdvance(Font *f, uint32_t code, float fsize)
+{
+    CellFontGlyphMetrics m;
+    if (cellFontGetCharGlyphMetrics(&f->font, code, &m) == CELL_OK) return quantAdvance(f, m.Horizontal.advance);
+    return fsize;
+}
+
+// Source-over composite of one glyph pixel (coverage a, colour cr/cg/cb) onto the surface
+// pixel d = [a, r, g, b]. A plain write when the destination is empty, so the common case
+// (text over a cleared surface) costs one branch.
+static inline void composePixel(uint8_t *d, int a, uint8_t cr, uint8_t cg, uint8_t cb)
+{
+    if (a <= 0) return;
+    int da = d[0];
+    if (da == 0 || a >= 255) { d[0] = (uint8_t)a; d[1] = cr; d[2] = cg; d[3] = cb; return; }
+    int outA = a + da * (255 - a) / 255;
+    if (outA <= 0) return;
+    d[1] = (uint8_t)((cr * a + d[1] * da * (255 - a) / 255) / outA);
+    d[2] = (uint8_t)((cg * a + d[2] * da * (255 - a) / 255) / outA);
+    d[3] = (uint8_t)((cb * a + d[3] * da * (255 - a) / 255) / outA);
+    d[0] = (uint8_t)outA;
+}
+
+// Blits a rendered glyph's alpha bitmap into the surface, src-over composited.
+//   dx/dy     offset from the glyph's nominal position (used by the shadow pass)
+//   argb      colour; its ALPHA scales the glyph coverage (semi-transparent shadows/tags)
+//   overhang  synthetic-bold strength in px (0 = regular). Faithful to FreeType's
+//             FT_Bitmap_Embolden (src/base/ftbitmap.c, 8-bit gray path): each output pixel
+//             is the SATURATING SUM of itself plus the `overhang` ORIGINAL pixels to its
+//             left (a max would leave antialiased stroke interiors semi-transparent and
+//             render thin, uneven bold), and the output is `overhang` columns wider so the
+//             rightmost stroke thickens too (FreeType widens the bitmap the same way).
+//             Reading from the glyph's own untouched bitmap matches FreeType's
+//             right-to-left in-place pass. The caller widens the pen advance separately.
+// Clipped against the surface bounds; surfBase/surfW/surfH locate the glyph's origin.
+static void blitGlyph(const CellFontImageTransInfo *ti, uint8_t *surfBase, int surfW, int surfH,
+                      int dx, int dy, uint32_t argb, int overhang)
+{
+    const uint8_t *img = (const uint8_t *)ti->Image;
+    int imgW = ti->imageWidth, imgH = ti->imageHeight;
+    int imgBW = ti->imageWidthByte, surfBW = ti->surfWidthByte;
+    uint8_t cr = (uint8_t)((argb >> 16) & 0xFF), cg = (uint8_t)((argb >> 8) & 0xFF), cb = (uint8_t)(argb & 0xFF);
+    int alpha = (int)((argb >> 24) & 0xFF);
+    int off = (int)((const uint8_t *)ti->Surface - surfBase);
+    int gx = (off % surfBW) / 4, gy = off / surfBW;
+    int outW = imgW + overhang;
+    for (int iy = 0; iy < imgH; iy++) {
+        int ty = gy + iy + dy;
+        if (ty < 0 || ty >= surfH) continue;
+        const uint8_t *srow = img + iy * imgBW;
+        uint8_t *drow = surfBase + ty * surfBW;
+        for (int ix = 0; ix < outW; ix++) {
+            int tx = gx + ix + dx;
+            if (tx < 0 || tx >= surfW) continue;
+            int a = (ix < imgW) ? srow[ix] : 0;
+            for (int k = 1; k <= overhang && a < 255; k++) {
+                int sx = ix - k;
+                if (sx < 0) break;
+                if (sx < imgW) a += srow[sx];
+            }
+            if (a > 255) a = 255;
+            if (alpha < 255) a = a * alpha / 255;
+            composePixel(drow + tx * 4, a, cr, cg, cb);
+        }
+    }
+}
+
+// width of the word starting at items[j0] (up to the next space/newline), including
+// kerning inside the word and for the (prevCode -> first glyph) pair. Used by the wrap
+// decision: a line breaks when "line + space + word" would exceed the target width.
+static float wordWidth(Font *f, const GlyphItem *items, int nItems, int j0, uint32_t prevCode, float fsize)
+{
+    float w = 0.0f;
+    uint32_t prev = prevCode;
+    for (int j = j0; j < nItems && items[j].code != ' ' && items[j].code != '\n'; j++) {
+        w += glyphAdvance(f, items[j].code, fsize) + fontKern(f, prev, items[j].code);
+        prev = items[j].code;
+    }
+    return w;
+}
+
+// records where laid-out item `index` ends (pen x + which wrapped line it's on) for a typewriter
+// reveal -- taken from the real render pass, so the map can never desync from the texture.
+static void recordRevealItem(TextReveal *reveal, int index, float penX, int line)
+{
+    if (index < TEXT_REVEAL_MAX) { reveal->endX[index] = (int)(penX + 0.5f); reveal->line[index] = line; }
+}
+
+// The x offset of a laid-out line within the text block for a given alignment: 0 for LEFT,
+// (blockW - lineW)/2 for CENTER, (blockW - lineW) for RIGHT. blockW = the longest line, so
+// the longest line gets offset 0 and the block crops to it.
+static float lineStartOffset(int align, const float *lineW, float maxLineW, int lineCount, int li)
+{
+    if (!lineW || align == TEXT_ALIGN_LEFT || li < 0 || li >= lineCount) return 0.0f;
+    float d = maxLineW - lineW[li]; if (d < 0.0f) d = 0.0f;
+    return (align == TEXT_ALIGN_CENTER) ? d * 0.5f : d;
 }
 
 // rasterizes text into a CPU buffer. returns the actual content dimensions
 // via outW/outH. surfW is the buffer row width (may be larger than content).
-// caller must free the returned buffer.
-static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, int *outW, int *outH, int *outSurfW)
+// caller must free the returned buffer. `end` (optional) receives where the
+// final glyph landed (texture coords). `align` aligns each line within the block.
+static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap,
+                          const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align, int *outW, int *outH, int *outSurfW)
 {
     *outW = *outH = *outSurfW = 0;
+
+    int sdx = 0, sdy = 0, hasShadow = 0;
+    uint32_t shadowArgb = 0;
+    if (shadow && (shadow->dx != 0 || shadow->dy != 0)) {
+        sdx = shadow->dx; sdy = shadow->dy; shadowArgb = shadow->color; hasShadow = 1;
+    }
 
     float fsize = (float)size;
     cellFontSetScalePixel(&f->font, fsize, fsize);
     cellFontBindRenderer(&f->font, &fontRenderer);
 
-    CellFontHorizontalLayout layout;
-    cellFontGetHorizontalLayout(&f->font, &layout);
-    float lineH = layout.lineHeight;
-    float baseY = layout.baseLineY;
+    // Parse inline style tags into glyph items; layout/render walk this array.
+    int cap = (int)strlen(text) + 1;
+    GlyphItem *items = (GlyphItem *)malloc(sizeof(GlyphItem) * cap);
+    if (!items) return NULL;
+    int nItems = parseStyledText(text, color, items, cap);
 
-    // count lines for height calculation
+    // Baseline + line pitch the way Ren'Py does it (renpy/text/ftfont.pyx): from the FreeType (hhea)
+    // ascender/descender -- ascent = ceil(ascender*size/upm), descent = floor(descender*size/upm),
+    // line height = ascent - descent (descent negative). cellFont's CellFontHorizontalLayout instead
+    // uses the OS/2 usWin* metrics, which are correct for fonts where they match hhea (e.g. primer.ttf)
+    // but over-tall for some OTFs (toony_loons.otf: win 1.273em vs hhea 0.985em -> the box stretched).
+    // Fall back to the cellFont layout only when the SFNT metrics weren't parsed (e.g. system fonts).
+    float lineH, baseY;
+    if (f->unitsPerEm > 0)
+    {
+        float asc = ceilf((float)f->hheaAscent  * fsize / (float)f->unitsPerEm);
+        float dsc = floorf((float)f->hheaDescent * fsize / (float)f->unitsPerEm);   // descender is negative
+        baseY = asc;
+        lineH = asc - dsc;
+    }
+    else
+    {
+        CellFontHorizontalLayout layout;
+        cellFontGetHorizontalLayout(&f->font, &layout);
+        lineH = layout.lineHeight;
+        baseY = layout.baseLineY;
+    }
+
+    // count lines for height calculation (must mirror the wrap logic in the render loop;
+    // kerning resets per line, since each laid-out line is measured independently)
     int lineCount = 1;
     if (wrap == TEXT_WRAP && maxWidth > 0) {
         float px = 0.0f;
-        const uint8_t *sp = (const uint8_t *)text;
-        while (*sp) {
-            if (*sp == '\n') { lineCount++; px = 0.0f; sp++; continue; }
-            uint32_t sc = decodeUtf8(&sp);
-            CellFontGlyphMetrics sm;
-            float adv = fsize;
-            if (cellFontGetCharGlyphMetrics(&f->font, sc, &sm) == CELL_OK) adv = sm.Horizontal.advance;
-            if (sc == ' ') {
-                float wordW = 0.0f;
-                const uint8_t *wp = sp;
-                while (*wp && *wp != ' ' && *wp != '\n') {
-                    uint32_t wc = decodeUtf8(&wp);
-                    CellFontGlyphMetrics wm;
-                    if (cellFontGetCharGlyphMetrics(&f->font, wc, &wm) == CELL_OK) wordW += wm.Horizontal.advance;
-                    else wordW += fsize;
-                }
-                if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineCount++; px = 0.0f; continue; }
+        uint32_t prev = 0;
+        for (int i = 0; i < nItems; i++) {
+            uint32_t code = items[i].code;
+            if (code == '\n') { lineCount++; px = 0.0f; prev = 0; continue; }
+            float adv = glyphAdvance(f, code, fsize) + fontKern(f, prev, code);
+            if (code == ' ') {
+                float wordW = wordWidth(f, items, nItems, i + 1, ' ', fsize);
+                if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineCount++; px = 0.0f; prev = 0; continue; }
             }
             px += adv;
+            prev = code;
+        }
+    }
+
+    if (reveal) { reveal->lineHeight = (int)(lineH + 0.5f); reveal->count = 0; }
+
+    // For CENTER/RIGHT alignment, measure each line's width (mirroring the wrap logic above
+    // and the render pass exactly -- glyphAdvance == the rendered pen step) so each line can be
+    // offset within the block at draw time. The wrap DECISIONS still use the line-relative pen,
+    // so breaks are identical; only the draw x is shifted.
+    float *lineW = NULL; float maxLineW = 0.0f;
+    if (align != TEXT_ALIGN_LEFT && wrap == TEXT_WRAP && maxWidth > 0 && lineCount > 0) {
+        lineW = (float *)malloc(sizeof(float) * lineCount);
+        if (lineW) {
+            int li = 0; float px = 0.0f; uint32_t prev = 0;
+            for (int i = 0; i < nItems && li < lineCount; i++) {
+                uint32_t code = items[i].code;
+                if (code == '\n') { lineW[li++] = px; px = 0.0f; prev = 0; continue; }
+                float adv = glyphAdvance(f, code, fsize) + fontKern(f, prev, code);
+                if (code == ' ') {
+                    float wordW = wordWidth(f, items, nItems, i + 1, ' ', fsize);
+                    if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineW[li++] = px; px = 0.0f; prev = 0; continue; }
+                }
+                px += adv; prev = code;
+            }
+            if (li < lineCount) lineW[li] = px;
+            for (int k = 0; k < lineCount; k++) if (lineW[k] > maxLineW) maxLineW = lineW[k];
         }
     }
 
     int surfW = (maxWidth > 0) ? maxWidth : FONT_MAX_RENDER_W;
     int surfH = (int)(lineH * lineCount + fsize) + 4;
+    if (hasShadow && sdy > 0) surfH += sdy;   // room for the shadow below the last line
 
     int bufSize = surfW * surfH * 4;
     uint8_t *buf = (uint8_t *)malloc(bufSize);
-    if (!buf) return NULL;
+    if (!buf) { free(items); free(lineW); return NULL; }
     memset(buf, 0, bufSize);
 
     CellFontRenderSurface surf;
@@ -243,14 +561,17 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
     cellFontRenderSurfaceSetScissor(&surf, 0, 0, surfW, surfH);
     cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
 
-    float penX = 0.0f;
-    float penY = baseY;
+    // glyph effect state: italic via the slant shear (0.0 == genuinely no slant, safe to
+    // reset). Bold is synthetic emboldening at blit time (see blitGlyph) -- the renderer's
+    // weight effect is never touched, so tag-free text renders exactly like the default
+    // path and the shared font object is never perturbed (a weight reset once thinned all
+    // following text).
+    //
+    // The text is drawn in up to two passes: an optional SHADOW pass (every glyph in the
+    // shadow colour, offset by sdx/sdy) and then the text pass composited over it -- the
+    // classic order, so a later glyph's shadow never darkens an earlier glyph.
     int maxX = 0;
-    const uint8_t *p = (const uint8_t *)text;
-
-    uint8_t cr = (color >> 16) & 0xFF;
-    uint8_t cg = (color >> 8) & 0xFF;
-    uint8_t cb = color & 0xFF;
+    int inkMinY = surfH, inkMaxY = 0;   // union ink box over all (non-shadow) glyphs
 
     float ellipsisW = 0.0f;
     if (wrap == TEXT_NOWRAP_ELLIPSIS && maxWidth > 0) {
@@ -259,83 +580,131 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
         cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
     }
 
-    while (*p) {
-        uint32_t code = decodeUtf8(&p);
+    for (int pass = hasShadow ? 0 : 1; pass < 2; pass++) {
+        int shadowPass = (pass == 0);
+        int bdx = shadowPass ? sdx : 0;
+        int bdy = shadowPass ? sdy : 0;
+        int curItalic = 0;
+        int lineIndex = 0;   // which wrapped line the pen is on (for the reveal map)
+        float penX = 0.0f;   // line-relative pen (wrap/kern/advance all use this; offset added at draw)
+        float lineOffX = lineStartOffset(align, lineW, maxLineW, lineCount, 0);   // this line's draw offset
+        float penY = baseY;
+        uint32_t prev = 0;   // previous glyph on this line (kerning context; resets per line)
 
-        if (code == '\n') {
-            if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; if (penY + lineH > (float)surfH) break; }
-            continue;
-        }
+        for (int i = 0; i < nItems; i++) {
+            uint32_t code = items[i].code;
 
-        CellFontGlyphMetrics metrics;
-        float advance = fsize;
-        if (cellFontGetCharGlyphMetrics(&f->font, code, &metrics) == CELL_OK) advance = metrics.Horizontal.advance;
+            if (code == '\n') {
+                if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; prev = 0; lineIndex++; lineOffX = lineStartOffset(align, lineW, maxLineW, lineCount, lineIndex); if (penY + lineH > (float)surfH) break; }
+                if (!shadowPass && reveal) recordRevealItem(reveal, i, penX, lineIndex);
+                continue;
+            }
 
-        if (maxWidth > 0) {
-            if (wrap == TEXT_WRAP) {
-                if (code == ' ') {
-                    float wordW = 0.0f;
-                    const uint8_t *wp = p;
-                    while (*wp && *wp != ' ' && *wp != '\n') {
-                        uint32_t wc = decodeUtf8(&wp);
-                        CellFontGlyphMetrics wm;
-                        if (cellFontGetCharGlyphMetrics(&f->font, wc, &wm) == CELL_OK) wordW += wm.Horizontal.advance;
-                        else wordW += fsize;
-                    }
-                    if (penX + advance + wordW > (float)maxWidth && penX > 0.0f) { penX = 0.0f; penY += lineH; if (penY + lineH > (float)surfH) break; continue; }
-                }
-            } else if (wrap == TEXT_NOWRAP_ELLIPSIS) {
-                if (penX + advance > (float)maxWidth - ellipsisW && *p) {
-                    for (int i = 0; i < 3; i++) {
-                        CellFontImageTransInfo ti;
-                        CellFontGlyphMetrics dm;
-                        if (cellFontRenderCharGlyphImage(&f->font, '.', &surf, penX, penY, &dm, &ti) == CELL_OK) {
-                            uint8_t *img = ti.Image;
-                            for (int iy = 0; iy < ti.imageHeight; iy++) {
-                                uint8_t *dst = ((uint8_t *)ti.Surface) + ti.surfWidthByte * iy;
-                                for (int ix = 0; ix < ti.imageWidth; ix++) {
-                                    uint8_t a = img[iy * ti.imageWidthByte + ix];
-                                    if (a) { dst[ix*4]=a; dst[ix*4+1]=cr; dst[ix*4+2]=cg; dst[ix*4+3]=cb; }
-                                }
-                            }
-                            penX += dm.Horizontal.advance;
+            float kern = fontKern(f, prev, code);
+            float advance = glyphAdvance(f, code, fsize) + kern;
+
+            if (maxWidth > 0) {
+                if (wrap == TEXT_WRAP) {
+                    if (code == ' ') {
+                        float wordW = wordWidth(f, items, nItems, i + 1, ' ', fsize);
+                        if (penX + advance + wordW > (float)maxWidth && penX > 0.0f) {
+                            penX = 0.0f; penY += lineH; prev = 0; lineIndex++;   // the space wraps to the next line
+                            lineOffX = lineStartOffset(align, lineW, maxLineW, lineCount, lineIndex);
+                            if (!shadowPass && reveal) recordRevealItem(reveal, i, penX, lineIndex);
+                            if (penY + lineH > (float)surfH) break;
+                            continue;
                         }
                     }
-                    int endX = (int)(penX + 0.5f); if (endX > maxX) maxX = endX;
-                    break;
+                } else if (wrap == TEXT_NOWRAP_ELLIPSIS) {
+                    if (penX + advance > (float)maxWidth - ellipsisW && i + 1 < nItems) {
+                        if (curItalic) {
+                            cellFontSetupRenderEffectSlant(&f->font, 0.0f); curItalic = 0;
+                            cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
+                        }
+                        for (int d = 0; d < 3; d++) {
+                            CellFontImageTransInfo ti;
+                            CellFontGlyphMetrics dm;
+                            if (cellFontRenderCharGlyphImage(&f->font, '.', &surf, penX + lineOffX, penY, &dm, &ti) == CELL_OK) {
+                                blitGlyph(&ti, buf, surfW, surfH, bdx, bdy, shadowPass ? shadowArgb : color, 0);
+                                penX += dm.Horizontal.advance;
+                            }
+                        }
+                        int endX = (int)(penX + lineOffX + 0.5f); if (endX > maxX) maxX = endX;
+                        break;
+                    }
+                } else {
+                    if (penX + advance > (float)maxWidth) break;
+                }
+            }
+
+            // apply italic slant only when it changes (bold is faux-bold at blit time)
+            int wantItalic = items[i].italic;
+            if (wantItalic != curItalic) {
+                cellFontSetupRenderEffectSlant(&f->font, wantItalic ? 0.35f : 0.0f); curItalic = wantItalic;
+                // some SDKs reset the render scale when an effect is set -- re-apply it
+                cellFontSetupRenderScalePixel(&f->font, fsize, fsize);
+            }
+
+            penX += kern;   // kerning positions THIS glyph (already counted in `advance`)
+
+            CellFontImageTransInfo transInfo;
+            CellFontGlyphMetrics metrics;
+            int ret = cellFontRenderCharGlyphImage(&f->font, code, &surf, penX + lineOffX, penY, &metrics, &transInfo);
+            if (ret == CELL_OK) {
+                // synthetic-bold strength = pixel size / 10 (the FreeType convention; 0 at
+                // tiny sizes = no embolden), and the pen advance widens by the same amount.
+                int overhang = items[i].bold ? ((int)(fsize + 0.5f)) / 10 : 0;
+                blitGlyph(&transInfo, buf, surfW, surfH, bdx, bdy,
+                          shadowPass ? shadowArgb : items[i].color, overhang);
+                penX += quantAdvance(f, metrics.Horizontal.advance) + (float)overhang;
+                int endX = (int)(penX + lineOffX + 0.5f); if (endX > maxX) maxX = endX;
+                if (!shadowPass) {
+                    int goff = (int)((const uint8_t *)transInfo.Surface - buf);
+                    int gy = goff / transInfo.surfWidthByte;
+                    if (gy < inkMinY) inkMinY = gy;                                   // union ink box
+                    if (gy + transInfo.imageHeight > inkMaxY) inkMaxY = gy + transInfo.imageHeight;
+                    if (end) {
+                        end->endX = endX;
+                        end->endTop = gy;
+                        end->endBottom = gy + transInfo.imageHeight;
+                        // Line cell top = baseline - ascent. The glyph's ink top gy sits
+                        // bearingY below the baseline, so baseline = gy + bearingY, and the
+                        // cell top (the top edge of the line box, where a caller top-aligns an
+                        // inline decoration) = gy + bearingY - baseLineY(ascent). Same units as gy.
+                        end->lineTop = gy + (int)(metrics.Horizontal.bearingY + 0.5f) - (int)baseY;
+                        end->valid = 1;
+                    }
                 }
             } else {
-                if (penX + advance > (float)maxWidth) break;
+                penX += fsize;
             }
+            if (!shadowPass && reveal) recordRevealItem(reveal, i, penX, lineIndex);
+            prev = code;
         }
 
-        CellFontImageTransInfo transInfo;
-        int ret = cellFontRenderCharGlyphImage(&f->font, code, &surf, penX, penY, &metrics, &transInfo);
-        if (ret == CELL_OK) {
-            uint8_t *img = transInfo.Image;
-            int imgW = transInfo.imageWidth;
-            int imgH = transInfo.imageHeight;
-            int imgBW = transInfo.imageWidthByte;
-            int surfBW = transInfo.surfWidthByte;
-            for (int iy = 0; iy < imgH; iy++) {
-                uint8_t *dst = ((uint8_t *)transInfo.Surface) + surfBW * iy;
-                for (int ix = 0; ix < imgW; ix++) {
-                    uint8_t a = img[iy * imgBW + ix];
-                    if (a) { dst[ix*4]=a; dst[ix*4+1]=cr; dst[ix*4+2]=cg; dst[ix*4+3]=cb; }
-                }
-            }
-            penX += metrics.Horizontal.advance;
-            int endX = (int)(penX + 0.5f); if (endX > maxX) maxX = endX;
-        } else {
-            penX += fsize;
-        }
+        // reset slant so the next pass / other render calls aren't left slanted
+        if (curItalic) cellFontSetupRenderEffectSlant(&f->font, 0.0f);
     }
 
-    // crop blank rows above glyphs
+    if (reveal) reveal->count = nItems < TEXT_REVEAL_MAX ? nItems : TEXT_REVEAL_MAX;
+
+    // crop the blank rows above the first line's glyphs
     int skip = (int)baseY + 4;
-    *outW = maxX;
+    if (end && end->valid) {
+        end->endTop -= skip;    if (end->endTop < 0) end->endTop = 0;
+        end->endBottom -= skip; if (end->endBottom < 0) end->endBottom = 0;
+        end->lineTop -= skip;   // NOT clamped: the cell top can legitimately be above row 0
+        end->lineHeight = (int)(lineH + 0.5f);
+        end->inkTop    = (inkMinY <= inkMaxY) ? inkMinY - skip : 0;  if (end->inkTop < 0) end->inkTop = 0;
+        end->inkBottom = (inkMinY <= inkMaxY) ? inkMaxY - skip : 0;  if (end->inkBottom < 0) end->inkBottom = 0;
+    }
+    *outW = maxX + (hasShadow && sdx > 0 ? sdx : 0);
+    if (*outW > surfW) *outW = surfW;
     *outH = surfH - skip;
     *outSurfW = surfW;
+
+    free(items);
+    free(lineW);
 
     if (*outW <= 0 || *outH <= 0) { free(buf); return NULL; }
 
@@ -356,8 +725,32 @@ void freeTextTexture(TextTexture *tt)
     tt->slotH = 0;
 }
 
+static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align);
+
 void renderFont(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap)
 {
+    renderFontEx(tt, f, size, text, color, maxWidth, wrap, NULL, NULL);
+}
+
+void renderFontEx(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end)
+{
+    renderFontTyped(tt, f, size, text, color, maxWidth, wrap, shadow, end, NULL);
+}
+
+void renderFontAligned(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextAlign align)
+{
+    renderImpl(tt, f, size, text, color, maxWidth, wrap, shadow, end, NULL, align);
+}
+
+void renderFontTyped(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal)
+{
+    renderImpl(tt, f, size, text, color, maxWidth, wrap, shadow, end, reveal, TEXT_ALIGN_LEFT);
+}
+
+static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align)
+{
+    if (end) memset(end, 0, sizeof *end);
+    if (reveal) reveal->count = 0;
     if (!f->open) return;
 
     // clear case: hide the texture but keep the slot for reuse (a permanently
@@ -370,7 +763,7 @@ void renderFont(TextTexture *tt, Font *f, int size, const char *text, uint32_t c
     }
 
     int drawW, drawH, surfW;
-    uint8_t *buf = rasterize(f, size, text, color, maxWidth, wrap, &drawW, &drawH, &surfW);
+    uint8_t *buf = rasterize(f, size, text, color, maxWidth, wrap, shadow, end, reveal, align, &drawW, &drawH, &surfW);
     if (!buf) {
         // nothing rasterized (e.g. all-whitespace after wrapping): keep any
         // existing slot but show nothing.

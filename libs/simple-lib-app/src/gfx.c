@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <math.h>
 
 #include <sys/timer.h>
@@ -31,8 +32,13 @@ typedef struct {
 } GfxVertex;
 
 static int       initialized = 0;
-static int       screenW = 0;
+static int       screenW = 0;        // display buffer dimensions (the flipped surface)
 static int       screenH = 0;
+// Dimensions of the CURRENT render target (the display buffer, or a bound offscreen
+// target). All drawing math (clip-space, clamping, viewport, scissor) uses these so the
+// same draw calls work whether we're rendering to screen or to a texture.
+static int       targetW = 0;
+static int       targetH = 0;
 static uint32_t  framePitch = 0;
 static uint32_t  frameOffset[FRAME_COUNT];
 static uint32_t  backBuffer = 0;
@@ -185,7 +191,10 @@ static void waitFlip(void)
 	}
 }
 
-static void setRenderTarget(void)
+// Binds a linear (CELL_GCM_SURFACE_PITCH) RGBA color surface as the render target and
+// records its size as the current target. Works for both the display buffer and an
+// offscreen texture (offset/pitch 64-byte aligned). Sets the viewport + scissor to match.
+static void setSurface(uint32_t offset, uint32_t pitch, int w, int h)
 {
 	CellGcmSurface sf;
 	memset(&sf, 0, sizeof(sf));
@@ -193,8 +202,8 @@ static void setRenderTarget(void)
 	sf.colorFormat      = CELL_GCM_SURFACE_A8R8G8B8;
 	sf.colorTarget      = CELL_GCM_SURFACE_TARGET_0;
 	sf.colorLocation[0] = CELL_GCM_LOCATION_LOCAL;
-	sf.colorOffset[0]   = frameOffset[backBuffer];
-	sf.colorPitch[0]    = framePitch;
+	sf.colorOffset[0]   = offset;
+	sf.colorPitch[0]    = pitch;
 
 	// unused color attachments need non-zero pitch
 	sf.colorLocation[1] = CELL_GCM_LOCATION_LOCAL;
@@ -212,12 +221,25 @@ static void setRenderTarget(void)
 
 	sf.type      = CELL_GCM_SURFACE_PITCH;
 	sf.antialias = CELL_GCM_SURFACE_CENTER_1;
-	sf.width     = screenW;
-	sf.height    = screenH;
+	sf.width     = w;
+	sf.height    = h;
 	sf.x         = 0;
 	sf.y         = 0;
 
 	cellGcmSetSurface(CTX, &sf);
+
+	targetW = w;
+	targetH = h;
+
+	float scale[4]  = { w * 0.5f,  h * -0.5f, 0.5f, 0.0f };
+	float offs[4]   = { w * 0.5f,  h *  0.5f, 0.5f, 0.0f };
+	cellGcmSetViewport(CTX, 0, 0, w, h, 0.0f, 1.0f, scale, offs);
+	cellGcmSetScissor(CTX, 0, 0, w, h);
+}
+
+static void setRenderTarget(void)
+{
+	setSurface(frameOffset[backBuffer], framePitch, screenW, screenH);
 }
 
 int initGfx(GfxVsync vsync)
@@ -381,16 +403,11 @@ void beginGfxFrame(void)
 {
 	if (!initialized) return;
 
-	setRenderTarget();
+	setRenderTarget();   // binds the display buffer + sets viewport/scissor to the screen
 
 	cellGcmSetColorMask(CTX, CELL_GCM_COLOR_MASK_R | CELL_GCM_COLOR_MASK_G | CELL_GCM_COLOR_MASK_B | CELL_GCM_COLOR_MASK_A);
 	cellGcmSetColorMaskMrt(CTX, 0);
 
-	float scale[4]  = { screenW * 0.5f,  screenH * -0.5f, 0.5f, 0.0f };
-	float offset[4] = { screenW * 0.5f,  screenH *  0.5f, 0.5f, 0.0f };
-	cellGcmSetViewport(CTX, 0, 0, screenW, screenH, 0.0f, 1.0f, scale, offset);
-
-	cellGcmSetScissor(CTX, 0, 0, screenW, screenH);
 	cellGcmSetDepthTestEnable(CTX, CELL_GCM_FALSE);
 	cellGcmSetFragmentProgramGammaEnable(CTX, CELL_GCM_FALSE);
 
@@ -406,7 +423,7 @@ void beginGfxFrame(void)
 void clearGfx(uint32_t argb)
 {
 	if (!initialized) return;
-	cellGcmSetScissor(CTX, 0, 0, screenW, screenH);
+	cellGcmSetScissor(CTX, 0, 0, targetW, targetH);
 	cellGcmSetClearColor(CTX, argb);
 	cellGcmSetClearSurface(CTX, CELL_GCM_CLEAR_R | CELL_GCM_CLEAR_G | CELL_GCM_CLEAR_B | CELL_GCM_CLEAR_A);
 }
@@ -417,9 +434,9 @@ static uint32_t argbToRgba(uint32_t argb)
 		   ((argb & 0x000000FF) << 8) | ((argb >> 24) & 0xFF);
 }
 
-// convert a pixel coordinate to clip space [-1,1]
-static float toClipX(int px) { return (float)px / (float)screenW * 2.0f - 1.0f; }
-static float toClipY(int py) { return 1.0f - (float)py / (float)screenH * 2.0f; }
+// convert a pixel coordinate to clip space [-1,1] within the current render target
+static float toClipX(int px) { return (float)px / (float)targetW * 2.0f - 1.0f; }
+static float toClipY(int py) { return 1.0f - (float)py / (float)targetH * 2.0f; }
 
 // ensure we're batching against the 1x1 white texture (used by all color-only draws)
 static void ensureWhiteTex(void)
@@ -442,8 +459,8 @@ void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb)
 
 	if (x < 0) { w += x; x = 0; }
 	if (y < 0) { h += y; y = 0; }
-	if (x + w > screenW)  w = screenW  - x;
-	if (y + h > screenH) h = screenH - y;
+	if (x + w > targetW) w = targetW - x;
+	if (y + h > targetH) h = targetH - y;
 	if (w <= 0 || h <= 0) return;
 
 	float x0 = toClipX(x),     y0 = toClipY(y);
@@ -468,8 +485,8 @@ void drawGfxTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32
 	ensureWhiteTex();
 	if (batchVertCount + 3 > MAX_VERTS) return;
 
-	float invW = 2.0f / (float)screenW;
-	float invH = 2.0f / (float)screenH;
+	float invW = 2.0f / (float)targetW;
+	float invH = 2.0f / (float)targetH;
 	float nx0 = x0 * invW - 1.0f, ny0 = 1.0f - y0 * invH;
 	float nx1 = x1 * invW - 1.0f, ny1 = 1.0f - y1 * invH;
 	float nx2 = x2 * invW - 1.0f, ny2 = 1.0f - y2 * invH;
@@ -599,10 +616,10 @@ void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
 
 	if (batchVertCount + 6 > MAX_VERTS) return;
 
-	float cx0 = (float)x / (float)screenW * 2.0f - 1.0f;
-	float cy0 = 1.0f - (float)y / (float)screenH * 2.0f;
-	float cx1 = (float)(x + w) / (float)screenW * 2.0f - 1.0f;
-	float cy1 = 1.0f - (float)(y + h) / (float)screenH * 2.0f;
+	float cx0 = (float)x / (float)targetW * 2.0f - 1.0f;
+	float cy0 = 1.0f - (float)y / (float)targetH * 2.0f;
+	float cx1 = (float)(x + w) / (float)targetW * 2.0f - 1.0f;
+	float cy1 = 1.0f - (float)(y + h) / (float)targetH * 2.0f;
 
 	uint32_t rgba = argbToRgba(tint);
 
@@ -675,110 +692,68 @@ void freeGfxTexture(GfxTexture *tex)
 	memset(tex, 0, sizeof(*tex));
 }
 
-// pngdec callbacks
-static void *pngMalloc(uint32_t size, void *arg)
-{
-	(void)arg;
-	return malloc(size);
-}
+// loadGfxTexture now lives in image-loader.c (generic PNG/JPEG); see image-loader.h.
 
-static int32_t pngFree(void *ptr, void *arg)
+// ---- offscreen render targets (render-to-texture) ----
+// A target is a pitch-linear A8R8G8B8 surface in VRAM -- the SAME layout as a normal
+// texture, so after rendering we can sample rt.tex directly through the usual draw path.
+
+int createGfxRenderTarget(GfxRenderTarget *rt, int w, int h)
 {
-	(void)arg;
-	free(ptr);
+	if (!initialized || !rt || w <= 0 || h <= 0) return -1;
+	uint32_t pitch = ((uint32_t)(w * 4) + 63) & ~63;   // RSX color-surface pitch: 64B multiple
+	uint32_t size  = pitch * (uint32_t)h;
+	void *pixels = allocateVram(size, 128);            // 128B align (>= color-surface req)
+	if (!pixels) { memset(rt, 0, sizeof(*rt)); return -1; }
+
+	uint32_t offset;
+	cellGcmAddressToOffset(pixels, &offset);
+
+	memset(rt, 0, sizeof(*rt));
+	rt->tex.offset = offset;
+	rt->tex.w = w;
+	rt->tex.h = h;
+	rt->tex.pitch = (int)pitch;
 	return 0;
 }
 
-GfxTexture loadGfxTexture(const char *path)
+void beginGfxRenderTarget(GfxRenderTarget *rt)
 {
-	GfxTexture result = { 0, 0, 0 };
-	CellPngDecMainHandle mainHandle;
-	CellPngDecSubHandle subHandle;
-	CellPngDecThreadInParam threadIn;
-	CellPngDecThreadOutParam threadOut;
-	CellPngDecSrc src;
-	CellPngDecOpnInfo openInfo;
-	CellPngDecInfo info;
-	CellPngDecInParam inParam;
-	CellPngDecOutParam outParam;
-	CellPngDecDataOutInfo dataInfo;
-	CellPngDecDataCtrlParam ctrl;
-	int ret;
+	if (!initialized || !rt || rt->tex.offset == 0) return;
+	flushBatch();   // anything still queued belongs to the previous target
+	setSurface(rt->tex.offset, (uint32_t)rt->tex.pitch, rt->tex.w, rt->tex.h);
+}
 
-	// create decoder
-	threadIn.spuThreadEnable = CELL_PNGDEC_SPU_THREAD_DISABLE;
-	threadIn.ppuThreadPriority = 512;
-	threadIn.spuThreadPriority = 200;
-	threadIn.cbCtrlMallocFunc = pngMalloc;
-	threadIn.cbCtrlMallocArg = NULL;
-	threadIn.cbCtrlFreeFunc = pngFree;
-	threadIn.cbCtrlFreeArg = NULL;
+// Returns a CPU-readable pointer to the FRONT (currently displayed) framebuffer in local memory --
+// the last fully-rendered+flipped frame -- for screenshots. Writes the screen width/height and the
+// row pitch in bytes; pixels are A8R8G8B8. Valid until the next flip; NULL if gfx isn't initialised.
+// (On RPCS3 this needs the "Write Color Buffers" GPU option so rendered buffers are mirrored back to
+// emulated memory; on real PS3 local memory is readable directly, like the debug-bridge does.)
+const void *getGfxDisplayBuffer(int *w, int *h, int *pitch)
+{
+	if (!initialized) return (const void *)0;
+	finishGfx();   // ensure the RSX has finished the frame that produced the front buffer
+	uint32_t front = (backBuffer + FRAME_COUNT - 1) % FRAME_COUNT;   // the buffer flipped last
+	if (w)     *w = screenW;
+	if (h)     *h = screenH;
+	if (pitch) *pitch = (int)framePitch;
+	return (const uint8_t *)vramBase + frameOffset[front];
+}
 
-	ret = cellPngDecCreate(&mainHandle, &threadIn, &threadOut);
-	if (ret != CELL_OK) return result;
+void endGfxRenderTarget(void)
+{
+	if (!initialized) return;
+	flushBatch();        // commit the target's draws before we rebind the display buffer
+	setRenderTarget();   // back to the display buffer + screen viewport/scissor
+	// flushBatch() already issues SetInvalidateTextureCache before the next draw, so a
+	// subsequent sample of this freshly rendered target re-reads it (RSX is in-order, so
+	// the surface writes precede that read). Verify on HW when wiring transitions.
+}
 
-	// open file
-	src.srcSelect = CELL_PNGDEC_FILE;
-	src.fileName = path;
-	src.fileOffset = 0;
-	src.fileSize = 0;
-	src.streamPtr = NULL;
-	src.streamSize = 0;
-	src.spuThreadEnable = CELL_PNGDEC_SPU_THREAD_DISABLE;
-
-	ret = cellPngDecOpen(mainHandle, &subHandle, &src, &openInfo);
-	if (ret != CELL_OK) { cellPngDecDestroy(mainHandle); return result; }
-
-	// read header
-	ret = cellPngDecReadHeader(mainHandle, subHandle, &info);
-	if (ret != CELL_OK) { cellPngDecClose(mainHandle, subHandle); cellPngDecDestroy(mainHandle); return result; }
-
-	// set decode params -- output as ARGB, 8-bit
-	int hasAlpha = (info.colorSpace == CELL_PNGDEC_RGBA || info.colorSpace == CELL_PNGDEC_GRAYSCALE_ALPHA);
-	inParam.commandPtr = NULL;
-	inParam.outputMode = CELL_PNGDEC_TOP_TO_BOTTOM;
-	inParam.outputColorSpace = CELL_PNGDEC_ARGB;
-	inParam.outputBitDepth = 8;
-	inParam.outputPackFlag = CELL_PNGDEC_1BYTE_PER_1PIXEL;
-	inParam.outputAlphaSelect = hasAlpha ? CELL_PNGDEC_STREAM_ALPHA : CELL_PNGDEC_FIX_ALPHA;
-	inParam.outputColorAlpha = 0xff;
-
-	ret = cellPngDecSetParameter(mainHandle, subHandle, &inParam, &outParam);
-	if (ret != CELL_OK) { cellPngDecClose(mainHandle, subHandle); cellPngDecDestroy(mainHandle); return result; }
-
-	uint32_t w = outParam.outputWidth;
-	uint32_t h = outParam.outputHeight;
-	uint32_t stride = outParam.outputWidthByte;
-
-	// decode into heap (pngdec can't write directly to RSX local mem)
-	void *tempBuf = malloc(stride * h);
-	if (!tempBuf) { cellPngDecClose(mainHandle, subHandle); cellPngDecDestroy(mainHandle); return result; }
-
-	ctrl.outputBytesPerLine = stride;
-	ret = cellPngDecDecodeData(mainHandle, subHandle, (uint8_t *)tempBuf, &ctrl, &dataInfo);
-	cellPngDecClose(mainHandle, subHandle);
-	cellPngDecDestroy(mainHandle);
-
-	if (ret != CELL_OK || dataInfo.status != CELL_PNGDEC_DEC_STATUS_FINISH) { free(tempBuf); return result; }
-
-	// copy to VRAM with 64-byte aligned pitch
-	uint32_t alignedPitch = (stride + 63) & ~63;
-	uint32_t size = alignedPitch * h;
-	void *pixels = allocateVram(size, 64);
-	if (!pixels) { free(tempBuf); return result; }
-
-	uint8_t *dst = (uint8_t *)pixels;
-	uint8_t *s = (uint8_t *)tempBuf;
-	for (uint32_t row = 0; row < h; ++row) {
-		memcpy(dst + row * alignedPitch, s + row * stride, stride);
-	}
-	free(tempBuf);
-
-	cellGcmAddressToOffset(pixels, &result.offset);
-	result.w = (int)w;
-	result.h = (int)h;
-	result.pitch = (int)alignedPitch;
-	return result;
+void freeGfxRenderTarget(GfxRenderTarget *rt)
+{
+	if (!rt) return;
+	freeGfxTexture(&rt->tex);   // frees the VRAM and zeroes tex
 }
 
 uint32_t uploadGfxTexture(const void *rgba, int w, int h, int srcPitch)

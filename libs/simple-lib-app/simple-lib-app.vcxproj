@@ -37,6 +37,7 @@
   <ItemGroup>
     <ClCompile Include="src\gfx.c" />
     <ClCompile Include="src\image-loader.c" />
+    <ClCompile Include="src\image-encoder.c" />
     <ClCompile Include="src\font.c" />
     <ClCompile Include="src\audio.c" />
     <ClCompile Include="src\pad.c" />

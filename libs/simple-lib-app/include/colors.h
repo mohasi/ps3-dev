@@ -378,4 +378,53 @@ enum {
 #define COLOR_MIST    COLOR_MIST_500
 #define COLOR_OLIVE   COLOR_OLIVE_500
 
+// ---------------------------------------------------------------------
+// hex colour literal parsing ("#rgb", "#rgba", "#rrggbb", "#rrggbbaa")
+// ---------------------------------------------------------------------
+
+// Value of one hex digit, or -1.
+static inline int hexNibble(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+// Parses a hex colour from at most len chars of s (need not be NUL-terminated; an optional
+// leading '#' is accepted). Stops at the first non-hex char; the digit count must then be
+// 3, 4, 6 or 8 (CSS-style shorthand; 4/8 carry alpha, otherwise alpha is FF). Returns
+// 0xAARRGGBB, or fallback when the span is not a colour.
+static inline uint32_t parseColorSpan(const char *s, int len, uint32_t fallback)
+{
+    if (!s || len <= 0) return fallback;
+    if (s[0] == '#') { s++; len--; }
+    int v[8];
+    int n = 0;
+    while (n < len && n < 8) {
+        int h = hexNibble(s[n]);
+        if (h < 0) break;
+        v[n++] = h;
+    }
+    int r, g, b, a = 255;
+    if (n == 3 || n == 4) {
+        r = v[0] * 17; g = v[1] * 17; b = v[2] * 17;
+        if (n == 4) a = v[3] * 17;
+    } else if (n == 6 || n == 8) {
+        r = v[0] * 16 + v[1]; g = v[2] * 16 + v[3]; b = v[4] * 16 + v[5];
+        if (n == 8) a = v[6] * 16 + v[7];
+    } else {
+        return fallback;
+    }
+    return ((uint32_t)a << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+}
+
+// NUL-terminated convenience wrapper around parseColorSpan.
+static inline uint32_t parseColor(const char *s, uint32_t fallback)
+{
+    int n = 0;
+    if (!s) return fallback;
+    while (s[n]) n++;
+    return parseColorSpan(s, n, fallback);
+}
 

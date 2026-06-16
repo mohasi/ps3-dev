@@ -48,3 +48,9 @@ void freeImageBuffer(ImageBuffer *buf);
 // Uploads a decoded buffer into a VRAM texture (main thread). Returns a
 // zero-initialised texture on failure (check .offset). Does not free buf.
 GfxTexture uploadImageBuffer(const ImageBuffer *buf);
+
+// --- PNG encode (image-encoder.c) ------------------------------------------
+// Encodes a w*h ARGB8888 image (A8R8G8B8 byte order, the lib's native surface layout) to a PNG
+// file via the SDK codec (cellPngEnc); alpha is forced opaque. Returns 0 on success. Synchronous.
+// NOTE: linking an app that calls this requires -lpngenc_stub.
+int savePngArgb(const char *path, const void *argb, int w, int h);

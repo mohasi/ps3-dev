@@ -9,6 +9,7 @@
 // requestImageAsync()/pollImageAsync() drive the background worker so a large
 // image never freezes the UI; the caller uploads the result on the main thread.
 #include "image-loader.h"
+#include "dir-playlist.h"       // listDirFiltered (shared folder scan + sort)
 #include "file.h"               // getExtension
 #include "string-utilities.h"   // strCmpICase, strCopy
 #include "dbg.h"                // logError
@@ -40,36 +41,8 @@ int isSupportedImageFormat(const char *filename)
 
 int listSupportedImages(const char *dir, char names[][IMAGE_NAME_MAX], int maxCount)
 {
-    int count = 0;
-
-    int fd;
-    if (cellFsOpendir(dir, &fd) != CELL_FS_SUCCEEDED) return 0;
-
-    CellFsDirent ent;
-    uint64_t readBytes;
-    while (cellFsReaddir(fd, &ent, &readBytes) == CELL_FS_SUCCEEDED && readBytes > 0) {
-        if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-            (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
-        if (!isSupportedImageFormat(ent.d_name)) continue;
-        if (count >= maxCount) break;
-        strCopy(names[count], IMAGE_NAME_MAX, ent.d_name);
-        count++;
-    }
-    cellFsClosedir(fd);
-
-    // insertion sort, case-insensitive by name
-    for (int i = 1; i < count; i++) {
-        char key[IMAGE_NAME_MAX];
-        strCopy(key, IMAGE_NAME_MAX, names[i]);
-        int j = i - 1;
-        while (j >= 0 && strCmpICase(names[j], key) > 0) {
-            strCopy(names[j + 1], IMAGE_NAME_MAX, names[j]);
-            j--;
-        }
-        strCopy(names[j + 1], IMAGE_NAME_MAX, key);
-    }
-
-    return count;
+    // IMAGE_NAME_MAX and DIR_PLAYLIST_NAME_MAX are both 256, so the array types match.
+    return listDirFiltered(dir, names, maxCount, isSupportedImageFormat);
 }
 
 // ---------------------------------------------------------------------------
@@ -80,14 +53,27 @@ int listSupportedImages(const char *dir, char names[][IMAGE_NAME_MAX], int maxCo
 static void *imgMalloc(uint32_t size, void *arg) { (void)arg; return malloc(size); }
 static int32_t imgFree(void *ptr, void *arg)     { (void)arg; free(ptr); return 0; }
 
-// decodes a PNG into a freshly malloc'd ARGB8888 buffer. returns 0 on success.
-static int decodePngToBuffer(const char *path, ImageBuffer *out)
+// Fill a PNG source descriptor for a file or an in-memory buffer.
+static void pngSrcFile(CellPngDecSrc *s, const char *path)
+{
+    s->srcSelect = CELL_PNGDEC_FILE; s->fileName = path;
+    s->fileOffset = 0; s->fileSize = 0; s->streamPtr = NULL; s->streamSize = 0;
+    s->spuThreadEnable = CELL_PNGDEC_SPU_THREAD_DISABLE;
+}
+static void pngSrcMem(CellPngDecSrc *s, const void *buf, uint32_t size)
+{
+    s->srcSelect = CELL_PNGDEC_BUFFER; s->fileName = NULL;
+    s->fileOffset = 0; s->fileSize = 0; s->streamPtr = (void *)buf; s->streamSize = size;
+    s->spuThreadEnable = CELL_PNGDEC_SPU_THREAD_DISABLE;
+}
+
+// decodes a PNG from a prepared source into a freshly malloc'd ARGB8888 buffer. returns 0 ok.
+static int decodePng(const CellPngDecSrc *src, ImageBuffer *out)
 {
     CellPngDecMainHandle mainHandle;
     CellPngDecSubHandle  subHandle;
     CellPngDecThreadInParam  threadIn;
     CellPngDecThreadOutParam threadOut;
-    CellPngDecSrc        src;
     CellPngDecOpnInfo    openInfo;
     CellPngDecInfo       info;
     CellPngDecInParam    inParam;
@@ -107,15 +93,7 @@ static int decodePngToBuffer(const char *path, ImageBuffer *out)
     ret = cellPngDecCreate(&mainHandle, &threadIn, &threadOut);
     if (ret != CELL_OK) return -1;
 
-    src.srcSelect       = CELL_PNGDEC_FILE;
-    src.fileName        = path;
-    src.fileOffset      = 0;
-    src.fileSize        = 0;
-    src.streamPtr       = NULL;
-    src.streamSize      = 0;
-    src.spuThreadEnable = CELL_PNGDEC_SPU_THREAD_DISABLE;
-
-    ret = cellPngDecOpen(mainHandle, &subHandle, &src, &openInfo);
+    ret = cellPngDecOpen(mainHandle, &subHandle, src, &openInfo);
     if (ret != CELL_OK) { cellPngDecDestroy(mainHandle); return -1; }
 
     ret = cellPngDecReadHeader(mainHandle, subHandle, &info);
@@ -124,8 +102,8 @@ static int decodePngToBuffer(const char *path, ImageBuffer *out)
     // The PNG codec has no downscale, so an oversized PNG can't be made into a
     // legal texture -- fail cleanly rather than hand the RSX something it hangs on.
     if (info.imageWidth > MAX_TEX_DIM || info.imageHeight > MAX_TEX_DIM) {
-        logError("[image-loader] PNG too large for RSX: %ux%u (max %d): %s\n",
-                 info.imageWidth, info.imageHeight, MAX_TEX_DIM, path);
+        logError("[image-loader] PNG too large for RSX: %ux%u (max %d)\n",
+                 info.imageWidth, info.imageHeight, MAX_TEX_DIM);
         cellPngDecClose(mainHandle, subHandle); cellPngDecDestroy(mainHandle);
         return -1;
     }
@@ -163,14 +141,27 @@ static int decodePngToBuffer(const char *path, ImageBuffer *out)
     return 0;
 }
 
-// decodes a JPEG into a freshly malloc'd ARGB8888 buffer. returns 0 on success.
-static int decodeJpegToBuffer(const char *path, ImageBuffer *out)
+// Fill a JPEG source descriptor for a file or an in-memory buffer.
+static void jpgSrcFile(CellJpgDecSrc *s, const char *path)
+{
+    s->srcSelect = CELL_JPGDEC_FILE; s->fileName = path;
+    s->fileOffset = 0; s->fileSize = 0; s->streamPtr = NULL; s->streamSize = 0;
+    s->spuThreadEnable = CELL_JPGDEC_SPU_THREAD_DISABLE;
+}
+static void jpgSrcMem(CellJpgDecSrc *s, const void *buf, uint32_t size)
+{
+    s->srcSelect = CELL_JPGDEC_BUFFER; s->fileName = NULL;
+    s->fileOffset = 0; s->fileSize = 0; s->streamPtr = (void *)buf; s->streamSize = size;
+    s->spuThreadEnable = CELL_JPGDEC_SPU_THREAD_DISABLE;
+}
+
+// decodes a JPEG from a prepared source into a freshly malloc'd ARGB8888 buffer. returns 0 ok.
+static int decodeJpeg(const CellJpgDecSrc *src, ImageBuffer *out)
 {
     CellJpgDecMainHandle mainHandle;
     CellJpgDecSubHandle  subHandle;
     CellJpgDecThreadInParam  threadIn;
     CellJpgDecThreadOutParam threadOut;
-    CellJpgDecSrc        src;
     CellJpgDecOpnInfo    openInfo;
     CellJpgDecInfo       info;
     CellJpgDecInParam    inParam;
@@ -190,15 +181,7 @@ static int decodeJpegToBuffer(const char *path, ImageBuffer *out)
     ret = cellJpgDecCreate(&mainHandle, &threadIn, &threadOut);
     if (ret != CELL_OK) return -1;
 
-    src.srcSelect       = CELL_JPGDEC_FILE;
-    src.fileName        = path;
-    src.fileOffset      = 0;
-    src.fileSize        = 0;
-    src.streamPtr       = NULL;
-    src.streamSize      = 0;
-    src.spuThreadEnable = CELL_JPGDEC_SPU_THREAD_DISABLE;
-
-    ret = cellJpgDecOpen(mainHandle, &subHandle, &src, &openInfo);
+    ret = cellJpgDecOpen(mainHandle, &subHandle, src, &openInfo);
     if (ret != CELL_OK) { cellJpgDecDestroy(mainHandle); return -1; }
 
     ret = cellJpgDecReadHeader(mainHandle, subHandle, &info);
@@ -230,7 +213,7 @@ static int decodeJpegToBuffer(const char *path, ImageBuffer *out)
 
     // guard: even at 1/8 an enormous image could exceed the limit.
     if (w > MAX_TEX_DIM || h > MAX_TEX_DIM) {
-        logError("[image-loader] JPEG too large for RSX: %ux%u (max %d): %s\n", w, h, MAX_TEX_DIM, path);
+        logError("[image-loader] JPEG too large for RSX: %ux%u (max %d)\n", w, h, MAX_TEX_DIM);
         cellJpgDecClose(mainHandle, subHandle); cellJpgDecDestroy(mainHandle);
         return -1;
     }
@@ -252,17 +235,31 @@ static int decodeJpegToBuffer(const char *path, ImageBuffer *out)
     return 0;
 }
 
-// dispatches by extension. returns 0 on success, -1 otherwise.
+// dispatches a file by extension. returns 0 on success, -1 otherwise.
 static int decodeImageToBuffer(const char *path, ImageBuffer *out)
 {
     const char *ext = getExtension(path);
     if (!ext) { logError("[image-loader] no extension: %s\n", path); return -1; }
 
-    if (strCmpICase(ext, "png") == 0)  return decodePngToBuffer(path, out);
+    if (strCmpICase(ext, "png") == 0)  { CellPngDecSrc s; pngSrcFile(&s, path); return decodePng(&s, out); }
     if (strCmpICase(ext, "jpg") == 0 || strCmpICase(ext, "jpeg") == 0)
-        return decodeJpegToBuffer(path, out);
+        { CellJpgDecSrc s; jpgSrcFile(&s, path); return decodeJpeg(&s, out); }
 
     logError("[image-loader] unsupported format: %s\n", path);
+    return -1;
+}
+
+// dispatches an in-memory image by sniffing its magic bytes (PNG \x89PNG, JPEG \xFF\xD8).
+// returns 0 on success, -1 otherwise. No temp file / no filesystem touch.
+static int decodeImageMem(const void *data, uint32_t size, ImageBuffer *out)
+{
+    const unsigned char *b = (const unsigned char *)data;
+    if (size >= 8 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G')
+        { CellPngDecSrc s; pngSrcMem(&s, data, size); return decodePng(&s, out); }
+    if (size >= 2 && b[0] == 0xFF && b[1] == 0xD8)
+        { CellJpgDecSrc s; jpgSrcMem(&s, data, size); return decodeJpeg(&s, out); }
+
+    logError("[image-loader] unrecognised image header in memory buffer (%u bytes)\n", size);
     return -1;
 }
 
@@ -296,6 +293,30 @@ GfxTexture uploadImageBuffer(const ImageBuffer *buf)
 void freeImageBuffer(ImageBuffer *buf)
 {
     if (buf->pixels) { free(buf->pixels); buf->pixels = NULL; }
+}
+
+// Synchronous load of a PNG or JPEG file into a VRAM texture (main thread).
+// Dispatches by extension via the shared decoder (replaces the old PNG-only loader).
+GfxTexture loadGfxTexture(const char *path)
+{
+    ImageBuffer buf;
+    GfxTexture zero = { 0, 0, 0, 0 };
+    if (decodeImageToBuffer(path, &buf) != 0) return zero;
+    GfxTexture t = uploadImageBuffer(&buf);
+    freeImageBuffer(&buf);
+    return t;
+}
+
+// Synchronous load of an in-memory PNG/JPEG (e.g. an .rpk entry) into a VRAM texture.
+// Format is sniffed from the magic bytes -- no temp file, no filesystem touch.
+GfxTexture loadGfxTextureMem(const void *data, uint32_t size)
+{
+    ImageBuffer buf;
+    GfxTexture zero = { 0, 0, 0, 0 };
+    if (decodeImageMem(data, size, &buf) != 0) return zero;
+    GfxTexture t = uploadImageBuffer(&buf);
+    freeImageBuffer(&buf);
+    return t;
 }
 
 // ---------------------------------------------------------------------------

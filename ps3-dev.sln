@@ -57,8 +57,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "debug-bridge-client", "tool
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "renpy-to-ps3", "tools\renpy-to-ps3\renpy-to-ps3.csproj", "{D5F8E3A2-1C4B-4E7A-9D6F-2B8C5A3E9F71}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "xml-to-c", "tools\xml-to-c\xml-to-c.csproj", "{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Any CPU = Release|Any CPU
@@ -135,11 +133,6 @@ Global
 		{D5F8E3A2-1C4B-4E7A-9D6F-2B8C5A3E9F71}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{D5F8E3A2-1C4B-4E7A-9D6F-2B8C5A3E9F71}.Release|PS3.ActiveCfg = Release|Any CPU
 		{D5F8E3A2-1C4B-4E7A-9D6F-2B8C5A3E9F71}.Release|PS3.Build.0 = Release|Any CPU
-		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
-		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|Mixed Platforms.Build.0 = Release|Any CPU
-		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81}.Release|PS3.ActiveCfg = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -158,6 +151,5 @@ Global
 		{A7B3C2D1-9E4F-4D6A-B8C5-1F3E7A2D9B04} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 		{FAC6BF5E-80F6-4879-80ED-B9CBBB5B6EE3} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 		{D5F8E3A2-1C4B-4E7A-9D6F-2B8C5A3E9F71} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
-		{8F7C2A4E-3B6D-4F1A-9A2C-7D5E1B0F4C81} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 	EndGlobalSection
 EndGlobal

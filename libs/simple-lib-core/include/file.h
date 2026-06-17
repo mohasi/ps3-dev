@@ -146,11 +146,11 @@ static inline void formatSizeApprox(uint64_t bytes, int approx, char *buf)
 // reads up to cap-1 bytes into buf and NUL-terminates. returns bytes read, or -1.
 static inline int readFile(const char *path, char *buf, int cap)
 {
-    int fd;
-    if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
+    int descriptor;
+    if (cellFsOpen(path, CELL_FS_O_RDONLY, &descriptor, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
     uint64_t bytesRead = 0;
-    int r = cellFsRead(fd, buf, (uint64_t)(cap - 1), &bytesRead);
-    cellFsClose(fd);
+    int r = cellFsRead(descriptor, buf, (uint64_t)(cap - 1), &bytesRead);
+    cellFsClose(descriptor);
     if (r != CELL_FS_SUCCEEDED || bytesRead == 0) return -1;
     buf[bytesRead] = '\0';
     return (int)bytesRead;
@@ -164,12 +164,12 @@ static inline int fileExists(const char *path)
 
 static inline int writeFile(const char *path, const char *data, uint64_t len)
 {
-    int fd;
+    int descriptor;
     if (cellFsOpen(path, CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_TRUNC,
-                   &fd, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
+                   &descriptor, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
     uint64_t written = 0;
-    int r = cellFsWrite(fd, data, len, &written);
-    cellFsClose(fd);
+    int r = cellFsWrite(descriptor, data, len, &written);
+    cellFsClose(descriptor);
     return (r == CELL_FS_SUCCEEDED && written == len) ? 0 : -1;
 }
 
@@ -201,13 +201,13 @@ static inline int deleteTree(const char *path, uint64_t *bytesFreed)
         return deleteFile(path);
     }
 
-    int fd;
-    if (cellFsOpendir(path, &fd) != CELL_FS_SUCCEEDED) return -1;
+    int descriptor;
+    if (cellFsOpendir(path, &descriptor) != CELL_FS_SUCCEEDED) return -1;
 
     char child[MAX_PATH_LEN];
     CellFsDirent ent;
     uint64_t n;
-    while (cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+    while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
         if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
             (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
         int len = 0;
@@ -215,9 +215,9 @@ static inline int deleteTree(const char *path, uint64_t *bytesFreed)
         if (len > 0 && child[len - 1] != '/' && len < (int)sizeof child - 1) child[len++] = '/';
         for (int i = 0; ent.d_name[i] && len < (int)sizeof child - 1; i++) child[len++] = ent.d_name[i];
         child[len] = '\0';
-        if (deleteTree(child, bytesFreed) < 0) { cellFsClosedir(fd); return -1; }
+        if (deleteTree(child, bytesFreed) < 0) { cellFsClosedir(descriptor); return -1; }
     }
-    cellFsClosedir(fd);
+    cellFsClosedir(descriptor);
 
     return cellFsRmdir(path) == CELL_FS_SUCCEEDED ? 0 : -1;
 }
@@ -258,21 +258,21 @@ static inline int copyTree(const char *src, const char *dst, void *buf, int bufS
 
     if (makeDir(dst) != 0) return -1;
 
-    int fd;
-    if (cellFsOpendir(src, &fd) != CELL_FS_SUCCEEDED) return -1;
+    int descriptor;
+    if (cellFsOpendir(src, &descriptor) != CELL_FS_SUCCEEDED) return -1;
 
     char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
     CellFsDirent ent;
     uint64_t n;
     int rc = 0;
-    while (cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+    while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
         if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
             (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
         joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
         joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
         if (copyTree(childSrc, childDst, buf, bufSize) < 0) { rc = -1; break; }
     }
-    cellFsClosedir(fd);
+    cellFsClosedir(descriptor);
     return rc;
 }
 

@@ -13,21 +13,21 @@ uint64_t measureTree(const char *path, int (*cancelled)(void))
     if (cellFsStat(path, &st) != CELL_FS_SUCCEEDED) return 0;
     if (!(st.st_mode & CELL_FS_S_IFDIR)) return (uint64_t)st.st_size;
 
-    int fd;
-    if (cellFsOpendir(path, &fd) != CELL_FS_SUCCEEDED) return 0;
+    int descriptor;
+    if (cellFsOpendir(path, &descriptor) != CELL_FS_SUCCEEDED) return 0;
 
     uint64_t sum = 0;
     char child[MAX_PATH_LEN];
     CellFsDirent ent;
     uint64_t n;
-    while (cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+    while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
         if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
             (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
         if (cancelled && cancelled()) break;
         joinPath(child, MAX_PATH_LEN, path, ent.d_name);
         sum += measureTree(child, cancelled);
     }
-    cellFsClosedir(fd);
+    cellFsClosedir(descriptor);
     return sum;
 }
 
@@ -67,14 +67,14 @@ static int copyTreeRecursively(const char *src, const char *dst, void *buf, int 
 
     if (makeDir(dst) != 0) return -1;
 
-    int fd;
-    if (cellFsOpendir(src, &fd) != CELL_FS_SUCCEEDED) return -1;
+    int descriptor;
+    if (cellFsOpendir(src, &descriptor) != CELL_FS_SUCCEEDED) return -1;
 
     char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
     CellFsDirent ent;
     uint64_t n;
     int rc = 0;
-    while (cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+    while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
         if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
             (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
         if (cancelled && cancelled()) { rc = 1; break; }
@@ -83,7 +83,7 @@ static int copyTreeRecursively(const char *src, const char *dst, void *buf, int 
         rc = copyTreeRecursively(childSrc, childDst, buf, bufSize, onBytes, cancelled);
         if (rc != 0) break;
     }
-    cellFsClosedir(fd);
+    cellFsClosedir(descriptor);
     return rc;
 }
 
@@ -119,14 +119,14 @@ static int mergeTreeRecursively(const char *src, const char *dst, int replaceExi
 
     if (makeDir(dst) != 0) return -1;  // no-op when dst already exists
 
-    int fd;
-    if (cellFsOpendir(src, &fd) != CELL_FS_SUCCEEDED) return -1;
+    int descriptor;
+    if (cellFsOpendir(src, &descriptor) != CELL_FS_SUCCEEDED) return -1;
 
     char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
     CellFsDirent ent;
     uint64_t n;
     int rc = 0;
-    while (cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+    while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
         if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
             (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
         if (cancelled && cancelled()) { rc = 1; break; }
@@ -135,7 +135,7 @@ static int mergeTreeRecursively(const char *src, const char *dst, int replaceExi
         rc = mergeTreeRecursively(childSrc, childDst, replaceExisting, buf, bufSize, onBytes, cancelled);
         if (rc != 0) break;
     }
-    cellFsClosedir(fd);
+    cellFsClosedir(descriptor);
     return rc;
 }
 
@@ -165,21 +165,21 @@ int countTreeConflicts(const char *src, const char *dst, int cap)
     if (!dstExists) return 0;           // dir merging into nothing: all new
     if (!(ds.st_mode & CELL_FS_S_IFDIR)) return 1;  // dir vs existing file: one clash
 
-    int fd;
-    if (cellFsOpendir(src, &fd) != CELL_FS_SUCCEEDED) return 0;
+    int descriptor;
+    if (cellFsOpendir(src, &descriptor) != CELL_FS_SUCCEEDED) return 0;
 
     char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
     CellFsDirent ent;
     uint64_t n;
     int count = 0;
-    while (count < cap && cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+    while (count < cap && cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
         if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
             (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
         joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
         joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
         count += countTreeConflicts(childSrc, childDst, cap - count);
     }
-    cellFsClosedir(fd);
+    cellFsClosedir(descriptor);
     return count;
 }
 
@@ -199,14 +199,14 @@ static int deleteTreeRecursively(const char *path, void (*onBytes)(uint64_t), in
         return 0;
     }
 
-    int fd;
-    if (cellFsOpendir(path, &fd) != CELL_FS_SUCCEEDED) return -1;
+    int descriptor;
+    if (cellFsOpendir(path, &descriptor) != CELL_FS_SUCCEEDED) return -1;
 
     char child[MAX_PATH_LEN];
     CellFsDirent ent;
     uint64_t n;
     int rc = 0;
-    while (cellFsReaddir(fd, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
+    while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
         if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
             (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
         if (cancelled && cancelled()) { rc = 1; break; }
@@ -214,7 +214,7 @@ static int deleteTreeRecursively(const char *path, void (*onBytes)(uint64_t), in
         rc = deleteTreeRecursively(child, onBytes, cancelled);
         if (rc != 0) break;
     }
-    cellFsClosedir(fd);
+    cellFsClosedir(descriptor);
     if (rc != 0) return rc;
 
     return cellFsRmdir(path) == CELL_FS_SUCCEEDED ? 0 : -1;

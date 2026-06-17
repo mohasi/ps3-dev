@@ -11,7 +11,7 @@
 
 static void onDeleteConfirmed(ConfirmChoice choice)
 {
-    if (choice == CONFIRM_CROSS) deleteSelection();
+   if (choice == CONFIRM_CROSS) deleteSelection();
 }
 
 // keyboard results. text is the confirmed name, or NULL on cancel/empty. each
@@ -24,45 +24,45 @@ static void onNewFolderDone(const char *text)  { if (text) createFolder(text); }
 
 void dispatchAction(SelectionAction action)
 {
-    switch (action) {
-        case ACTION_CUT:
-            cutSelection();
-            break;
+   switch (action) {
+      case ACTION_CUT:
+         cutSelection();
+         break;
 
-        case ACTION_COPY:
-            copySelection();
-            break;
+      case ACTION_COPY:
+         copySelection();
+         break;
 
-        case ACTION_PASTE:
-            pasteClipboard();
-            break;
+      case ACTION_PASTE:
+         pasteClipboard();
+         break;
 
-        case ACTION_DELETE: {
-            int n = getSelectionCount();
-            char message[64];
-            snprintf(message, sizeof message, "Are you sure you want to delete %d %s?", n, n == 1 ? "item" : "items");
-            askConfirm("Delete Confirmation", message, "Yes", NULL, "No", onDeleteConfirmed);
-            break;
-        }
+      case ACTION_DELETE: {
+         int n = getSelectionCount();
+         char message[64];
+         snprintf(message, sizeof message, "Are you sure you want to delete %d %s?", n, n == 1 ? "item" : "items");
+         askConfirm("Delete Confirmation", message, "Yes", NULL, "No", onDeleteConfirmed);
+         break;
+      }
 
-        case ACTION_RENAME: {
-            // rename targets the highlighted row only; pre-fill the keyboard with
-            // its current name and let file-list resolve the result.
-            const char *name = getActiveEntryName();
-            if (name) oskInputBegin("Rename", name, onRenameDone);
-            break;
-        }
+      case ACTION_RENAME: {
+         // rename targets the highlighted row only; pre-fill the keyboard with
+         // its current name and let file-list resolve the result.
+         const char *name = getActiveEntryName();
+         if (name) oskInputBegin("Rename", name, onRenameDone);
+         break;
+      }
 
-        case ACTION_NEW_FILE:
-            oskInputBegin("New File", NEW_FILE_DEFAULT, onNewFileDone);
-            break;
+      case ACTION_NEW_FILE:
+         oskInputBegin("New File", NEW_FILE_DEFAULT, onNewFileDone);
+         break;
 
-        case ACTION_NEW_FOLDER:
-            oskInputBegin("New Folder", NEW_FOLDER_DEFAULT, onNewFolderDone);
-            break;
+      case ACTION_NEW_FOLDER:
+         oskInputBegin("New Folder", NEW_FOLDER_DEFAULT, onNewFolderDone);
+         break;
 
-        default:
-            logInfo("[file-actions] %s: not implemented yet\n", getActionTitle(action));
-            break;
-    }
+      default:
+         logInfo("[file-actions] %s: not implemented yet\n", getActionTitle(action));
+         break;
+   }
 }

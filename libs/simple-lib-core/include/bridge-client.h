@@ -58,8 +58,8 @@ static inline int isBridgeConnected(void) { return bridgeSocket >= 0; }
 static inline void dropBridgeConnection(void)
 {
    if (bridgeSocket >= 0) {
-      socketclose(bridgeSocket);
-      bridgeSocket = -1;
+     socketclose(bridgeSocket);
+     bridgeSocket = -1;
    }
 }
 
@@ -69,8 +69,8 @@ static inline void dropBridgeConnection(void)
 static inline void pushLogToBridge(const char *line, int len)
 {
    if (!isBridgeConnected()) {
-      pushLogBacklog(&bridgeBacklog, line, len);
-      return;
+     pushLogBacklog(&bridgeBacklog, line, len);
+     return;
    }
 
    lock(&bridgeWriteLock);
@@ -96,12 +96,12 @@ static void runRequestHandler(uint64_t arg)
    static const char notImplemented[] = "request not implemented";
 
    while (isBridgeConnected()) {
-      char line[128];
-      int lineLength = receiveLine(bridgeSocket, line, sizeof line); // blocks
-      if (lineLength <= 0) break;
+     char line[128];
+     int lineLength = receiveLine(bridgeSocket, line, sizeof line); // blocks
+     if (lineLength <= 0) break;
 
-      int success = sendFrame(bridgeSocket, "ERR", notImplemented, sizeof(notImplemented) - 1) == 0;
-      if (!success) break;
+     int success = sendFrame(bridgeSocket, "ERR", notImplemented, sizeof(notImplemented) - 1) == 0;
+     if (!success) break;
    }
 
    dropBridgeConnection();
@@ -124,12 +124,12 @@ static void runBridgeRegistration(uint64_t arg)
    // connect to bridge
    int connectedSocket = -1;
    for (int attempt = 0; attempt < BRIDGE_CONNECT_TRIES; attempt++) {
-      connectedSocket = socket(AF_INET, SOCK_STREAM, 0);
-      int opened    = connectedSocket >= 0;
-      int connected = opened && connect(connectedSocket, (struct sockaddr *)&address, sizeof address) == 0;
-      if (connected) break;
-      if (opened) { socketclose(connectedSocket); connectedSocket = -1; }
-      sleepMs(BRIDGE_RETRY_MS);
+     connectedSocket = socket(AF_INET, SOCK_STREAM, 0);
+     int opened    = connectedSocket >= 0;
+     int connected = opened && connect(connectedSocket, (struct sockaddr *)&address, sizeof address) == 0;
+     if (connected) break;
+     if (opened) { socketclose(connectedSocket); connectedSocket = -1; }
+     sleepMs(BRIDGE_RETRY_MS);
    }
    if (connectedSocket < 0) goto done;
 
@@ -138,8 +138,8 @@ static void runBridgeRegistration(uint64_t arg)
    int handshakeLen = snprintf(handshake, sizeof handshake, "REGISTER %s %s\n", registration->kind, registration->name);
    int success = sendBytes(connectedSocket, handshake, handshakeLen) == handshakeLen;
    if (!success) {
-      socketclose(connectedSocket);
-      goto done;
+     socketclose(connectedSocket);
+     goto done;
    }
 
    // drain the backlog BEFORE flipping bridgeSocket to live, so pushLogToBridge
@@ -157,8 +157,8 @@ static void runBridgeRegistration(uint64_t arg)
    // will never wake.
    int isApp = strEq(registration->kind, "app");
    if (isApp) {
-      sys_ppu_thread_t handlerThreadId = 0;
-      spawnThread(&handlerThreadId, runRequestHandler, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "bridge-client-req");
+     sys_ppu_thread_t handlerThreadId = 0;
+     spawnThread(&handlerThreadId, runRequestHandler, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "bridge-client-req");
    }
 
 done:
@@ -174,8 +174,8 @@ static inline void registerWithBridge(const char *kind, const char *name)
    if (isBridgeConnected()) return;
 
    if (!bridgeWriteLockInit) {
-      createLock(&bridgeWriteLock);
-      bridgeWriteLockInit = 1;
+     createLock(&bridgeWriteLock);
+     bridgeWriteLockInit = 1;
    }
 
    setLogCallback(pushLogToBridge);

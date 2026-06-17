@@ -11,21 +11,21 @@ static int bbDx = 3, bbDy = 2;
 
 void initBouncingBox(void)
 {
-    initRectangle(&box, 100, 80, BOUNCING_BOX_SIZE, BOUNCING_BOX_SIZE, COLOR_WHITE);
+   initRectangle(&box, 100, 80, BOUNCING_BOX_SIZE, BOUNCING_BOX_SIZE, COLOR_WHITE);
 }
 
 void updateBouncingBox(void)
 {
-    int sw = getGfxScreenWidth();
-    int sh = getGfxScreenHeight();
+   int sw = getGfxScreenWidth();
+   int sh = getGfxScreenHeight();
 
-    box.x += bbDx;
-    box.y += bbDy;
-    if (box.x <= 0 || box.x + BOUNCING_BOX_SIZE >= sw) bbDx = -bbDx;
-    if (box.y <= 0 || box.y + BOUNCING_BOX_SIZE >= sh) bbDy = -bbDy;
+   box.x += bbDx;
+   box.y += bbDy;
+   if (box.x <= 0 || box.x + BOUNCING_BOX_SIZE >= sw) bbDx = -bbDx;
+   if (box.y <= 0 || box.y + BOUNCING_BOX_SIZE >= sh) bbDy = -bbDy;
 }
 
 void drawBouncingBox(void)
 {
-    drawRectangle(&box);
+   drawRectangle(&box);
 }

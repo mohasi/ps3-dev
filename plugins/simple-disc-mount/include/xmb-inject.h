@@ -25,8 +25,8 @@ static const char *pathCatBackup   = "/dev_hdd0/tmp/sdm_category_game.xml.bak";
 // root_for_BDU — it would never render for us.
 static const char *injectAnchor = "key=\"seg_package_files\"";
 static const char *injectLine =
-    "\t\t\t<Query class=\"type:x-xmb/folder-pixmap\" key=\"seg_sdm\" "
-    "attr=\"seg_sdm\" src=\"xmb://localhost/dev_hdd0/xmlhost/game_plugin/sdm.xml#seg_sdm\"/>\n";
+   "\t\t\t<Query class=\"type:x-xmb/folder-pixmap\" key=\"seg_sdm\" "
+   "attr=\"seg_sdm\" src=\"xmb://localhost/dev_hdd0/xmlhost/game_plugin/sdm.xml#seg_sdm\"/>\n";
 
 // Working buffers. xmlBuf holds either the generated sdm.xml or the in-flight
 // category_game.xml patch (phases never overlap). itemsBuf collects the
@@ -35,10 +35,10 @@ static const char *injectLine =
 // we can sort them before emitting — cellFsReaddir returns entries in
 // filesystem (insertion) order, not alphabetical.
 enum {
-    XML_BUF_SIZE    = 128 * 1024,
-    ITEMS_BUF_SIZE  =  32 * 1024,
-    MAX_ISOS        = 256,
-    NAME_POOL_SIZE  =  64 * 1024,  // 256 names × ~256B worst case
+   XML_BUF_SIZE    = 128 * 1024,
+   ITEMS_BUF_SIZE  =  32 * 1024,
+   MAX_ISOS        = 256,
+   NAME_POOL_SIZE  =  64 * 1024,  // 256 names × ~256B worst case
 };
 static char xmlBuf[XML_BUF_SIZE];
 static char itemsBuf[ITEMS_BUF_SIZE];
@@ -54,144 +54,144 @@ static int  nameOff[MAX_ISOS];
 
 static int buildSdmXml(char *buf, int cap)
 {
-    int off = 0;
-    appendStr(buf, cap, &off,
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        "<XMBML version=\"1.0\">\n"
-        " <View id=\"seg_sdm\">\n"
-        "  <Attributes>\n"
-        "   <Table key=\"seg_sdm\">\n"
-        "    <Pair key=\"title\"><String>Mount Disc Image</String></Pair>\n"
-        "    <Pair key=\"info\"><String>Boot a game ISO from /dev_hdd0/PS3ISO as a disc</String></Pair>\n"
-        "    <Pair key=\"icon_rsc\"><String>tex_disc</String></Pair>\n"
-        "    <Pair key=\"ingame\"><String>disable</String></Pair>\n"
-        "   </Table>\n"
-        "  </Attributes>\n"
-        "  <Items>\n"
-        "   <Query class=\"type:x-xmb/folder-pixmap\" key=\"sdm_items\" attr=\"seg_sdm\""
-        " src=\"xmb://localhost/dev_hdd0/xmlhost/game_plugin/sdm.xml#seg_sdm_list\"/>\n"
-        "  </Items>\n"
-        " </View>\n"
-        " <View id=\"seg_sdm_list\">\n"
-        "  <Attributes>\n");
+   int off = 0;
+   appendStr(buf, cap, &off,
+       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+       "<XMBML version=\"1.0\">\n"
+       " <View id=\"seg_sdm\">\n"
+       "  <Attributes>\n"
+       "   <Table key=\"seg_sdm\">\n"
+       "    <Pair key=\"title\"><String>Mount Disc Image</String></Pair>\n"
+       "    <Pair key=\"info\"><String>Boot a game ISO from /dev_hdd0/PS3ISO as a disc</String></Pair>\n"
+       "    <Pair key=\"icon_rsc\"><String>tex_disc</String></Pair>\n"
+       "    <Pair key=\"ingame\"><String>disable</String></Pair>\n"
+       "   </Table>\n"
+       "  </Attributes>\n"
+       "  <Items>\n"
+       "   <Query class=\"type:x-xmb/folder-pixmap\" key=\"sdm_items\" attr=\"seg_sdm\""
+       " src=\"xmb://localhost/dev_hdd0/xmlhost/game_plugin/sdm.xml#seg_sdm_list\"/>\n"
+       "  </Items>\n"
+       " </View>\n"
+       " <View id=\"seg_sdm_list\">\n"
+       "  <Attributes>\n");
 
-    // Phase 1: collect ISO filenames into namePool. cellFsReaddir returns
-    // entries in filesystem order (creation time), not alphabetical, so we
-    // can't emit during the walk if we want a sorted menu.
-    int poolOff = 0;
-    int count = 0;
-    int fd;
-    if (cellFsOpendir(pathIsoDir, &fd) == CELL_FS_SUCCEEDED) {
-        CellFsDirent ent; uint64_t entSz;
-        while (count < MAX_ISOS &&
-               cellFsReaddir(fd, &ent, &entSz) == CELL_FS_SUCCEEDED && entSz > 0)
-        {
-            if (ent.d_name[0] == '.' && (ent.d_name[1] == 0 ||
-                (ent.d_name[1] == '.' && ent.d_name[2] == 0))) continue;
-            if (!endsWithICase(ent.d_name, ".iso")) continue;
+   // Phase 1: collect ISO filenames into namePool. cellFsReaddir returns
+   // entries in filesystem order (creation time), not alphabetical, so we
+   // can't emit during the walk if we want a sorted menu.
+   int poolOff = 0;
+   int count = 0;
+   int fd;
+   if (cellFsOpendir(pathIsoDir, &fd) == CELL_FS_SUCCEEDED) {
+      CellFsDirent ent; uint64_t entSz;
+      while (count < MAX_ISOS &&
+             cellFsReaddir(fd, &ent, &entSz) == CELL_FS_SUCCEEDED && entSz > 0)
+      {
+         if (ent.d_name[0] == '.' && (ent.d_name[1] == 0 ||
+             (ent.d_name[1] == '.' && ent.d_name[2] == 0))) continue;
+         if (!endsWithICase(ent.d_name, ".iso")) continue;
 
-            int nlen = getStrLen(ent.d_name);
-            if (poolOff + nlen + 1 > NAME_POOL_SIZE) break;
-            nameOff[count] = poolOff;
-            for (int i = 0; i <= nlen; i++) namePool[poolOff + i] = ent.d_name[i];
-            poolOff += nlen + 1;
-            count++;
-        }
-        cellFsClosedir(fd);
-    }
+         int nlen = getStrLen(ent.d_name);
+         if (poolOff + nlen + 1 > NAME_POOL_SIZE) break;
+         nameOff[count] = poolOff;
+         for (int i = 0; i <= nlen; i++) namePool[poolOff + i] = ent.d_name[i];
+         poolOff += nlen + 1;
+         count++;
+      }
+      cellFsClosedir(fd);
+   }
 
-    // Phase 2: insertion sort by case-insensitive name. n <= 256, n² fine.
-    for (int i = 1; i < count; i++) {
-        int k = nameOff[i];
-        int j = i - 1;
-        while (j >= 0 && strCmpICase(namePool + nameOff[j], namePool + k) > 0) {
-            nameOff[j + 1] = nameOff[j];
-            j--;
-        }
-        nameOff[j + 1] = k;
-    }
+   // Phase 2: insertion sort by case-insensitive name. n <= 256, n² fine.
+   for (int i = 1; i < count; i++) {
+      int k = nameOff[i];
+      int j = i - 1;
+      while (j >= 0 && strCmpICase(namePool + nameOff[j], namePool + k) > 0) {
+         nameOff[j + 1] = nameOff[j];
+         j--;
+      }
+      nameOff[j + 1] = k;
+   }
 
-    // Phase 3: emit Tables and Items in sorted order.
-    //
-    // Each ISO becomes a module-action that, when X is pressed, wakes Sony's
-    // built-in webrender_plugin with the configured URL. webrender fires an
-    // HTTP GET at 127.0.0.1:8947 — our http.h listener catches that, parses
-    // the filename out of the path, and calls cobraMountIso(). Filename
-    // travels in the URL (percent-encoded) so the handler is stateless and
-    // the last mount can be persisted as a plain filename for auto-mount on
-    // reboot. Port 8947 is derived from fnv1a32("simple-disc-mount") — see
-    // http.h for the formula.
-    int itemsOff = 0;
-    for (int i = 0; i < count; i++) {
-        const char *name = namePool + nameOff[i];
+   // Phase 3: emit Tables and Items in sorted order.
+   //
+   // Each ISO becomes a module-action that, when X is pressed, wakes Sony's
+   // built-in webrender_plugin with the configured URL. webrender fires an
+   // HTTP GET at 127.0.0.1:8947 — our http.h listener catches that, parses
+   // the filename out of the path, and calls cobraMountIso(). Filename
+   // travels in the URL (percent-encoded) so the handler is stateless and
+   // the last mount can be persisted as a plain filename for auto-mount on
+   // reboot. Port 8947 is derived from fnv1a32("simple-disc-mount") — see
+   // http.h for the formula.
+   int itemsOff = 0;
+   for (int i = 0; i < count; i++) {
+      const char *name = namePool + nameOff[i];
 
-        char key[24];
-        int k = 0;
-        key[k++] = 'i'; key[k++] = 's'; key[k++] = 'o'; key[k++] = '_';
-        k += intToDec(i, key + k);
-        key[k] = 0;
+      char key[24];
+      int k = 0;
+      key[k++] = 'i'; key[k++] = 's'; key[k++] = 'o'; key[k++] = '_';
+      k += intToDec(i, key + k);
+      key[k] = 0;
 
-        appendStr(buf, cap, &off, "   <Table key=\"");
-        appendStr(buf, cap, &off, key);
-        appendStr(buf, cap, &off, "\">\n    <Pair key=\"title\"><String>");
-        appendXmlEscaped(buf, cap, &off, name);
-        appendStr(buf, cap, &off,
-            "</String></Pair>\n"
-            "    <Pair key=\"icon_rsc\"><String>tex_disc</String></Pair>\n"
-            "    <Pair key=\"module_name\"><String>webrender_plugin</String></Pair>\n"
-            "    <Pair key=\"module_action\"><String>http://0:8947/mount/");
-        appendUrlEnc(buf, cap, &off, pathIsoDir);
-        appendUrlEnc(buf, cap, &off, "/");
-        appendUrlEnc(buf, cap, &off, name);
-        appendStr(buf, cap, &off,
-            "</String></Pair>\n"
-            "   </Table>\n");
+      appendStr(buf, cap, &off, "   <Table key=\"");
+      appendStr(buf, cap, &off, key);
+      appendStr(buf, cap, &off, "\">\n    <Pair key=\"title\"><String>");
+      appendXmlEscaped(buf, cap, &off, name);
+      appendStr(buf, cap, &off,
+          "</String></Pair>\n"
+          "    <Pair key=\"icon_rsc\"><String>tex_disc</String></Pair>\n"
+          "    <Pair key=\"module_name\"><String>webrender_plugin</String></Pair>\n"
+          "    <Pair key=\"module_action\"><String>http://0:8947/mount/");
+      appendUrlEnc(buf, cap, &off, pathIsoDir);
+      appendUrlEnc(buf, cap, &off, "/");
+      appendUrlEnc(buf, cap, &off, name);
+      appendStr(buf, cap, &off,
+          "</String></Pair>\n"
+          "   </Table>\n");
 
-        appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff,
-            "   <Item class=\"type:x-xmb/module-action\" key=\"");
-        appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff, key);
-        appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff, "\" attr=\"");
-        appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff, key);
-        appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff, "\"/>\n");
-    }
+      appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff,
+          "   <Item class=\"type:x-xmb/module-action\" key=\"");
+      appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff, key);
+      appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff, "\" attr=\"");
+      appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff, key);
+      appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff, "\"/>\n");
+   }
 
-    if (count == 0) {
-        // Empty-state item: keep Sony's stock "do nothing" pattern so X-press
-        // shows "Cannot operate" instead of trying to fire an HTTP action we
-        // don't want to handle.
-        appendStr(buf, cap, &off,
-            "   <Table key=\"iso_none\">\n"
-            "    <Pair key=\"title\"><String>(no .iso files in /dev_hdd0/PS3ISO)</String></Pair>\n"
-            "    <Pair key=\"icon_rsc\"><String>tex_disc</String></Pair>\n"
-            "    <Pair key=\"module_name\"><String>explore_plugin</String></Pair>\n"
-            "    <Pair key=\"module_action\"><String>NotifyErrorNoExecute</String></Pair>\n"
-            "    <Pair key=\"bar_action\"><String>none</String></Pair>\n"
-            "   </Table>\n");
-        appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff,
-            "   <Item class=\"type:x-xmb/module-action\" key=\"iso_none\" attr=\"iso_none\"/>\n");
-    }
+   if (count == 0) {
+      // Empty-state item: keep Sony's stock "do nothing" pattern so X-press
+      // shows "Cannot operate" instead of trying to fire an HTTP action we
+      // don't want to handle.
+      appendStr(buf, cap, &off,
+          "   <Table key=\"iso_none\">\n"
+          "    <Pair key=\"title\"><String>(no .iso files in /dev_hdd0/PS3ISO)</String></Pair>\n"
+          "    <Pair key=\"icon_rsc\"><String>tex_disc</String></Pair>\n"
+          "    <Pair key=\"module_name\"><String>explore_plugin</String></Pair>\n"
+          "    <Pair key=\"module_action\"><String>NotifyErrorNoExecute</String></Pair>\n"
+          "    <Pair key=\"bar_action\"><String>none</String></Pair>\n"
+          "   </Table>\n");
+      appendStr(itemsBuf, ITEMS_BUF_SIZE, &itemsOff,
+          "   <Item class=\"type:x-xmb/module-action\" key=\"iso_none\" attr=\"iso_none\"/>\n");
+   }
 
-    if (itemsOff >= ITEMS_BUF_SIZE - 1) return -1;
-    itemsBuf[itemsOff] = '\0';
+   if (itemsOff >= ITEMS_BUF_SIZE - 1) return -1;
+   itemsBuf[itemsOff] = '\0';
 
-    appendStr(buf, cap, &off, "  </Attributes>\n  <Items>\n");
-    appendStr(buf, cap, &off, itemsBuf);
-    appendStr(buf, cap, &off, "  </Items>\n </View>\n</XMBML>\n");
+   appendStr(buf, cap, &off, "  </Attributes>\n  <Items>\n");
+   appendStr(buf, cap, &off, itemsBuf);
+   appendStr(buf, cap, &off, "  </Items>\n </View>\n</XMBML>\n");
 
-    if (off >= cap - 1) return -1;
-    buf[off] = '\0';
-    return off;
+   if (off >= cap - 1) return -1;
+   buf[off] = '\0';
+   return off;
 }
 
 static int writeSdmXml(void)
 {
-    int n = buildSdmXml(xmlBuf, XML_BUF_SIZE);
-    if (n < 0) { logError("[sdm] build sdm.xml overflow\n"); return -1; }
-    if (writeFile(pathSdmXml, xmlBuf, (uint64_t)n) != 0) {
-        logError("[sdm] write sdm.xml failed\n");
-        return -1;
-    }
-    return 0;
+   int n = buildSdmXml(xmlBuf, XML_BUF_SIZE);
+   if (n < 0) { logError("[sdm] build sdm.xml overflow\n"); return -1; }
+   if (writeFile(pathSdmXml, xmlBuf, (uint64_t)n) != 0) {
+      logError("[sdm] write sdm.xml failed\n");
+      return -1;
+   }
+   return 0;
 }
 
 // --- category_game.xml patching ---
@@ -212,65 +212,65 @@ static int writeSdmXml(void)
 // past the following newline, before splicing.
 static int spliceAfterAnchor(const char *viewOpen, int curLen)
 {
-    int vLen   = getStrLen(viewOpen);
-    int aLen   = getStrLen(injectAnchor);
-    int injLen = getStrLen(injectLine);
+   int vLen   = getStrLen(viewOpen);
+   int aLen   = getStrLen(injectAnchor);
+   int injLen = getStrLen(injectLine);
 
-    int vPos = findBytes(xmlBuf, curLen, viewOpen, vLen);
-    if (vPos < 0) return curLen;
+   int vPos = findBytes(xmlBuf, curLen, viewOpen, vLen);
+   if (vPos < 0) return curLen;
 
-    // Bound the anchor search inside this View. XMBML does not nest <View>
-    // inside <View>, so the first </View> after the opener terminates it.
-    int afterOpen = vPos + vLen;
-    int closeRel = findBytes(xmlBuf + afterOpen, curLen - afterOpen, "</View>", 7);
-    if (closeRel < 0) return curLen;
-    int vEnd = afterOpen + closeRel;
+   // Bound the anchor search inside this View. XMBML does not nest <View>
+   // inside <View>, so the first </View> after the opener terminates it.
+   int afterOpen = vPos + vLen;
+   int closeRel = findBytes(xmlBuf + afterOpen, curLen - afterOpen, "</View>", 7);
+   if (closeRel < 0) return curLen;
+   int vEnd = afterOpen + closeRel;
 
-    int aRel = findBytes(xmlBuf + afterOpen, vEnd - afterOpen, injectAnchor, aLen);
-    if (aRel < 0) return curLen;  // Anchor not in this view; skip.
-    int aPos = afterOpen + aRel;
+   int aRel = findBytes(xmlBuf + afterOpen, vEnd - afterOpen, injectAnchor, aLen);
+   if (aRel < 0) return curLen;  // Anchor not in this view; skip.
+   int aPos = afterOpen + aRel;
 
-    // Find "/>" — end of the current Query element — after the anchor.
-    int qCloseRel = findBytes(xmlBuf + aPos, vEnd - aPos, "/>", 2);
-    if (qCloseRel < 0) return -1;
-    int insertAt = aPos + qCloseRel + 2;
+   // Find "/>" — end of the current Query element — after the anchor.
+   int qCloseRel = findBytes(xmlBuf + aPos, vEnd - aPos, "/>", 2);
+   if (qCloseRel < 0) return -1;
+   int insertAt = aPos + qCloseRel + 2;
 
-    // Skip trailing whitespace/newline so the spliced line lands on its own row.
-    while (insertAt < vEnd &&
-           (xmlBuf[insertAt] == ' ' || xmlBuf[insertAt] == '\t'))
-        insertAt++;
-    if (insertAt < vEnd && xmlBuf[insertAt] == '\r') insertAt++;
-    if (insertAt < vEnd && xmlBuf[insertAt] == '\n') insertAt++;
+   // Skip trailing whitespace/newline so the spliced line lands on its own row.
+   while (insertAt < vEnd &&
+          (xmlBuf[insertAt] == ' ' || xmlBuf[insertAt] == '\t'))
+      insertAt++;
+   if (insertAt < vEnd && xmlBuf[insertAt] == '\r') insertAt++;
+   if (insertAt < vEnd && xmlBuf[insertAt] == '\n') insertAt++;
 
-    if (curLen + injLen >= XML_BUF_SIZE - 1) return -1;
-    for (int i = curLen; i >= insertAt; i--) xmlBuf[i + injLen] = xmlBuf[i];
-    for (int i = 0; i < injLen; i++)  xmlBuf[insertAt + i] = injectLine[i];
-    return curLen + injLen;
+   if (curLen + injLen >= XML_BUF_SIZE - 1) return -1;
+   for (int i = curLen; i >= insertAt; i--) xmlBuf[i + injLen] = xmlBuf[i];
+   for (int i = 0; i < injLen; i++)  xmlBuf[insertAt + i] = injectLine[i];
+   return curLen + injLen;
 }
 
 static int patchCategoryGameXml(void)
 {
-    int len = readFile(pathCatFlash, xmlBuf, XML_BUF_SIZE);
-    if (len <= 0) { logError("[sdm] read category_game.xml failed\n"); return PATCH_FAILED; }
+   int len = readFile(pathCatFlash, xmlBuf, XML_BUF_SIZE);
+   if (len <= 0) { logError("[sdm] read category_game.xml failed\n"); return PATCH_FAILED; }
 
-    // Already up to date? Verbatim match on the exact injectLine.
-    int injLen = getStrLen(injectLine);
-    if (findBytes(xmlBuf, len, injectLine, injLen) >= 0) {
-        logInfo("[sdm] category_game.xml already up to date\n");
-        return PATCH_EXISTS;
-    }
+   // Already up to date? Verbatim match on the exact injectLine.
+   int injLen = getStrLen(injectLine);
+   if (findBytes(xmlBuf, len, injectLine, injLen) >= 0) {
+      logInfo("[sdm] category_game.xml already up to date\n");
+      return PATCH_EXISTS;
+   }
 
-    // One-time backup of the pristine file.
-    if (!fileExists(pathCatBackup))
-        writeFile(pathCatBackup, xmlBuf, (uint64_t)len);
+   // One-time backup of the pristine file.
+   if (!fileExists(pathCatBackup))
+      writeFile(pathCatBackup, xmlBuf, (uint64_t)len);
 
-    int n = spliceAfterAnchor("<View id=\"root\">", len);
-    if (n < 0) { logError("[sdm] splice root failed\n"); return PATCH_FAILED; }
+   int n = spliceAfterAnchor("<View id=\"root\">", len);
+   if (n < 0) { logError("[sdm] splice root failed\n"); return PATCH_FAILED; }
 
-    if (writeFile(pathCatBlind, xmlBuf, (uint64_t)n) != 0) {
-        logError("[sdm] write /dev_blind failed\n");
-        return PATCH_FAILED;
-    }
-    logInfo("[sdm] category_game.xml patched\n");
-    return PATCH_APPLIED;
+   if (writeFile(pathCatBlind, xmlBuf, (uint64_t)n) != 0) {
+      logError("[sdm] write /dev_blind failed\n");
+      return PATCH_FAILED;
+   }
+   logInfo("[sdm] category_game.xml patched\n");
+   return PATCH_APPLIED;
 }

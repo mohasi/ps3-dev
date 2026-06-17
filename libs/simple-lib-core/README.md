@@ -82,9 +82,9 @@ simple-lib-core/
 │   ├── log-backlog.h
 │   └── bridge-client.h
 └── src/
-    ├── ftp.c             # shared FTP server implementation
-    ├── printf.c
-    └── file.c            # cancellable tree ops (measure/copy/delete/merge/count)
+   ├── ftp.c             # shared FTP server implementation
+   ├── printf.c
+   └── file.c            # cancellable tree ops (measure/copy/delete/merge/count)
 ```
 
 ## Usage
@@ -93,10 +93,10 @@ simple-lib-core/
    `bin/Release/`.
 2. In your plugin / app vcxproj:
    - Add `$(SolutionDir)libs\simple-lib-core\include` to include
-     directories.
+    directories.
    - Place the `.a` **before** SDK stubs in `AdditionalDependencies` —
-     our printf symbols must resolve before `libc_stub.a` or the PRX
-     silently fails to load in VSH context.
+    our printf symbols must resolve before `libc_stub.a` or the PRX
+    silently fails to load in VSH context.
 3. Include headers as needed: `#include "dbg.h"`,
    `#include "bridge-client.h"`, etc.
 

@@ -39,54 +39,54 @@ static uint32_t moduleIds[MODULE_IDS_MAX];
 //                     to produce the n bytes (capture, pull-file, module-list).
 static inline int sendReply(int fd, const char *status, const char *text)
 {
-    return sendFrame(fd, status, text, (int)getStrLen(text));
+   return sendFrame(fd, status, text, (int)getStrLen(text));
 }
 
 // shorthand for "<label> rc=0x<hex>" error replies. used by every
 // command handler that fails on a syscall return code.
 static inline int sendErrRc(int fd, const char *label, int32_t rc)
 {
-    char err[64];
-    snprintf(err, sizeof err, "%s rc=0x%x", label, (unsigned)rc);
-    return sendReply(fd, SDB_ERR, err);
+   char err[64];
+   snprintf(err, sizeof err, "%s rc=0x%x", label, (unsigned)rc);
+   return sendReply(fd, SDB_ERR, err);
 }
 
 // match a command prefix, return pointer to args (after space) or NULL
 static inline const char *matchCommand(const char *line, const char *cmd)
 {
-    int i = 0;
-    while (cmd[i]) {
-        if (line[i] != cmd[i]) return 0;
-        i++;
-    }
-    if (line[i] == '\0') return line + i;     // command with no args
-    if (line[i] == ' ')  return line + i + 1; // skip space before args
-    return 0;
+   int i = 0;
+   while (cmd[i]) {
+      if (line[i] != cmd[i]) return 0;
+      i++;
+   }
+   if (line[i] == '\0') return line + i;     // command with no args
+   if (line[i] == ' ')  return line + i + 1; // skip space before args
+   return 0;
 }
 
 // parse "<name> <decimal>" into the caller's name[] (cap bytes) and
 // *outSize. returns 1 on success, 0 on malformed input.
 static int parseNameAndSize(const char *args, char *name, int cap, uint32_t *outSize)
 {
-    int i = 0;
-    while (args[i] && args[i] != ' ') {
-        if (i >= cap - 1) return 0;
-        name[i] = args[i];
-        i++;
-    }
-    if (i == 0 || args[i] != ' ') return 0;
-    name[i] = '\0';
-    i++;
-    uint32_t v = 0;
-    int digits = 0;
-    while (args[i] >= '0' && args[i] <= '9') {
-        v = v * 10 + (uint32_t)(args[i] - '0');
-        i++;
-        digits++;
-    }
-    if (digits == 0) return 0;
-    *outSize = v;
-    return 1;
+   int i = 0;
+   while (args[i] && args[i] != ' ') {
+      if (i >= cap - 1) return 0;
+      name[i] = args[i];
+      i++;
+   }
+   if (i == 0 || args[i] != ' ') return 0;
+   name[i] = '\0';
+   i++;
+   uint32_t v = 0;
+   int digits = 0;
+   while (args[i] >= '0' && args[i] <= '9') {
+      v = v * 10 + (uint32_t)(args[i] - '0');
+      i++;
+      digits++;
+   }
+   if (digits == 0) return 0;
+   *outSize = v;
+   return 1;
 }
 
 // extract a path token from args. supports "quoted paths" (any chars until
@@ -95,42 +95,42 @@ static int parseNameAndSize(const char *args, char *name, int cap, uint32_t *out
 // on malformed input returns NULL.
 static const char *parsePath(const char *args, char *out, int cap)
 {
-    int o = 0;
-    if (*args == '"') {
-        args++;
-        while (*args && *args != '"') {
-            if (o >= cap - 1) return 0;
-            out[o++] = *args++;
-        }
-        if (*args != '"') return 0;
-        args++;
-    } else {
-        while (*args && *args != ' ') {
-            if (o >= cap - 1) return 0;
-            out[o++] = *args++;
-        }
-    }
-    if (o == 0) return 0;
-    out[o] = '\0';
-    while (*args == ' ') args++;
-    return args;
+   int o = 0;
+   if (*args == '"') {
+      args++;
+      while (*args && *args != '"') {
+         if (o >= cap - 1) return 0;
+         out[o++] = *args++;
+      }
+      if (*args != '"') return 0;
+      args++;
+   } else {
+      while (*args && *args != ' ') {
+         if (o >= cap - 1) return 0;
+         out[o++] = *args++;
+      }
+   }
+   if (o == 0) return 0;
+   out[o] = '\0';
+   while (*args == ' ') args++;
+   return args;
 }
 
 // parse a non-negative decimal up to the next space or end. on success fills
 // *outVal and returns pointer to remainder. on malformed input returns NULL.
 static const char *parseUInt64(const char *args, uint64_t *outVal)
 {
-    uint64_t v = 0;
-    int digits = 0;
-    while (*args >= '0' && *args <= '9') {
-        v = v * 10 + (uint64_t)(*args - '0');
-        args++;
-        digits++;
-    }
-    if (digits == 0) return 0;
-    *outVal = v;
-    while (*args == ' ') args++;
-    return args;
+   uint64_t v = 0;
+   int digits = 0;
+   while (*args >= '0' && *args <= '9') {
+      v = v * 10 + (uint64_t)(*args - '0');
+      args++;
+      digits++;
+   }
+   if (digits == 0) return 0;
+   *outVal = v;
+   while (*args == ' ') args++;
+   return args;
 }
 
 // find a loaded prx by name. returns its id, or -1 if not found.
@@ -139,23 +139,23 @@ static const char *parseUInt64(const char *args, uint64_t *outVal)
 // prxInfo() in syscall.h.
 static int32_t findModuleByName(const char *name)
 {
-    char     n[PRX_NAME_MAX];
-    char     f[PRX_FILENAME_MAX];
-    uint32_t count = 0;
-    if (prxList(moduleIds, MODULE_IDS_MAX, &count) < 0) return -1;
-    for (uint32_t i = 0; i < count; i++) {
-        int32_t id = (int32_t)moduleIds[i];
-        // yield between prxName calls. without this, the kernel state
-        // touched by prxName never gets a scheduling gap and the next
-        // arming-path syscall (prxInfo/prxLinkage in cmdModuleTraceOn)
-        // observes it inconsistently and wedges. previously the
-        // per-iteration logInfo() was incidentally providing this yield
-        // via its file-write syscall; the explicit yield removes that
-        // hidden dependency.
-        yieldThread();
-        if (prxName(id, n, f) < 0) continue;
-        if (strEq(n, name)) return id;
-    }
-    return -1;
+   char     n[PRX_NAME_MAX];
+   char     f[PRX_FILENAME_MAX];
+   uint32_t count = 0;
+   if (prxList(moduleIds, MODULE_IDS_MAX, &count) < 0) return -1;
+   for (uint32_t i = 0; i < count; i++) {
+      int32_t id = (int32_t)moduleIds[i];
+      // yield between prxName calls. without this, the kernel state
+      // touched by prxName never gets a scheduling gap and the next
+      // arming-path syscall (prxInfo/prxLinkage in cmdModuleTraceOn)
+      // observes it inconsistently and wedges. previously the
+      // per-iteration logInfo() was incidentally providing this yield
+      // via its file-write syscall; the explicit yield removes that
+      // hidden dependency.
+      yieldThread();
+      if (prxName(id, n, f) < 0) continue;
+      if (strEq(n, name)) return id;
+   }
+   return -1;
 }
 

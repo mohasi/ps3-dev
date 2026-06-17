@@ -1,60 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Release|PS3">
-      <Configuration>Release</Configuration>
-      <Platform>PS3</Platform>
-    </ProjectConfiguration>
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{66E95ACB-FB4D-4DF7-BEE8-4F23B348C563}</ProjectGuid>
-    <ProjectName>simple-debug-bridge</ProjectName>
+   <ProjectGuid>{66E95ACB-FB4D-4DF7-BEE8-4F23B348C563}</ProjectGuid>
+   <ProjectName>simple-debug-bridge</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
-    <ConfigurationType>DynamicLibrary</ConfigurationType>
-    <PlatformToolset>GCC</PlatformToolset>
+   <ConfigurationType>DynamicLibrary</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup>
-    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
-    <ExtensionsToDeleteOnClean>*.obj;*.d;*.map;*.lst;*.pch;$(TargetPath);simple-debug-bridge.sprx;$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
-    <TargetName>$(ProjectName).ppu</TargetName>
-    <IgnoreImportLibrary>true</IgnoreImportLibrary>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <ExtensionsToDeleteOnClean>*.obj;*.d;*.map;*.lst;*.pch;$(TargetPath);simple-debug-bridge.sprx;$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
+   <TargetName>$(ProjectName).ppu</TargetName>
+   <IgnoreImportLibrary>true</IgnoreImportLibrary>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
-    <ClCompile>
-      <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-plugin\include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ClCompile>
-    <Link>
-      <AdditionalOptions>-mprx -zgenprx -zgenstub %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalDependencies>$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)\libsimple-lib-core.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;$(SolutionDir)libs\libpaf_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
-    </Link>
-    </ItemDefinitionGroup>
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-plugin\include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+   </ClCompile>
+   <Link>
+     <AdditionalOptions>-mprx -zgenprx -zgenstub %(AdditionalOptions)</AdditionalOptions>
+     <AdditionalDependencies>$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)\libsimple-lib-core.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;$(SolutionDir)libs\libpaf_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
+   </Link>
+   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\prx.c" />
+   <ClCompile Include="src\prx.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\capture.h" />
-    <ClInclude Include="include\server.h" />
-    <ClInclude Include="include\cmd-read-mem.h" />
-    <ClInclude Include="include\cmd-stat-tree.h" />
-    <ClInclude Include="include\cmd-capture.h" />
-    <ClInclude Include="include\cmd-file.h" />
-    <ClInclude Include="include\cmd-common.h" />
-    <ClInclude Include="include\cmd-introspect.h" />
-    <ClInclude Include="include\cmd-trace.h" />
-    <ClInclude Include="include\fileio.h" />
-    <ClInclude Include="include\pkg.h" />
-    <ClInclude Include="include\plugin.h" />
+   <ClInclude Include="include\capture.h" />
+   <ClInclude Include="include\server.h" />
+   <ClInclude Include="include\cmd-read-mem.h" />
+   <ClInclude Include="include\cmd-stat-tree.h" />
+   <ClInclude Include="include\cmd-capture.h" />
+   <ClInclude Include="include\cmd-file.h" />
+   <ClInclude Include="include\cmd-common.h" />
+   <ClInclude Include="include\cmd-introspect.h" />
+   <ClInclude Include="include\cmd-trace.h" />
+   <ClInclude Include="include\fileio.h" />
+   <ClInclude Include="include\pkg.h" />
+   <ClInclude Include="include\plugin.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="README.md" />
+   <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\ps3.targets" />

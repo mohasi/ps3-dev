@@ -16,25 +16,25 @@
 #define BUTTON_HOLD_REPEAT_US   60000  // interval between subsequent auto-repeats
 
 typedef struct {
-    uint64_t timer;
-    int      repeats;
+   uint64_t timer;
+   int      repeats;
 } ButtonRepeat;
 
 static inline int isRepeatDue(ButtonRepeat *r, PadButtonState state)
 {
-    if (state == PAD_BUTTON_STATE_PRESSED) {
-        r->timer   = sys_time_get_system_time();
-        r->repeats = 0;
-        return 1;
-    }
-    if (state == PAD_BUTTON_STATE_HELD) {
-        uint64_t now       = sys_time_get_system_time();
-        uint64_t threshold = r->repeats == 0 ? BUTTON_HOLD_INITIAL_US : BUTTON_HOLD_REPEAT_US;
-        if (now - r->timer >= threshold) {
-            r->timer = now;
-            r->repeats++;
-            return 1;
-        }
-    }
-    return 0;
+   if (state == PAD_BUTTON_STATE_PRESSED) {
+      r->timer   = sys_time_get_system_time();
+      r->repeats = 0;
+      return 1;
+   }
+   if (state == PAD_BUTTON_STATE_HELD) {
+      uint64_t now       = sys_time_get_system_time();
+      uint64_t threshold = r->repeats == 0 ? BUTTON_HOLD_INITIAL_US : BUTTON_HOLD_REPEAT_US;
+      if (now - r->timer >= threshold) {
+         r->timer = now;
+         r->repeats++;
+         return 1;
+      }
+   }
+   return 0;
 }

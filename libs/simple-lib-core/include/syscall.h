@@ -21,83 +21,83 @@
 // generic syscall trampolines. pick the one matching the arg count.
 static inline int64_t scCall1(uint64_t num, uint64_t a1)
 {
-    register uint64_t r3  __asm__("3")  = a1;
-    register uint64_t r11 __asm__("11") = num;
-    __asm__ volatile ("sc\n" : "+r"(r3)
-                      : "r"(r11)
-                      : "r0","r4","r5","r6","r7","r8","r9","r10","r12",
-                        "cr0","ctr","xer","memory");
-    return (int64_t)r3;
+   register uint64_t r3  __asm__("3")  = a1;
+   register uint64_t r11 __asm__("11") = num;
+   __asm__ volatile ("sc\n" : "+r"(r3)
+                     : "r"(r11)
+                     : "r0","r4","r5","r6","r7","r8","r9","r10","r12",
+                       "cr0","ctr","xer","memory");
+   return (int64_t)r3;
 }
 
 static inline int64_t scCall2(uint64_t num, uint64_t a1, uint64_t a2)
 {
-    register uint64_t r3  __asm__("3")  = a1;
-    register uint64_t r4  __asm__("4")  = a2;
-    register uint64_t r11 __asm__("11") = num;
-    __asm__ volatile ("sc\n" : "+r"(r3)
-                      : "r"(r4), "r"(r11)
-                      : "r0","r5","r6","r7","r8","r9","r10","r12",
-                        "cr0","ctr","xer","memory");
-    return (int64_t)r3;
+   register uint64_t r3  __asm__("3")  = a1;
+   register uint64_t r4  __asm__("4")  = a2;
+   register uint64_t r11 __asm__("11") = num;
+   __asm__ volatile ("sc\n" : "+r"(r3)
+                     : "r"(r4), "r"(r11)
+                     : "r0","r5","r6","r7","r8","r9","r10","r12",
+                       "cr0","ctr","xer","memory");
+   return (int64_t)r3;
 }
 
 static inline int64_t scCall3(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3)
 {
-    register uint64_t r3  __asm__("3")  = a1;
-    register uint64_t r4  __asm__("4")  = a2;
-    register uint64_t r5  __asm__("5")  = a3;
-    register uint64_t r11 __asm__("11") = num;
-    __asm__ volatile ("sc\n" : "+r"(r3)
-                      : "r"(r4), "r"(r5), "r"(r11)
-                      : "r0","r6","r7","r8","r9","r10","r12",
-                        "cr0","ctr","xer","memory");
-    return (int64_t)r3;
+   register uint64_t r3  __asm__("3")  = a1;
+   register uint64_t r4  __asm__("4")  = a2;
+   register uint64_t r5  __asm__("5")  = a3;
+   register uint64_t r11 __asm__("11") = num;
+   __asm__ volatile ("sc\n" : "+r"(r3)
+                     : "r"(r4), "r"(r5), "r"(r11)
+                     : "r0","r6","r7","r8","r9","r10","r12",
+                       "cr0","ctr","xer","memory");
+   return (int64_t)r3;
 }
 
 static inline int64_t scCall4(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4)
 {
-    register uint64_t r3  __asm__("3")  = a1;
-    register uint64_t r4  __asm__("4")  = a2;
-    register uint64_t r5  __asm__("5")  = a3;
-    register uint64_t r6  __asm__("6")  = a4;
-    register uint64_t r11 __asm__("11") = num;
-    __asm__ volatile ("sc\n" : "+r"(r3)
-                      : "r"(r4), "r"(r5), "r"(r6), "r"(r11)
-                      : "r0","r7","r8","r9","r10","r12",
-                        "cr0","ctr","xer","memory");
-    return (int64_t)r3;
+   register uint64_t r3  __asm__("3")  = a1;
+   register uint64_t r4  __asm__("4")  = a2;
+   register uint64_t r5  __asm__("5")  = a3;
+   register uint64_t r6  __asm__("6")  = a4;
+   register uint64_t r11 __asm__("11") = num;
+   __asm__ volatile ("sc\n" : "+r"(r3)
+                     : "r"(r4), "r"(r5), "r"(r6), "r"(r11)
+                     : "r0","r7","r8","r9","r10","r12",
+                       "cr0","ctr","xer","memory");
+   return (int64_t)r3;
 }
 
 static inline int64_t scCall5(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5)
 {
-    register uint64_t r3  __asm__("3")  = a1;
-    register uint64_t r4  __asm__("4")  = a2;
-    register uint64_t r5  __asm__("5")  = a3;
-    register uint64_t r6  __asm__("6")  = a4;
-    register uint64_t r7  __asm__("7")  = a5;
-    register uint64_t r11 __asm__("11") = num;
-    __asm__ volatile ("sc\n" : "+r"(r3)
-                      : "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r11)
-                      : "r0","r8","r9","r10","r12",
-                        "cr0","ctr","xer","memory");
-    return (int64_t)r3;
+   register uint64_t r3  __asm__("3")  = a1;
+   register uint64_t r4  __asm__("4")  = a2;
+   register uint64_t r5  __asm__("5")  = a3;
+   register uint64_t r6  __asm__("6")  = a4;
+   register uint64_t r7  __asm__("7")  = a5;
+   register uint64_t r11 __asm__("11") = num;
+   __asm__ volatile ("sc\n" : "+r"(r3)
+                     : "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r11)
+                     : "r0","r8","r9","r10","r12",
+                       "cr0","ctr","xer","memory");
+   return (int64_t)r3;
 }
 
 static inline int64_t scCall6(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6)
 {
-    register uint64_t r3  __asm__("3")  = a1;
-    register uint64_t r4  __asm__("4")  = a2;
-    register uint64_t r5  __asm__("5")  = a3;
-    register uint64_t r6  __asm__("6")  = a4;
-    register uint64_t r7  __asm__("7")  = a5;
-    register uint64_t r8  __asm__("8")  = a6;
-    register uint64_t r11 __asm__("11") = num;
-    __asm__ volatile ("sc\n" : "+r"(r3)
-                      : "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r8), "r"(r11)
-                      : "r0","r9","r10","r12",
-                        "cr0","ctr","xer","memory");
-    return (int64_t)r3;
+   register uint64_t r3  __asm__("3")  = a1;
+   register uint64_t r4  __asm__("4")  = a2;
+   register uint64_t r5  __asm__("5")  = a3;
+   register uint64_t r6  __asm__("6")  = a4;
+   register uint64_t r7  __asm__("7")  = a5;
+   register uint64_t r8  __asm__("8")  = a6;
+   register uint64_t r11 __asm__("11") = num;
+   __asm__ volatile ("sc\n" : "+r"(r3)
+                     : "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r8), "r"(r11)
+                     : "r0","r9","r10","r12",
+                       "cr0","ctr","xer","memory");
+   return (int64_t)r3;
 }
 
 // lv2 syscall 837 - mount BUILTIN_FLSH1 (dev_flash) read-write at /dev_blind.
@@ -106,22 +106,22 @@ static inline int64_t scCall6(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a
 // (the trailing mount args), which the generic scCallN forms leave undefined.
 static inline int64_t mountDevBlind(void)
 {
-    register uint64_t r3  __asm__("3")  = (uint64_t)(uintptr_t)"CELL_FS_IOS:BUILTIN_FLSH1";
-    register uint64_t r4  __asm__("4")  = (uint64_t)(uintptr_t)"CELL_FS_FAT";
-    register uint64_t r5  __asm__("5")  = (uint64_t)(uintptr_t)"/dev_blind";
-    register uint64_t r6  __asm__("6")  = 0;
-    register uint64_t r7  __asm__("7")  = 0;
-    register uint64_t r8  __asm__("8")  = 0;
-    register uint64_t r9  __asm__("9")  = 0;
-    register uint64_t r10 __asm__("10") = 0;
-    register uint64_t r11 __asm__("11") = 837;
+   register uint64_t r3  __asm__("3")  = (uint64_t)(uintptr_t)"CELL_FS_IOS:BUILTIN_FLSH1";
+   register uint64_t r4  __asm__("4")  = (uint64_t)(uintptr_t)"CELL_FS_FAT";
+   register uint64_t r5  __asm__("5")  = (uint64_t)(uintptr_t)"/dev_blind";
+   register uint64_t r6  __asm__("6")  = 0;
+   register uint64_t r7  __asm__("7")  = 0;
+   register uint64_t r8  __asm__("8")  = 0;
+   register uint64_t r9  __asm__("9")  = 0;
+   register uint64_t r10 __asm__("10") = 0;
+   register uint64_t r11 __asm__("11") = 837;
 
-    __asm__ volatile ("sc\n"
-        : "+r"(r3)
-        : "r"(r4), "r"(r5), "r"(r6), "r"(r7),
-          "r"(r8), "r"(r9), "r"(r10), "r"(r11)
-        : "r0", "r12", "cr0", "ctr", "xer", "memory");
-    return (int64_t)r3;
+   __asm__ volatile ("sc\n"
+       : "+r"(r3)
+       : "r"(r4), "r"(r5), "r"(r6), "r"(r7),
+         "r"(r8), "r"(r9), "r"(r10), "r"(r11)
+       : "r0", "r12", "cr0", "ctr", "xer", "memory");
+   return (int64_t)r3;
 }
 
 // lv2 syscall 839 - sys_fs_sync(const char *device). forces every dirty buffer
@@ -132,7 +132,7 @@ static inline int64_t mountDevBlind(void)
 // the cobra fs syscalls being present. best-effort: callers ignore the return.
 static inline int64_t syncDevice(const char *deviceRoot)
 {
-    return scCall1(839, (uint64_t)(uintptr_t)deviceRoot);
+   return scCall1(839, (uint64_t)(uintptr_t)deviceRoot);
 }
 
 // lv2 syscall 379 - sys_sm_shutdown. modes (per psdevwiki):
@@ -142,14 +142,14 @@ static inline int64_t syncDevice(const char *deviceRoot)
 //   0x8201 = load lpar id 1 (rebug recovery — NOT a generic reboot)
 static inline void sysPower(uint64_t mode)
 {
-    (void)scCall4(379, mode, 0, 0, 0);
+   (void)scCall4(379, mode, 0, 0, 0);
 }
 
 // lv2 syscall 461 - sys_prx_get_module_id_by_address.
 // returns the prx id of the module containing the given address.
 static inline int32_t getPrxModuleIdByAddress(void *addr)
 {
-    return (int32_t)scCall1(461, (uint64_t)(uintptr_t)addr);
+   return (int32_t)scCall1(461, (uint64_t)(uintptr_t)addr);
 }
 
 // lv2 syscall 482 - sys_prx_stop_module. used in prx _stop to tell lv2
@@ -157,9 +157,9 @@ static inline int32_t getPrxModuleIdByAddress(void *addr)
 // after all threads have exited. pattern from webman-mod vsh_menu.
 static inline void prxFinalizeSelf(void)
 {
-    static uint64_t meminfo[5] = { 0x28, 2, 0, 0, 0 };
-    int32_t prx = getPrxModuleIdByAddress((void *)prxFinalizeSelf);
-    (void)scCall3(482, (uint64_t)prx, 0, (uint64_t)(uintptr_t)meminfo);
+   static uint64_t meminfo[5] = { 0x28, 2, 0, 0, 0 };
+   int32_t prx = getPrxModuleIdByAddress((void *)prxFinalizeSelf);
+   (void)scCall3(482, (uint64_t)prx, 0, (uint64_t)(uintptr_t)meminfo);
 }
 
 // prx introspection. caller-friendly wrappers around lv2 syscalls 494/495.
@@ -180,11 +180,11 @@ static inline void prxFinalizeSelf(void)
 // need to walk imports/exports — segment 0 is the RX code+rodata segment
 // that holds sce_module_info, _scelibstub[], _scelibent[]).
 typedef struct {
-    uint64_t base;
-    uint64_t filesz;
-    uint64_t memsz;
-    uint64_t index;
-    uint64_t type;
+   uint64_t base;
+   uint64_t filesz;
+   uint64_t memsz;
+   uint64_t index;
+   uint64_t type;
 } PrxSegment;
 
 // list prx ids loaded into the current process (vsh.self in our context).
@@ -192,24 +192,24 @@ typedef struct {
 // returns 0 on success, negative lv2 error otherwise.
 static inline int32_t prxList(uint32_t *ids, uint32_t maxIds, uint32_t *outCount)
 {
-    struct {
-        uint64_t size;
-        uint32_t pad, max, count, idlist, unk;
-    } opt;
-    // kernel rejects opt.unk == NULL, but we never read it. local scratch.
-    static uint32_t scratch[256];
-    if (maxIds > sizeof scratch / sizeof scratch[0]) maxIds = sizeof scratch / sizeof scratch[0];
+   struct {
+      uint64_t size;
+      uint32_t pad, max, count, idlist, unk;
+   } opt;
+   // kernel rejects opt.unk == NULL, but we never read it. local scratch.
+   static uint32_t scratch[256];
+   if (maxIds > sizeof scratch / sizeof scratch[0]) maxIds = sizeof scratch / sizeof scratch[0];
 
-    opt.size   = sizeof opt;
-    opt.pad    = 0;
-    opt.max    = maxIds;
-    opt.count  = 0;
-    opt.idlist = (uint32_t)(uintptr_t)ids;
-    opt.unk    = (uint32_t)(uintptr_t)scratch;
+   opt.size   = sizeof opt;
+   opt.pad    = 0;
+   opt.max    = maxIds;
+   opt.count  = 0;
+   opt.idlist = (uint32_t)(uintptr_t)ids;
+   opt.unk    = (uint32_t)(uintptr_t)scratch;
 
-    int32_t rc = (int32_t)scCall2(494, 2, (uint64_t)(uintptr_t)&opt);
-    *outCount = (rc < 0) ? 0 : opt.count;
-    return rc;
+   int32_t rc = (int32_t)scCall2(494, 2, (uint64_t)(uintptr_t)&opt);
+   *outCount = (rc < 0) ? 0 : opt.count;
+   return rc;
 }
 
 // look up a prx by id.
@@ -237,56 +237,56 @@ static inline int32_t prxList(uint32_t *ids, uint32_t maxIds, uint32_t *outCount
 static inline int32_t prxInfo(int32_t id, char *nameOut, char *fileOut,
                               PrxSegment *segsOut, uint32_t segsMax, uint32_t *segsCount)
 {
-    // sys_prx_module_info_v2_t layout. sizeof == 88 selects v2 in lv2.
-    // declared in sdk/.../sys/prx.h; we mirror it here because the SDK
-    // header pulls in PPU-only typedefs we don't want everywhere.
-    struct {
-        uint64_t size;
-        char     name[PRX_NAME_MAX];
-        char     version[2];
-        uint32_t modattribute, startEntry, stopEntry, allSegmentsNum;
-        uint32_t filename, filenameSize, segments, segmentsNum;
-        uint32_t libentAddr, libentSize, libstubAddr, libstubSize;
-    } info;
-    struct {
-        uint64_t size;
-        uint32_t info;
-        uint32_t pad;
-    } opt;
+   // sys_prx_module_info_v2_t layout. sizeof == 88 selects v2 in lv2.
+   // declared in sdk/.../sys/prx.h; we mirror it here because the SDK
+   // header pulls in PPU-only typedefs we don't want everywhere.
+   struct {
+      uint64_t size;
+      char     name[PRX_NAME_MAX];
+      char     version[2];
+      uint32_t modattribute, startEntry, stopEntry, allSegmentsNum;
+      uint32_t filename, filenameSize, segments, segmentsNum;
+      uint32_t libentAddr, libentSize, libstubAddr, libstubSize;
+   } info;
+   struct {
+      uint64_t size;
+      uint32_t info;
+      uint32_t pad;
+   } opt;
 
-    for (uint32_t i = 0; i < sizeof info; i++) ((char *)&info)[i] = 0;
-    info.size         = sizeof info;
-    info.filename     = (uint32_t)(uintptr_t)fileOut;
-    info.filenameSize = PRX_FILENAME_MAX;
-    info.segments     = (uint32_t)(uintptr_t)segsOut;
-    info.segmentsNum  = segsOut ? segsMax : 0;
-    fileOut[0] = '\0';
+   for (uint32_t i = 0; i < sizeof info; i++) ((char *)&info)[i] = 0;
+   info.size         = sizeof info;
+   info.filename     = (uint32_t)(uintptr_t)fileOut;
+   info.filenameSize = PRX_FILENAME_MAX;
+   info.segments     = (uint32_t)(uintptr_t)segsOut;
+   info.segmentsNum  = segsOut ? segsMax : 0;
+   fileOut[0] = '\0';
 
-    opt.size = sizeof opt;
-    opt.info = (uint32_t)(uintptr_t)&info;
-    opt.pad  = 0;
+   opt.size = sizeof opt;
+   opt.info = (uint32_t)(uintptr_t)&info;
+   opt.pad  = 0;
 
-    int32_t rc = (int32_t)scCall3(495, (uint64_t)id, 0, (uint64_t)(uintptr_t)&opt);
-    if (rc < 0) {
-        if (nameOut) nameOut[0] = '\0';
-        if (segsCount) *segsCount = 0;
-        return rc;
-    }
+   int32_t rc = (int32_t)scCall3(495, (uint64_t)id, 0, (uint64_t)(uintptr_t)&opt);
+   if (rc < 0) {
+      if (nameOut) nameOut[0] = '\0';
+      if (segsCount) *segsCount = 0;
+      return rc;
+   }
 
-    if (nameOut) {
-        for (int i = 0; i < PRX_NAME_MAX; i++) nameOut[i] = info.name[i];
-        nameOut[PRX_NAME_MAX - 1] = '\0';
-    }
-    fileOut[PRX_FILENAME_MAX - 1] = '\0';
-    if (segsCount) *segsCount = info.allSegmentsNum;
-    return 0;
+   if (nameOut) {
+      for (int i = 0; i < PRX_NAME_MAX; i++) nameOut[i] = info.name[i];
+      nameOut[PRX_NAME_MAX - 1] = '\0';
+   }
+   fileOut[PRX_FILENAME_MAX - 1] = '\0';
+   if (segsCount) *segsCount = info.allSegmentsNum;
+   return 0;
 }
 
 // thin wrapper: name + filename, no segments. callers that don't need
 // the path still must allocate the buffer; the kernel relies on it.
 static inline int32_t prxName(int32_t id, char *nameOut, char *fileOut)
 {
-    return prxInfo(id, nameOut, fileOut, 0, 0, 0);
+   return prxInfo(id, nameOut, fileOut, 0, 0, 0);
 }
 
 // .lib.ent / .lib.stub table descriptors for one loaded prx, as
@@ -295,10 +295,10 @@ static inline int32_t prxName(int32_t id, char *nameOut, char *fileOut)
 // lengths of arrays of sys_prx_libent32_t / sys_prx_libstub32_t (the
 // individual records carry their own structsize, so divide carefully).
 typedef struct {
-    uint32_t libentAddr;
-    uint32_t libentSize;
-    uint32_t libstubAddr;
-    uint32_t libstubSize;
+   uint32_t libentAddr;
+   uint32_t libentSize;
+   uint32_t libstubAddr;
+   uint32_t libstubSize;
 } PrxLinkage;
 
 // pull the export (.lib.ent) and import (.lib.stub) table descriptors
@@ -309,40 +309,40 @@ static inline int32_t prxLinkage(int32_t id, PrxLinkage *outLink,
                                  PrxSegment *segsOut, uint32_t segsMax,
                                  uint32_t *segsCount)
 {
-    struct {
-        uint64_t size;
-        char     name[PRX_NAME_MAX];
-        char     version[2];
-        uint32_t modattribute, startEntry, stopEntry, allSegmentsNum;
-        uint32_t filename, filenameSize, segments, segmentsNum;
-        uint32_t libentAddr, libentSize, libstubAddr, libstubSize;
-    } info;
-    struct { uint64_t size; uint32_t info; uint32_t pad; } opt;
-    char file[PRX_FILENAME_MAX];
-    for (uint32_t i = 0; i < sizeof info; i++) ((char *)&info)[i] = 0;
-    info.size         = sizeof info;
-    info.filename     = (uint32_t)(uintptr_t)file;
-    info.filenameSize = PRX_FILENAME_MAX;
-    info.segments     = (uint32_t)(uintptr_t)segsOut;
-    info.segmentsNum  = segsOut ? segsMax : 0;
-    file[0]           = '\0';
-    opt.size = sizeof opt;
-    opt.info = (uint32_t)(uintptr_t)&info;
-    opt.pad  = 0;
-    int32_t rc = (int32_t)scCall3(495, (uint64_t)id, 0, (uint64_t)(uintptr_t)&opt);
-    if (rc < 0) {
-        if (outLink) { outLink->libentAddr = outLink->libentSize = outLink->libstubAddr = outLink->libstubSize = 0; }
-        if (segsCount) *segsCount = 0;
-        return rc;
-    }
-    if (outLink) {
-        outLink->libentAddr  = info.libentAddr;
-        outLink->libentSize  = info.libentSize;
-        outLink->libstubAddr = info.libstubAddr;
-        outLink->libstubSize = info.libstubSize;
-    }
-    if (segsCount) *segsCount = info.allSegmentsNum;
-    return 0;
+   struct {
+      uint64_t size;
+      char     name[PRX_NAME_MAX];
+      char     version[2];
+      uint32_t modattribute, startEntry, stopEntry, allSegmentsNum;
+      uint32_t filename, filenameSize, segments, segmentsNum;
+      uint32_t libentAddr, libentSize, libstubAddr, libstubSize;
+   } info;
+   struct { uint64_t size; uint32_t info; uint32_t pad; } opt;
+   char file[PRX_FILENAME_MAX];
+   for (uint32_t i = 0; i < sizeof info; i++) ((char *)&info)[i] = 0;
+   info.size         = sizeof info;
+   info.filename     = (uint32_t)(uintptr_t)file;
+   info.filenameSize = PRX_FILENAME_MAX;
+   info.segments     = (uint32_t)(uintptr_t)segsOut;
+   info.segmentsNum  = segsOut ? segsMax : 0;
+   file[0]           = '\0';
+   opt.size = sizeof opt;
+   opt.info = (uint32_t)(uintptr_t)&info;
+   opt.pad  = 0;
+   int32_t rc = (int32_t)scCall3(495, (uint64_t)id, 0, (uint64_t)(uintptr_t)&opt);
+   if (rc < 0) {
+      if (outLink) { outLink->libentAddr = outLink->libentSize = outLink->libstubAddr = outLink->libstubSize = 0; }
+      if (segsCount) *segsCount = 0;
+      return rc;
+   }
+   if (outLink) {
+      outLink->libentAddr  = info.libentAddr;
+      outLink->libentSize  = info.libentSize;
+      outLink->libstubAddr = info.libstubAddr;
+      outLink->libstubSize = info.libstubSize;
+   }
+   if (segsCount) *segsCount = info.allSegmentsNum;
+   return 0;
 }
 
 // lv2 syscalls 348/349 - sys_memory_allocate / sys_memory_free. used by
@@ -356,14 +356,14 @@ static inline int32_t prxLinkage(int32_t id, PrxLinkage *outLink,
 
 static inline int32_t sysMemAllocate(uint32_t size, uint64_t pageFlag, uint32_t *outAddr)
 {
-    uint32_t addr = 0;
-    int32_t  rc   = (int32_t)scCall3(348, (uint64_t)size, pageFlag,
-                                     (uint64_t)(uintptr_t)&addr);
-    *outAddr = (rc < 0) ? 0 : addr;
-    return rc;
+   uint32_t addr = 0;
+   int32_t  rc   = (int32_t)scCall3(348, (uint64_t)size, pageFlag,
+                                    (uint64_t)(uintptr_t)&addr);
+   *outAddr = (rc < 0) ? 0 : addr;
+   return rc;
 }
 
 static inline int32_t sysMemFree(uint32_t addr)
 {
-    return (int32_t)scCall1(349, (uint64_t)addr);
+   return (int32_t)scCall1(349, (uint64_t)addr);
 }

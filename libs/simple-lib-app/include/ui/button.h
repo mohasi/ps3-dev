@@ -6,14 +6,14 @@
 #include "ui/label.h"
 
 typedef enum {
-	BUTTON_ENABLED = 0,
-	BUTTON_DISABLED
+   BUTTON_ENABLED = 0,
+   BUTTON_DISABLED
 } ButtonState;
 
 typedef struct {
-	Image icon;
-	Label label;
-	ButtonState state;
+   Image icon;
+   Label label;
+   ButtonState state;
 } Button;
 
 void initButton(Button *button, Image icon, Label label, ButtonState state);

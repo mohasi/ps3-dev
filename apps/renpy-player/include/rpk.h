@@ -10,10 +10,10 @@
 //   blobs.
 
 typedef struct {
-    int      fd;
-    int      open;
-    uint32_t version;
-    uint32_t count;
+   int      fd;
+   int      open;
+   uint32_t version;
+   uint32_t count;
 } RpkFile;
 
 // Opens and validates the .rpk header. Returns 0 on success, negative on error.

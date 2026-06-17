@@ -78,9 +78,9 @@ static void ftpSessionThread(uint64_t arg);
 static void closeSocket(int *socketValue)
 {
    if (*socketValue >= 0) {
-      shutdown(*socketValue, SHUT_RDWR);
-      socketclose(*socketValue);
-      *socketValue = -1;
+     shutdown(*socketValue, SHUT_RDWR);
+     socketclose(*socketValue);
+     *socketValue = -1;
    }
 }
 
@@ -90,8 +90,8 @@ static int listenOnPort(uint16_t port, FtpResult *reason)
 {
    int listenSocket = socket(AF_INET, SOCK_STREAM, 0);
    if (listenSocket < 0) {
-      if (reason) *reason = FTP_NETWORK_UNAVAILABLE;
-      return -1;
+     if (reason) *reason = FTP_NETWORK_UNAVAILABLE;
+     return -1;
    }
 
    struct sockaddr_in address;
@@ -101,15 +101,15 @@ static int listenOnPort(uint16_t port, FtpResult *reason)
    address.sin_addr.s_addr = htonl(INADDR_ANY);
 
    if (bind(listenSocket, (struct sockaddr *)&address, sizeof address) < 0) {
-      socketclose(listenSocket);
-      if (reason) *reason = FTP_PORT_IN_USE;
-      return -1;
+     socketclose(listenSocket);
+     if (reason) *reason = FTP_PORT_IN_USE;
+     return -1;
    }
 
    if (listen(listenSocket, FTP_MAX_SESSIONS) < 0) {
-      socketclose(listenSocket);
-      if (reason) *reason = FTP_PORT_IN_USE;
-      return -1;
+     socketclose(listenSocket);
+     if (reason) *reason = FTP_PORT_IN_USE;
+     return -1;
    }
 
    return listenSocket;
@@ -132,9 +132,9 @@ static int sendAll(int socketValue, const char *buffer, int length)
 {
    int offset = 0;
    while (offset < length) {
-      int sent = send(socketValue, buffer + offset, length - offset, 0);
-      if (sent <= 0) return -1;
-      offset += sent;
+     int sent = send(socketValue, buffer + offset, length - offset, 0);
+     if (sent <= 0) return -1;
+     offset += sent;
    }
    return 0;
 }
@@ -163,8 +163,8 @@ static void replyQuotedPath(FtpSession *session, int code, const char *path)
    buffer[length++] = ' ';
    buffer[length++] = '"';
    for (int index = 0; path[index] && length < (int)sizeof(buffer) - 6; index++) {
-      if (path[index] == '"') buffer[length++] = '"';
-      buffer[length++] = path[index];
+     if (path[index] == '"') buffer[length++] = '"';
+     buffer[length++] = path[index];
    }
    buffer[length++] = '"';
    buffer[length++] = '\r';
@@ -175,10 +175,10 @@ static void replyQuotedPath(FtpSession *session, int code, const char *path)
 static FtpSession *acquireSession(void)
 {
    for (int index = 0; index < FTP_MAX_SESSIONS; index++) {
-      if (!sessionPoolUsed[index]) {
-         sessionPoolUsed[index] = 1;
-         return &sessionPool[index];
-      }
+     if (!sessionPoolUsed[index]) {
+       sessionPoolUsed[index] = 1;
+       return &sessionPool[index];
+     }
    }
    return NULL;
 }
@@ -193,21 +193,21 @@ static void resolvePath(FtpSession *session, const char *inputPath, char *output
 {
    int outputLength = 0;
    if (inputPath[0] == '/') {
-      while (inputPath[outputLength] && outputLength < FTP_PATHBUF - 1) {
-         outputPath[outputLength] = inputPath[outputLength];
-         outputLength++;
-      }
-      outputPath[outputLength] = 0;
+     while (inputPath[outputLength] && outputLength < FTP_PATHBUF - 1) {
+       outputPath[outputLength] = inputPath[outputLength];
+       outputLength++;
+     }
+     outputPath[outputLength] = 0;
    } else {
-      int inputIndex = 0;
-      while (session->currentPath[inputIndex] && outputLength < FTP_PATHBUF - 1) {
-         outputPath[outputLength++] = session->currentPath[inputIndex++];
-      }
-      if (outputLength > 0 && outputPath[outputLength - 1] != '/' && outputLength < FTP_PATHBUF - 1)
-         outputPath[outputLength++] = '/';
-      for (inputIndex = 0; inputPath[inputIndex] && outputLength < FTP_PATHBUF - 1; inputIndex++)
-         outputPath[outputLength++] = inputPath[inputIndex];
-      outputPath[outputLength] = 0;
+     int inputIndex = 0;
+     while (session->currentPath[inputIndex] && outputLength < FTP_PATHBUF - 1) {
+       outputPath[outputLength++] = session->currentPath[inputIndex++];
+     }
+     if (outputLength > 0 && outputPath[outputLength - 1] != '/' && outputLength < FTP_PATHBUF - 1)
+       outputPath[outputLength++] = '/';
+     for (inputIndex = 0; inputPath[inputIndex] && outputLength < FTP_PATHBUF - 1; inputIndex++)
+       outputPath[outputLength++] = inputPath[inputIndex];
+     outputPath[outputLength] = 0;
    }
    normalizePath(outputPath, FTP_PATHBUF);
 }
@@ -224,19 +224,19 @@ static int openPasv(uint16_t *outPort)
    address.sin_addr.s_addr = htonl(INADDR_ANY);
 
    if (bind(listenSocket, (struct sockaddr *)&address, sizeof address) < 0) {
-      socketclose(listenSocket);
-      return -1;
+     socketclose(listenSocket);
+     return -1;
    }
 
    if (listen(listenSocket, 1) < 0) {
-      socketclose(listenSocket);
-      return -1;
+     socketclose(listenSocket);
+     return -1;
    }
 
    socklen_t addressLength = sizeof address;
    if (getsockname(listenSocket, (struct sockaddr *)&address, &addressLength) < 0) {
-      socketclose(listenSocket);
-      return -1;
+     socketclose(listenSocket);
+     return -1;
    }
 
    *outPort = ntohs(address.sin_port);
@@ -257,12 +257,12 @@ static void formatMlsdTime(uint64_t modifiedTime, char *output)
 {
    CellRtcDateTime dateTime;
    if (cellRtcSetTime_t(&dateTime, modifiedTime) != 0) {
-      dateTime.year = 1970;
-      dateTime.month = 1;
-      dateTime.day = 1;
-      dateTime.hour = 0;
-      dateTime.minute = 0;
-      dateTime.second = 0;
+     dateTime.year = 1970;
+     dateTime.month = 1;
+     dateTime.day = 1;
+     dateTime.hour = 0;
+     dateTime.minute = 0;
+     dateTime.second = 0;
    }
 
    int year = (int)dateTime.year;
@@ -311,25 +311,25 @@ static void appendMlsdLine(char *buffer, int capacity, int *offset,
 
    appendStr(buffer, capacity, &outputLength, "modify=");
    if (outputLength + 14 <= capacity) {
-      formatMlsdTime(modifiedTime, buffer + outputLength);
-      outputLength += 14;
+     formatMlsdTime(modifiedTime, buffer + outputLength);
+     outputLength += 14;
    }
    if (outputLength < capacity) buffer[outputLength++] = ';';
 
    appendStr(buffer, capacity, &outputLength, "UNIX.mode=0");
    uint32_t permissions = mode & 0777;
    if (outputLength + 3 <= capacity) {
-      buffer[outputLength++] = (char)('0' + ((permissions >> 6) & 7));
-      buffer[outputLength++] = (char)('0' + ((permissions >> 3) & 7));
-      buffer[outputLength++] = (char)('0' + (permissions & 7));
+     buffer[outputLength++] = (char)('0' + ((permissions >> 6) & 7));
+     buffer[outputLength++] = (char)('0' + ((permissions >> 3) & 7));
+     buffer[outputLength++] = (char)('0' + (permissions & 7));
    }
    if (outputLength < capacity) buffer[outputLength++] = ';';
 
    appendStr(buffer, capacity, &outputLength, "UNIX.uid=nobody;UNIX.gid=nobody; ");
    for (int index = 0; name[index] && outputLength < capacity - 2; index++) buffer[outputLength++] = name[index];
    if (outputLength + 2 <= capacity) {
-      buffer[outputLength++] = '\r';
-      buffer[outputLength++] = '\n';
+     buffer[outputLength++] = '\r';
+     buffer[outputLength++] = '\n';
    }
 
    *offset = outputLength;
@@ -345,8 +345,8 @@ static int emitMlsdEntry(int dataSocket, char *buffer, int capacity, int *offset
 {
    int needed = getStrLen(name) + 128;
    if (*offset > 0 && *offset + needed > capacity) {
-      if (sendAll(dataSocket, buffer, *offset) < 0) return -1;
-      *offset = 0;
+     if (sendAll(dataSocket, buffer, *offset) < 0) return -1;
+     *offset = 0;
    }
 
    appendMlsdLine(buffer, capacity, offset, type, stat->st_size, (uint32_t)(stat->st_mode & 0777),
@@ -359,40 +359,40 @@ static int streamDirMlsd(int dataSocket, const char *path, char *buffer, int cap
    int outputLength = 0;
    CellFsStat stat;
    if (cellFsStat(path, &stat) == CELL_FS_SUCCEEDED) {
-      if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, "cdir", &stat, ".") < 0) return -1;
+     if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, "cdir", &stat, ".") < 0) return -1;
    }
 
    if (!(path[0] == '/' && path[1] == 0)) {
-      char parentPath[FTP_PATHBUF];
-      getParentPath(path, parentPath, sizeof(parentPath));
-      CellFsStat parentStat;
-      if (cellFsStat(parentPath, &parentStat) == CELL_FS_SUCCEEDED) {
-         if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, "pdir", &parentStat, "..") < 0) return -1;
-      }
+     char parentPath[FTP_PATHBUF];
+     getParentPath(path, parentPath, sizeof(parentPath));
+     CellFsStat parentStat;
+     if (cellFsStat(parentPath, &parentStat) == CELL_FS_SUCCEEDED) {
+       if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, "pdir", &parentStat, "..") < 0) return -1;
+     }
    }
 
    int directoryHandle;
    if (cellFsOpendir(path, &directoryHandle) != CELL_FS_SUCCEEDED) {
-      if (outputLength > 0) sendAll(dataSocket, buffer, outputLength);
-      return -1;
+     if (outputLength > 0) sendAll(dataSocket, buffer, outputLength);
+     return -1;
    }
 
    CellFsDirent entry;
    uint64_t entrySize;
    while (cellFsReaddir(directoryHandle, &entry, &entrySize) == CELL_FS_SUCCEEDED && entrySize > 0) {
-      if (entry.d_name[0] == '.' && (entry.d_name[1] == 0 || (entry.d_name[1] == '.' && entry.d_name[2] == 0))) continue;
+     if (entry.d_name[0] == '.' && (entry.d_name[1] == 0 || (entry.d_name[1] == '.' && entry.d_name[2] == 0))) continue;
 
-      char fullPath[FTP_PATHBUF];
-      joinPath(fullPath, FTP_PATHBUF, path, entry.d_name);
+     char fullPath[FTP_PATHBUF];
+     joinPath(fullPath, FTP_PATHBUF, path, entry.d_name);
 
-      CellFsStat entryStat;
-      if (cellFsStat(fullPath, &entryStat) != CELL_FS_SUCCEEDED) continue;
+     CellFsStat entryStat;
+     if (cellFsStat(fullPath, &entryStat) != CELL_FS_SUCCEEDED) continue;
 
-      const char *type = statIsDir(&entryStat) ? "dir" : "file";
-      if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, type, &entryStat, entry.d_name) < 0) {
-         cellFsClosedir(directoryHandle);
-         return -1;
-      }
+     const char *type = statIsDir(&entryStat) ? "dir" : "file";
+     if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, type, &entryStat, entry.d_name) < 0) {
+       cellFsClosedir(directoryHandle);
+       return -1;
+     }
    }
 
    cellFsClosedir(directoryHandle);
@@ -409,13 +409,13 @@ static void handleFeat(FtpSession *session, const char *arg)
 {
    (void)arg;
    const char *features =
-      "211-Features:\r\n"
-      " SIZE\r\n"
-      " MDTM\r\n"
-      " MLSD\r\n"
-      " MLST type*;size*;sizd*;modify*;UNIX.mode*;UNIX.uid*;UNIX.gid*;\r\n"
-      " UTF8\r\n"
-      "211 End.\r\n";
+     "211-Features:\r\n"
+     " SIZE\r\n"
+     " MDTM\r\n"
+     " MLSD\r\n"
+     " MLST type*;size*;sizd*;modify*;UNIX.mode*;UNIX.uid*;UNIX.gid*;\r\n"
+     " UTF8\r\n"
+     "211 End.\r\n";
    sendAll(session->ctrlSocket, features, getStrLen(features));
 }
 
@@ -444,16 +444,16 @@ static void handleCwd(FtpSession *session, const char *arg)
    resolvePath(session, arg, targetPath);
 
    if (strEq(targetPath, "/")) {
-      strCopy(session->currentPath, FTP_PATHBUF, targetPath);
-      replyLine(session->ctrlSocket, 250, "Directory changed.");
-      return;
+     strCopy(session->currentPath, FTP_PATHBUF, targetPath);
+     replyLine(session->ctrlSocket, 250, "Directory changed.");
+     return;
    }
 
    CellFsStat stat;
 
    if (cellFsStat(targetPath, &stat) != CELL_FS_SUCCEEDED || !statIsDir(&stat)) {
-      replyLine(session->ctrlSocket, 550, "Directory not found.");
-      return;
+     replyLine(session->ctrlSocket, 550, "Directory not found.");
+     return;
    }
 
    strCopy(session->currentPath, FTP_PATHBUF, targetPath);
@@ -476,8 +476,8 @@ static void handlePasv(FtpSession *session, const char *arg)
    uint16_t port;
    int listenSocket = openPasv(&port);
    if (listenSocket < 0) {
-      replyLine(session->ctrlSocket, 425, "Cannot open passive port.");
-      return;
+     replyLine(session->ctrlSocket, 425, "Cannot open passive port.");
+     return;
    }
    session->pasvSocket = listenSocket;
 
@@ -491,19 +491,19 @@ static void handlePasv(FtpSession *session, const char *arg)
    appendStr(line, (int)sizeof line, &length, "227 Entering Passive Mode (");
    unsigned char parts[6] = { ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3], portHigh, portLow };
    for (int index = 0; index < 6; index++) {
-      unsigned value = parts[index];
-      if (value >= 100) {
-         line[length++] = (char)('0' + value / 100);
-         value %= 100;
-         line[length++] = (char)('0' + value / 10);
-         line[length++] = (char)('0' + value % 10);
-      } else if (value >= 10) {
-         line[length++] = (char)('0' + value / 10);
-         line[length++] = (char)('0' + value % 10);
-      } else {
-         line[length++] = (char)('0' + value);
-      }
-      line[length++] = (index == 5) ? ')' : ',';
+     unsigned value = parts[index];
+     if (value >= 100) {
+       line[length++] = (char)('0' + value / 100);
+       value %= 100;
+       line[length++] = (char)('0' + value / 10);
+       line[length++] = (char)('0' + value % 10);
+     } else if (value >= 10) {
+       line[length++] = (char)('0' + value / 10);
+       line[length++] = (char)('0' + value % 10);
+     } else {
+       line[length++] = (char)('0' + value);
+     }
+     line[length++] = (index == 5) ? ')' : ',';
    }
    line[length++] = '\r';
    line[length++] = '\n';
@@ -516,8 +516,8 @@ static void handleMlsd(FtpSession *session, const char *arg)
    resolvePath(session, arg, targetPath);
    int dataSocket = acceptPasv(session);
    if (dataSocket < 0) {
-      replyLine(session->ctrlSocket, 425, "No data connection.");
-      return;
+     replyLine(session->ctrlSocket, 425, "No data connection.");
+     return;
    }
 
    replyLine(session->ctrlSocket, 150, "Opening data connection.");
@@ -532,8 +532,8 @@ static void handleMlst(FtpSession *session, const char *arg)
    resolvePath(session, arg, targetPath);
    CellFsStat stat;
    if (cellFsStat(targetPath, &stat) != CELL_FS_SUCCEEDED) {
-      replyLine(session->ctrlSocket, 550, "File not found.");
-      return;
+     replyLine(session->ctrlSocket, 550, "File not found.");
+     return;
    }
 
    char buffer[2 * FTP_PATHBUF + 256];
@@ -557,8 +557,8 @@ static void handleMdtm(FtpSession *session, const char *arg)
    resolvePath(session, arg, targetPath);
    CellFsStat stat;
    if (cellFsStat(targetPath, &stat) != CELL_FS_SUCCEEDED) {
-      replyLine(session->ctrlSocket, 550, "File not found.");
-      return;
+     replyLine(session->ctrlSocket, 550, "File not found.");
+     return;
    }
 
    char line[32];
@@ -581,15 +581,15 @@ static void handleRetr(FtpSession *session, const char *arg)
 
    int fileHandle;
    if (cellFsOpen(targetPath, CELL_FS_O_RDONLY, &fileHandle, NULL, 0) != CELL_FS_SUCCEEDED) {
-      replyLine(session->ctrlSocket, 550, "Open failed.");
-      return;
+     replyLine(session->ctrlSocket, 550, "Open failed.");
+     return;
    }
 
    int dataSocket = acceptPasv(session);
    if (dataSocket < 0) {
-      cellFsClose(fileHandle);
-      replyLine(session->ctrlSocket, 425, "No data connection.");
-      return;
+     cellFsClose(fileHandle);
+     replyLine(session->ctrlSocket, 425, "No data connection.");
+     return;
    }
 
    int socketBufferSize = FTP_BLOCK;
@@ -598,16 +598,16 @@ static void handleRetr(FtpSession *session, const char *arg)
    replyLine(session->ctrlSocket, 150, "Opening data connection.");
    int failed = 0;
    for (;;) {
-      uint64_t bytesRead = 0;
-      if (cellFsRead(fileHandle, session->ioBuffer, FTP_BLOCK, &bytesRead) != CELL_FS_SUCCEEDED) {
-         failed = 1;
-         break;
-      }
-      if (bytesRead == 0) break;
-      if (sendAll(dataSocket, session->ioBuffer, (int)bytesRead) < 0) {
-         failed = 1;
-         break;
-      }
+     uint64_t bytesRead = 0;
+     if (cellFsRead(fileHandle, session->ioBuffer, FTP_BLOCK, &bytesRead) != CELL_FS_SUCCEEDED) {
+       failed = 1;
+       break;
+     }
+     if (bytesRead == 0) break;
+     if (sendAll(dataSocket, session->ioBuffer, (int)bytesRead) < 0) {
+       failed = 1;
+       break;
+     }
    }
 
    cellFsClose(fileHandle);
@@ -623,15 +623,15 @@ static void handleStorOrAppe(FtpSession *session, const char *arg, int append)
    int openFlags = CELL_FS_O_WRONLY | CELL_FS_O_CREAT | (append ? CELL_FS_O_APPEND : CELL_FS_O_TRUNC);
    int fileHandle;
    if (cellFsOpen(targetPath, openFlags, &fileHandle, NULL, 0) != CELL_FS_SUCCEEDED) {
-      replyLine(session->ctrlSocket, 550, "Open failed.");
-      return;
+     replyLine(session->ctrlSocket, 550, "Open failed.");
+     return;
    }
 
    int dataSocket = acceptPasv(session);
    if (dataSocket < 0) {
-      cellFsClose(fileHandle);
-      replyLine(session->ctrlSocket, 425, "No data connection.");
-      return;
+     cellFsClose(fileHandle);
+     replyLine(session->ctrlSocket, 425, "No data connection.");
+     return;
    }
 
    int socketBufferSize = FTP_BLOCK;
@@ -640,19 +640,19 @@ static void handleStorOrAppe(FtpSession *session, const char *arg, int append)
    replyLine(session->ctrlSocket, 150, "Opening data connection.");
    int failed = 0;
    for (;;) {
-      int received = recv(dataSocket, session->ioBuffer, FTP_BLOCK, 0);
-      if (received < 0) {
+     int received = recv(dataSocket, session->ioBuffer, FTP_BLOCK, 0);
+     if (received < 0) {
+       failed = 1;
+       break;
+     }
+     if (received == 0) break;
+
+     uint64_t bytesWritten = 0;
+     if (cellFsWrite(fileHandle, session->ioBuffer, (uint64_t)received, &bytesWritten) != CELL_FS_SUCCEEDED ||
+        bytesWritten != (uint64_t)received) {
          failed = 1;
          break;
-      }
-      if (received == 0) break;
-
-      uint64_t bytesWritten = 0;
-      if (cellFsWrite(fileHandle, session->ioBuffer, (uint64_t)received, &bytesWritten) != CELL_FS_SUCCEEDED ||
-         bytesWritten != (uint64_t)received) {
-            failed = 1;
-            break;
-      }
+     }
    }
 
    cellFsClose(fileHandle);
@@ -670,8 +670,8 @@ static void handleSize(FtpSession *session, const char *arg)
    resolvePath(session, arg, targetPath);
    CellFsStat stat;
    if (cellFsStat(targetPath, &stat) != CELL_FS_SUCCEEDED) {
-      replyLine(session->ctrlSocket, 550, "File not found.");
-      return;
+     replyLine(session->ctrlSocket, 550, "File not found.");
+     return;
    }
 
    char line[64];
@@ -691,10 +691,10 @@ static void handleDele(FtpSession *session, const char *arg)
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
    if (cellFsUnlink(targetPath) == CELL_FS_SUCCEEDED) {
-      syncPath(targetPath);
-      replyLine(session->ctrlSocket, 250, "File deleted.");
+     syncPath(targetPath);
+     replyLine(session->ctrlSocket, 250, "File deleted.");
    } else {
-      replyLine(session->ctrlSocket, 550, "Delete failed.");
+     replyLine(session->ctrlSocket, 550, "Delete failed.");
    }
 }
 
@@ -703,8 +703,8 @@ static void handleMkd(FtpSession *session, const char *arg)
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
    if (cellFsMkdir(targetPath, CELL_FS_S_IFDIR | 0777) != CELL_FS_SUCCEEDED) {
-      replyLine(session->ctrlSocket, 550, "Mkdir failed.");
-      return;
+     replyLine(session->ctrlSocket, 550, "Mkdir failed.");
+     return;
    }
    syncPath(targetPath);
    replyQuotedPath(session, 257, targetPath);
@@ -715,10 +715,10 @@ static void handleRmd(FtpSession *session, const char *arg)
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
    if (cellFsRmdir(targetPath) == CELL_FS_SUCCEEDED) {
-      syncPath(targetPath);
-      replyLine(session->ctrlSocket, 250, "Directory removed.");
+     syncPath(targetPath);
+     replyLine(session->ctrlSocket, 250, "Directory removed.");
    } else {
-      replyLine(session->ctrlSocket, 550, "Rmdir failed.");
+     replyLine(session->ctrlSocket, 550, "Rmdir failed.");
    }
 }
 
@@ -727,9 +727,9 @@ static void handleRnfr(FtpSession *session, const char *arg)
    resolvePath(session, arg, session->renameFromPath);
    CellFsStat stat;
    if (cellFsStat(session->renameFromPath, &stat) != CELL_FS_SUCCEEDED) {
-      session->renameFromPath[0] = 0;
-      replyLine(session->ctrlSocket, 550, "File not found.");
-      return;
+     session->renameFromPath[0] = 0;
+     replyLine(session->ctrlSocket, 550, "File not found.");
+     return;
    }
    replyLine(session->ctrlSocket, 350, "Ready for RNTO.");
 }
@@ -737,17 +737,17 @@ static void handleRnfr(FtpSession *session, const char *arg)
 static void handleRnto(FtpSession *session, const char *arg)
 {
    if (session->renameFromPath[0] == 0) {
-      replyLine(session->ctrlSocket, 503, "Send RNFR first.");
-      return;
+     replyLine(session->ctrlSocket, 503, "Send RNFR first.");
+     return;
    }
 
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
    if (cellFsRename(session->renameFromPath, targetPath) == CELL_FS_SUCCEEDED) {
-      syncPath(targetPath);
-      replyLine(session->ctrlSocket, 250, "Rename complete.");
+     syncPath(targetPath);
+     replyLine(session->ctrlSocket, 250, "Rename complete.");
    } else {
-      replyLine(session->ctrlSocket, 550, "Rename failed.");
+     replyLine(session->ctrlSocket, 550, "Rename failed.");
    }
    session->renameFromPath[0] = 0;
 }
@@ -779,17 +779,17 @@ static void dispatchCommand(FtpSession *session, char *line)
    int verbLength = (int)(space - line);
    if (verbLength > 7) verbLength = 7;
    for (int index = 0; index < verbLength; index++) {
-      verb[index] = toUpperChar(line[index]);
+     verb[index] = toUpperChar(line[index]);
    }
    verb[verbLength] = 0;
 
    const char *arg = (*space == ' ') ? space + 1 : "";
    int commandCount = (int)(sizeof(ftpCommands) / sizeof(ftpCommands[0]));
    for (int index = 0; index < commandCount; index++) {
-      if (strEq(verb, ftpCommands[index].name)) {
-         ftpCommands[index].handler(session, arg);
-         return;
-      }
+     if (strEq(verb, ftpCommands[index].name)) {
+       ftpCommands[index].handler(session, arg);
+       return;
+     }
    }
 
    replyLine(session->ctrlSocket, 502, "Command not implemented.");
@@ -800,7 +800,7 @@ static void runFtpSession(FtpSession *session)
    // Learn local IP from the control socket for PASV replies.
    sys_net_sockinfo_t socketInfo;
    if (sys_net_get_sockinfo(session->ctrlSocket, &socketInfo, 1) >= 0) {
-      session->localIp = (uint32_t)socketInfo.local_adr.s_addr;
+     session->localIp = (uint32_t)socketInfo.local_adr.s_addr;
    }
 
    // Set idle timeout on control socket.
@@ -822,38 +822,38 @@ static void runFtpSession(FtpSession *session)
 
    // Command recv/parse/dispatch loop.
    while (session->alive && !server.stopping) {
-      int space = FTP_CMDBUF - session->commandLength - 1;
-      if (space <= 0) {
-         session->commandLength = 0;
-         space = FTP_CMDBUF - 1;
-      }
+     int space = FTP_CMDBUF - session->commandLength - 1;
+     if (space <= 0) {
+       session->commandLength = 0;
+       space = FTP_CMDBUF - 1;
+     }
 
-      int received = recv(session->ctrlSocket, session->commandBuffer + session->commandLength, space, 0);
-      if (received <= 0) break;
-      session->commandLength += received;
+     int received = recv(session->ctrlSocket, session->commandBuffer + session->commandLength, space, 0);
+     if (received <= 0) break;
+     session->commandLength += received;
 
-      // Extract complete CRLF (or LF) lines and dispatch.
-      int scan = 0;
-      while (scan < session->commandLength) {
-         int lineEnd = scan;
-         while (lineEnd < session->commandLength && session->commandBuffer[lineEnd] != '\n') lineEnd++;
-         if (lineEnd >= session->commandLength) break;
+     // Extract complete CRLF (or LF) lines and dispatch.
+     int scan = 0;
+     while (scan < session->commandLength) {
+       int lineEnd = scan;
+       while (lineEnd < session->commandLength && session->commandBuffer[lineEnd] != '\n') lineEnd++;
+       if (lineEnd >= session->commandLength) break;
 
-         int commandEnd = lineEnd;
-         if (commandEnd > scan && session->commandBuffer[commandEnd - 1] == '\r') commandEnd--;
-         session->commandBuffer[commandEnd] = 0;
-         dispatchCommand(session, session->commandBuffer + scan);
-         scan = lineEnd + 1;
-         if (!session->alive || server.stopping) break;
-      }
+       int commandEnd = lineEnd;
+       if (commandEnd > scan && session->commandBuffer[commandEnd - 1] == '\r') commandEnd--;
+       session->commandBuffer[commandEnd] = 0;
+       dispatchCommand(session, session->commandBuffer + scan);
+       scan = lineEnd + 1;
+       if (!session->alive || server.stopping) break;
+     }
 
-      // Shift remaining partial line to start of buffer.
-      if (scan > 0) {
-         int remaining = session->commandLength - scan;
-         for (int index = 0; index < remaining; index++)
-            session->commandBuffer[index] = session->commandBuffer[scan + index];
-         session->commandLength = remaining;
-      }
+     // Shift remaining partial line to start of buffer.
+     if (scan > 0) {
+       int remaining = session->commandLength - scan;
+       for (int index = 0; index < remaining; index++)
+         session->commandBuffer[index] = session->commandBuffer[scan + index];
+       session->commandLength = remaining;
+     }
    }
 
    closeSocket(&session->dataSocket);
@@ -876,36 +876,36 @@ static void ftpListenerThread(uint64_t arg)
 
    // Accept loop: spawn a session thread for each connection.
    while (!server.stopping) {
-      struct sockaddr_in remoteAddress;
-      socklen_t remoteAddressLength = sizeof remoteAddress;
-      int controlSocket = accept(server.listenSocket, (struct sockaddr *)&remoteAddress, &remoteAddressLength);
-      if (controlSocket < 0) {
-         if (server.stopping) break;
-         sys_timer_usleep(100000);
-         continue;
-      }
+     struct sockaddr_in remoteAddress;
+     socklen_t remoteAddressLength = sizeof remoteAddress;
+     int controlSocket = accept(server.listenSocket, (struct sockaddr *)&remoteAddress, &remoteAddressLength);
+     if (controlSocket < 0) {
+       if (server.stopping) break;
+       sys_timer_usleep(100000);
+       continue;
+     }
 
-      FtpSession *session = acquireSession();
-      if (!session) {
-         replyLine(controlSocket, 421, "Too many connections.");
-         shutdown(controlSocket, SHUT_RDWR);
-         socketclose(controlSocket);
-         continue;
-      }
+     FtpSession *session = acquireSession();
+     if (!session) {
+       replyLine(controlSocket, 421, "Too many connections.");
+       shutdown(controlSocket, SHUT_RDWR);
+       socketclose(controlSocket);
+       continue;
+     }
 
-      session->ctrlSocket = controlSocket;
-      session->pasvSocket = -1;
-      session->dataSocket = -1;
+     session->ctrlSocket = controlSocket;
+     session->pasvSocket = -1;
+     session->dataSocket = -1;
 
-      sys_ppu_thread_t threadId;
-      int result = spawnThread(&threadId, ftpSessionThread, (uint64_t)(uintptr_t)session,
-         THREAD_PRIORITY_LOW, THREAD_STACK_SIZE_16KB, "ftp-session");
-      if (result != 0) {
-         replyLine(controlSocket, 421, "Server busy.");
-         shutdown(controlSocket, SHUT_RDWR);
-         socketclose(controlSocket);
-         releaseSession(session);
-      }
+     sys_ppu_thread_t threadId;
+     int result = spawnThread(&threadId, ftpSessionThread, (uint64_t)(uintptr_t)session,
+        THREAD_PRIORITY_LOW, THREAD_STACK_SIZE_16KB, "ftp-session");
+     if (result != 0) {
+       replyLine(controlSocket, 421, "Server busy.");
+       shutdown(controlSocket, SHUT_RDWR);
+       socketclose(controlSocket);
+       releaseSession(session);
+     }
    }
 
    server.listenerAlive = 0;
@@ -934,14 +934,14 @@ FtpResult startFtpServer(uint16_t port)
    FtpResult reason = FTP_NETWORK_UNAVAILABLE;
    int listenFd = -1;
    for (int retries = 0; retries < 5; retries++) {
-      listenFd = listenOnPort(port, &reason);
-      if (listenFd >= 0 || reason != FTP_NETWORK_UNAVAILABLE) break;
-      logWarn("[ftp] network not ready, retrying\n");
-      sys_timer_sleep(2);
+     listenFd = listenOnPort(port, &reason);
+     if (listenFd >= 0 || reason != FTP_NETWORK_UNAVAILABLE) break;
+     logWarn("[ftp] network not ready, retrying\n");
+     sys_timer_sleep(2);
    }
    if (listenFd < 0) {
-      logError("[ftp] giving up — port %d unavailable\n", (int)port);
-      return reason;
+     logError("[ftp] giving up — port %d unavailable\n", (int)port);
+     return reason;
    }
    server.listenSocket = listenFd;
    logInfo("[ftp] listening on :%d\n", (int)port);
@@ -950,9 +950,9 @@ FtpResult startFtpServer(uint16_t port)
    int result = spawnJoinableThread(&server.listenerThread, ftpListenerThread, 0,
       THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "ftp-listener");
    if (result != 0) {
-      logError("[ftp] listener thread create failed rc=0x%x\n", result);
-      closeSocket(&server.listenSocket);
-      return FTP_THREAD_CREATE_FAILED;
+     logError("[ftp] listener thread create failed rc=0x%x\n", result);
+     closeSocket(&server.listenSocket);
+     return FTP_THREAD_CREATE_FAILED;
    }
 
    return FTP_OK;
@@ -965,23 +965,23 @@ void stopFtpServer(void)
    if (server.listenerAlive) joinThread(server.listenerThread);
 
    for (int index = 0; index < FTP_MAX_SESSIONS; index++) {
-      if (!sessionPoolUsed[index]) continue;
-      sessionPool[index].alive = 0;
-      closeSocket(&sessionPool[index].dataSocket);
-      closeSocket(&sessionPool[index].pasvSocket);
-      closeSocket(&sessionPool[index].ctrlSocket);
+     if (!sessionPoolUsed[index]) continue;
+     sessionPool[index].alive = 0;
+     closeSocket(&sessionPool[index].dataSocket);
+     closeSocket(&sessionPool[index].pasvSocket);
+     closeSocket(&sessionPool[index].ctrlSocket);
    }
 
    while (1) {
-      int activeSessions = 0;
-      for (int index = 0; index < FTP_MAX_SESSIONS; index++) {
-         if (sessionPoolUsed[index]) {
-            activeSessions = 1;
-            break;
-         }
-      }
-      if (!activeSessions) break;
-      sleepMs(10);
+     int activeSessions = 0;
+     for (int index = 0; index < FTP_MAX_SESSIONS; index++) {
+       if (sessionPoolUsed[index]) {
+         activeSessions = 1;
+         break;
+       }
+     }
+     if (!activeSessions) break;
+     sleepMs(10);
    }
 
    memSet(&server, 0, sizeof server);

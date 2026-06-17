@@ -10,16 +10,16 @@
 #define SPR_MAX 6
 
 typedef struct {
-    char tag[32];        // sprite identity = first word of the show name ("eileen happy" -> "eileen")
-    char file[64];       // resolved asset basename
-    const char *src;     // image name (stable rbc string ptr)
-    const char *atSrc;   // `at` clause (stable rbc string ptr), "" if none
-    float xalign;        // classic position transforms: xpos == xanchor == this (00definitions.rpy)
-    float yalign;        // ypos == yanchor: 1.0 bottom (default), 0.5 truecenter, 0.0 top
-    const RbcAtl *atl;   // inline-ATL animation for this show (NULL if none); see atl.h
-    int      atlId;      // the atl's id (>=0) so rollback can re-show with the same placement; -1 = none
-    uint64_t atlStartUs; // when the ATL started (for elapsed-time playback)
-    GfxTexture tex;
+   char tag[32];        // sprite identity = first word of the show name ("eileen happy" -> "eileen")
+   char file[64];       // resolved asset basename
+   const char *src;     // image name (stable rbc string ptr)
+   const char *atSrc;   // `at` clause (stable rbc string ptr), "" if none
+   float xalign;        // classic position transforms: xpos == xanchor == this (00definitions.rpy)
+   float yalign;        // ypos == yanchor: 1.0 bottom (default), 0.5 truecenter, 0.0 top
+   const RbcAtl *atl;   // inline-ATL animation for this show (NULL if none); see atl.h
+   int      atlId;      // the atl's id (>=0) so rollback can re-show with the same placement; -1 = none
+   uint64_t atlStartUs; // when the ATL started (for elapsed-time playback)
+   GfxTexture tex;
 } Sprite;
 
 // Builds the image map from IMAGE ops; resets bg + sprites. freeAssets releases everything.

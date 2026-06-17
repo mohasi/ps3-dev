@@ -23,10 +23,10 @@ static inline int sendBytes(int fd, const void *buf, int len)
    const char *p = (const char *)buf;
    int remaining = len;
    while (remaining > 0) {
-      int n = send(fd, p, remaining, 0);
-      if (n <= 0) return -1;
-      p += n;
-      remaining -= n;
+     int n = send(fd, p, remaining, 0);
+     if (n <= 0) return -1;
+     p += n;
+     remaining -= n;
    }
    return len;
 }
@@ -38,10 +38,10 @@ static inline int receiveExact(int fd, void *buf, int len)
    char *p = (char *)buf;
    int remaining = len;
    while (remaining > 0) {
-      int n = recv(fd, p, remaining, 0);
-      if (n <= 0) return -1;
-      p += n;
-      remaining -= n;
+     int n = recv(fd, p, remaining, 0);
+     if (n <= 0) return -1;
+     p += n;
+     remaining -= n;
    }
    return len;
 }
@@ -71,14 +71,14 @@ static inline int receiveLine(int fd, char *buf, int maxLen)
 {
    int offset = 0;
    while (offset < maxLen - 1) {
-      int n = recv(fd, buf + offset, 1, 0);
-      if (n <= 0) return -1;
-      if (buf[offset] == '\n') {
-         buf[offset] = '\0';
-         if (offset > 0 && buf[offset - 1] == '\r') buf[--offset] = '\0';
-         return offset;
-      }
-      offset++;
+     int n = recv(fd, buf + offset, 1, 0);
+     if (n <= 0) return -1;
+     if (buf[offset] == '\n') {
+       buf[offset] = '\0';
+       if (offset > 0 && buf[offset - 1] == '\r') buf[--offset] = '\0';
+       return offset;
+     }
+     offset++;
    }
    buf[offset] = '\0';
    return offset;

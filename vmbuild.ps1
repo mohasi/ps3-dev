@@ -34,14 +34,14 @@ function Ensure-VmUp {
    $prevProgress = $ProgressPreference
    $ProgressPreference = 'SilentlyContinue'
    try {
-      do {
-         Start-Sleep -Seconds 3
-         $tcp = Test-NetConnection -ComputerName $VmHost -Port $VmPort -InformationLevel Quiet -WarningAction SilentlyContinue
-         if ($tcp) { Write-Host "[vmbuild] VM ssh up" -ForegroundColor Green; return }
-         Write-Host "[vmbuild] waiting for ssh..." -ForegroundColor DarkGray
-      } while ((Get-Date) -lt $deadline)
+     do {
+       Start-Sleep -Seconds 3
+       $tcp = Test-NetConnection -ComputerName $VmHost -Port $VmPort -InformationLevel Quiet -WarningAction SilentlyContinue
+       if ($tcp) { Write-Host "[vmbuild] VM ssh up" -ForegroundColor Green; return }
+       Write-Host "[vmbuild] waiting for ssh..." -ForegroundColor DarkGray
+     } while ((Get-Date) -lt $deadline)
    } finally {
-      $ProgressPreference = $prevProgress
+     $ProgressPreference = $prevProgress
    }
 
    Write-Host "[vmbuild] VM did not expose ssh within 120s" -ForegroundColor Red

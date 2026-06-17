@@ -39,8 +39,8 @@ producer-side bridge client (`bridge-client.h`), include those headers from
 simple-lib-plugin/
 ??? simple-lib-plugin.vcxproj
 ??? include/
-    ??? syscall.h
-    ??? vsh.h
+   ??? syscall.h
+   ??? vsh.h
 ```
 
 ## Design

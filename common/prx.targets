@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemDefinitionGroup>
-    <PostBuildEvent>
-      <Message>Signing PRX to out/</Message>
-      <Command>if not exist "$(SolutionDir)out" mkdir "$(SolutionDir)out"
+   <PostBuildEvent>
+     <Message>Signing PRX to out/</Message>
+     <Command>if not exist "$(SolutionDir)out" mkdir "$(SolutionDir)out"
 cd /d "$(SolutionDir)tools\scetool" &amp;&amp; scetool.exe -0 SELF -1 TRUE -s FALSE -2 0A -3 1070000052000001 -4 01000002 -5 APP -6 0003004000000000 -A 0001000000000000 --self-ctrl-flags 4000000000000000000000000000000000000000000000000000000000000002 -e "$(TargetPath)" "$(SolutionDir)out\$(ProjectName).sprx"</Command>
-    </PostBuildEvent>
+   </PostBuildEvent>
   </ItemDefinitionGroup>
 </Project>

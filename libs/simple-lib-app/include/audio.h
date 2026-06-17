@@ -19,70 +19,70 @@
 struct stb_vorbis;
 
 typedef enum {
-    SFX_MEMORY,
-    SFX_STREAM
+   SFX_MEMORY,
+   SFX_STREAM
 } SfxMode;
 
 typedef enum {
-    SFX_STATE_STOPPED,
-    SFX_STATE_PLAYING,
-    SFX_STATE_PAUSED
+   SFX_STATE_STOPPED,
+   SFX_STATE_PLAYING,
+   SFX_STATE_PAUSED
 } SfxState;
 
 typedef struct {
-    float volume;
-    float speed;
-    int loop;
+   float volume;
+   float speed;
+   int loop;
 
-    // volume fade (ramped on the mixer thread): volume moves toward fadeTarget by fadeStep
-    // each audio block; 0 step = not fading. Fading to 0 auto-stops the stream.
-    float fadeTarget;
-    float fadeStep;
+   // volume fade (ramped on the mixer thread): volume moves toward fadeTarget by fadeStep
+   // each audio block; 0 step = not fading. Fading to 0 auto-stops the stream.
+   float fadeTarget;
+   float fadeStep;
 
-    SfxState state;
-    SfxMode mode;
-    int sampleRate;
-    int channels;
+   SfxState state;
+   SfxMode mode;
+   int sampleRate;
+   int channels;
 
-    float *pcmData;
-    uint32_t pcmSamples;
-    double playPos;
+   float *pcmData;
+   uint32_t pcmSamples;
+   double playPos;
 
-    struct stb_vorbis *vorbis;
-    uint8_t *vorbisFileData;
-    uint32_t vorbisFileSize;
+   struct stb_vorbis *vorbis;
+   uint8_t *vorbisFileData;
+   uint32_t vorbisFileSize;
 
-    int isOgg;
+   int isOgg;
 
-    int   seekRequest;            // pending stream seek (sample index), applied by the mixer; -1 = none
-    float vizPeaks[SFX_VIZ_BINS]; // rolling recent-amplitude envelope, filled by the mixer
+   int   seekRequest;            // pending stream seek (sample index), applied by the mixer; -1 = none
+   float vizPeaks[SFX_VIZ_BINS]; // rolling recent-amplitude envelope, filled by the mixer
 
-    // mp3 streaming (SFX_STREAM): decoded on the fly from the compressed bytes via dr_mp3, the same
-    // way ogg is handled. mp3 is an opaque drmp3* (kept out of this header); mp3Data is the compressed
-    // file buffer dr_mp3 reads from and must outlive it; mp3SeekPoints is the client-owned seek table
-    // bound into the decoder so seeking is accurate (MP3 has no native sample-accurate seek).
-    void    *mp3;
-    uint8_t *mp3Data;
-    void    *mp3SeekPoints;
+   // mp3 streaming (SFX_STREAM): decoded on the fly from the compressed bytes via dr_mp3, the same
+   // way ogg is handled. mp3 is an opaque drmp3* (kept out of this header); mp3Data is the compressed
+   // file buffer dr_mp3 reads from and must outlive it; mp3SeekPoints is the client-owned seek table
+   // bound into the decoder so seeking is accurate (MP3 has no native sample-accurate seek).
+   void    *mp3;
+   uint8_t *mp3Data;
+   void    *mp3SeekPoints;
 
-    // flac streaming (SFX_STREAM): same idea as mp3, via dr_flac. flac is an opaque drflac* (owned by
-    // dr_flac, closed with drflac_close); flacData is the compressed buffer it reads from.
-    void    *flac;
-    uint8_t *flacData;
+   // flac streaming (SFX_STREAM): same idea as mp3, via dr_flac. flac is an opaque drflac* (owned by
+   // dr_flac, closed with drflac_close); flacData is the compressed buffer it reads from.
+   void    *flac;
+   uint8_t *flacData;
 
-    // wav disk streaming (SFX_STREAM): dr_wav reading from an open file via callbacks, so an hour-long
-    // wav plays without loading into memory. wav is an opaque drwav*; wavFd is the fd it reads from.
-    void    *wav;
-    int      wavFd;
+   // wav disk streaming (SFX_STREAM): dr_wav reading from an open file via callbacks, so an hour-long
+   // wav plays without loading into memory. wav is an opaque drwav*; wavFd is the fd it reads from.
+   void    *wav;
+   int      wavFd;
 
-    // streaming resample carry (ogg/mp3/flac): decoded-but-unconsumed source frames plus the
-    // fractional read position, kept across mixer blocks so resampling stays phase-continuous
-    // (no per-block discontinuity / crackle).
-    float    srcCarry[SFX_STREAM_FRAMES * 2];   // interleaved, up to 2 channels
-    int      srcCarryFrames;
-    double   srcCarryPos;
+   // streaming resample carry (ogg/mp3/flac): decoded-but-unconsumed source frames plus the
+   // fractional read position, kept across mixer blocks so resampling stays phase-continuous
+   // (no per-block discontinuity / crackle).
+   float    srcCarry[SFX_STREAM_FRAMES * 2];   // interleaved, up to 2 channels
+   int      srcCarryFrames;
+   double   srcCarryPos;
 
-    char     title[64];   // track title from tags (ID3 / Vorbis comment), empty if none
+   char     title[64];   // track title from tags (ID3 / Vorbis comment), empty if none
 } Audio;
 
 int   initSfx(void);
@@ -97,7 +97,7 @@ void  playSfx(Audio *a, float volume, float speed, int loop);
 // callers do not need to null-check optional ui sounds.
 static inline void playSfxOnce(Audio *a)
 {
-    if (a) playSfx(a, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 0);
+   if (a) playSfx(a, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 0);
 }
 void  stopSfx(Audio *a);
 // Ramps a stream's volume to `target` over `seconds` (0 = jump instantly). Fading to 0

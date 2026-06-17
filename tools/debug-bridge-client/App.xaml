@@ -1,12 +1,12 @@
 <Application x:Class="DebugBridgeClient.App"
-             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             StartupUri="MainWindow.xaml">
+          xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+          StartupUri="MainWindow.xaml">
    <Application.Resources>
-      <ResourceDictionary>
-         <ResourceDictionary.MergedDictionaries>
-            <ResourceDictionary Source="Theme.xaml" />
-         </ResourceDictionary.MergedDictionaries>
-      </ResourceDictionary>
+     <ResourceDictionary>
+       <ResourceDictionary.MergedDictionaries>
+         <ResourceDictionary Source="Theme.xaml" />
+       </ResourceDictionary.MergedDictionaries>
+     </ResourceDictionary>
    </Application.Resources>
 </Application>

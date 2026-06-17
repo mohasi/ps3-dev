@@ -8,15 +8,15 @@
 // picker (Save/Load) and Preferences land as later steps.
 
 typedef enum {
-    GM_NONE = 0,    // nothing chosen yet (still navigating)
-    GM_RETURN,      // resume the game
-    GM_PREFERENCES, // open the preferences screen
-    GM_SAVE,        // open the save file picker
-    GM_LOAD,        // open the load file picker
-    GM_MAINMENU,    // return to the title (after the engine yes/no prompt)
-    GM_QUIT,        // quit (after the engine yes/no prompt)
-    GM_DO_SAVE,     // write the focused slot (after the overwrite prompt, if it was occupied)
-    GM_DO_LOAD      // load the focused slot (after the load prompt)
+   GM_NONE = 0,    // nothing chosen yet (still navigating)
+   GM_RETURN,      // resume the game
+   GM_PREFERENCES, // open the preferences screen
+   GM_SAVE,        // open the save file picker
+   GM_LOAD,        // open the load file picker
+   GM_MAINMENU,    // return to the title (after the engine yes/no prompt)
+   GM_QUIT,        // quit (after the engine yes/no prompt)
+   GM_DO_SAVE,     // write the focused slot (after the overwrite prompt, if it was occupied)
+   GM_DO_LOAD      // load the focused slot (after the load prompt)
 } GmAction;
 
 void        initGameMenu(Font *font);               // inject the shared font (opened by the screen)

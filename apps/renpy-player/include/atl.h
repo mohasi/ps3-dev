@@ -10,12 +10,12 @@
 // engine defaults (zoom/xzoom/yzoom/alpha = 1, rotate = 0, placement unset).
 
 typedef struct {
-    float zoom, xzoom, yzoom;        // size multipliers (default 1.0)
-    float alpha;                     // 0..1 (default 1.0)
-    float rotate;                    // degrees (default 0; not yet applied by the renderer)
-    int   hasXalign, hasYalign;  float xalign, yalign;     // fractional placement (Ren'Py align)
-    int   hasXpos,  hasYpos;     float xpos,  ypos;        // fractional position (best-effort)
-    int   hasXanchor, hasYanchor; float xanchor, yanchor;
+   float zoom, xzoom, yzoom;        // size multipliers (default 1.0)
+   float alpha;                     // 0..1 (default 1.0)
+   float rotate;                    // degrees (default 0; not yet applied by the renderer)
+   int   hasXalign, hasYalign;  float xalign, yalign;     // fractional placement (Ren'Py align)
+   int   hasXpos,  hasYpos;     float xpos,  ypos;        // fractional position (best-effort)
+   int   hasXanchor, hasYanchor; float xanchor, yanchor;
 } AtlState;
 
 // Evaluate program `a` at `elapsedMs` into *out (engine defaults when a is NULL/empty).

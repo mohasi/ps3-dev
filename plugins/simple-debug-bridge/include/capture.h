@@ -38,7 +38,7 @@
 // resume will hang the gpu and eventually freeze the system.
 static inline void rsxFifoPause(int pause)
 {
-    (void)scCall6(0x2A2, 0x55555555ULL, (uint64_t)(pause ? 2 : 3), 0, 0, 0, 0);
+   (void)scCall6(0x2A2, 0x55555555ULL, (uint64_t)(pause ? 2 : 3), 0, 0, 0, 0);
 }
 
 // paf display getters (vsh-only). resolved by the linker via libpaf_export_stub.
@@ -52,17 +52,17 @@ extern int32_t  paf_FFE0FBC9(uint32_t *pitchBytes, uint32_t *depth); // pitch + 
 static inline void captureDisplayInfo(uint32_t *outW, uint32_t *outH,
                                       uint32_t *outPitch, uint32_t *outDepth)
 {
-    *outW = paf_F476E8AA();
-    *outH = paf_AC984A12();
-    paf_FFE0FBC9(outPitch, outDepth);
+   *outW = paf_F476E8AA();
+   *outH = paf_AC984A12();
+   paf_FFE0FBC9(outPitch, outDepth);
 }
 
 // resolve the address of pixel (x,y) in current front buffer's local memory.
 static inline volatile uint32_t *captureFramebufferPixel(uint32_t x, uint32_t y, uint32_t pitchBytes)
 {
-    uint32_t bufOff = *(volatile uint32_t *)(uintptr_t)CAP_FRONTBUF_OFF_ADDR;
-    uintptr_t addr  = (uintptr_t)CAP_RSX_BASE + bufOff + (uintptr_t)y * pitchBytes + (uintptr_t)x * 4;
-    return (volatile uint32_t *)addr;
+   uint32_t bufOff = *(volatile uint32_t *)(uintptr_t)CAP_FRONTBUF_OFF_ADDR;
+   uintptr_t addr  = (uintptr_t)CAP_RSX_BASE + bufOff + (uintptr_t)y * pitchBytes + (uintptr_t)x * 4;
+   return (volatile uint32_t *)addr;
 }
 
 // per-row sink callback. return < 0 to abort the capture (fifo is resumed
@@ -76,20 +76,20 @@ typedef int (*CaptureRowSink)(const void *row, uint32_t bytes, void *user);
 static inline int captureRegion(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
                                 CaptureRowSink sink, void *user)
 {
-    uint32_t dw, dh, pitch, depth;
-    captureDisplayInfo(&dw, &dh, &pitch, &depth);
-    if (w == 0 || h == 0 || x >= dw || y >= dh) return -1;
-    if (x + w > dw) w = dw - x;
-    if (y + h > dh) h = dh - y;
+   uint32_t dw, dh, pitch, depth;
+   captureDisplayInfo(&dw, &dh, &pitch, &depth);
+   if (w == 0 || h == 0 || x >= dw || y >= dh) return -1;
+   if (x + w > dw) w = dw - x;
+   if (y + h > dh) h = dh - y;
 
-    uint32_t rowBytes = w * 4;
-    int rc = 0;
+   uint32_t rowBytes = w * 4;
+   int rc = 0;
 
-    rsxFifoPause(1);
-    for (uint32_t r = 0; r < h; r++) {
-        volatile uint32_t *src = captureFramebufferPixel(x, y + r, pitch);
-        if (sink((const void *)src, rowBytes, user) < 0) { rc = -2; break; }
-    }
-    rsxFifoPause(0);
-    return rc;
+   rsxFifoPause(1);
+   for (uint32_t r = 0; r < h; r++) {
+      volatile uint32_t *src = captureFramebufferPixel(x, y + r, pitch);
+      if (sink((const void *)src, rowBytes, user) < 0) { rc = -2; break; }
+   }
+   rsxFifoPause(0);
+   return rc;
 }

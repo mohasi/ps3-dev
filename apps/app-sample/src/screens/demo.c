@@ -31,119 +31,119 @@ static Label ellipsisText;
 
 static void initDemo(void)
 {
-    initAnimatedSprite();
-    initBars();
-    initBouncingBox();
+   initAnimatedSprite();
+   initBars();
+   initBouncingBox();
 
-    makoto = loadGfxTexture("/dev_hdd0/game/APPSMP001/USRDIR/makoto.png");
+   makoto = loadGfxTexture("/dev_hdd0/game/APPSMP001/USRDIR/makoto.png");
 
-    sfxMakoto = loadSfx("/dev_hdd0/game/APPSMP001/USRDIR/makoto.wav", SFX_MEMORY);
-    bgm = loadSfx("/dev_hdd0/game/APPSMP001/USRDIR/price.ogg", SFX_STREAM);
+   sfxMakoto = loadSfx("/dev_hdd0/game/APPSMP001/USRDIR/makoto.wav", SFX_MEMORY);
+   bgm = loadSfx("/dev_hdd0/game/APPSMP001/USRDIR/price.ogg", SFX_STREAM);
 
-    pop = openSystemFont(FONT_POP);
+   pop = openSystemFont(FONT_POP);
 
-    initLabel(&titleText, &pop, 40, 170, AUTO, AUTO, 20, COLOR_WHITE, TEXT_NOWRAP, "app-sample");
-    initLabel(&wrapText, &pop, 500, 300, 350, AUTO, 14, COLOR_EMERALD_300, TEXT_WRAP, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.");
-    initLabel(&ellipsisText, &pop, 500, 380, 200, AUTO, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS, "This long text gets cut off with an ellipsis at the end");
+   initLabel(&titleText, &pop, 40, 170, AUTO, AUTO, 20, COLOR_WHITE, TEXT_NOWRAP, "app-sample");
+   initLabel(&wrapText, &pop, 500, 300, 350, AUTO, 14, COLOR_EMERALD_300, TEXT_WRAP, "The quick brown fox jumps over the lazy dog. This text should word wrap within the bounding box.");
+   initLabel(&ellipsisText, &pop, 500, 380, 200, AUTO, 14, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS, "This long text gets cut off with an ellipsis at the end");
 
-    initCircle(&circle, 800, 130, 25, COLOR_WHITE);
+   initCircle(&circle, 800, 130, 25, COLOR_WHITE);
 
-    initPadDisplay(&pop, 40, 240, 14, COLOR_SKY_300);
+   initPadDisplay(&pop, 40, 240, 14, COLOR_SKY_300);
 
-    circleX = 800.0f;
-    colorT = 0.0f;
-    setAnim(&anims, &circleX, 800.0f, 1800.0f, 2000, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
-    setAnim(&anims, &colorT, 0.0f, 1.0f, 800, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
+   circleX = 800.0f;
+   colorT = 0.0f;
+   setAnim(&anims, &circleX, 800.0f, 1800.0f, 2000, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
+   setAnim(&anims, &colorT, 0.0f, 1.0f, 800, EASE_IN_OUT_QUAD, ANIM_PINGPONG, NULL);
 }
 
 static void resumeDemo(void)
 {
-    resumeSfx(&sfxMakoto);
-    resumeSfx(&bgm);
-    resumeAnim(&anims);
+   resumeSfx(&sfxMakoto);
+   resumeSfx(&bgm);
+   resumeAnim(&anims);
 }
 
 static void updateDemo(void)
 {
-    updateAnim(&anims);
+   updateAnim(&anims);
 
-    if (isPadButtonPressed(PAD_BTN_CROSS))
-        playSfx(&sfxMakoto, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, SFX_LOOP);
+   if (isPadButtonPressed(PAD_BTN_CROSS))
+      playSfx(&sfxMakoto, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, SFX_LOOP);
 
-    if (isPadButtonPressed(PAD_BTN_START)) {
-        if (bgm.state == SFX_STATE_PLAYING)
-            stopSfx(&bgm);
-        else
-            playSfx(&bgm, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 1);
-    }
+   if (isPadButtonPressed(PAD_BTN_START)) {
+      if (bgm.state == SFX_STATE_PLAYING)
+         stopSfx(&bgm);
+      else
+         playSfx(&bgm, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 1);
+   }
 
-    if (isPadButtonPressed(PAD_BTN_UP))
-        raiseSfxMasterVolume(0.1f);
+   if (isPadButtonPressed(PAD_BTN_UP))
+      raiseSfxMasterVolume(0.1f);
 
-    if (isPadButtonPressed(PAD_BTN_DOWN))
-        lowerSfxMasterVolume(0.1f);
+   if (isPadButtonPressed(PAD_BTN_DOWN))
+      lowerSfxMasterVolume(0.1f);
 
-    if (isPadButtonPressed(PAD_BTN_RIGHT)) {
-        pushScreen(&paletteScreen);
-        return;
-    }
+   if (isPadButtonPressed(PAD_BTN_RIGHT)) {
+      pushScreen(&paletteScreen);
+      return;
+   }
 
-    if (isPadButtonPressed(PAD_BTN_SELECT)) {
-        if (isOverlayVisible(&sidepanel))
-            hideOverlay(&sidepanel);
-        else
-            showOverlay(&sidepanel);
-    }
+   if (isPadButtonPressed(PAD_BTN_SELECT)) {
+      if (isOverlayVisible(&sidepanel))
+         hideOverlay(&sidepanel);
+      else
+         showOverlay(&sidepanel);
+   }
 
-    updateBouncingBox();
-    updateAnimatedSprite();
-    updateOverlay(&sidepanel);
+   updateBouncingBox();
+   updateAnimatedSprite();
+   updateOverlay(&sidepanel);
 }
 
 static void drawDemo(void)
 {
-    drawBars();
-    drawBouncingBox();
-    drawGradientTriangle();
-    drawAnimatedSprite(500, 100);
-    drawGfxTexture(100, 400, makoto.w, makoto.h, makoto, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-    drawLabel(&titleText);
-    drawPadDisplay();
+   drawBars();
+   drawBouncingBox();
+   drawGradientTriangle();
+   drawAnimatedSprite(500, 100);
+   drawGfxTexture(100, 400, makoto.w, makoto.h, makoto, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+   drawLabel(&titleText);
+   drawPadDisplay();
 
-    drawLabel(&wrapText);
-    drawLabel(&ellipsisText);
+   drawLabel(&wrapText);
+   drawLabel(&ellipsisText);
 
-    moveCircle(&circle, (int)circleX, circle.cy);
-    circle.fill = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
-    drawCircle(&circle);
+   moveCircle(&circle, (int)circleX, circle.cy);
+   circle.fill = interpolateColor(COLOR_WHITE, COLOR_RED, colorT);
+   drawCircle(&circle);
 
-    drawOverlay(&sidepanel);
+   drawOverlay(&sidepanel);
 }
 
 static void suspendDemo(void)
 {
-    pauseSfx(&sfxMakoto);
-    pauseSfx(&bgm);
-    pauseAnim(&anims);
+   pauseSfx(&sfxMakoto);
+   pauseSfx(&bgm);
+   pauseAnim(&anims);
 }
 
 static void termDemo(void)
 {
-    termOverlay(&sidepanel);
-    cancelAllAnims(&anims);
+   termOverlay(&sidepanel);
+   cancelAllAnims(&anims);
 
-    termAnimatedSprite();
-    termPadDisplay();
-    freeLabel(&titleText);
-    freeLabel(&wrapText);
-    freeLabel(&ellipsisText);
+   termAnimatedSprite();
+   termPadDisplay();
+   freeLabel(&titleText);
+   freeLabel(&wrapText);
+   freeLabel(&ellipsisText);
 
-    finishGfx();
-    freeGfxTexture(&makoto);
+   finishGfx();
+   freeGfxTexture(&makoto);
 
-    closeFont(&pop);
-    freeSfx(&sfxMakoto);
-    freeSfx(&bgm);
+   closeFont(&pop);
+   freeSfx(&sfxMakoto);
+   freeSfx(&bgm);
 }
 
 Screen demoScreen = { initDemo, resumeDemo, updateDemo, drawDemo, suspendDemo, termDemo, SCREEN_TERMINATED };

@@ -9,23 +9,23 @@
 #define AUTO 0
 
 typedef enum {
-    GFX_FILTER_NEAREST = 0, // sharp, pixelated - good for pixel art and sprites
-    GFX_FILTER_LINEAR  = 1  // smooth, blended - good for text and photos
+   GFX_FILTER_NEAREST = 0, // sharp, pixelated - good for pixel art and sprites
+   GFX_FILTER_LINEAR  = 1  // smooth, blended - good for text and photos
 } GfxFilter;
 
 typedef enum {
-    GFX_VSYNC_OFF = 0, // uncapped (HSYNC)
-    GFX_VSYNC_ON  = 1  // locked to display refresh
+   GFX_VSYNC_OFF = 0, // uncapped (HSYNC)
+   GFX_VSYNC_ON  = 1  // locked to display refresh
 } GfxVsync;
 
 typedef struct {
-    uint32_t offset;
-    int w, h;
-    int pitch; // vram row stride in bytes (may be wider than w*4 due to alignment or slot reuse)
+   uint32_t offset;
+   int w, h;
+   int pitch; // vram row stride in bytes (may be wider than w*4 due to alignment or slot reuse)
 } GfxTexture;
 
 typedef struct {
-    int x, y, w, h;
+   int x, y, w, h;
 } SpriteRegion;
 
 int  initGfx(GfxVsync vsync);
@@ -42,7 +42,7 @@ void termGfx(void);
 // begin/end do NOT clear -- call clearGfx() after begin if you want a known background.
 // Targets are valid between beginGfxFrame/endGfxFrame; do not flip while one is bound.
 typedef struct {
-    GfxTexture tex;     // sample this after endGfxRenderTarget (tex.offset/w/h/pitch)
+   GfxTexture tex;     // sample this after endGfxRenderTarget (tex.offset/w/h/pitch)
 } GfxRenderTarget;
 
 int  createGfxRenderTarget(GfxRenderTarget *rt, int w, int h);

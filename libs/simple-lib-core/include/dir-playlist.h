@@ -18,10 +18,10 @@ int listDirFiltered(const char *dir, char names[][DIR_PLAYLIST_NAME_MAX], int ma
 
 // A folder of matching files with a current position.
 typedef struct {
-    char dir[MAX_PATH_LEN];
-    char names[DIR_PLAYLIST_MAX][DIR_PLAYLIST_NAME_MAX];   // sorted, filtered
-    int  count;
-    int  index;                                            // current entry
+   char dir[MAX_PATH_LEN];
+   char names[DIR_PLAYLIST_MAX][DIR_PLAYLIST_NAME_MAX];   // sorted, filtered
+   int  count;
+   int  index;                                            // current entry
 } DirPlaylist;
 
 // Scans the folder containing `path` (filtering by `accept`) and points `index` at `path`'s entry.

@@ -1,104 +1,104 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Release|PS3">
-      <Configuration>Release</Configuration>
-      <Platform>PS3</Platform>
-    </ProjectConfiguration>
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{C7A9E2D1-4B6F-4A3C-8E1D-9F2B5C8A7E60}</ProjectGuid>
-    <ProjectName>renpy-player</ProjectName>
+   <ProjectGuid>{C7A9E2D1-4B6F-4A3C-8E1D-9F2B5C8A7E60}</ProjectGuid>
+   <ProjectName>renpy-player</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>GCC</PlatformToolset>
+   <ConfigurationType>Application</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup>
-    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
-    <TargetName>$(MSBuildProjectName).ppu</TargetName>
-    <TargetExt>.elf</TargetExt>
-    <ExtensionsToDeleteOnClean>*.pkg;*.obj;$(TargetPath);$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <TargetName>$(MSBuildProjectName).ppu</TargetName>
+   <TargetExt>.elf</TargetExt>
+   <ExtensionsToDeleteOnClean>*.pkg;*.obj;$(TargetPath);$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
-    <ClCompile>
-      <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-app\include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ClCompile>
-    <Link>
-      <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-lpngenc_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core</AdditionalOptions>
-      <GccOutputFormat>ELFFile</GccOutputFormat>
-    </Link>
-    <PreBuildEvent>
-      <Message>Packing sprites and generating PARAM.SFO</Message>
-      <Command>"$(SolutionDir)tools\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-app\include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+   </ClCompile>
+   <Link>
+     <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-lpngenc_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;%(AdditionalDependencies)</AdditionalDependencies>
+     <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core</AdditionalOptions>
+     <GccOutputFormat>ELFFile</GccOutputFormat>
+   </Link>
+   <PreBuildEvent>
+     <Message>Packing sprites and generating PARAM.SFO</Message>
+     <Command>"$(SolutionDir)tools\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
 "$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
-    </PreBuildEvent>
+   </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\main.c" />
-    <ClCompile Include="src\gamepath.c" />
-    <ClCompile Include="src\savestate.c" />
-    <ClCompile Include="src\rpk.c" />
-    <ClCompile Include="src\rbc.c" />
-    <ClCompile Include="src\atl.c" />
-    <ClCompile Include="src\vm.c" />
-    <ClCompile Include="src\saytext.c" />
-    <ClCompile Include="src\scene-draw.c" />
-    <ClCompile Include="src\history.c" />
-    <ClCompile Include="src\vars.c" />
-    <ClCompile Include="src\gui.c" />
-    <ClCompile Include="src\assets.c" />
-    <ClCompile Include="src\sound.c" />
-    <ClCompile Include="src\typewriter.c" />
-    <ClCompile Include="src\mainmenu.c" />
-    <ClCompile Include="src\gamemenu.c" />
-    <ClCompile Include="src\focus.c" />
-    <ClCompile Include="src\screens\home.c" />
-    <ClCompile Include="src\screens\play.c" />
+   <ClCompile Include="src\main.c" />
+   <ClCompile Include="src\gamepath.c" />
+   <ClCompile Include="src\savestate.c" />
+   <ClCompile Include="src\rpk.c" />
+   <ClCompile Include="src\rbc.c" />
+   <ClCompile Include="src\atl.c" />
+   <ClCompile Include="src\vm.c" />
+   <ClCompile Include="src\saytext.c" />
+   <ClCompile Include="src\scene-draw.c" />
+   <ClCompile Include="src\history.c" />
+   <ClCompile Include="src\vars.c" />
+   <ClCompile Include="src\gui.c" />
+   <ClCompile Include="src\assets.c" />
+   <ClCompile Include="src\sound.c" />
+   <ClCompile Include="src\typewriter.c" />
+   <ClCompile Include="src\mainmenu.c" />
+   <ClCompile Include="src\gamemenu.c" />
+   <ClCompile Include="src\focus.c" />
+   <ClCompile Include="src\screens\home.c" />
+   <ClCompile Include="src\screens\play.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\config.h" />
-    <ClInclude Include="include\gamepath.h" />
-    <ClInclude Include="include\savestate.h" />
-    <ClInclude Include="include\rpk.h" />
-    <ClInclude Include="include\rbc.h" />
-    <ClInclude Include="include\atl.h" />
-    <ClInclude Include="include\vm.h" />
-    <ClInclude Include="include\saytext.h" />
-    <ClInclude Include="include\scene-draw.h" />
-    <ClInclude Include="include\history.h" />
-    <ClInclude Include="include\vars.h" />
-    <ClInclude Include="include\gui.h" />
-    <ClInclude Include="include\sprite-regions.h" />
-    <ClInclude Include="include\assets.h" />
-    <ClInclude Include="include\sound.h" />
-    <ClInclude Include="include\typewriter.h" />
-    <ClInclude Include="include\mainmenu.h" />
-    <ClInclude Include="include\gamemenu.h" />
-    <ClInclude Include="include\focus.h" />
-    <ClInclude Include="include\screens\home.h" />
-    <ClInclude Include="include\screens\play.h" />
+   <ClInclude Include="include\config.h" />
+   <ClInclude Include="include\gamepath.h" />
+   <ClInclude Include="include\savestate.h" />
+   <ClInclude Include="include\rpk.h" />
+   <ClInclude Include="include\rbc.h" />
+   <ClInclude Include="include\atl.h" />
+   <ClInclude Include="include\vm.h" />
+   <ClInclude Include="include\saytext.h" />
+   <ClInclude Include="include\scene-draw.h" />
+   <ClInclude Include="include\history.h" />
+   <ClInclude Include="include\vars.h" />
+   <ClInclude Include="include\gui.h" />
+   <ClInclude Include="include\sprite-regions.h" />
+   <ClInclude Include="include\assets.h" />
+   <ClInclude Include="include\sound.h" />
+   <ClInclude Include="include\typewriter.h" />
+   <ClInclude Include="include\mainmenu.h" />
+   <ClInclude Include="include\gamemenu.h" />
+   <ClInclude Include="include\focus.h" />
+   <ClInclude Include="include\screens\home.h" />
+   <ClInclude Include="include\screens\play.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="renpy-player.conf" />
-    <None Include="PARAM.SFO" />
-    <None Include="PARAM.SFO.xml" />
-    <None Include="res\broken.rpk" />
-    <None Include="res\sprites.png" />
-    <None Include="sprites\**" />
-    <None Include="res\rr12g.png" />
-    <None Include="res\rr6g.png" />
-    <None Include="res\rrvscrollbar.png" />
-    <None Include="res\rrvscrollbar_thumb.png" />
-    <None Include="ICON0.PNG" />
+   <None Include="renpy-player.conf" />
+   <None Include="PARAM.SFO" />
+   <None Include="PARAM.SFO.xml" />
+   <None Include="res\broken.rpk" />
+   <None Include="res\sprites.png" />
+   <None Include="sprites\**" />
+   <None Include="res\rr12g.png" />
+   <None Include="res\rr6g.png" />
+   <None Include="res\rrvscrollbar.png" />
+   <None Include="res\rrvscrollbar_thumb.png" />
+   <None Include="ICON0.PNG" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\npdrm.targets" />

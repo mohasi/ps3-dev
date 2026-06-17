@@ -53,7 +53,7 @@ Position and size use comma-separated pair attributes:
 
 ```xml
 <Rectangle  id="..." xy="0,0" wh="100,50" fill="COLOR_RED_500"
-            corner-radius="6" border-thickness="2" border-color="0x333333"/>
+         corner-radius="6" border-thickness="2" border-color="0x333333"/>
 
 <Circle     id="..." xy="100,100" radius="40" fill="COLOR_BLUE_500"/>
 
@@ -62,20 +62,20 @@ Position and size use comma-separated pair attributes:
 <Line       id="..." from="0,0" to="200,0" thickness="2" color="COLOR_WHITE"/>
 
 <Image      id="..." texture-id="icons" xy="42,20"
-            wh="auto" src-xy="10,132" src-wh="68,57"
-            filter="nearest"/>
+         wh="auto" src-xy="10,132" src-wh="68,57"
+         filter="nearest"/>
 
 <Label      id="..." xy="10,10" wh="auto"
-            content="Hello" font-id="pop" size="24"
-            color="COLOR_WHITE" wrap="nowrap"/>
+         content="Hello" font-id="pop" size="24"
+         color="COLOR_WHITE" wrap="nowrap"/>
 
 <Breadcrumb id="..." xy="40,100" wh="1840,43"
-            font-id="pop" font-size="18"
-            bg-color="0x010B1C" border-color="0x161C2C"
-            text-color="COLOR_WHITE" chevron-color="0x404653"
-            corner-radius="5" border-thickness="2">
-    <segment text="root" />
-    <segment text="child" />
+         font-id="pop" font-size="18"
+         bg-color="0x010B1C" border-color="0x161C2C"
+         text-color="COLOR_WHITE" chevron-color="0x404653"
+         corner-radius="5" border-thickness="2">
+   <segment text="root" />
+   <segment text="child" />
 </Breadcrumb>
 ```
 

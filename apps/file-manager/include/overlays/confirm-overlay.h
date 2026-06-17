@@ -11,9 +11,9 @@
 
 // which button the user pressed.
 typedef enum {
-    CONFIRM_CROSS,
-    CONFIRM_SQUARE,
-    CONFIRM_CIRCLE
+   CONFIRM_CROSS,
+   CONFIRM_SQUARE,
+   CONFIRM_CIRCLE
 } ConfirmChoice;
 
 typedef void (*ConfirmCallback)(ConfirmChoice choice);

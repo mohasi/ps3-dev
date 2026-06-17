@@ -62,37 +62,37 @@ static Label     titleLabel, messageLabel, yesLabel, squareLabel, noLabel;
 
 void initConfirmOverlay(GfxTexture sprites, Audio *sfx)
 {
-    clickSfx = sfx;
-    font     = openSystemFont(FONT_POP);
+   clickSfx = sfx;
+   font     = openSystemFont(FONT_POP);
 
-    initNineSlice(&panel, sprites, 0, 0, DIALOG_W, DIALOG_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
-    initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
+   initNineSlice(&panel, sprites, 0, 0, DIALOG_W, DIALOG_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
+   initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
 
-    initImage(&warningIcon, sprites, 0, 0, WARNING_W,   WARNING_H,   spriteRegions[SPRITE_WARNING], GFX_FILTER_LINEAR);
-    initImage(&crossIcon,   sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_CROSS],   GFX_FILTER_LINEAR);
-    initImage(&squareIcon,  sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_SQUARE],  GFX_FILTER_LINEAR);
-    initImage(&circleIcon,  sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_CIRCLE],  GFX_FILTER_LINEAR);
+   initImage(&warningIcon, sprites, 0, 0, WARNING_W,   WARNING_H,   spriteRegions[SPRITE_WARNING], GFX_FILTER_LINEAR);
+   initImage(&crossIcon,   sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_CROSS],   GFX_FILTER_LINEAR);
+   initImage(&squareIcon,  sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_SQUARE],  GFX_FILTER_LINEAR);
+   initImage(&circleIcon,  sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_CIRCLE],  GFX_FILTER_LINEAR);
 
-    int textW = DIALOG_W - TITLE_X - TEXT_RIGHT_PAD;
-    initLabel(&titleLabel,   &font, 0, 0, textW, AUTO, TITLE_SIZE,   COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
-    initLabel(&messageLabel, &font, 0, 0, textW, AUTO, MESSAGE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
-    initLabel(&yesLabel,     &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
-    initLabel(&squareLabel,  &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
-    initLabel(&noLabel,      &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
+   int textW = DIALOG_W - TITLE_X - TEXT_RIGHT_PAD;
+   initLabel(&titleLabel,   &font, 0, 0, textW, AUTO, TITLE_SIZE,   COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&messageLabel, &font, 0, 0, textW, AUTO, MESSAGE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&yesLabel,     &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
+   initLabel(&squareLabel,  &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
+   initLabel(&noLabel,      &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
 }
 
 void askConfirm(const char *title, const char *message,
                 const char *crossText, const char *squareText, const char *circleText,
                 ConfirmCallback onResult)
 {
-    onResolve  = onResult;
-    showSquare = (squareText != NULL);
-    setLabelText(&titleLabel,   strOrEmpty(title));
-    setLabelText(&messageLabel, strOrEmpty(message));
-    setLabelText(&yesLabel,     strOrEmpty(crossText));
-    setLabelText(&squareLabel,  strOrEmpty(squareText));
-    setLabelText(&noLabel,      strOrEmpty(circleText));
-    showOverlay(&confirmOverlay);
+   onResolve  = onResult;
+   showSquare = (squareText != NULL);
+   setLabelText(&titleLabel,   strOrEmpty(title));
+   setLabelText(&messageLabel, strOrEmpty(message));
+   setLabelText(&yesLabel,     strOrEmpty(crossText));
+   setLabelText(&squareLabel,  strOrEmpty(squareText));
+   setLabelText(&noLabel,      strOrEmpty(circleText));
+   showOverlay(&confirmOverlay);
 }
 
 static void show(void) { armed = 0; confirmOverlay.status = OVERLAY_VISIBLE; }
@@ -100,76 +100,76 @@ static void hide(void) { confirmOverlay.status = OVERLAY_HIDDEN; }
 
 static void resolve(ConfirmChoice choice)
 {
-    ConfirmCallback cb = onResolve;
-    onResolve = NULL;
-    playSfxOnce(clickSfx);
-    hideOverlay(&confirmOverlay);
-    if (cb) cb(choice);
+   ConfirmCallback cb = onResolve;
+   onResolve = NULL;
+   playSfxOnce(clickSfx);
+   hideOverlay(&confirmOverlay);
+   if (cb) cb(choice);
 }
 
 static void update(void)
 {
-    if (!armed) { armed = 1; return; }  // swallow the press that opened the dialog
-    if (isPadButtonPressed(PAD_BTN_CROSS))                       resolve(CONFIRM_CROSS);
-    else if (showSquare && isPadButtonPressed(PAD_BTN_SQUARE))   resolve(CONFIRM_SQUARE);
-    else if (isPadButtonPressed(PAD_BTN_CIRCLE))                 resolve(CONFIRM_CIRCLE);
+   if (!armed) { armed = 1; return; }  // swallow the press that opened the dialog
+   if (isPadButtonPressed(PAD_BTN_CROSS))                       resolve(CONFIRM_CROSS);
+   else if (showSquare && isPadButtonPressed(PAD_BTN_SQUARE))   resolve(CONFIRM_SQUARE);
+   else if (isPadButtonPressed(PAD_BTN_CIRCLE))                 resolve(CONFIRM_CIRCLE);
 }
 
 static void draw(void)
 {
-    int sw = getGfxScreenWidth();
-    int sh = getGfxScreenHeight();
-    int dialogX = (sw - DIALOG_W) / 2;
-    int dialogY = (sh - DIALOG_H) / 2;
+   int sw = getGfxScreenWidth();
+   int sh = getGfxScreenHeight();
+   int dialogX = (sw - DIALOG_W) / 2;
+   int dialogY = (sh - DIALOG_H) / 2;
 
-    // dim the screen, then the dialog body and its rounded highlight border.
-    // the border is drawn white-tinted, so the body colour comes from the fill.
-    fillGfxRectangle(0, 0, sw, sh, COLOR_SCRIM);
-    fillGfxRectangle(dialogX, dialogY, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG);
-    moveNineSlice(&panel, dialogX, dialogY);
-    drawNineSlice(&panel);
+   // dim the screen, then the dialog body and its rounded highlight border.
+   // the border is drawn white-tinted, so the body colour comes from the fill.
+   fillGfxRectangle(0, 0, sw, sh, COLOR_SCRIM);
+   fillGfxRectangle(dialogX, dialogY, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG);
+   moveNineSlice(&panel, dialogX, dialogY);
+   drawNineSlice(&panel);
 
-    drawImageAt(&warningIcon,  dialogX + WARNING_X, dialogY + WARNING_Y);
-    drawLabelAt(&titleLabel,   dialogX + TITLE_X,   dialogY + TITLE_Y);
-    drawLabelAt(&messageLabel, dialogX + MESSAGE_X, dialogY + MESSAGE_Y);
+   drawImageAt(&warningIcon,  dialogX + WARNING_X, dialogY + WARNING_Y);
+   drawLabelAt(&titleLabel,   dialogX + TITLE_X,   dialogY + TITLE_Y);
+   drawLabelAt(&messageLabel, dialogX + MESSAGE_X, dialogY + MESSAGE_Y);
 
-    moveSlice(&separator, dialogX + SEP_X, dialogY + SEP_Y);
-    drawSlice(&separator);
+   moveSlice(&separator, dialogX + SEP_X, dialogY + SEP_Y);
+   drawSlice(&separator);
 
-    // gather the visible buttons (cross, optional square, circle) and center them
-    // as a group: each button is glyph + gap + label, BUTTON_GAP apart, with the
-    // leftover width split evenly on both sides.
-    Image *icons[3];
-    Label *labels[3];
-    int n = 0;
-    icons[n] = &crossIcon;  labels[n] = &yesLabel;  n++;
-    if (showSquare) { icons[n] = &squareIcon; labels[n] = &squareLabel; n++; }
-    icons[n] = &circleIcon; labels[n] = &noLabel;  n++;
+   // gather the visible buttons (cross, optional square, circle) and center them
+   // as a group: each button is glyph + gap + label, BUTTON_GAP apart, with the
+   // leftover width split evenly on both sides.
+   Image *icons[3];
+   Label *labels[3];
+   int n = 0;
+   icons[n] = &crossIcon;  labels[n] = &yesLabel;  n++;
+   if (showSquare) { icons[n] = &squareIcon; labels[n] = &squareLabel; n++; }
+   icons[n] = &circleIcon; labels[n] = &noLabel;  n++;
 
-    int widths[3], total = 0;
-    for (int i = 0; i < n; i++) {
-        widths[i] = BUTTON_ICON + ICON_LABEL_GAP + (int)measureFontText(&font, BUTTON_SIZE, labels[i]->text);
-        total += widths[i];
-    }
-    total += (n - 1) * BUTTON_GAP;
+   int widths[3], total = 0;
+   for (int i = 0; i < n; i++) {
+      widths[i] = BUTTON_ICON + ICON_LABEL_GAP + (int)measureFontText(&font, BUTTON_SIZE, labels[i]->text);
+      total += widths[i];
+   }
+   total += (n - 1) * BUTTON_GAP;
 
-    int x = dialogX + (DIALOG_W - total) / 2;
-    for (int i = 0; i < n; i++) {
-        drawImageAt(icons[i],  x,                            dialogY + BUTTON_ROW_Y);
-        drawLabelAt(labels[i], x + BUTTON_ICON + ICON_LABEL_GAP, dialogY + BUTTON_ROW_Y + LABEL_DROP);
-        x += widths[i] + BUTTON_GAP;
-    }
+   int x = dialogX + (DIALOG_W - total) / 2;
+   for (int i = 0; i < n; i++) {
+      drawImageAt(icons[i],  x,                            dialogY + BUTTON_ROW_Y);
+      drawLabelAt(labels[i], x + BUTTON_ICON + ICON_LABEL_GAP, dialogY + BUTTON_ROW_Y + LABEL_DROP);
+      x += widths[i] + BUTTON_GAP;
+   }
 }
 
 static void term(void)
 {
-    freeLabel(&titleLabel);
-    freeLabel(&messageLabel);
-    freeLabel(&yesLabel);
-    freeLabel(&squareLabel);
-    freeLabel(&noLabel);
-    closeFont(&font);
-    confirmOverlay.status = OVERLAY_TERMINATED;
+   freeLabel(&titleLabel);
+   freeLabel(&messageLabel);
+   freeLabel(&yesLabel);
+   freeLabel(&squareLabel);
+   freeLabel(&noLabel);
+   closeFont(&font);
+   confirmOverlay.status = OVERLAY_TERMINATED;
 }
 
 Overlay confirmOverlay = { show, hide, update, draw, term, OVERLAY_TERMINATED };

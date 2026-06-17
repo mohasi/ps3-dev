@@ -16,20 +16,20 @@ SYS_MODULE_STOP(_stop);
 
 int _start(uint64_t arg)
 {
-    (void)arg;
-    // _start runs before the callback is installed, so this line is dbg.txt-only.
-    // everything after setLogCallback is tee'd to the host via forwardLogToHost,
-    // with pre-connect lines buffered in the server-side ring.
-    logInfo("[sdb] _start\n");
-    startServer();
-    setLogCallback(forwardLogToHost);
-    return SYS_PRX_RESIDENT;
+   (void)arg;
+   // _start runs before the callback is installed, so this line is dbg.txt-only.
+   // everything after setLogCallback is tee'd to the host via forwardLogToHost,
+   // with pre-connect lines buffered in the server-side ring.
+   logInfo("[sdb] _start\n");
+   startServer();
+   setLogCallback(forwardLogToHost);
+   return SYS_PRX_RESIDENT;
 }
 
 int _stop(void)
 {
-    logInfo("[sdb] _stop\n");
-    stopServer();
-    prxFinalizeSelf();
-    return SYS_PRX_STOP_OK;
+   logInfo("[sdb] _stop\n");
+   stopServer();
+   prxFinalizeSelf();
+   return SYS_PRX_STOP_OK;
 }

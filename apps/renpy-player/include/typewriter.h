@@ -10,12 +10,12 @@
 #include "font.h"   // TextReveal, TextTexture
 
 typedef struct {
-    TextReveal reveal;     // per-item positions; fill via renderFontTyped(... &tw->reveal)
-    int        cps;        // characters per second (0 = instant)
-    int        total;      // reveal.count
-    int        shown;      // characters currently revealed
-    int        done;       // line fully revealed
-    uint64_t   startUs;
+   TextReveal reveal;     // per-item positions; fill via renderFontTyped(... &tw->reveal)
+   int        cps;        // characters per second (0 = instant)
+   int        total;      // reveal.count
+   int        shown;      // characters currently revealed
+   int        done;       // line fully revealed
+   uint64_t   startUs;
 } Typewriter;
 
 // Begins the reveal. Call after rendering the line into its texture with renderFontTyped.

@@ -5,13 +5,13 @@
 #include "gfx.h"
 
 enum SpriteId {
-    SPRITE_HAND,
-    SPRITE_HAND_CLICK
+   SPRITE_HAND,
+   SPRITE_HAND_CLICK
 };
 
 static const SpriteRegion spriteRegions[2] = {
-    [SPRITE_HAND]       = {    0,    0,   50,   51 },
-    [SPRITE_HAND_CLICK] = {   51,    0,   50,   51 },
+   [SPRITE_HAND]       = {    0,    0,   50,   51 },
+   [SPRITE_HAND_CLICK] = {   51,    0,   50,   51 },
 };
 
 #define SPRITE_FULL ((SpriteRegion){0})

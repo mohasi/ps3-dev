@@ -28,9 +28,9 @@ int listSupportedImages(const char *dir, char names[][IMAGE_NAME_MAX], int maxCo
 // to be called from the main thread only.
 
 typedef struct {
-    void *pixels;   // ARGB8888 top-to-bottom; free with freeImageBuffer()
-    int   w, h;
-    int   pitch;    // source bytes per row (w * 4)
+   void *pixels;   // ARGB8888 top-to-bottom; free with freeImageBuffer()
+   int   w, h;
+   int   pitch;    // source bytes per row (w * 4)
 } ImageBuffer;
 
 // Requests an async decode of path, superseding any in-flight request (the old

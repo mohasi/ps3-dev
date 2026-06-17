@@ -19,47 +19,47 @@
 // to the design-pixel grid, kerning snaps down) -- line breaks then land exactly where
 // the original did.
 typedef enum {
-    FONT_METRICS_NATIVE = 0,   // fractional advances, no kerning (default)
-    FONT_METRICS_GRID_CEIL     // advance = ceil(adv/grid)*grid + kerning floored to grid
+   FONT_METRICS_NATIVE = 0,   // fractional advances, no kerning (default)
+   FONT_METRICS_GRID_CEIL     // advance = ceil(adv/grid)*grid + kerning floored to grid
 } FontMetricsMode;
 
 typedef struct {
-    CellFont font;
-    int      open;
-    void    *buffer;      // backing memory for openFontFile (cellFont keeps using it); NULL for system fonts
-    int      metricsMode; // FontMetricsMode (default FONT_METRICS_NATIVE)
-    float    metricsGrid; // grid in output px for FONT_METRICS_GRID_CEIL
-    // SFNT hhea/head metrics, parsed from the font file at open. Ren'Py's line height is the FreeType
-    // ascender - descender (hhea), NOT cellFont's OS/2-Windows-metric lineHeight (which over-spaces some
-    // OTF fonts). unitsPerEm == 0 => unavailable (system fonts) -> fall back to the cellFont layout.
-    int      unitsPerEm;
-    int      hheaAscent;   // hhea.ascender  (font design units; positive)
-    int      hheaDescent;  // hhea.descender (font design units; negative)
+   CellFont font;
+   int      open;
+   void    *buffer;      // backing memory for openFontFile (cellFont keeps using it); NULL for system fonts
+   int      metricsMode; // FontMetricsMode (default FONT_METRICS_NATIVE)
+   float    metricsGrid; // grid in output px for FONT_METRICS_GRID_CEIL
+   // SFNT hhea/head metrics, parsed from the font file at open. Ren'Py's line height is the FreeType
+   // ascender - descender (hhea), NOT cellFont's OS/2-Windows-metric lineHeight (which over-spaces some
+   // OTF fonts). unitsPerEm == 0 => unavailable (system fonts) -> fall back to the cellFont layout.
+   int      unitsPerEm;
+   int      hheaAscent;   // hhea.ascender  (font design units; positive)
+   int      hheaDescent;  // hhea.descender (font design units; negative)
 } Font;
 
 // Selects the advance model used by measuring and rendering (see FontMetricsMode).
 void setFontMetrics(Font *f, FontMetricsMode mode, float grid);
 
 typedef enum {
-    TEXT_WRAP,
-    TEXT_NOWRAP,
-    TEXT_NOWRAP_ELLIPSIS
+   TEXT_WRAP,
+   TEXT_NOWRAP,
+   TEXT_NOWRAP_ELLIPSIS
 } TextWrap;
 
 // Horizontal alignment of each laid-out line within the text block (block width = the
 // longest line). LEFT is the default for renderFont*/renderFontEx; CENTER/RIGHT match a
 // text style's text_align (e.g. Ren'Py prompt_text.text_align 0.5 + layout "subtitle").
 typedef enum {
-    TEXT_ALIGN_LEFT = 0,
-    TEXT_ALIGN_CENTER,
-    TEXT_ALIGN_RIGHT
+   TEXT_ALIGN_LEFT = 0,
+   TEXT_ALIGN_CENTER,
+   TEXT_ALIGN_RIGHT
 } TextAlign;
 
 // reusable text texture - owns a VRAM slot that grows as needed
 typedef struct {
-    GfxTexture tex;   // current texture (w/h = actual content size)
-    int slotW, slotH; // allocated slot dimensions (high-water mark)
-    int valid;        // 1 while tex holds a live VRAM allocation owned by this slot
+   GfxTexture tex;   // current texture (w/h = actual content size)
+   int slotW, slotH; // allocated slot dimensions (high-water mark)
+   int valid;        // 1 while tex holds a live VRAM allocation owned by this slot
 } TextTexture;
 
 int   initFont(void);
@@ -77,8 +77,8 @@ float measureFontChar(Font *f, int size, uint32_t code);
 // (dx, dy) output pixels, then again on top in the text colour -- the classic
 // two-pass shadow, so later glyphs' shadows never darken earlier glyphs.
 typedef struct {
-    int      dx, dy;   // offset in output pixels (positive = right/down)
-    uint32_t color;    // 0xAARRGGBB (alpha is used)
+   int      dx, dy;   // offset in output pixels (positive = right/down)
+   uint32_t color;    // 0xAARRGGBB (alpha is used)
 } TextShadow;
 
 // renders text into a reusable texture slot. reuses existing VRAM when the
@@ -90,15 +90,15 @@ void renderFont(TextTexture *tt, Font *f, int size, const char *text, uint32_t c
 // decorations (carets, click-to-continue icons) right after the final glyph.
 // All values are texture-relative pixels.
 typedef struct {
-    int endX;       // pen x after the final glyph (its advance included)
-    int endTop;     // top of the final glyph's ink box
-    int endBottom;  // bottom of the final glyph's ink box (~the baseline for ., a, m, ...)
-    int lineTop;    // top of the final glyph's LINE CELL (= baseline - ascent); where an
-                    // inline widget's top sits (may be negative if above the cropped texture)
-    int lineHeight; // the laid-out line pitch in texture px (the font's line box height)
-    int inkTop;     // top of the UNION ink box over all glyphs (texture px; >= 0)
-    int inkBottom;  // bottom of the union ink box over all glyphs (texture px)
-    int valid;      // 1 when at least one glyph was laid out
+   int endX;       // pen x after the final glyph (its advance included)
+   int endTop;     // top of the final glyph's ink box
+   int endBottom;  // bottom of the final glyph's ink box (~the baseline for ., a, m, ...)
+   int lineTop;    // top of the final glyph's LINE CELL (= baseline - ascent); where an
+               // inline widget's top sits (may be negative if above the cropped texture)
+   int lineHeight; // the laid-out line pitch in texture px (the font's line box height)
+   int inkTop;     // top of the UNION ink box over all glyphs (texture px; >= 0)
+   int inkBottom;  // bottom of the union ink box over all glyphs (texture px)
+   int valid;      // 1 when at least one glyph was laid out
 } TextEnd;
 
 // Per-item layout positions for a typewriter reveal: where each laid-out item (char/space/
@@ -106,10 +106,10 @@ typedef struct {
 // a caller then shows the first N items by clipping the texture (no per-frame re-rasterising).
 #define TEXT_REVEAL_MAX 1024
 typedef struct {
-    int count;                    // laid-out items (capped at TEXT_REVEAL_MAX)
-    int lineHeight;               // line height in texture px
-    int endX[TEXT_REVEAL_MAX];    // pen x after item i (texture coords)
-    int line[TEXT_REVEAL_MAX];    // which wrapped line item i sits on (0 = first); top = line*lineHeight
+   int count;                    // laid-out items (capped at TEXT_REVEAL_MAX)
+   int lineHeight;               // line height in texture px
+   int endX[TEXT_REVEAL_MAX];    // pen x after item i (texture coords)
+   int line[TEXT_REVEAL_MAX];    // which wrapped line item i sits on (0 = first); top = line*lineHeight
 } TextReveal;
 
 // renderFont with an optional drop shadow (NULL or a zero offset = none) and an

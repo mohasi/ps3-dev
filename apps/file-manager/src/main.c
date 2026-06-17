@@ -19,41 +19,41 @@ SYS_PROCESS_PARAM(PROCESS_PRIORITY_DEFAULT, PROCESS_STACK_SIZE_64KB)
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
+   (void)argc;
+   (void)argv;
 
-    appRegisterExitCallback();
-    mountDevBlind();
+   appRegisterExitCallback();
+   mountDevBlind();
 
-    initRtc();
-    initNet();
-    registerWithBridge("app", "file-manager");
+   initRtc();
+   initNet();
+   registerWithBridge("app", "file-manager");
 
-    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
-    if (initSfx() != 0) return 1;
-    if (initFont() != 0) return 1;
-    initPad();
+   if (initGfx(GFX_VSYNC_ON) != 0) return 1;
+   if (initSfx() != 0) return 1;
+   if (initFont() != 0) return 1;
+   initPad();
 
-    initStats(5, 5, 14, COLOR_AMBER_300);
+   initStats(5, 5, 14, COLOR_AMBER_300);
 
-    changeScreen(&homeScreen);
+   changeScreen(&homeScreen);
 
-    while (!appExitRequested) {
-        appPoll();
-        updatePad();
-        updateStats();
-        updateScreen();
+   while (!appExitRequested) {
+      appPoll();
+      updatePad();
+      updateStats();
+      updateScreen();
 
-        beginGfxFrame();
-        drawScreen();
-        drawStats();
-        endGfxFrame();
-    }
+      beginGfxFrame();
+      drawScreen();
+      drawStats();
+      endGfxFrame();
+   }
 
-    changeScreen(NULL);
-    termStats();
-    termSfx();
-    termFont();
-    termGfx();
-    return 0;
+   changeScreen(NULL);
+   termStats();
+   termSfx();
+   termFont();
+   termGfx();
+   return 0;
 }

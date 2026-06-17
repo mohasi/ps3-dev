@@ -8,20 +8,20 @@
 // dialogue. Strings are stable bytecode-table pointers; shows[]/showAt[] snapshot the sprites that
 // were on screen. This module is a dumb store + cursor -- the screen records and restores frames.
 typedef struct {
-    const char *who, *what, *scene;
-    const char *shows[SPR_MAX];
-    const char *showAt[SPR_MAX];
-    int         showAtl[SPR_MAX];   // each sprite's atl id, so rollback restores ATL placement/anim
-    int         showCount;
-    int         nvl;            // was this an NVL line?
-    int         ingame;         // was this an in-game chat-box line? (Say kind=2)
-    int         isPause;        // a renpy.pause() checkpoint (no dialogue) -- restore visuals, no textbox
-    int         nvlPage;        // which NVL page it belonged to (bumped on enter / nvl clear)
-    const char *musicCmd;       // music playing on this line (NULL = none)
-    const void *overlays[HISTORY_OVERLAY_MAX];   // the active HUD overlay SET at this line (RbcOverlay*)
-    int         overlayCount;   // so rollback restores which config.overlay_functions were active
-    void       *varSnap;        // snapshot of the variable store at this line (owned by history.c)
-    int         varSnapOwned;   // 1 = this frame allocated varSnap; 0 = shares an earlier frame's
+   const char *who, *what, *scene;
+   const char *shows[SPR_MAX];
+   const char *showAt[SPR_MAX];
+   int         showAtl[SPR_MAX];   // each sprite's atl id, so rollback restores ATL placement/anim
+   int         showCount;
+   int         nvl;            // was this an NVL line?
+   int         ingame;         // was this an in-game chat-box line? (Say kind=2)
+   int         isPause;        // a renpy.pause() checkpoint (no dialogue) -- restore visuals, no textbox
+   int         nvlPage;        // which NVL page it belonged to (bumped on enter / nvl clear)
+   const char *musicCmd;       // music playing on this line (NULL = none)
+   const void *overlays[HISTORY_OVERLAY_MAX];   // the active HUD overlay SET at this line (RbcOverlay*)
+   int         overlayCount;   // so rollback restores which config.overlay_functions were active
+   void       *varSnap;        // snapshot of the variable store at this line (owned by history.c)
+   int         varSnapOwned;   // 1 = this frame allocated varSnap; 0 = shares an earlier frame's
 } Frame;
 
 void resetHistory(void);   // clear the timeline

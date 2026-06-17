@@ -1,232 +1,232 @@
 <Window x:Class="DebugBridgeClient.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:DebugBridgeClient"
-        Title="PS3 Debug Bridge"
-        Width="762"
-        Height="540"
-        WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BgBase}">
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:local="clr-namespace:DebugBridgeClient"
+      Title="PS3 Debug Bridge"
+      Width="762"
+      Height="540"
+      WindowStartupLocation="CenterScreen"
+      Background="{StaticResource BgBase}">
 
    <Window.Resources>
 
-      <Style TargetType="TabItem">
-         <Setter Property="Foreground" Value="{StaticResource FgText}" />
-         <Setter Property="Template">
-            <Setter.Value>
-               <ControlTemplate TargetType="TabItem">
-                  <Border x:Name="tabBorder"
-                          Padding="10,4"
-                          Margin="0,0,1,0"
-                          Background="{StaticResource BgSurface}">
-                     <ContentPresenter ContentSource="Header" />
-                  </Border>
-                  <ControlTemplate.Triggers>
-                     <Trigger Property="IsSelected" Value="True">
-                        <Setter TargetName="tabBorder" Property="Background" Value="{StaticResource BgHover}" />
-                     </Trigger>
-                  </ControlTemplate.Triggers>
-               </ControlTemplate>
-            </Setter.Value>
-         </Setter>
-      </Style>
+     <Style TargetType="TabItem">
+       <Setter Property="Foreground" Value="{StaticResource FgText}" />
+       <Setter Property="Template">
+         <Setter.Value>
+            <ControlTemplate TargetType="TabItem">
+              <Border x:Name="tabBorder"
+                    Padding="10,4"
+                    Margin="0,0,1,0"
+                    Background="{StaticResource BgSurface}">
+                <ContentPresenter ContentSource="Header" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                  <Setter TargetName="tabBorder" Property="Background" Value="{StaticResource BgHover}" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+         </Setter.Value>
+       </Setter>
+     </Style>
 
-      <Style TargetType="MenuItem">
-         <Setter Property="Background" Value="{StaticResource BgSurface}" />
-         <Setter Property="Foreground" Value="{StaticResource FgText}" />
-         <Setter Property="Template">
-            <Setter.Value>
-               <ControlTemplate TargetType="MenuItem">
+     <Style TargetType="MenuItem">
+       <Setter Property="Background" Value="{StaticResource BgSurface}" />
+       <Setter Property="Foreground" Value="{StaticResource FgText}" />
+       <Setter Property="Template">
+         <Setter.Value>
+            <ControlTemplate TargetType="MenuItem">
+              <Grid>
+                <Border x:Name="border"
+                      Background="{TemplateBinding Background}"
+                      Padding="6,3">
                   <Grid>
-                     <Border x:Name="border"
-                             Background="{TemplateBinding Background}"
-                             Padding="6,3">
-                        <Grid>
-                           <Grid.ColumnDefinitions>
-                              <ColumnDefinition Width="*" />
-                              <ColumnDefinition Width="Auto" />
-                           </Grid.ColumnDefinitions>
-                           <ContentPresenter Grid.Column="0" ContentSource="Header" VerticalAlignment="Center" />
-                           <TextBlock x:Name="arrow"
-                                      Grid.Column="1"
-                                      Text="▶"
-                                      FontSize="9"
-                                      Margin="12,0,0,0"
-                                      VerticalAlignment="Center"
-                                      Foreground="{StaticResource FgText}"
-                                      Visibility="Collapsed" />
-                        </Grid>
-                     </Border>
-                     <Popup x:Name="popup"
-                            IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
-                            Placement="Bottom"
-                            AllowsTransparency="True">
-                        <Border Background="{StaticResource BgSurface}"
-                                BorderBrush="{StaticResource BrBorder}"
-                                BorderThickness="1"
-                                Padding="0,2">
-                           <StackPanel IsItemsHost="True"
-                                       KeyboardNavigation.DirectionalNavigation="Cycle" />
-                        </Border>
-                     </Popup>
+                     <Grid.ColumnDefinitions>
+                       <ColumnDefinition Width="*" />
+                       <ColumnDefinition Width="Auto" />
+                     </Grid.ColumnDefinitions>
+                     <ContentPresenter Grid.Column="0" ContentSource="Header" VerticalAlignment="Center" />
+                     <TextBlock x:Name="arrow"
+                             Grid.Column="1"
+                             Text="▶"
+                             FontSize="9"
+                             Margin="12,0,0,0"
+                             VerticalAlignment="Center"
+                             Foreground="{StaticResource FgText}"
+                             Visibility="Collapsed" />
                   </Grid>
-                  <ControlTemplate.Triggers>
-                     <Trigger Property="IsHighlighted" Value="True">
-                        <Setter TargetName="border" Property="Background" Value="{StaticResource BgHover}" />
-                     </Trigger>
-                     <Trigger Property="Role" Value="SubmenuItem">
-                        <Setter TargetName="border" Property="Padding" Value="20,4" />
-                     </Trigger>
-                     <Trigger Property="Role" Value="SubmenuHeader">
-                        <Setter TargetName="border" Property="Padding" Value="20,4" />
-                        <Setter TargetName="popup" Property="Placement" Value="Right" />
-                        <Setter TargetName="arrow" Property="Visibility" Value="Visible" />
-                     </Trigger>
-                  </ControlTemplate.Triggers>
-               </ControlTemplate>
-            </Setter.Value>
-         </Setter>
-      </Style>
+                </Border>
+                <Popup x:Name="popup"
+                     IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                     Placement="Bottom"
+                     AllowsTransparency="True">
+                  <Border Background="{StaticResource BgSurface}"
+                        BorderBrush="{StaticResource BrBorder}"
+                        BorderThickness="1"
+                        Padding="0,2">
+                     <StackPanel IsItemsHost="True"
+                              KeyboardNavigation.DirectionalNavigation="Cycle" />
+                  </Border>
+                </Popup>
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                  <Setter TargetName="border" Property="Background" Value="{StaticResource BgHover}" />
+                </Trigger>
+                <Trigger Property="Role" Value="SubmenuItem">
+                  <Setter TargetName="border" Property="Padding" Value="20,4" />
+                </Trigger>
+                <Trigger Property="Role" Value="SubmenuHeader">
+                  <Setter TargetName="border" Property="Padding" Value="20,4" />
+                  <Setter TargetName="popup" Property="Placement" Value="Right" />
+                  <Setter TargetName="arrow" Property="Visibility" Value="Visible" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+         </Setter.Value>
+       </Setter>
+     </Style>
 
    </Window.Resources>
 
    <Grid>
-      <Grid.RowDefinitions>
-         <RowDefinition Height="Auto" />
-         <RowDefinition Height="*" />
-         <RowDefinition Height="Auto" />
-      </Grid.RowDefinitions>
+     <Grid.RowDefinitions>
+       <RowDefinition Height="Auto" />
+       <RowDefinition Height="*" />
+       <RowDefinition Height="Auto" />
+     </Grid.RowDefinitions>
 
-      <!-- menu bar -->
-      <Menu Grid.Row="0"
-            Background="{StaticResource BgSurface}"
-            Foreground="{StaticResource FgText}">
-         <MenuItem Header="Commands">
-            <MenuItem Header="Screenshot" Click="OnScreenshot" />
-            <MenuItem Header="Stat Tree..." Click="OnStatTree" />
-            <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
-            <MenuItem Header="Files">
-               <MenuItem Header="Pull File">
-                  <MenuItem Header="/dev_hdd0/tmp/stat-tree.txt"    Click="OnPullFile" Tag="/dev_hdd0/tmp/stat-tree.txt" />
-                  <MenuItem Header="/dev_hdd0/tmp/dbg.txt"          Click="OnPullFile" Tag="/dev_hdd0/tmp/dbg.txt" />
-                  <MenuItem Header="/dev_hdd0/tmp/trace-capture.bin" Click="OnPullFile" Tag="/dev_hdd0/tmp/trace-capture.bin" />
-                  <MenuItem Header="Custom..." Click="OnPullFile" />
-               </MenuItem>
-               <MenuItem Header="Push File..." Click="OnPushFile" />
-               <MenuItem Header="Delete File..." Click="OnDeleteFile" />
+     <!-- menu bar -->
+     <Menu Grid.Row="0"
+         Background="{StaticResource BgSurface}"
+         Foreground="{StaticResource FgText}">
+       <MenuItem Header="Commands">
+         <MenuItem Header="Screenshot" Click="OnScreenshot" />
+         <MenuItem Header="Stat Tree..." Click="OnStatTree" />
+         <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
+         <MenuItem Header="Files">
+            <MenuItem Header="Pull File">
+              <MenuItem Header="/dev_hdd0/tmp/stat-tree.txt"    Click="OnPullFile" Tag="/dev_hdd0/tmp/stat-tree.txt" />
+              <MenuItem Header="/dev_hdd0/tmp/dbg.txt"          Click="OnPullFile" Tag="/dev_hdd0/tmp/dbg.txt" />
+              <MenuItem Header="/dev_hdd0/tmp/trace-capture.bin" Click="OnPullFile" Tag="/dev_hdd0/tmp/trace-capture.bin" />
+              <MenuItem Header="Custom..." Click="OnPullFile" />
             </MenuItem>
-            <MenuItem Header="Packages">
-               <MenuItem Header="Install..." Click="OnPackageInstall" />
-               <MenuItem Header="Uninstall..." IsEnabled="False" />
-            </MenuItem>
-            <MenuItem Header="Plugins">
-               <MenuItem Header="Install..." Click="OnPluginInstall" />
-               <MenuItem Header="Uninstall..." Click="OnPluginUninstall" />
-            </MenuItem>
-            <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
-            <MenuItem Header="Restart XMB" Click="OnRestartXmb" />
-            <MenuItem Header="Restart PS3" Click="OnRestartPs3" />
-            <MenuItem Header="Shutdown" Click="OnShutdown" />
+            <MenuItem Header="Push File..." Click="OnPushFile" />
+            <MenuItem Header="Delete File..." Click="OnDeleteFile" />
          </MenuItem>
-         <MenuItem Header="View">
-            <MenuItem Header="Clear" Click="OnClear" />
+         <MenuItem Header="Packages">
+            <MenuItem Header="Install..." Click="OnPackageInstall" />
+            <MenuItem Header="Uninstall..." IsEnabled="False" />
          </MenuItem>
-      </Menu>
+         <MenuItem Header="Plugins">
+            <MenuItem Header="Install..." Click="OnPluginInstall" />
+            <MenuItem Header="Uninstall..." Click="OnPluginUninstall" />
+         </MenuItem>
+         <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
+         <MenuItem Header="Restart XMB" Click="OnRestartXmb" />
+         <MenuItem Header="Restart PS3" Click="OnRestartPs3" />
+         <MenuItem Header="Shutdown" Click="OnShutdown" />
+       </MenuItem>
+       <MenuItem Header="View">
+         <MenuItem Header="Clear" Click="OnClear" />
+       </MenuItem>
+     </Menu>
 
-      <!-- main content with tabs -->
-      <TabControl Grid.Row="1"
+     <!-- main content with tabs -->
+     <TabControl Grid.Row="1"
+              Background="{StaticResource BgBase}"
+              BorderBrush="{StaticResource BrBorder}"
+              BorderThickness="3">
+
+       <!-- bridge logs: host-side status + ps3 [sdb] lines forwarded from
+           simple-debug-bridge itself. -->
+       <TabItem Header="Activity">
+         <TextBox x:Name="activityBox"
+                Background="{StaticResource BgBase}"
+                Foreground="{StaticResource FgText}"
+                BorderThickness="0"
+                FontFamily="Consolas"
+                FontSize="12"
+                IsReadOnly="True"
+                VerticalScrollBarVisibility="Auto"
+                TextWrapping="NoWrap" />
+       </TabItem>
+
+       <!-- app / plugin logs: ps3 LOG frames forwarded from registered
+           producers (anything that isn't [sdb] - [sdm], [ftp], etc.). -->
+      <TabItem Header="Logs">
+         <TextBox x:Name="logsBox"
                   Background="{StaticResource BgBase}"
-                  BorderBrush="{StaticResource BrBorder}"
-                  BorderThickness="3">
+                  Foreground="{StaticResource FgText}"
+                  BorderThickness="0"
+                  FontFamily="Consolas"
+                  FontSize="12"
+                  IsReadOnly="True"
+                  VerticalScrollBarVisibility="Auto"
+                  TextWrapping="NoWrap" />
+      </TabItem>
 
-         <!-- bridge logs: host-side status + ps3 [sdb] lines forwarded from
-              simple-debug-bridge itself. -->
-         <TabItem Header="Activity">
-            <TextBox x:Name="activityBox"
-                     Background="{StaticResource BgBase}"
-                     Foreground="{StaticResource FgText}"
-                     BorderThickness="0"
-                     FontFamily="Consolas"
-                     FontSize="12"
-                     IsReadOnly="True"
-                     VerticalScrollBarVisibility="Auto"
-                     TextWrapping="NoWrap" />
-         </TabItem>
+      <!-- module browser: one IModuleSource per process. Refresh
+           re-enumerates; expanding a module fetches its segments,
+           exports and imports on demand. -->
+      <TabItem Header="Modules">
+         <local:ModulesView x:Name="modulesView" />
+      </TabItem>
 
-         <!-- app / plugin logs: ps3 LOG frames forwarded from registered
-              producers (anything that isn't [sdb] - [sdm], [ftp], etc.). -->
-         <TabItem Header="Logs">
-            <TextBox x:Name="logsBox"
-                     Background="{StaticResource BgBase}"
-                     Foreground="{StaticResource FgText}"
-                     BorderThickness="0"
-                     FontFamily="Consolas"
-                     FontSize="12"
-                     IsReadOnly="True"
-                     VerticalScrollBarVisibility="Auto"
-                     TextWrapping="NoWrap" />
-         </TabItem>
+      <!-- module trace: arm "module-trace-on" on the bridge, exercise
+           the system, stop to pull the capture and fill a filterable
+           grid (one row per outgoing import call). -->
+      <TabItem Header="Trace">
+         <local:TraceView x:Name="traceView" />
+      </TabItem>
 
-         <!-- module browser: one IModuleSource per process. Refresh
-              re-enumerates; expanding a module fetches its segments,
-              exports and imports on demand. -->
-         <TabItem Header="Modules">
-            <local:ModulesView x:Name="modulesView" />
-         </TabItem>
+      <!-- screen tab. canvas size is a pre-connect placeholder; OnConnected
+           resizes it to match the actual ps3 framebuffer reported by
+           display-info, so capture (x,y,w,h) is always screen-relative.
+           Viewbox does the scaling; Canvas does the absolute positioning. -->
+      <TabItem Header="Screen">
+         <Viewbox Stretch="Uniform">
+            <Canvas x:Name="screenCanvas"
+                    Width="1920"
+                    Height="1080"
+                    Background="#202020" />
+         </Viewbox>
+      </TabItem>
 
-         <!-- module trace: arm "module-trace-on" on the bridge, exercise
-              the system, stop to pull the capture and fill a filterable
-              grid (one row per outgoing import call). -->
-         <TabItem Header="Trace">
-            <local:TraceView x:Name="traceView" />
-         </TabItem>
+   </TabControl>
 
-         <!-- screen tab. canvas size is a pre-connect placeholder; OnConnected
-              resizes it to match the actual ps3 framebuffer reported by
-              display-info, so capture (x,y,w,h) is always screen-relative.
-              Viewbox does the scaling; Canvas does the absolute positioning. -->
-         <TabItem Header="Screen">
-            <Viewbox Stretch="Uniform">
-               <Canvas x:Name="screenCanvas"
-                       Width="1920"
-                       Height="1080"
-                       Background="#202020" />
-            </Viewbox>
-         </TabItem>
-
-      </TabControl>
-
-      <!-- bottom bar -->
-      <StatusBar Grid.Row="2"
-                 Background="{StaticResource BgSurface}"
-                 Padding="6,4">
-         <StatusBar.ItemsPanel>
-            <ItemsPanelTemplate>
-               <DockPanel LastChildFill="True" />
-            </ItemsPanelTemplate>
-         </StatusBar.ItemsPanel>
-         <StatusBarItem DockPanel.Dock="Right">
-            <StackPanel Orientation="Horizontal">
-               <Ellipse x:Name="statusDot"
-                        Width="10"
-                        Height="10"
-                        Fill="#ff4444"
-                        Margin="0,0,6,0"
-                        VerticalAlignment="Center" />
-               <TextBlock x:Name="statusText"
-                          Text="Disconnected"
-                          FontSize="11"
-                          Foreground="{StaticResource FgText}"
-                          VerticalAlignment="Center" />
-            </StackPanel>
-         </StatusBarItem>
-         <StatusBarItem>
-            <TextBlock Text="HTTP bridge: http://localhost:8786/"
+   <!-- bottom bar -->
+   <StatusBar Grid.Row="2"
+              Background="{StaticResource BgSurface}"
+              Padding="6,4">
+      <StatusBar.ItemsPanel>
+         <ItemsPanelTemplate>
+            <DockPanel LastChildFill="True" />
+         </ItemsPanelTemplate>
+      </StatusBar.ItemsPanel>
+      <StatusBarItem DockPanel.Dock="Right">
+         <StackPanel Orientation="Horizontal">
+            <Ellipse x:Name="statusDot"
+                     Width="10"
+                     Height="10"
+                     Fill="#ff4444"
+                     Margin="0,0,6,0"
+                     VerticalAlignment="Center" />
+            <TextBlock x:Name="statusText"
+                       Text="Disconnected"
                        FontSize="11"
                        Foreground="{StaticResource FgText}"
                        VerticalAlignment="Center" />
-         </StatusBarItem>
-      </StatusBar>
+         </StackPanel>
+      </StatusBarItem>
+      <StatusBarItem>
+         <TextBlock Text="HTTP bridge: http://localhost:8786/"
+                    FontSize="11"
+                    Foreground="{StaticResource FgText}"
+                    VerticalAlignment="Center" />
+      </StatusBarItem>
+   </StatusBar>
 
-   </Grid>
+</Grid>
 </Window>

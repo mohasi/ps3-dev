@@ -35,14 +35,14 @@
 #define HIGHLIGHT_CAP      7    // highlight sprite (16x16) 9-slice corner cap
 
 typedef struct {
-    char name[NAME_LEN];
-    uint64_t size;
-    uint64_t modified;
-    int fileCount;    // 1 for files; recursive count for folders (valid when sized)
-    FileType type;
-    int checked;
-    int sized;        // folders: 0 until folder-sizer visits it
-    int approx;       // sized but the walker hit its budget; size/fileCount are a lower bound
+   char name[NAME_LEN];
+   uint64_t size;
+   uint64_t modified;
+   int fileCount;    // 1 for files; recursive count for folders (valid when sized)
+   FileType type;
+   int checked;
+   int sized;        // folders: 0 until folder-sizer visits it
+   int approx;       // sized but the walker hit its budget; size/fileCount are a lower bound
 } FileEntry;
 
 static FileEntry *entries;
@@ -91,23 +91,23 @@ static int sizerCount(void) { return entryCount; }
 
 static int sizerNeedsSizing(int i, char *outPath, int cap, int *outGeneration)
 {
-    if (i < 0 || i >= entryCount) return 0;
-    if (entries[i].sized) return 0;
-    if (entries[i].type != FILE_TYPE_FOLDER) return 0;
-    joinPath(outPath, cap, currentPath, entries[i].name);
-    *outGeneration = sizerGeneration;
-    return 1;
+   if (i < 0 || i >= entryCount) return 0;
+   if (entries[i].sized) return 0;
+   if (entries[i].type != FILE_TYPE_FOLDER) return 0;
+   joinPath(outPath, cap, currentPath, entries[i].name);
+   *outGeneration = sizerGeneration;
+   return 1;
 }
 
 static void sizerApplyResult(int i, uint64_t bytes, int files, int approx, int generation)
 {
-    if (generation != sizerGeneration) return;  // stale result from a cancelled worker
-    if (i < 0 || i >= entryCount) return;
-    entries[i].size      = bytes;
-    entries[i].fileCount = files;
-    entries[i].approx    = approx;
-    entries[i].sized     = 1;
-    labelsStale          = 1;
+   if (generation != sizerGeneration) return;  // stale result from a cancelled worker
+   if (i < 0 || i >= entryCount) return;
+   entries[i].size      = bytes;
+   entries[i].fileCount = files;
+   entries[i].approx    = approx;
+   entries[i].sized     = 1;
+   labelsStale          = 1;
 }
 
 static const FolderSizeCallbacks sizerCallbacks = { sizerCount, sizerNeedsSizing, sizerApplyResult };
@@ -116,23 +116,23 @@ static const FolderSizeCallbacks sizerCallbacks = { sizerCount, sizerNeedsSizing
 // directory listings are small and already mostly-sorted on most fs's.
 static int entryLess(const FileEntry *a, const FileEntry *b)
 {
-    int aIsDir = a->type == FILE_TYPE_FOLDER;
-    int bIsDir = b->type == FILE_TYPE_FOLDER;
-    if (aIsDir != bIsDir) return aIsDir > bIsDir;
-    return strCmpICase(a->name, b->name) < 0;
+   int aIsDir = a->type == FILE_TYPE_FOLDER;
+   int bIsDir = b->type == FILE_TYPE_FOLDER;
+   if (aIsDir != bIsDir) return aIsDir > bIsDir;
+   return strCmpICase(a->name, b->name) < 0;
 }
 
 static void sortEntries(void)
 {
-    for (int i = 1; i < entryCount; i++) {
-        FileEntry key = entries[i];
-        int j = i - 1;
-        while (j >= 0 && entryLess(&key, &entries[j])) {
-            entries[j + 1] = entries[j];
-            j--;
-        }
-        entries[j + 1] = key;
-    }
+   for (int i = 1; i < entryCount; i++) {
+      FileEntry key = entries[i];
+      int j = i - 1;
+      while (j >= 0 && entryLess(&key, &entries[j])) {
+         entries[j + 1] = entries[j];
+         j--;
+      }
+      entries[j + 1] = key;
+   }
 }
 
 // fills entry from a single stat() of the full path. size and modified time
@@ -141,32 +141,32 @@ static void sortEntries(void)
 // generic 0-byte placeholder so the row still shows up rather than dropping.
 static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
 {
-    strCopy(e->name, NAME_LEN, name);
-    e->checked   = 0;
-    e->fileCount = 0;
-    e->approx    = 0;
-    e->modified  = 0;
+   strCopy(e->name, NAME_LEN, name);
+   e->checked   = 0;
+   e->fileCount = 0;
+   e->approx    = 0;
+   e->modified  = 0;
 
-    CellFsStat st;
-    if (cellFsStat(fullPath, &st) != CELL_FS_SUCCEEDED) {
-        e->type      = FILE_TYPE_GENERIC;
-        e->size      = 0;
-        e->fileCount = 1;
-        e->sized     = 1;
-        return;
-    }
+   CellFsStat st;
+   if (cellFsStat(fullPath, &st) != CELL_FS_SUCCEEDED) {
+      e->type      = FILE_TYPE_GENERIC;
+      e->size      = 0;
+      e->fileCount = 1;
+      e->sized     = 1;
+      return;
+   }
 
-    int isDir = (st.st_mode & CELL_FS_S_IFDIR) != 0;
-    e->type = classifyFileType(name, isDir);
-    e->modified = st.st_mtime;
-    if (isDir) {
-        e->size  = 0;
-        e->sized = 0;  // folder-sizer fills this in
-    } else {
-        e->size      = st.st_size;
-        e->fileCount = 1;
-        e->sized     = 1;
-    }
+   int isDir = (st.st_mode & CELL_FS_S_IFDIR) != 0;
+   e->type = classifyFileType(name, isDir);
+   e->modified = st.st_mtime;
+   if (isDir) {
+      e->size  = 0;
+      e->sized = 0;  // folder-sizer fills this in
+   } else {
+      e->size      = st.st_size;
+      e->fileCount = 1;
+      e->sized     = 1;
+   }
 }
 
 // remembers the cursor/scroll position of the current directory so circle
@@ -175,145 +175,145 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
 // valid. this keeps the history aligned with the actual directory stack.
 static void pushNavHistory(void)
 {
-    if (historyDepth >= HISTORY_MAX) {
-        // shift out the oldest entry to make room
-        for (int i = 0; i < HISTORY_MAX - 1; i++) {
-            selectionHistory[i] = selectionHistory[i + 1];
-            scrollHistory[i]    = scrollHistory[i + 1];
-        }
-        historyDepth = HISTORY_MAX - 1;
-    }
-    selectionHistory[historyDepth] = selectedIndex;
-    scrollHistory[historyDepth]    = scrollOffset;
-    historyDepth++;
+   if (historyDepth >= HISTORY_MAX) {
+      // shift out the oldest entry to make room
+      for (int i = 0; i < HISTORY_MAX - 1; i++) {
+         selectionHistory[i] = selectionHistory[i + 1];
+         scrollHistory[i]    = scrollHistory[i + 1];
+      }
+      historyDepth = HISTORY_MAX - 1;
+   }
+   selectionHistory[historyDepth] = selectedIndex;
+   scrollHistory[historyDepth]    = scrollOffset;
+   historyDepth++;
 }
 
 // restores the cursor/scroll position saved by the matching push, clamped
 // to the now-current entryCount in case the directory shrank under us.
 static void popNavHistory(void)
 {
-    if (historyDepth == 0) return;
-    historyDepth--;
-    selectedIndex = selectionHistory[historyDepth];
-    scrollOffset  = scrollHistory[historyDepth];
-    if (selectedIndex >= entryCount) selectedIndex = entryCount > 0 ? entryCount - 1 : 0;
-    if (scrollOffset > selectedIndex) scrollOffset = selectedIndex;
+   if (historyDepth == 0) return;
+   historyDepth--;
+   selectedIndex = selectionHistory[historyDepth];
+   scrollOffset  = scrollHistory[historyDepth];
+   if (selectedIndex >= entryCount) selectedIndex = entryCount > 0 ? entryCount - 1 : 0;
+   if (scrollOffset > selectedIndex) scrollOffset = selectedIndex;
 }
 
 static void loadDir(const char *path)
 {
-    cancelFolderSizer();  // any in-flight walker bails before we mutate entries
-    sizerGeneration++;    // invalidate any stale results still in flight
+   cancelFolderSizer();  // any in-flight walker bails before we mutate entries
+   sizerGeneration++;    // invalidate any stale results still in flight
 
-    strCopy(currentPath, MAX_PATH_LEN, path);
-    entryCount = 0;
-    selectedIndex = 0;
-    scrollOffset = 0;
+   strCopy(currentPath, MAX_PATH_LEN, path);
+   entryCount = 0;
+   selectedIndex = 0;
+   scrollOffset = 0;
 
-    int fd;
-    if (cellFsOpendir(path, &fd) != CELL_FS_SUCCEEDED) {
-        labelsStale = 1;
-        return;
-    }
+   int fd;
+   if (cellFsOpendir(path, &fd) != CELL_FS_SUCCEEDED) {
+      labelsStale = 1;
+      return;
+   }
 
-    // root contains devkit / system mounts (app_home, dev_flash2/3, host_root)
-    // that userland cannot actually enter. probe each so they don't clutter the
-    // listing. only worth doing at root; below root cellFsStat already filters.
-    int filterUnenterable = (path[0] == '/' && path[1] == '\0');
+   // root contains devkit / system mounts (app_home, dev_flash2/3, host_root)
+   // that userland cannot actually enter. probe each so they don't clutter the
+   // listing. only worth doing at root; below root cellFsStat already filters.
+   int filterUnenterable = (path[0] == '/' && path[1] == '\0');
 
-    CellFsDirent ent;
-    uint64_t readBytes;
-    while (cellFsReaddir(fd, &ent, &readBytes) == CELL_FS_SUCCEEDED && readBytes > 0) {
-        // skip . and .. but allow other dotfiles (.bashrc, .hidden, etc.)
-        if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-            (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
+   CellFsDirent ent;
+   uint64_t readBytes;
+   while (cellFsReaddir(fd, &ent, &readBytes) == CELL_FS_SUCCEEDED && readBytes > 0) {
+      // skip . and .. but allow other dotfiles (.bashrc, .hidden, etc.)
+      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
+          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
 
-        char full[MAX_PATH_LEN];
-        joinPath(full, MAX_PATH_LEN, path, ent.d_name);
+      char full[MAX_PATH_LEN];
+      joinPath(full, MAX_PATH_LEN, path, ent.d_name);
 
-        if (filterUnenterable) {
-            int probe;
-            if (cellFsOpendir(full, &probe) != CELL_FS_SUCCEEDED) continue;
-            cellFsClosedir(probe);
-        }
+      if (filterUnenterable) {
+         int probe;
+         if (cellFsOpendir(full, &probe) != CELL_FS_SUCCEEDED) continue;
+         cellFsClosedir(probe);
+      }
 
-        if (!growArray(entries, &entryCapacity, entryCount + 1)) break;
-        populateEntry(&entries[entryCount++], ent.d_name, full);
-    }
-    cellFsClosedir(fd);
+      if (!growArray(entries, &entryCapacity, entryCount + 1)) break;
+      populateEntry(&entries[entryCount++], ent.d_name, full);
+   }
+   cellFsClosedir(fd);
 
-    sortEntries();
-    labelsStale = 1;
+   sortEntries();
+   labelsStale = 1;
 
-    if (breadcrumb) setBreadcrumbPath(breadcrumb, currentPath);
+   if (breadcrumb) setBreadcrumbPath(breadcrumb, currentPath);
 }
 
 static void rebuildLabels(void)
 {
-    // row labels (name, type, size, modified local time)
-    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
-        int idx = scrollOffset + i;
-        if (idx >= entryCount) {
-            setLabelText(&labels[i], "");
-            setLabelText(&sizeLabels[i], "");
-            setLabelText(&typeLabels[i], "");
-            setLabelText(&modifiedLabels[i], "");
-            continue;
-        }
-        setLabelText(&labels[i],     entries[idx].name);
-        setLabelText(&typeLabels[i], getFileTypeName(entries[idx].type));
+   // row labels (name, type, size, modified local time)
+   for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
+      int idx = scrollOffset + i;
+      if (idx >= entryCount) {
+         setLabelText(&labels[i], "");
+         setLabelText(&sizeLabels[i], "");
+         setLabelText(&typeLabels[i], "");
+         setLabelText(&modifiedLabels[i], "");
+         continue;
+      }
+      setLabelText(&labels[i],     entries[idx].name);
+      setLabelText(&typeLabels[i], getFileTypeName(entries[idx].type));
 
-        if (!entries[idx].sized) {
-            setLabelText(&sizeLabels[i], EM_DASH);
-        } else {
-            char buf[16];
-            formatSizeApprox(entries[idx].size, entries[idx].approx, buf);
-            setLabelText(&sizeLabels[i], buf);
-        }
+      if (!entries[idx].sized) {
+         setLabelText(&sizeLabels[i], EM_DASH);
+      } else {
+         char buf[16];
+         formatSizeApprox(entries[idx].size, entries[idx].approx, buf);
+         setLabelText(&sizeLabels[i], buf);
+      }
 
-        char modifiedText[20];
-        formatDateTimeLocal(modifiedText, sizeof(modifiedText), entries[idx].modified);
-        setLabelText(&modifiedLabels[i], modifiedText);
-    }
+      char modifiedText[20];
+      formatDateTimeLocal(modifiedText, sizeof(modifiedText), entries[idx].modified);
+      setLabelText(&modifiedLabels[i], modifiedText);
+   }
 
-    // checked / total counter
-    int checked = 0;
-    for (int i = 0; i < entryCount; i++) {
-        if (entries[i].checked) checked++;
-    }
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d / %d", checked, entryCount);
-    setLabelText(&counterLabel, buf);
+   // checked / total counter
+   int checked = 0;
+   for (int i = 0; i < entryCount; i++) {
+      if (entries[i].checked) checked++;
+   }
+   char buf[32];
+   snprintf(buf, sizeof(buf), "%d / %d", checked, entryCount);
+   setLabelText(&counterLabel, buf);
 
-    labelsStale = 0;
+   labelsStale = 0;
 }
 
 static void enterSelectedDir(void)
 {
-    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
-    if (entries[selectedIndex].type != FILE_TYPE_FOLDER) return;
+   if (selectedIndex < 0 || selectedIndex >= entryCount) return;
+   if (entries[selectedIndex].type != FILE_TYPE_FOLDER) return;
 
-    playSfxOnce(clickSfx);
-    pushNavHistory();
-    char next[MAX_PATH_LEN];
-    joinPath(next, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
-    loadDir(next);
+   playSfxOnce(clickSfx);
+   pushNavHistory();
+   char next[MAX_PATH_LEN];
+   joinPath(next, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+   loadDir(next);
 }
 
 // whether the selected row is an image the viewer can actually open.
 static int selectedIsViewableImage(void)
 {
-    if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
-    return entries[selectedIndex].type == FILE_TYPE_IMAGE &&
-           isSupportedImageFormat(entries[selectedIndex].name);
+   if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
+   return entries[selectedIndex].type == FILE_TYPE_IMAGE &&
+         isSupportedImageFormat(entries[selectedIndex].name);
 }
 
 // whether the selected row is an audio file the player can actually decode (wav/ogg).
 static int selectedIsPlayableAudio(void)
 {
-    if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
-    return entries[selectedIndex].type == FILE_TYPE_AUDIO &&
-           isPlayableAudioFile(entries[selectedIndex].name);
+   if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
+   return entries[selectedIndex].type == FILE_TYPE_AUDIO &&
+         isPlayableAudioFile(entries[selectedIndex].name);
 }
 
 // cross handler: folders enter, supported images open in the viewer, playable audio opens in
@@ -321,95 +321,95 @@ static int selectedIsPlayableAudio(void)
 // syncFooterButtons), so this is a no-op in that case.
 static void activateSelectedEntry(void)
 {
-    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
+   if (selectedIndex < 0 || selectedIndex >= entryCount) return;
 
-    if (entries[selectedIndex].type == FILE_TYPE_FOLDER) {
-        enterSelectedDir();
-        return;
-    }
+   if (entries[selectedIndex].type == FILE_TYPE_FOLDER) {
+      enterSelectedDir();
+      return;
+   }
 
-    char full[MAX_PATH_LEN];
-    joinPath(full, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+   char full[MAX_PATH_LEN];
+   joinPath(full, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
 
-    if (selectedIsViewableImage())      openImageViewer(full);
-    else if (selectedIsPlayableAudio()) openAudioPlayer(full);
+   if (selectedIsViewableImage())      openImageViewer(full);
+   else if (selectedIsPlayableAudio()) openAudioPlayer(full);
 }
 
 static void goToParentDir(void)
 {
-    if (strlen(currentPath) <= 1) return;
+   if (strlen(currentPath) <= 1) return;
 
-    playSfxOnce(clickSfx);
-    toParentPath(currentPath);
-    loadDir(currentPath);
-    popNavHistory();
+   playSfxOnce(clickSfx);
+   toParentPath(currentPath);
+   loadDir(currentPath);
+   popNavHistory();
 }
 
 static void syncFooterButtons(void)
 {
-    int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
-    int isFolder   = hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER;
-    int isAnyImage = hasSelection && entries[selectedIndex].type == FILE_TYPE_IMAGE;
-    int isAnyAudio = hasSelection && entries[selectedIndex].type == FILE_TYPE_AUDIO;
-    int isOpenable = selectedIsViewableImage() || selectedIsPlayableAudio();
+   int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
+   int isFolder   = hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER;
+   int isAnyImage = hasSelection && entries[selectedIndex].type == FILE_TYPE_IMAGE;
+   int isAnyAudio = hasSelection && entries[selectedIndex].type == FILE_TYPE_AUDIO;
+   int isOpenable = selectedIsViewableImage() || selectedIsPlayableAudio();
 
-    // enabled for folders and openable media; any image/audio (even an unsupported codec)
-    // still reads "Open", just greyed out when we can't decode it.
-    setFooterButtonEnabled(PAD_BTN_CROSS, isFolder || isOpenable);
+   // enabled for folders and openable media; any image/audio (even an unsupported codec)
+   // still reads "Open", just greyed out when we can't decode it.
+   setFooterButtonEnabled(PAD_BTN_CROSS, isFolder || isOpenable);
 
-    // only retouch the label when the cross action actually changes, so we
-    // don't re-rasterize the glyphs every frame.
-    static int crossShowsOpen = -1;
-    int showsOpen = isAnyImage || isAnyAudio;
-    if (showsOpen != crossShowsOpen) {
-        setFooterButtonText(PAD_BTN_CROSS, showsOpen ? "Open" : "Enter");
-        crossShowsOpen = showsOpen;
-    }
+   // only retouch the label when the cross action actually changes, so we
+   // don't re-rasterize the glyphs every frame.
+   static int crossShowsOpen = -1;
+   int showsOpen = isAnyImage || isAnyAudio;
+   if (showsOpen != crossShowsOpen) {
+      setFooterButtonText(PAD_BTN_CROSS, showsOpen ? "Open" : "Enter");
+      crossShowsOpen = showsOpen;
+   }
 
-    setFooterButtonEnabled(PAD_BTN_CIRCLE, strlen(currentPath) > 1);
-    setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);
+   setFooterButtonEnabled(PAD_BTN_CIRCLE, strlen(currentPath) > 1);
+   setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);
 }
 
 void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check, int x, int y, int maxWidth, int rowHeight, int fontSize, uint32_t color, Breadcrumb *bc)
 {
-    breadcrumb = bc;
-    clickSfx = click;
-    checkSfx = check;
-    listY = y;
-    listRowHeight = rowHeight;
-    entryCount = 0;
-    entryCapacity = INITIAL_CAPACITY;
-    entries = (FileEntry *)malloc(entryCapacity * sizeof(FileEntry));
-    if (!entries) entryCapacity = 0;  // let the first growArray() allocate (and fail safely) instead of writing through NULL
-    selectedIndex = 0;
-    scrollOffset = 0;
-    labelsStale = 1;
-    historyDepth = 0;
+   breadcrumb = bc;
+   clickSfx = click;
+   checkSfx = check;
+   listY = y;
+   listRowHeight = rowHeight;
+   entryCount = 0;
+   entryCapacity = INITIAL_CAPACITY;
+   entries = (FileEntry *)malloc(entryCapacity * sizeof(FileEntry));
+   if (!entries) entryCapacity = 0;  // let the first growArray() allocate (and fail safely) instead of writing through NULL
+   selectedIndex = 0;
+   scrollOffset = 0;
+   labelsStale = 1;
+   historyDepth = 0;
 
-    initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
-    initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
-    addFooterButton(PAD_BTN_CROSS,  spriteRegions[SPRITE_CROSS],  "Enter", activateSelectedEntry);
-    addFooterButton(PAD_BTN_CIRCLE, spriteRegions[SPRITE_CIRCLE], "Back",  goToParentDir);
-    addFooterButton(PAD_BTN_SQUARE, spriteRegions[SPRITE_SQUARE], "Mark",  NULL);
+   initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
+   initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
+   addFooterButton(PAD_BTN_CROSS,  spriteRegions[SPRITE_CROSS],  "Enter", activateSelectedEntry);
+   addFooterButton(PAD_BTN_CIRCLE, spriteRegions[SPRITE_CIRCLE], "Back",  goToParentDir);
+   addFooterButton(PAD_BTN_SQUARE, spriteRegions[SPRITE_SQUARE], "Mark",  NULL);
 
-    for (int t = 0; t < FILE_TYPE_COUNT; t++)
-        initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);
+   for (int t = 0; t < FILE_TYPE_COUNT; t++)
+      initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);
 
-    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
-        int ry = y + i * rowHeight;
-        int cy = ry + (rowHeight - 25) / 2;
+   for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
+      int ry = y + i * rowHeight;
+      int cy = ry + (rowHeight - 25) / 2;
 
-        initLabel(&labels[i], font, x, ry + 25, maxWidth, AUTO, fontSize, color, TEXT_NOWRAP_ELLIPSIS, NULL);
-        initLabel(&typeLabels[i], font, 1240, ry + 25, 140, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-        initLabel(&sizeLabels[i], font, 1430, ry + 25, 130, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-        initLabel(&modifiedLabels[i], font, 1635, ry + 25, 240, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-        initImage(&checkboxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX], GFX_FILTER_LINEAR);
-        initImage(&checkedBoxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX_CHECKED], GFX_FILTER_LINEAR);
-        initSlice(&separators[i], spritesheet, 47, ry - 1, 1884 - 47, 2, spriteRegions[SPRITE_SEPARATOR], 1);
-    }
+      initLabel(&labels[i], font, x, ry + 25, maxWidth, AUTO, fontSize, color, TEXT_NOWRAP_ELLIPSIS, NULL);
+      initLabel(&typeLabels[i], font, 1240, ry + 25, 140, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+      initLabel(&sizeLabels[i], font, 1430, ry + 25, 130, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+      initLabel(&modifiedLabels[i], font, 1635, ry + 25, 240, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+      initImage(&checkboxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX], GFX_FILTER_LINEAR);
+      initImage(&checkedBoxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX_CHECKED], GFX_FILTER_LINEAR);
+      initSlice(&separators[i], spritesheet, 47, ry - 1, 1884 - 47, 2, spriteRegions[SPRITE_SEPARATOR], 1);
+   }
 
-    loadDir("/");
-    syncFooterButtons();
+   loadDir("/");
+   syncFooterButtons();
 }
 
 // square: tap toggles the focused row, hold toggles the whole directory.
@@ -418,143 +418,143 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
 
 static void setAllChecked(int value)
 {
-    for (int i = 0; i < entryCount; i++) entries[i].checked = value;
+   for (int i = 0; i < entryCount; i++) entries[i].checked = value;
 }
 
 static int allEntriesChecked(void)
 {
-    for (int i = 0; i < entryCount; i++) if (!entries[i].checked) return 0;
-    return entryCount > 0;
+   for (int i = 0; i < entryCount; i++) if (!entries[i].checked) return 0;
+   return entryCount > 0;
 }
 
 static void handleCheckInput(int hasSelection)
 {
-    static uint64_t pressedUs;
-    static int      holdFired;
+   static uint64_t pressedUs;
+   static int      holdFired;
 
-    if (isPadButtonPressed(PAD_BTN_SQUARE)) {
-        pressedUs = sys_time_get_system_time();
-        holdFired = 0;
-        return;
-    }
+   if (isPadButtonPressed(PAD_BTN_SQUARE)) {
+      pressedUs = sys_time_get_system_time();
+      holdFired = 0;
+      return;
+   }
 
-    if (isPadButtonHeld(PAD_BTN_SQUARE) && !holdFired && entryCount > 0 &&
-        sys_time_get_system_time() - pressedUs >= SQUARE_HOLD_MS * 1000ULL) {
-        setAllChecked(!allEntriesChecked());
-        labelsStale = 1;
-        holdFired = 1;
-        playSfxOnce(checkSfx);
-        return;
-    }
+   if (isPadButtonHeld(PAD_BTN_SQUARE) && !holdFired && entryCount > 0 &&
+       sys_time_get_system_time() - pressedUs >= SQUARE_HOLD_MS * 1000ULL) {
+      setAllChecked(!allEntriesChecked());
+      labelsStale = 1;
+      holdFired = 1;
+      playSfxOnce(checkSfx);
+      return;
+   }
 
-    if (isPadButtonReleased(PAD_BTN_SQUARE) && !holdFired && hasSelection) {
-        entries[selectedIndex].checked = !entries[selectedIndex].checked;
-        labelsStale = 1;
-        playSfxOnce(checkSfx);
-    }
+   if (isPadButtonReleased(PAD_BTN_SQUARE) && !holdFired && hasSelection) {
+      entries[selectedIndex].checked = !entries[selectedIndex].checked;
+      labelsStale = 1;
+      playSfxOnce(checkSfx);
+   }
 }
 
 void updateFileList(void)
 {
-    if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_DOWN)) && selectedIndex < entryCount - 1) {
-        selectedIndex++;
-        if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE) {
-            scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
-            labelsStale = 1;
-        }
-        playSfxOnce(clickSfx);
-    }
-    else if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_UP)) && selectedIndex > 0) {
-        selectedIndex--;
-        if (selectedIndex < scrollOffset) {
-            scrollOffset = selectedIndex;
-            labelsStale = 1;
-        }
-        playSfxOnce(clickSfx);
-    }
+   if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_DOWN)) && selectedIndex < entryCount - 1) {
+      selectedIndex++;
+      if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE) {
+         scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
+         labelsStale = 1;
+      }
+      playSfxOnce(clickSfx);
+   }
+   else if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_UP)) && selectedIndex > 0) {
+      selectedIndex--;
+      if (selectedIndex < scrollOffset) {
+         scrollOffset = selectedIndex;
+         labelsStale = 1;
+      }
+      playSfxOnce(clickSfx);
+   }
 
-    int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
+   int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
 
-    handleCheckInput(hasSelection);
+   handleCheckInput(hasSelection);
 
-    if (labelsStale) rebuildLabels();
-    syncFooterButtons();
-    updateFolderSizer(&sizerCallbacks);
+   if (labelsStale) rebuildLabels();
+   syncFooterButtons();
+   updateFolderSizer(&sizerCallbacks);
 }
 
 // non-zero if entry idx is currently on the clipboard (cut or copy).
 static int entryIsMarked(int idx)
 {
-    char full[MAX_PATH_LEN];
-    joinPath(full, MAX_PATH_LEN, currentPath, entries[idx].name);
-    return isOnClipboard(full);
+   char full[MAX_PATH_LEN];
+   joinPath(full, MAX_PATH_LEN, currentPath, entries[idx].name);
+   return isOnClipboard(full);
 }
 
 void drawFileList(void)
 {
-    // hide top separator when the first visible row is selected (hover replaces it)
-    if (entryCount == 0 || selectedIndex != scrollOffset) {
-        drawSlice(&separators[0]);
-    }
+   // hide top separator when the first visible row is selected (hover replaces it)
+   if (entryCount == 0 || selectedIndex != scrollOffset) {
+      drawSlice(&separators[0]);
+   }
 
-    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
-        int idx = scrollOffset + i;
-        if (idx >= entryCount) break;
+   for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
+      int idx = scrollOffset + i;
+      if (idx >= entryCount) break;
 
-        // hide separators adjacent to the selected row (hover covers that area)
-        if (i > 0 && idx != selectedIndex && idx - 1 != selectedIndex) {
-            drawSlice(&separators[i]);
-        }
+      // hide separators adjacent to the selected row (hover covers that area)
+      if (i > 0 && idx != selectedIndex && idx - 1 != selectedIndex) {
+         drawSlice(&separators[i]);
+      }
 
-        // draw hover background for selected row
-        if (idx == selectedIndex) {
-            moveNineSlice(&hover, 42, listY + i * listRowHeight);
-            drawNineSlice(&hover);
-        }
+      // draw hover background for selected row
+      if (idx == selectedIndex) {
+         moveNineSlice(&hover, 42, listY + i * listRowHeight);
+         drawNineSlice(&hover);
+      }
 
-        // rows on the clipboard (cut or copy) render ghosted at 50% opacity
-        int alpha = entryIsMarked(idx) ? MARKED_ROW_ALPHA : 0xFF;
+      // rows on the clipboard (cut or copy) render ghosted at 50% opacity
+      int alpha = entryIsMarked(idx) ? MARKED_ROW_ALPHA : 0xFF;
 
-        // draw checkbox
-        if (entries[idx].checked)
-            drawImageAlpha(&checkedBoxes[i], alpha);
-        else
-            drawImageAlpha(&checkboxes[i], alpha);
+      // draw checkbox
+      if (entries[idx].checked)
+         drawImageAlpha(&checkedBoxes[i], alpha);
+      else
+         drawImageAlpha(&checkboxes[i], alpha);
 
-        // draw type icon
-        int iconY = listY + i * listRowHeight + (listRowHeight - 43) / 2;
-        moveImage(&fileIcons[entries[idx].type], 120, iconY);
-        drawImageAlpha(&fileIcons[entries[idx].type], alpha);
+      // draw type icon
+      int iconY = listY + i * listRowHeight + (listRowHeight - 43) / 2;
+      moveImage(&fileIcons[entries[idx].type], 120, iconY);
+      drawImageAlpha(&fileIcons[entries[idx].type], alpha);
 
-        // draw labels
-        drawLabelAlpha(&labels[i], alpha);
-        drawLabelAlpha(&sizeLabels[i], alpha);
-        drawLabelAlpha(&typeLabels[i], alpha);
-        drawLabelAlpha(&modifiedLabels[i], alpha);
-    }
+      // draw labels
+      drawLabelAlpha(&labels[i], alpha);
+      drawLabelAlpha(&sizeLabels[i], alpha);
+      drawLabelAlpha(&typeLabels[i], alpha);
+      drawLabelAlpha(&modifiedLabels[i], alpha);
+   }
 
-    drawLabel(&counterLabel);
+   drawLabel(&counterLabel);
 }
 
 void termFileList(void)
 {
-    cancelFolderSizer();
+   cancelFolderSizer();
 
-    // release the text VRAM owned by every row label and the counter.
-    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
-        freeLabel(&labels[i]);
-        freeLabel(&sizeLabels[i]);
-        freeLabel(&typeLabels[i]);
-        freeLabel(&modifiedLabels[i]);
-    }
-    freeLabel(&counterLabel);
+   // release the text VRAM owned by every row label and the counter.
+   for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
+      freeLabel(&labels[i]);
+      freeLabel(&sizeLabels[i]);
+      freeLabel(&typeLabels[i]);
+      freeLabel(&modifiedLabels[i]);
+   }
+   freeLabel(&counterLabel);
 
-    free(entries);
-    entries = NULL;
-    entryCount = 0;
-    entryCapacity = 0;
-    freeDelete();
-    freeClipboard();
+   free(entries);
+   entries = NULL;
+   entryCount = 0;
+   entryCapacity = 0;
+   freeDelete();
+   freeClipboard();
 }
 
 static SelectionSummary summary;
@@ -563,74 +563,74 @@ static SelectionSummary summary;
 // row index (or -1 when none are checked).
 static int countChecked(int *lastChecked)
 {
-    int count = 0, last = -1;
-    for (int i = 0; i < entryCount; i++) {
-        if (entries[i].checked) { count++; last = i; }
-    }
-    if (lastChecked) *lastChecked = last;
-    return count;
+   int count = 0, last = -1;
+   for (int i = 0; i < entryCount; i++) {
+      if (entries[i].checked) { count++; last = i; }
+   }
+   if (lastChecked) *lastChecked = last;
+   return count;
 }
 
 const SelectionSummary *getSelectionSummary(void)
 {
-    int lastChecked;
-    int checkedCount = countChecked(&lastChecked);
+   int lastChecked;
+   int checkedCount = countChecked(&lastChecked);
 
-    static char title[NAME_LEN];
-    static char subtitle[32];
-    static char detail[48];
+   static char title[NAME_LEN];
+   static char subtitle[32];
+   static char detail[48];
 
-    // multi-check: aggregate "N items", total file count, total bytes
-    if (checkedCount > 1) {
-        int      totalFiles = 0;
-        uint64_t totalBytes = 0;
-        int      anyApprox  = 0;
-        for (int i = 0; i < entryCount; i++) {
-            if (!entries[i].checked) continue;
-            if (!entries[i].sized || entries[i].approx) anyApprox = 1;
-            totalFiles += entries[i].fileCount;
-            totalBytes += entries[i].size;
-        }
-        const char *plus = anyApprox ? "+" : "";
-        char sizeBuf[16];
-        formatSizeApprox(totalBytes, anyApprox, sizeBuf);
-        snprintf(title,    sizeof(title),    "%d items",    checkedCount);
-        snprintf(subtitle, sizeof(subtitle), "%d files%s", totalFiles, plus);
-        strCopy(detail, sizeof(detail), sizeBuf);
-        summary.title    = title;
-        summary.subtitle = subtitle;
-        summary.detail   = detail;
-        summary.icon     = spriteRegions[SPRITE_GENERIC_MULTI];
-        return &summary;
-    }
+   // multi-check: aggregate "N items", total file count, total bytes
+   if (checkedCount > 1) {
+      int      totalFiles = 0;
+      uint64_t totalBytes = 0;
+      int      anyApprox  = 0;
+      for (int i = 0; i < entryCount; i++) {
+         if (!entries[i].checked) continue;
+         if (!entries[i].sized || entries[i].approx) anyApprox = 1;
+         totalFiles += entries[i].fileCount;
+         totalBytes += entries[i].size;
+      }
+      const char *plus = anyApprox ? "+" : "";
+      char sizeBuf[16];
+      formatSizeApprox(totalBytes, anyApprox, sizeBuf);
+      snprintf(title,    sizeof(title),    "%d items",    checkedCount);
+      snprintf(subtitle, sizeof(subtitle), "%d files%s", totalFiles, plus);
+      strCopy(detail, sizeof(detail), sizeBuf);
+      summary.title    = title;
+      summary.subtitle = subtitle;
+      summary.detail   = detail;
+      summary.icon     = spriteRegions[SPRITE_GENERIC_MULTI];
+      return &summary;
+   }
 
-    // single target: the one checked row, else the cursor row
-    int idx = (checkedCount == 1) ? lastChecked : selectedIndex;
-    if (idx < 0 || idx >= entryCount) {
-        summary.title    = "";
-        summary.subtitle = "";
-        summary.detail   = "";
-        summary.icon     = spriteRegions[SPRITE_GENERIC];
-        return &summary;
-    }
+   // single target: the one checked row, else the cursor row
+   int idx = (checkedCount == 1) ? lastChecked : selectedIndex;
+   if (idx < 0 || idx >= entryCount) {
+      summary.title    = "";
+      summary.subtitle = "";
+      summary.detail   = "";
+      summary.icon     = spriteRegions[SPRITE_GENERIC];
+      return &summary;
+   }
 
-    // detail line: "—" while unsized, "N files, M.M MB" for folders, plain size for files
-    const FileEntry *e = &entries[idx];
-    if (!e->sized) {
-        strCopy(detail, sizeof(detail), EM_DASH);
-    } else if (e->type == FILE_TYPE_FOLDER) {
-        char sizeBuf[16];
-        formatSizeApprox(e->size, e->approx, sizeBuf);
-        const char *plus = e->approx ? "+" : "";
-        snprintf(detail, sizeof(detail), "%d files%s, %s", e->fileCount, plus, sizeBuf);
-    } else {
-        formatSize(e->size, detail);
-    }
-    summary.title    = e->name;
-    summary.subtitle = getFileTypeName(e->type);
-    summary.detail   = detail;
-    summary.icon     = spriteRegions[getFileTypeSprite(e->type)];
-    return &summary;
+   // detail line: "—" while unsized, "N files, M.M MB" for folders, plain size for files
+   const FileEntry *e = &entries[idx];
+   if (!e->sized) {
+      strCopy(detail, sizeof(detail), EM_DASH);
+   } else if (e->type == FILE_TYPE_FOLDER) {
+      char sizeBuf[16];
+      formatSizeApprox(e->size, e->approx, sizeBuf);
+      const char *plus = e->approx ? "+" : "";
+      snprintf(detail, sizeof(detail), "%d files%s, %s", e->fileCount, plus, sizeBuf);
+   } else {
+      formatSize(e->size, detail);
+   }
+   summary.title    = e->name;
+   summary.subtitle = getFileTypeName(e->type);
+   summary.detail   = detail;
+   summary.icon     = spriteRegions[getFileTypeSprite(e->type)];
+   return &summary;
 }
 
 // cut, copy and delete apply to any non-empty selection (one row or many).
@@ -640,16 +640,16 @@ const SelectionSummary *getSelectionSummary(void)
 // is non-empty. order is cut, copy, paste, delete, rename.
 const SelectionAction *getAvailableActions(int *outCount)
 {
-    static SelectionAction list[7];
-    int n = 0;
-    if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
-    if (!isClipboardEmpty())  list[n++] = ACTION_PASTE;
-    if (entryCount > 0)     { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
-    // creation always applies to the current directory, even when it is empty.
-    list[n++] = ACTION_NEW_FILE;
-    list[n++] = ACTION_NEW_FOLDER;
-    *outCount = n;
-    return list;
+   static SelectionAction list[7];
+   int n = 0;
+   if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
+   if (!isClipboardEmpty())  list[n++] = ACTION_PASTE;
+   if (entryCount > 0)     { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
+   // creation always applies to the current directory, even when it is empty.
+   list[n++] = ACTION_NEW_FILE;
+   list[n++] = ACTION_NEW_FOLDER;
+   *outCount = n;
+   return list;
 }
 
 static void scrollToSelected(void);  // defined below; used by the create/rename helpers
@@ -658,17 +658,17 @@ static void scrollToSelected(void);  // defined below; used by the create/rename
 // empty directory. rename acts on this row alone, ignoring checked items.
 const char *getActiveEntryName(void)
 {
-    if (entryCount == 0) return NULL;
-    return entries[selectedIndex].name;
+   if (entryCount == 0) return NULL;
+   return entries[selectedIndex].name;
 }
 
 // keeps the active row on screen after the index is moved programmatically.
 static void scrollToSelected(void)
 {
-    if (selectedIndex < scrollOffset)
-        scrollOffset = selectedIndex;
-    else if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE)
-        scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
+   if (selectedIndex < scrollOffset)
+      scrollOffset = selectedIndex;
+   else if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE)
+      scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
 }
 
 // moves the cursor to the existing row named name (if present) and scrolls it
@@ -676,10 +676,10 @@ static void scrollToSelected(void)
 // that must not be replaced, so the cursor still ends up on the conflicting item.
 static void selectEntryByName(const char *name)
 {
-    for (int i = 0; i < entryCount; i++)
-        if (strEq(entries[i].name, name)) { selectedIndex = i; break; }
-    scrollToSelected();
-    labelsStale = 1;
+   for (int i = 0; i < entryCount; i++)
+      if (strEq(entries[i].name, name)) { selectedIndex = i; break; }
+   scrollToSelected();
+   labelsStale = 1;
 }
 
 // creates an empty file or a folder named name in the current directory. a file
@@ -688,17 +688,17 @@ static void selectEntryByName(const char *name)
 // the cursor - so the new item is found by name and the cursor parked on it.
 static int createNewEntry(const char *name, int isFolder)
 {
-    if (!isValidFileName(name)) return -1;
+   if (!isValidFileName(name)) return -1;
 
-    char path[MAX_PATH_LEN];
-    joinPath(path, MAX_PATH_LEN, currentPath, name);
+   char path[MAX_PATH_LEN];
+   joinPath(path, MAX_PATH_LEN, currentPath, name);
 
-    int rc = isFolder ? makeDir(path) : writeFile(path, "", 0);
-    if (rc != 0) return -1;
+   int rc = isFolder ? makeDir(path) : writeFile(path, "", 0);
+   if (rc != 0) return -1;
 
-    loadDir(currentPath);          // resets selectedIndex / scrollOffset to 0
-    selectEntryByName(name);       // park the cursor on the new item
-    return 0;
+   loadDir(currentPath);          // resets selectedIndex / scrollOffset to 0
+   selectEntryByName(name);       // park the cursor on the new item
+   return 0;
 }
 
 // the name a pending create/rename dialog is resolving. one dialog is up at a
@@ -718,7 +718,7 @@ enum { KEEP_EXISTING = 0, REPLACE_EXISTING = 1 };
 // cross means replace the existing file; anything else (circle) means keep it.
 static int replaceChosen(ConfirmChoice choice)
 {
-    return choice == CONFIRM_CROSS ? REPLACE_EXISTING : KEEP_EXISTING;
+   return choice == CONFIRM_CROSS ? REPLACE_EXISTING : KEEP_EXISTING;
 }
 
 // asks how to resolve file collisions for a merge and hands the answer to
@@ -727,14 +727,14 @@ static int replaceChosen(ConfirmChoice choice)
 // by paste and rename so the wording lives in one place.
 static void promptMergeConflicts(int conflicts, ConfirmCallback onResult)
 {
-    if (conflicts <= 0)
-        onResult(CONFIRM_CROSS);
-    else if (conflicts == 1)
-        askConfirm("Replace File", "A file already exists. Replace it?",
-                   "Replace", NULL, "Keep", onResult);
-    else
-        askConfirm("Replace Files", "Some files already exist. Replace them?",
-                   "Replace All", NULL, "Keep All", onResult);
+   if (conflicts <= 0)
+      onResult(CONFIRM_CROSS);
+   else if (conflicts == 1)
+      askConfirm("Replace File", "A file already exists. Replace it?",
+                 "Replace", NULL, "Keep", onResult);
+   else
+      askConfirm("Replace Files", "Some files already exist. Replace them?",
+                 "Replace All", NULL, "Keep All", onResult);
 }
 
 // plain same-directory rename of the active row to newName (no collision: the
@@ -742,22 +742,22 @@ static void promptMergeConflicts(int conflicts, ConfirmCallback onResult)
 // bare lv2 rename suffices. refreshes and parks the cursor on the result.
 static void renamePlain(const char *newName)
 {
-    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
-    joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
-    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
-    if (cellFsRename(oldPath, newPath) != CELL_FS_SUCCEEDED) return;
-    loadDir(currentPath);
-    selectEntryByName(newName);
+   char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
+   joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+   joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+   if (cellFsRename(oldPath, newPath) != CELL_FS_SUCCEEDED) return;
+   loadDir(currentPath);
+   selectEntryByName(newName);
 }
 
 // wipe whatever sits at newName, then rename onto it. this is the only rename path
 // that deletes a populated target, and only ever on an explicit Replace.
 static void renameReplace(const char *newName)
 {
-    char newPath[MAX_PATH_LEN];
-    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
-    deleteTree(newPath, NULL);
-    renamePlain(newName);
+   char newPath[MAX_PATH_LEN];
+   joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+   deleteTree(newPath, NULL);
+   renamePlain(newName);
 }
 
 // fold the active folder's contents into the existing folder newName (replacing
@@ -766,38 +766,38 @@ static void renameReplace(const char *newName)
 // large merge briefly blocks the UI (no progress bar).
 static void renameMerge(const char *newName, int replaceConflicts)
 {
-    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
-    joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
-    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
-    if (mergeTreeProgress(oldPath, newPath, replaceConflicts, mergeBuf, sizeof mergeBuf, NULL, NULL) == 0)
-        deleteTree(oldPath, NULL);
-    loadDir(currentPath);
-    selectEntryByName(newName);
+   char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
+   joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+   joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+   if (mergeTreeProgress(oldPath, newPath, replaceConflicts, mergeBuf, sizeof mergeBuf, NULL, NULL) == 0)
+      deleteTree(oldPath, NULL);
+   loadDir(currentPath);
+   selectEntryByName(newName);
 }
 
 // New File: the field collided with an existing file and the user chose. Cancel
 // does nothing at all - the cursor stays where it was.
 static void onReplaceFileConfirmed(ConfirmChoice choice)
 {
-    if (choice == CONFIRM_CROSS) createNewEntry(pendingName, 0);  // writeFile truncates the old file
+   if (choice == CONFIRM_CROSS) createNewEntry(pendingName, 0);  // writeFile truncates the old file
 }
 
 // New File create. validates, then: free name -> create; collides with a folder
 // -> never replaced, just select it; collides with a file -> Replace / Cancel.
 void createFile(const char *name)
 {
-    if (!isValidFileName(name)) return;
+   if (!isValidFileName(name)) return;
 
-    char path[MAX_PATH_LEN];
-    joinPath(path, MAX_PATH_LEN, currentPath, name);
+   char path[MAX_PATH_LEN];
+   joinPath(path, MAX_PATH_LEN, currentPath, name);
 
-    if (!fileExists(path)) { createNewEntry(name, 0); return; }
-    if (isDir(path))       { selectEntryByName(name); return; }  // can't replace a folder with a file
+   if (!fileExists(path)) { createNewEntry(name, 0); return; }
+   if (isDir(path))       { selectEntryByName(name); return; }  // can't replace a folder with a file
 
-    strCopy(pendingName, sizeof pendingName, name);
-    char msg[MAX_PATH_LEN + 32];
-    snprintf(msg, sizeof msg, "\"%s\" already exists. Replace it?", name);
-    askConfirm("Replace File", msg, "Replace", NULL, "Cancel", onReplaceFileConfirmed);
+   strCopy(pendingName, sizeof pendingName, name);
+   char msg[MAX_PATH_LEN + 32];
+   snprintf(msg, sizeof msg, "\"%s\" already exists. Replace it?", name);
+   askConfirm("Replace File", msg, "Replace", NULL, "Cancel", onReplaceFileConfirmed);
 }
 
 // New Folder create. validates, then: free name -> create the folder; name taken
@@ -805,36 +805,36 @@ void createFile(const char *name)
 // just select the existing item. never deletes anything.
 void createFolder(const char *name)
 {
-    if (!isValidFileName(name)) return;
+   if (!isValidFileName(name)) return;
 
-    char path[MAX_PATH_LEN];
-    joinPath(path, MAX_PATH_LEN, currentPath, name);
+   char path[MAX_PATH_LEN];
+   joinPath(path, MAX_PATH_LEN, currentPath, name);
 
-    if (!fileExists(path)) createNewEntry(name, 1);
-    else                   selectEntryByName(name);
+   if (!fileExists(path)) createNewEntry(name, 1);
+   else                   selectEntryByName(name);
 }
 
 // inner step of a rename-merge: replace or keep the colliding files, then merge.
 static void onRenameMergeResolved(ConfirmChoice choice)
 {
-    renameMerge(pendingName, replaceChosen(choice));
+   renameMerge(pendingName, replaceChosen(choice));
 }
 
 // the user picked Merge / Replace / Cancel for a rename onto an existing item.
 static void onRenameCollision(ConfirmChoice choice)
 {
-    if (choice == CONFIRM_CIRCLE) return;  // Cancel: do nothing, leave the cursor put
+   if (choice == CONFIRM_CIRCLE) return;  // Cancel: do nothing, leave the cursor put
 
-    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
-    joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
-    joinPath(newPath, MAX_PATH_LEN, currentPath, pendingName);
+   char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
+   joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
+   joinPath(newPath, MAX_PATH_LEN, currentPath, pendingName);
 
-    // Replace, or Merge with a non-folder on either side (merging files is
-    // meaningless), both collapse to a clean replace of the destination.
-    if (choice == CONFIRM_SQUARE || !(isDir(oldPath) && isDir(newPath)))
-        renameReplace(pendingName);
-    else
-        promptMergeConflicts(countTreeConflicts(oldPath, newPath, MANY_CONFLICTS), onRenameMergeResolved);
+   // Replace, or Merge with a non-folder on either side (merging files is
+   // meaningless), both collapse to a clean replace of the destination.
+   if (choice == CONFIRM_SQUARE || !(isDir(oldPath) && isDir(newPath)))
+      renameReplace(pendingName);
+   else
+      promptMergeConflicts(countTreeConflicts(oldPath, newPath, MANY_CONFLICTS), onRenameMergeResolved);
 }
 
 // renames the highlighted row to newName within the current directory (ignoring
@@ -843,32 +843,32 @@ static void onRenameCollision(ConfirmChoice choice)
 // Cancel prompt (Merge folds folders together, Replace clobbers, Cancel aborts).
 void renameActiveTo(const char *newName)
 {
-    if (entryCount == 0) return;
-    if (!isValidFileName(newName)) return;
-    if (strEq(entries[selectedIndex].name, newName)) return;  // unchanged
+   if (entryCount == 0) return;
+   if (!isValidFileName(newName)) return;
+   if (strEq(entries[selectedIndex].name, newName)) return;  // unchanged
 
-    char newPath[MAX_PATH_LEN];
-    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
-    if (!fileExists(newPath)) { renamePlain(newName); return; }
+   char newPath[MAX_PATH_LEN];
+   joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
+   if (!fileExists(newPath)) { renamePlain(newName); return; }
 
-    strCopy(pendingName, sizeof pendingName, newName);
-    char msg[MAX_PATH_LEN + 32];
-    snprintf(msg, sizeof msg, "\"%s\" already exists.", newName);
-    askConfirm("Rename", msg, "Merge", "Replace", "Cancel", onRenameCollision);
+   strCopy(pendingName, sizeof pendingName, newName);
+   char msg[MAX_PATH_LEN + 32];
+   snprintf(msg, sizeof msg, "\"%s\" already exists.", newName);
+   askConfirm("Rename", msg, "Merge", "Replace", "Cancel", onRenameCollision);
 }
 
 int getSelectionCount(void)
 {
-    int checked = countChecked(NULL);
-    if (checked > 0) return checked;
-    return entryCount > 0 ? 1 : 0;  // the active row, if any
+   int checked = countChecked(NULL);
+   if (checked > 0) return checked;
+   return entryCount > 0 ? 1 : 0;  // the active row, if any
 }
 
 // whether row i is part of the current action target: the checked rows, or the
 // active row when nothing is checked. checkedCount comes from countChecked().
 static int entryTargeted(int i, int checkedCount)
 {
-    return checkedCount > 0 ? entries[i].checked : (i == selectedIndex);
+   return checkedCount > 0 ? entries[i].checked : (i == selectedIndex);
 }
 
 // an entry's size is exact for files, and for folders only once the sizer has
@@ -878,54 +878,54 @@ static int entrySizeIsExact(const FileEntry *e) { return e->sized && !e->approx;
 // main-thread finisher: refresh the listing and reposition the cursor.
 static void onDeleteFinished(int cancelled)
 {
-    (void)cancelled;
-    clearClipboard();      // a delete invalidates any pending cut/copy
-    loadDir(currentPath);  // resets selectedIndex/scrollOffset to 0
+   (void)cancelled;
+   clearClipboard();      // a delete invalidates any pending cut/copy
+   loadDir(currentPath);  // resets selectedIndex/scrollOffset to 0
 
-    // row above the topmost deleted item; if that was the top of the list,
-    // index 0 is now the row that sat just below it.
-    selectedIndex = delTopmost > 0 ? delTopmost - 1 : 0;
-    scrollToSelected();
-    labelsStale = 1;
+   // row above the topmost deleted item; if that was the top of the list,
+   // index 0 is now the row that sat just below it.
+   selectedIndex = delTopmost > 0 ? delTopmost - 1 : 0;
+   scrollToSelected();
+   labelsStale = 1;
 }
 
 void deleteSelection(void)
 {
-    if (entryCount == 0) return;
+   if (entryCount == 0) return;
 
-    int checkedCount = countChecked(NULL);
+   int checkedCount = countChecked(NULL);
 
-    beginDelete();
-    delTopmost = -1;
-    int gathered = 0;
-    char full[MAX_PATH_LEN];
-    for (int i = 0; i < entryCount; i++) {
-        if (!entryTargeted(i, checkedCount)) continue;
-        if (delTopmost < 0) delTopmost = i;
-        joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name);
-        if (addToDelete(full, entries[i].size, entrySizeIsExact(&entries[i])) != 0) break;
-        gathered++;
-    }
-    if (gathered == 0) return;
+   beginDelete();
+   delTopmost = -1;
+   int gathered = 0;
+   char full[MAX_PATH_LEN];
+   for (int i = 0; i < entryCount; i++) {
+      if (!entryTargeted(i, checkedCount)) continue;
+      if (delTopmost < 0) delTopmost = i;
+      joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name);
+      if (addToDelete(full, entries[i].size, entrySizeIsExact(&entries[i])) != 0) break;
+      gathered++;
+   }
+   if (gathered == 0) return;
 
-    startProgress("Deleting...", "Please wait while the selected items are deleted.",
-                  runDelete, onDeleteFinished);
+   startProgress("Deleting...", "Please wait while the selected items are deleted.",
+                 runDelete, onDeleteFinished);
 }
 
 // gathers the current selection (checked rows, or the active row when nothing
 // is checked) onto the clipboard in the given mode.
 static void clipboardFromSelection(ClipboardMode mode)
 {
-    if (entryCount == 0) return;
-    int checkedCount = countChecked(NULL);
+   if (entryCount == 0) return;
+   int checkedCount = countChecked(NULL);
 
-    beginClipboard(mode);
-    char full[MAX_PATH_LEN];
-    for (int i = 0; i < entryCount; i++) {
-        if (!entryTargeted(i, checkedCount)) continue;
-        joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name);
-        addToClipboard(full, entries[i].size, entrySizeIsExact(&entries[i]));
-    }
+   beginClipboard(mode);
+   char full[MAX_PATH_LEN];
+   for (int i = 0; i < entryCount; i++) {
+      if (!entryTargeted(i, checkedCount)) continue;
+      joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name);
+      addToClipboard(full, entries[i].size, entrySizeIsExact(&entries[i]));
+   }
 }
 
 void cutSelection(void)  { clipboardFromSelection(CLIP_CUT); }
@@ -934,35 +934,35 @@ void copySelection(void) { clipboardFromSelection(CLIP_COPY); }
 // a completed paste consumes the clipboard; a cancelled one keeps it for retry.
 static void onPasteFinished(int cancelled)
 {
-    loadDir(currentPath);
+   loadDir(currentPath);
 
-    // land the cursor on the topmost pasted item: the first row (in sort order)
-    // whose name matches a pasted source's base name. a move or a copy into
-    // another folder lands the destination under that name; a same-folder copy is
-    // suffixed, so this finds the original it sits beside. read the clipboard
-    // before it is cleared below.
-    int clipCount = getClipboardCount();
-    for (int i = 0; i < entryCount; i++) {
-        int hit = 0;
-        for (int c = 0; c < clipCount && !hit; c++)
-            hit = strEq(entries[i].name, getBaseName(getClipboardPath(c)));
-        if (hit) { selectedIndex = i; break; }
-    }
-    scrollToSelected();
+   // land the cursor on the topmost pasted item: the first row (in sort order)
+   // whose name matches a pasted source's base name. a move or a copy into
+   // another folder lands the destination under that name; a same-folder copy is
+   // suffixed, so this finds the original it sits beside. read the clipboard
+   // before it is cleared below.
+   int clipCount = getClipboardCount();
+   for (int i = 0; i < entryCount; i++) {
+      int hit = 0;
+      for (int c = 0; c < clipCount && !hit; c++)
+         hit = strEq(entries[i].name, getBaseName(getClipboardPath(c)));
+      if (hit) { selectedIndex = i; break; }
+   }
+   scrollToSelected();
 
-    if (!cancelled) clearClipboard();
-    labelsStale = 1;
+   if (!cancelled) clearClipboard();
+   labelsStale = 1;
 }
 
 // launches the paste worker with the conflict policy already chosen.
 static void startPasteRun(int replaceExisting)
 {
-    setPasteReplaceOnConflict(replaceExisting);
-    int moving = (getClipboardMode() == CLIP_CUT);
-    startProgress(moving ? "Moving..." : "Copying...",
-                  moving ? "Please wait while the selected items are moved."
-                         : "Please wait while the selected items are copied.",
-                  runPaste, onPasteFinished);
+   setPasteReplaceOnConflict(replaceExisting);
+   int moving = (getClipboardMode() == CLIP_CUT);
+   startProgress(moving ? "Moving..." : "Copying...",
+                 moving ? "Please wait while the selected items are moved."
+                        : "Please wait while the selected items are copied.",
+                 runPaste, onPasteFinished);
 }
 
 // the Replace/Keep (or Replace All/Keep All) answer for a conflicting paste.
@@ -970,10 +970,10 @@ static void onPasteConflictResolved(ConfirmChoice choice) { startPasteRun(replac
 
 void pasteClipboard(void)
 {
-    if (isClipboardEmpty()) return;
-    setPasteDest(currentPath);  // countClipboardConflicts and runPaste both read this
+   if (isClipboardEmpty()) return;
+   setPasteDest(currentPath);  // countClipboardConflicts and runPaste both read this
 
-    // ask how to resolve collisions up front (and only when they exist) via the
-    // shared prompt, then run the paste with the chosen policy.
-    promptMergeConflicts(countClipboardConflicts(MANY_CONFLICTS), onPasteConflictResolved);
+   // ask how to resolve collisions up front (and only when they exist) via the
+   // shared prompt, then run the paste with the chosen policy.
+   promptMergeConflicts(countClipboardConflicts(MANY_CONFLICTS), onPasteConflictResolved);
 }

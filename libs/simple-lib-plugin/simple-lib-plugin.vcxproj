@@ -1,43 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Release|PS3">
-      <Configuration>Release</Configuration>
-      <Platform>PS3</Platform>
-    </ProjectConfiguration>
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{E5A8B2C1-3D4F-5E6A-7B8C-9D0E1F2A3B4C}</ProjectGuid>
-    <ProjectName>simple-lib-plugin</ProjectName>
+   <ProjectGuid>{E5A8B2C1-3D4F-5E6A-7B8C-9D0E1F2A3B4C}</ProjectGuid>
+   <ProjectName>simple-lib-plugin</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>GCC</PlatformToolset>
+   <ConfigurationType>StaticLibrary</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup>
-    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
-    <TargetName>libsimple-lib-plugin</TargetName>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <TargetName>libsimple-lib-plugin</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
-    <ClCompile>
-      <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalOptions>-fno-builtin-printf -fno-builtin-sprintf -fno-builtin-snprintf -fno-builtin-vsnprintf -nodefaultlibs</AdditionalOptions>
-    </ClCompile>
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+     <AdditionalOptions>-fno-builtin-printf -fno-builtin-sprintf -fno-builtin-snprintf -fno-builtin-vsnprintf -nodefaultlibs</AdditionalOptions>
+   </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="include\module-inspect.h" />
-    <ClInclude Include="include\module-hook.h" />
-    <ClInclude Include="include\vsh.h" />
+   <ClInclude Include="include\module-inspect.h" />
+   <ClInclude Include="include\module-hook.h" />
+   <ClInclude Include="include\vsh.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="README.md" />
+   <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\ps3.targets" />

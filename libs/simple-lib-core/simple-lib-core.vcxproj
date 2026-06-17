@@ -1,61 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Release|PS3">
-      <Configuration>Release</Configuration>
-      <Platform>PS3</Platform>
-    </ProjectConfiguration>
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{B2C3D4E5-6F7A-4B8C-9D0E-1F2A3B4C5D6E}</ProjectGuid>
-    <ProjectName>simple-lib-core</ProjectName>
+   <ProjectGuid>{B2C3D4E5-6F7A-4B8C-9D0E-1F2A3B4C5D6E}</ProjectGuid>
+   <ProjectName>simple-lib-core</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
-    <ConfigurationType>StaticLibrary</ConfigurationType>
-    <PlatformToolset>GCC</PlatformToolset>
+   <ConfigurationType>StaticLibrary</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="PropertySheets">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup>
-    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
-    <TargetName>libsimple-lib-core</TargetName>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <TargetName>libsimple-lib-core</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
-    <ClCompile>
-      <AdditionalIncludeDirectories>include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalOptions>-fno-builtin-printf -fno-builtin-sprintf -fno-builtin-snprintf -fno-builtin-vsnprintf -nodefaultlibs</AdditionalOptions>
-    </ClCompile>
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+     <AdditionalOptions>-fno-builtin-printf -fno-builtin-sprintf -fno-builtin-snprintf -fno-builtin-vsnprintf -nodefaultlibs</AdditionalOptions>
+   </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\ftp.c" />
-    <ClCompile Include="src\dbg.c" />
-    <ClCompile Include="src\network.c" />
-    <ClCompile Include="src\printf.c" />
-    <ClCompile Include="src\file.c" />
-    <ClCompile Include="src\dir-playlist.c" />
+   <ClCompile Include="src\ftp.c" />
+   <ClCompile Include="src\dbg.c" />
+   <ClCompile Include="src\network.c" />
+   <ClCompile Include="src\printf.c" />
+   <ClCompile Include="src\file.c" />
+   <ClCompile Include="src\dir-playlist.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\ftp.h" />
-    <ClInclude Include="include\printf.h" />
-    <ClInclude Include="include\dbg.h" />
-    <ClInclude Include="include\file.h" />
-    <ClInclude Include="include\dir-playlist.h" />
-    <ClInclude Include="include\syscall.h" />
-    <ClInclude Include="include\thread.h" />
-    <ClInclude Include="include\string-utilities.h" />
-    <ClInclude Include="include\wire.h" />
-    <ClInclude Include="include\log-backlog.h" />
-    <ClInclude Include="include\bridge-client.h" />
-    <ClInclude Include="include\sha1.h" />
-    <ClInclude Include="include\network.h" />
+   <ClInclude Include="include\ftp.h" />
+   <ClInclude Include="include\printf.h" />
+   <ClInclude Include="include\dbg.h" />
+   <ClInclude Include="include\file.h" />
+   <ClInclude Include="include\dir-playlist.h" />
+   <ClInclude Include="include\syscall.h" />
+   <ClInclude Include="include\thread.h" />
+   <ClInclude Include="include\string-utilities.h" />
+   <ClInclude Include="include\wire.h" />
+   <ClInclude Include="include\log-backlog.h" />
+   <ClInclude Include="include\bridge-client.h" />
+   <ClInclude Include="include\sha1.h" />
+   <ClInclude Include="include\network.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="README.md" />
+   <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\ps3.targets" />

@@ -34,12 +34,12 @@ int getLocalIpv4(uint32_t *ip)
 
    int result = -1;
    if (connect(probe, (struct sockaddr *)&remote, sizeof remote) == 0) {
-      struct sockaddr_in local;
-      socklen_t length = sizeof local;
-      if (getsockname(probe, (struct sockaddr *)&local, &length) == 0 && local.sin_addr.s_addr != 0) {
-         *ip = (uint32_t)local.sin_addr.s_addr;
-         result = 0;
-      }
+     struct sockaddr_in local;
+     socklen_t length = sizeof local;
+     if (getsockname(probe, (struct sockaddr *)&local, &length) == 0 && local.sin_addr.s_addr != 0) {
+       *ip = (uint32_t)local.sin_addr.s_addr;
+       result = 0;
+     }
    }
 
    socketclose(probe);

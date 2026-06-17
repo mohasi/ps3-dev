@@ -9,14 +9,14 @@
 #define LABEL_MAX_TEXT 256
 
 typedef struct {
-    TextTexture tt;
-    Font *font;
-    int x, y;
-    int width, height;
-    int size;
-    uint32_t color;
-    TextWrap wrap;
-    char text[LABEL_MAX_TEXT];
+   TextTexture tt;
+   Font *font;
+   int x, y;
+   int width, height;
+   int size;
+   uint32_t color;
+   TextWrap wrap;
+   char text[LABEL_MAX_TEXT];
 } Label;
 
 void initLabel(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color, TextWrap wrap, const char *text);

@@ -17,37 +17,37 @@ SYS_PROCESS_PARAM(PROCESS_PRIORITY_DEFAULT, PROCESS_STACK_SIZE_64KB)
 
 int main(int argc, char **argv)
 {
-    (void)argc;
-    (void)argv;
+   (void)argc;
+   (void)argv;
 
-    appRegisterExitCallback();
-    mountDevBlind();
+   appRegisterExitCallback();
+   mountDevBlind();
 
-    initRtc();
-    initNet();
-    registerWithBridge("app", "rpp");
+   initRtc();
+   initNet();
+   registerWithBridge("app", "rpp");
 
-    logInfo("[rpp] starting\n");
+   logInfo("[rpp] starting\n");
 
-    if (initGfx(GFX_VSYNC_ON) != 0) { logError("[rpp] initGfx failed\n"); return 1; }
-    if (initFont() != 0) { logError("[rpp] initFont failed\n"); return 1; }
-    initPad();
+   if (initGfx(GFX_VSYNC_ON) != 0) { logError("[rpp] initGfx failed\n"); return 1; }
+   if (initFont() != 0) { logError("[rpp] initFont failed\n"); return 1; }
+   initPad();
 
-    changeScreen(&homeScreen);
+   changeScreen(&homeScreen);
 
-    while (!appExitRequested) {
-        appPoll();
-        updatePad();
-        updateScreen();
+   while (!appExitRequested) {
+      appPoll();
+      updatePad();
+      updateScreen();
 
-        beginGfxFrame();
-        drawScreen();
-        endGfxFrame();
-    }
+      beginGfxFrame();
+      drawScreen();
+      endGfxFrame();
+   }
 
-    changeScreen(NULL);
-    termFont();
-    termGfx();
-    logInfo("[rpp] shutdown\n");
-    return 0;
+   changeScreen(NULL);
+   termFont();
+   termGfx();
+   logInfo("[rpp] shutdown\n");
+   return 0;
 }

@@ -43,7 +43,7 @@ is the value.
 * `type` (optional) — one of:
   * `utf8` — null-terminated UTF-8 string. PSF format `0x0204`.
   * `utf8-special` — UTF-8 without trailing null. PSF format `0x0004`.
-    Rare; prefer `utf8`.
+   Rare; prefer `utf8`.
   * `int4` — 32-bit little-endian integer. PSF format `0x0404`.
 
   For well-known keys the type is inferred automatically. If omitted on an

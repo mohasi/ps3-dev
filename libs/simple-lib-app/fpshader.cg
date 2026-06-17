@@ -3,10 +3,10 @@ uniform sampler2D tex : TEXUNIT0;
 
 void main
 (
-	float4 color : COLOR,
-	float2 uv : TEXCOORD0,
-	out float4 oColor : COLOR
+    float4 color : COLOR,
+    float2 uv : TEXCOORD0,
+    out float4 oColor : COLOR
 )
 {
-	oColor = tex2D(tex, uv) * color;
+   oColor = tex2D(tex, uv) * color;
 }

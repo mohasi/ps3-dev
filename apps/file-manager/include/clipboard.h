@@ -10,9 +10,9 @@
 #include <stdint.h>
 
 typedef enum {
-    CLIP_NONE,
-    CLIP_CUT,
-    CLIP_COPY
+   CLIP_NONE,
+   CLIP_CUT,
+   CLIP_COPY
 } ClipboardMode;
 
 // starts a fresh cut or copy, discarding any previous clipboard contents.

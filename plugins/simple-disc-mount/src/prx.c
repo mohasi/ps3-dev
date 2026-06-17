@@ -31,91 +31,91 @@ SYS_MODULE_START(_start);
 
 static void autoMountLast(void)
 {
-    char path[SDM_PATH_MAX];
+   char path[SDM_PATH_MAX];
 
-    // read last mount path from file
-    if (readFile(pathLastMount, path, sizeof path) < 0) return;
+   // read last mount path from file
+   if (readFile(pathLastMount, path, sizeof path) < 0) return;
 
-    // check iso still exists
-    if (!fileExists(path)) {
-        logError("[sdm] auto-mount target missing: %s\n", path);
-        return;
-    }
+   // check iso still exists
+   if (!fileExists(path)) {
+      logError("[sdm] auto-mount target missing: %s\n", path);
+      return;
+   }
 
-    // mount it
-    if (cobraMountIso(path) == 0) {
-        logInfo("[sdm] auto-mounted: %s\n", path);
-    } else {
-        logError("[sdm] auto-mount failed: %s\n", path);
-    }
+   // mount it
+   if (cobraMountIso(path) == 0) {
+      logInfo("[sdm] auto-mounted: %s\n", path);
+   } else {
+      logError("[sdm] auto-mount failed: %s\n", path);
+   }
 }
 
 static void pluginThread(uint64_t arg)
 {
-    (void)arg;
-    logInfo("[sdm] plugin thread start\n");
+   (void)arg;
+   logInfo("[sdm] plugin thread start\n");
 
-    // Wait for XMB readiness, with a ~60s budget.
-    int ticks = 0;
-    while (!isXmbReady()) {
-        sys_timer_sleep(1);
-        if (++ticks > 60) {
-            logError("[sdm] xmb ready timeout\n");
-            exitThread();
-            return;
-        }
-    }
-    logInfo("[sdm] xmb ready\n");
+   // Wait for XMB readiness, with a ~60s budget.
+   int ticks = 0;
+   while (!isXmbReady()) {
+      sys_timer_sleep(1);
+      if (++ticks > 60) {
+         logError("[sdm] xmb ready timeout\n");
+         exitThread();
+         return;
+      }
+   }
+   logInfo("[sdm] xmb ready\n");
 
-    // Give the storage/BD subsystem time to finish initialising.
-    // isXmbReady() fires before the disc driver is fully up — mounting
-    // immediately leads to 80010516 ("game could not be started") because
-    // the system hasn't registered the virtual BD device yet. The manual
-    // XMB path works because the user navigates for several seconds first.
-    sys_timer_sleep(5);
+   // Give the storage/BD subsystem time to finish initialising.
+   // isXmbReady() fires before the disc driver is fully up — mounting
+   // immediately leads to 80010516 ("game could not be started") because
+   // the system hasn't registered the virtual BD device yet. The manual
+   // XMB path works because the user navigates for several seconds first.
+   sys_timer_sleep(5);
 
-    // Re-mount the last ISO before we touch XML so the fake-disc-insert
-    // event races in alongside the XMB's first paint — the BD icon tends to
-    // show up the moment the Games column settles.
-    autoMountLast();
+   // Re-mount the last ISO before we touch XML so the fake-disc-insert
+   // event races in alongside the XMB's first paint — the BD icon tends to
+   // show up the moment the Games column settles.
+   autoMountLast();
 
-    mountDevBlind();
-    logInfo("[sdm] dev_blind mounted\n");
+   mountDevBlind();
+   logInfo("[sdm] dev_blind mounted\n");
 
-    if (makeDir(pathXmlHostRoot) != 0 || makeDir(pathXmlHostGp) != 0) {
-        logError("[sdm] mkdir xmlhost failed\n");
-        exitThread();
-        return;
-    }
+   if (makeDir(pathXmlHostRoot) != 0 || makeDir(pathXmlHostGp) != 0) {
+      logError("[sdm] mkdir xmlhost failed\n");
+      exitThread();
+      return;
+   }
 
-    if (writeSdmXml() != 0) { exitThread(); return; }
+   if (writeSdmXml() != 0) { exitThread(); return; }
 
-    int rc = patchCategoryGameXml();
+   int rc = patchCategoryGameXml();
 
-    // Notify only on a fresh install. Sleep past webMAN's own boot toast
-    // so ours isn't stomped.
-    if (rc == PATCH_APPLIED) {
-        sys_timer_sleep(10);
-        logInfo("[sdm] vshNotify\n");
-        vshNotify("Simple disc mount plugin installed successfully!");
-    }
+   // Notify only on a fresh install. Sleep past webMAN's own boot toast
+   // so ours isn't stomped.
+   if (rc == PATCH_APPLIED) {
+      sys_timer_sleep(10);
+      logInfo("[sdm] vshNotify\n");
+      vshNotify("Simple disc mount plugin installed successfully!");
+   }
 
-    // Hand off to the HTTP listener. It owns :8947 (loopback) and turns
-    // incoming GET /mount/<name> into cobraMountIso calls.
-    sys_ppu_thread_t httpTid;
-    spawnThread(&httpTid, httpListenerThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "disc-mount-http");
+   // Hand off to the HTTP listener. It owns :8947 (loopback) and turns
+   // incoming GET /mount/<name> into cobraMountIso calls.
+   sys_ppu_thread_t httpTid;
+   spawnThread(&httpTid, httpListenerThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "disc-mount-http");
 
-    logInfo("[sdm] done\n");
-    exitThread();
+   logInfo("[sdm] done\n");
+   exitThread();
 }
 
 int _start(uint64_t arg)
 {
-    (void)arg;
-    registerWithBridge("plugin", "sdm");
-    logInfo("[sdm] _start\n");
+   (void)arg;
+   registerWithBridge("plugin", "sdm");
+   logInfo("[sdm] _start\n");
 
-    sys_ppu_thread_t tid;
-    spawnThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "disc-mount-main");
-    return SYS_PRX_RESIDENT;
+   sys_ppu_thread_t tid;
+   spawnThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "disc-mount-main");
+   return SYS_PRX_RESIDENT;
 }

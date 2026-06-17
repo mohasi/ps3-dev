@@ -35,10 +35,10 @@ function script:Get-NidMetaJson()  { if (-not $script:NidMetaCache)  { $script:N
 # negative due to 0x80000000+ literals parsing as int32), uint32, long, or string.
 function script:Format-Nid($nid) {
    if ($nid -is [string]) {
-      $s = $nid.Trim()
-      if ($s -match '^0[xX]') { $s = $s.Substring(2) }
-      $v = [Convert]::ToUInt32($s, 16)
-      return ('0x{0:X8}' -f $v)
+     $s = $nid.Trim()
+     if ($s -match '^0[xX]') { $s = $s.Substring(2) }
+     $v = [Convert]::ToUInt32($s, 16)
+     return ('0x{0:X8}' -f $v)
    }
    $u = [uint32]([int64]$nid -band 0xFFFFFFFFL)
    return ('0x{0:X8}' -f $u)
@@ -50,13 +50,13 @@ function Get-Nid {
    $meta  = (Get-NidMetaJson).$key
    $xref  = (Get-NidXrefJson).$key
    [pscustomobject]@{
-      Nid           = $key
-      Name          = if ($meta) { $meta.name }       else { $null }
-      Source        = if ($meta) { $meta.source }     else { $null }
-      Confidence    = if ($meta) { $meta.confidence } else { $null }
-      AvailableFrom = if ($xref) { $xref.available_from } else { @() }
-      ProviderCount = if ($xref -and $xref.providers) { @($xref.providers).Count } else { 0 }
-      CallerCount   = if ($xref -and $xref.callers)   { @($xref.callers).Count }   else { 0 }
+     Nid           = $key
+     Name          = if ($meta) { $meta.name }       else { $null }
+     Source        = if ($meta) { $meta.source }     else { $null }
+     Confidence    = if ($meta) { $meta.confidence } else { $null }
+     AvailableFrom = if ($xref) { $xref.available_from } else { @() }
+     ProviderCount = if ($xref -and $xref.providers) { @($xref.providers).Count } else { 0 }
+     CallerCount   = if ($xref -and $xref.callers)   { @($xref.callers).Count }   else { 0 }
    }
 }
 
@@ -65,8 +65,8 @@ function Get-NidByName {
    $names = Get-NidNamesJson
    $hits = $names.PSObject.Properties | Where-Object { $_.Value -eq $Name }
    if (-not $hits) {
-      # fall back to case-insensitive contains
-      $hits = $names.PSObject.Properties | Where-Object { $_.Value -like "*$Name*" }
+     # fall back to case-insensitive contains
+     $hits = $names.PSObject.Properties | Where-Object { $_.Value -like "*$Name*" }
    }
    $hits | ForEach-Object { [pscustomobject]@{ Nid = $_.Name; Name = $_.Value } }
 }
@@ -76,13 +76,13 @@ function Get-NidModule {
    $nid  = Get-NidJson
    $hits = $nid.PSObject.Properties | Where-Object { $_.Name -like "*$Module*" }
    $hits | ForEach-Object {
-      $m = $_.Value
-      [pscustomobject]@{
-         Module      = $_.Name
-         File        = $m.file
-         ExportCount = if ($m.exports) { @($m.exports.PSObject.Properties).Count } else { 0 }
-         ImportLibs  = if ($m.imports) { @($m.imports.PSObject.Properties.Name) }  else { @() }
-      }
+     $m = $_.Value
+     [pscustomobject]@{
+       Module      = $_.Name
+       File        = $m.file
+       ExportCount = if ($m.exports) { @($m.exports.PSObject.Properties).Count } else { 0 }
+       ImportLibs  = if ($m.imports) { @($m.imports.PSObject.Properties.Name) }  else { @() }
+     }
    }
 }
 
@@ -114,6 +114,6 @@ function Find-NidName {
    [CmdletBinding()] param([Parameter(Mandatory, Position=0)] [string]$Substring)
    $names = Get-NidNamesJson
    $names.PSObject.Properties |
-      Where-Object { $_.Value -like "*$Substring*" } |
-      ForEach-Object { [pscustomobject]@{ Nid = $_.Name; Name = $_.Value } }
+     Where-Object { $_.Value -like "*$Substring*" } |
+     ForEach-Object { [pscustomobject]@{ Nid = $_.Name; Name = $_.Value } }
 }

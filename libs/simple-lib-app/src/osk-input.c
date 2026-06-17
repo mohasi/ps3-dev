@@ -31,84 +31,84 @@ static char            resultUtf8[OSK_UTF8_BYTES];    // result converted for ca
 // the caller. result codes other than OK (cancel / no input) yield NULL.
 static void oskFinish(void)
 {
-    CellOskDialogCallbackReturnParam ret;
-    ret.result               = CELL_OSKDIALOG_INPUT_FIELD_RESULT_OK;
-    ret.numCharsResultString = OSK_MAX_CHARS;
-    ret.pResultString        = resultW;
-    resultW[0] = 0;
-    cellOskDialogUnloadAsync(&ret);
+   CellOskDialogCallbackReturnParam ret;
+   ret.result               = CELL_OSKDIALOG_INPUT_FIELD_RESULT_OK;
+   ret.numCharsResultString = OSK_MAX_CHARS;
+   ret.pResultString        = resultW;
+   resultW[0] = 0;
+   cellOskDialogUnloadAsync(&ret);
 
-    if (!doneCallback) return;
+   if (!doneCallback) return;
 
-    if (ret.result == CELL_OSKDIALOG_INPUT_FIELD_RESULT_OK && resultW[0] != 0) {
-        utf16ToUtf8(resultW, resultUtf8, sizeof resultUtf8);
-        doneCallback(resultUtf8);
-    } else {
-        doneCallback(NULL);  // cancelled or empty
-    }
+   if (ret.result == CELL_OSKDIALOG_INPUT_FIELD_RESULT_OK && resultW[0] != 0) {
+      utf16ToUtf8(resultW, resultUtf8, sizeof resultUtf8);
+      doneCallback(resultUtf8);
+   } else {
+      doneCallback(NULL);  // cancelled or empty
+   }
 }
 
 // the dialog is fully gone; release our callback slot and go idle.
 static void oskCleanup(void)
 {
-    cellSysutilUnregisterCallback(OSK_CALLBACK_SLOT);
-    active = false;
+   cellSysutilUnregisterCallback(OSK_CALLBACK_SLOT);
+   active = false;
 }
 
 static void oskCallback(uint64_t status, uint64_t param, void *userdata)
 {
-    (void)param;
-    (void)userdata;
-    switch (status) {
-        case CELL_SYSUTIL_OSKDIALOG_FINISHED:  oskFinish();  break;
-        case CELL_SYSUTIL_OSKDIALOG_UNLOADED:  oskCleanup(); break;
-        default: break;
-    }
+   (void)param;
+   (void)userdata;
+   switch (status) {
+      case CELL_SYSUTIL_OSKDIALOG_FINISHED:  oskFinish();  break;
+      case CELL_SYSUTIL_OSKDIALOG_UNLOADED:  oskCleanup(); break;
+      default: break;
+   }
 }
 
 bool oskInputActive(void)
 {
-    return active;
+   return active;
 }
 
 bool oskInputBegin(const char *caption, const char *initialText, OskDoneCallback onDone)
 {
-    if (active) return true;
+   if (active) return true;
 
-    doneCallback = onDone;
-    utf8ToUtf16(caption,     messageW,  OSK_MAX_CHARS);
-    utf8ToUtf16(initialText, initTextW, OSK_MAX_CHARS);
-    resultW[0] = 0;
+   doneCallback = onDone;
+   utf8ToUtf16(caption,     messageW,  OSK_MAX_CHARS);
+   utf8ToUtf16(initialText, initTextW, OSK_MAX_CHARS);
+   resultW[0] = 0;
 
-    CellOskDialogInputFieldInfo info;
-    info.message      = messageW;
-    info.init_text    = initTextW;
-    info.limit_length = OSK_MAX_CHARS;
+   CellOskDialogInputFieldInfo info;
+   info.message      = messageW;
+   info.init_text    = initTextW;
+   info.limit_length = OSK_MAX_CHARS;
 
-    CellOskDialogParam param;
-    param.allowOskPanelFlg = CELL_OSKDIALOG_PANELMODE_ALPHABET |
-                             CELL_OSKDIALOG_PANELMODE_NUMERAL  |
-                             CELL_OSKDIALOG_PANELMODE_ENGLISH;
-    param.firstViewPanel   = CELL_OSKDIALOG_PANELMODE_ALPHABET;
-    param.controlPoint.x   = 0.0f;
-    param.controlPoint.y   = 0.0f;
-    param.prohibitFlgs     = CELL_OSKDIALOG_NO_RETURN;  // single-line file name
+   CellOskDialogParam param;
+   param.allowOskPanelFlg = CELL_OSKDIALOG_PANELMODE_ALPHABET |
+                      CELL_OSKDIALOG_PANELMODE_NUMERAL  |
+                      CELL_OSKDIALOG_PANELMODE_ENGLISH;
+   param.firstViewPanel   = CELL_OSKDIALOG_PANELMODE_ALPHABET;
+   param.controlPoint.x   = 0.0f;
+   param.controlPoint.y   = 0.0f;
+   param.prohibitFlgs     = CELL_OSKDIALOG_NO_RETURN;  // single-line file name
 
-    if (cellSysutilRegisterCallback(OSK_CALLBACK_SLOT, oskCallback, NULL) != CELL_OK) {
-        logInfo("[osk-input] register callback failed\n");
-        return false;
-    }
+   if (cellSysutilRegisterCallback(OSK_CALLBACK_SLOT, oskCallback, NULL) != CELL_OK) {
+      logInfo("[osk-input] register callback failed\n");
+      return false;
+   }
 
-    cellOskDialogAddSupportLanguage(param.allowOskPanelFlg);
-    cellOskDialogSetKeyLayoutOption(CELL_OSKDIALOG_10KEY_PANEL | CELL_OSKDIALOG_FULLKEY_PANEL);
+   cellOskDialogAddSupportLanguage(param.allowOskPanelFlg);
+   cellOskDialogSetKeyLayoutOption(CELL_OSKDIALOG_10KEY_PANEL | CELL_OSKDIALOG_FULLKEY_PANEL);
 
-    int ret = cellOskDialogLoadAsync(SYS_MEMORY_CONTAINER_ID_INVALID, &param, &info);
-    if (ret < 0) {
-        logInfo("[osk-input] cellOskDialogLoadAsync failed: 0x%x\n", ret);
-        cellSysutilUnregisterCallback(OSK_CALLBACK_SLOT);
-        return false;
-    }
+   int ret = cellOskDialogLoadAsync(SYS_MEMORY_CONTAINER_ID_INVALID, &param, &info);
+   if (ret < 0) {
+      logInfo("[osk-input] cellOskDialogLoadAsync failed: 0x%x\n", ret);
+      cellSysutilUnregisterCallback(OSK_CALLBACK_SLOT);
+      return false;
+   }
 
-    active = true;
-    return true;
+   active = true;
+   return true;
 }

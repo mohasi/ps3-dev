@@ -1,55 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>10.0.0</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{D5F8E3A2-1C4B-4E7A-9D6F-2B8C5A3E9F71}</ProjectGuid>
-    <OutputType>Exe</OutputType>
-    <RootNamespace>RenpyToPs3</RootNamespace>
-    <AssemblyName>renpy-to-ps3</AssemblyName>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <StartupObject>RenpyToPs3.Program</StartupObject>
+   <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+   <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+   <ProductVersion>10.0.0</ProductVersion>
+   <SchemaVersion>2.0</SchemaVersion>
+   <ProjectGuid>{D5F8E3A2-1C4B-4E7A-9D6F-2B8C5A3E9F71}</ProjectGuid>
+   <OutputType>Exe</OutputType>
+   <RootNamespace>RenpyToPs3</RootNamespace>
+   <AssemblyName>renpy-to-ps3</AssemblyName>
+   <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+   <FileAlignment>512</FileAlignment>
+   <StartupObject>RenpyToPs3.Program</StartupObject>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
+   <DebugType>pdbonly</DebugType>
+   <Optimize>true</Optimize>
+   <OutputPath>bin\</OutputPath>
+   <DefineConstants>TRACE</DefineConstants>
+   <ErrorReport>prompt</ErrorReport>
+   <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
+   <Reference Include="System" />
+   <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Program.cs" />
-    <Compile Include="RenPy\Compat.cs" />
-    <Compile Include="RenPy\Ir.cs" />
-    <Compile Include="RenPy\ExprCompiler.cs" />
-    <Compile Include="RenPy\AtlCompiler.cs" />
-    <Compile Include="RenPy\ImageMap.cs" />
-    <Compile Include="RenPy\Overlay.cs" />
-    <Compile Include="RenPy\Bytecode.cs" />
-    <Compile Include="RenPy\Rpk.cs" />
-    <Compile Include="RenPy\RpycFile.cs" />
-    <Compile Include="RenPy\PickleClassScanner.cs" />
-    <Compile Include="RenPy\AstNode.cs" />
-    <Compile Include="RenPy\Ffmpeg.cs" />
-    <Compile Include="RenPy\RpaArchive.cs" />
-    <Compile Include="RenPy\Pickle.cs" />
-    <Compile Include="RenPy\Compiler.cs" />
-    <Compile Include="RenPy\GuiManifest.cs" />
-    <Compile Include="RenPy\Packer.cs" />
+   <Compile Include="Program.cs" />
+   <Compile Include="RenPy\Compat.cs" />
+   <Compile Include="RenPy\Ir.cs" />
+   <Compile Include="RenPy\ExprCompiler.cs" />
+   <Compile Include="RenPy\AtlCompiler.cs" />
+   <Compile Include="RenPy\ImageMap.cs" />
+   <Compile Include="RenPy\Overlay.cs" />
+   <Compile Include="RenPy\Bytecode.cs" />
+   <Compile Include="RenPy\Rpk.cs" />
+   <Compile Include="RenPy\RpycFile.cs" />
+   <Compile Include="RenPy\PickleClassScanner.cs" />
+   <Compile Include="RenPy\AstNode.cs" />
+   <Compile Include="RenPy\Ffmpeg.cs" />
+   <Compile Include="RenPy\RpaArchive.cs" />
+   <Compile Include="RenPy\Pickle.cs" />
+   <Compile Include="RenPy\Compiler.cs" />
+   <Compile Include="RenPy\GuiManifest.cs" />
+   <Compile Include="RenPy\Packer.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="README.md" />
-    <None Include="ffmpeg.exe">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+   <None Include="README.md" />
+   <None Include="ffmpeg.exe">
+     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+   </None>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -73,137 +73,137 @@ static Audio *clickSfx;
 
 void initSidepanel(GfxTexture sprites, Audio *sfx, SelectionActionHandler handler)
 {
-    spritesheet   = sprites;
-    clickSfx      = sfx;
-    actionHandler = handler;
+   spritesheet   = sprites;
+   clickSfx      = sfx;
+   actionHandler = handler;
 
-    initNineSlice(&hover, sprites, 0, 0, ROW_WIDTH, ROW_HEIGHT, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
+   initNineSlice(&hover, sprites, 0, 0, ROW_WIDTH, ROW_HEIGHT, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
 
-    font = openSystemFont(FONT_POP);
-    int headerLabelW = PANEL_WIDTH - TEXT_X    - TEXT_RIGHT_PAD;
-    int rowLabelW    = ROW_WIDTH   - ROW_TEXT_X - TEXT_RIGHT_PAD;
-    initLabel(&headerTitle,    &font, 0, 0, headerLabelW, AUTO, TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
-    initLabel(&headerSubtitle, &font, 0, 0, headerLabelW, AUTO, SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP,          "");
-    initLabel(&headerDetail,   &font, 0, 0, headerLabelW, AUTO, DETAIL_SIZE,   COLOR_SUBTITLE, TEXT_NOWRAP,          "");
-    for (int i = 0; i < SIDEPANEL_MAX_ACTIONS; i++) {
-        initLabel(&rowTitles[i],    &font, 0, 0, rowLabelW, AUTO, ROW_TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
-        initLabel(&rowSubtitles[i], &font, 0, 0, rowLabelW, AUTO, ROW_SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
-    }
+   font = openSystemFont(FONT_POP);
+   int headerLabelW = PANEL_WIDTH - TEXT_X    - TEXT_RIGHT_PAD;
+   int rowLabelW    = ROW_WIDTH   - ROW_TEXT_X - TEXT_RIGHT_PAD;
+   initLabel(&headerTitle,    &font, 0, 0, headerLabelW, AUTO, TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&headerSubtitle, &font, 0, 0, headerLabelW, AUTO, SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP,          "");
+   initLabel(&headerDetail,   &font, 0, 0, headerLabelW, AUTO, DETAIL_SIZE,   COLOR_SUBTITLE, TEXT_NOWRAP,          "");
+   for (int i = 0; i < SIDEPANEL_MAX_ACTIONS; i++) {
+      initLabel(&rowTitles[i],    &font, 0, 0, rowLabelW, AUTO, ROW_TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
+      initLabel(&rowSubtitles[i], &font, 0, 0, rowLabelW, AUTO, ROW_SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
+   }
 }
 
 void setSidepanelContent(const SelectionSummary *s, const SelectionAction *a, int count)
 {
-    if (count > SIDEPANEL_MAX_ACTIONS) count = SIDEPANEL_MAX_ACTIONS;
-    actionCount = count;
-    for (int i = 0; i < count; i++) actions[i] = a[i];
-    selectedIndex = 0;
+   if (count > SIDEPANEL_MAX_ACTIONS) count = SIDEPANEL_MAX_ACTIONS;
+   actionCount = count;
+   for (int i = 0; i < count; i++) actions[i] = a[i];
+   selectedIndex = 0;
 
-    for (int i = 0; i < actionCount; i++) {
-        setLabelText(&rowTitles[i],    getActionTitle(actions[i]));
-        setLabelText(&rowSubtitles[i], getActionSubtitle(actions[i]));
-        initImage(&rowIcons[i], spritesheet, 0, 0, ROW_ICON_SIZE, ROW_ICON_SIZE, getActionIcon(actions[i]), GFX_FILTER_LINEAR);
-    }
+   for (int i = 0; i < actionCount; i++) {
+      setLabelText(&rowTitles[i],    getActionTitle(actions[i]));
+      setLabelText(&rowSubtitles[i], getActionSubtitle(actions[i]));
+      initImage(&rowIcons[i], spritesheet, 0, 0, ROW_ICON_SIZE, ROW_ICON_SIZE, getActionIcon(actions[i]), GFX_FILTER_LINEAR);
+   }
 
-    // snapshot the header from the summary as it is right now; the panel
-    // does not refresh while open even if file-list keeps sizing folders.
-    summary = *s;
-    hasHeader = summary.title && summary.title[0];
+   // snapshot the header from the summary as it is right now; the panel
+   // does not refresh while open even if file-list keeps sizing folders.
+   summary = *s;
+   hasHeader = summary.title && summary.title[0];
 
-    char upper[LABEL_MAX_TEXT];
-    toUpper(upper, (int)sizeof(upper), strOrEmpty(summary.title));
-    setLabelText(&headerTitle,    upper);
-    setLabelText(&headerSubtitle, strOrEmpty(summary.subtitle));
-    setLabelText(&headerDetail,   strOrEmpty(summary.detail));
+   char upper[LABEL_MAX_TEXT];
+   toUpper(upper, (int)sizeof(upper), strOrEmpty(summary.title));
+   setLabelText(&headerTitle,    upper);
+   setLabelText(&headerSubtitle, strOrEmpty(summary.subtitle));
+   setLabelText(&headerDetail,   strOrEmpty(summary.detail));
 
-    initImage(&headerIcon, spritesheet, 0, 0, ICON_W, ICON_H, summary.icon, GFX_FILTER_LINEAR);
+   initImage(&headerIcon, spritesheet, 0, 0, ICON_W, ICON_H, summary.icon, GFX_FILTER_LINEAR);
 }
 
 static void show(void)
 {
-    int sw = getGfxScreenWidth();
-    x = (float)sw;
-    setAnim(&anims, &x, (float)sw, (float)(sw - PANEL_WIDTH), SLIDE_MS, EASE_OUT_CUBIC, ANIM_ONCE, NULL);
-    sidepanel.status = OVERLAY_VISIBLE;
+   int sw = getGfxScreenWidth();
+   x = (float)sw;
+   setAnim(&anims, &x, (float)sw, (float)(sw - PANEL_WIDTH), SLIDE_MS, EASE_OUT_CUBIC, ANIM_ONCE, NULL);
+   sidepanel.status = OVERLAY_VISIBLE;
 }
 
 static void onHidden(AnimHandle self) { (void)self; sidepanel.status = OVERLAY_HIDDEN; }
 
 static void hide(void)
 {
-    setAnim(&anims, &x, x, (float)getGfxScreenWidth(), SLIDE_MS, EASE_IN_CUBIC, ANIM_ONCE, onHidden);
+   setAnim(&anims, &x, x, (float)getGfxScreenWidth(), SLIDE_MS, EASE_IN_CUBIC, ANIM_ONCE, onHidden);
 }
 
 static void handleInput(void)
 {
-    if (isPadButtonPressed(PAD_BTN_TRIANGLE) || isPadButtonPressed(PAD_BTN_CIRCLE)) {
-        hideOverlay(&sidepanel);
-        return;
-    }
-    if (actionCount == 0) return;
-    static ButtonRepeat repeat;
-    if (isRepeatDue(&repeat, getPadButtonState(PAD_BTN_UP))) {
-        selectedIndex = (selectedIndex - 1 + actionCount) % actionCount;
-        playSfxOnce(clickSfx);
-    }
-    else if (isRepeatDue(&repeat, getPadButtonState(PAD_BTN_DOWN))) {
-        selectedIndex = (selectedIndex + 1) % actionCount;
-        playSfxOnce(clickSfx);
-    }
-    if (isPadButtonPressed(PAD_BTN_CROSS)) {
-        SelectionAction picked = actions[selectedIndex];
-        hideOverlay(&sidepanel);
-        if (actionHandler) actionHandler(picked);
-    }
+   if (isPadButtonPressed(PAD_BTN_TRIANGLE) || isPadButtonPressed(PAD_BTN_CIRCLE)) {
+      hideOverlay(&sidepanel);
+      return;
+   }
+   if (actionCount == 0) return;
+   static ButtonRepeat repeat;
+   if (isRepeatDue(&repeat, getPadButtonState(PAD_BTN_UP))) {
+      selectedIndex = (selectedIndex - 1 + actionCount) % actionCount;
+      playSfxOnce(clickSfx);
+   }
+   else if (isRepeatDue(&repeat, getPadButtonState(PAD_BTN_DOWN))) {
+      selectedIndex = (selectedIndex + 1) % actionCount;
+      playSfxOnce(clickSfx);
+   }
+   if (isPadButtonPressed(PAD_BTN_CROSS)) {
+      SelectionAction picked = actions[selectedIndex];
+      hideOverlay(&sidepanel);
+      if (actionHandler) actionHandler(picked);
+   }
 }
 
 static void update(void)
 {
-    handleInput();
-    updateAnim(&anims);
+   handleInput();
+   updateAnim(&anims);
 }
 
 static void draw(void)
 {
-    int px = (int)x;
-    int sw = getGfxScreenWidth();
-    int sh = getGfxScreenHeight();
+   int px = (int)x;
+   int sw = getGfxScreenWidth();
+   int sh = getGfxScreenHeight();
 
-    fillGfxRectangle(px, 0, sw - px, sh, COLOR_PANEL_BG);
-    fillGfxRectangle(px, 0, PANEL_BORDER, sh, COLOR_PANEL_BORDER);
+   fillGfxRectangle(px, 0, sw - px, sh, COLOR_PANEL_BG);
+   fillGfxRectangle(px, 0, PANEL_BORDER, sh, COLOR_PANEL_BORDER);
 
-    if (hasHeader) {
-        drawImageAt(&headerIcon, px + ICON_X, ICON_Y);
-        drawLabelAt(&headerTitle,    px + TEXT_X, TITLE_Y);
-        drawLabelAt(&headerSubtitle, px + TEXT_X, SUBTITLE_Y);
-        drawLabelAt(&headerDetail,   px + TEXT_X, DETAIL_Y);
-    }
+   if (hasHeader) {
+      drawImageAt(&headerIcon, px + ICON_X, ICON_Y);
+      drawLabelAt(&headerTitle,    px + TEXT_X, TITLE_Y);
+      drawLabelAt(&headerSubtitle, px + TEXT_X, SUBTITLE_Y);
+      drawLabelAt(&headerDetail,   px + TEXT_X, DETAIL_Y);
+   }
 
-    int rowX = px + ROW_X;
-    int rowOriginY = hasHeader ? HEADER_HEIGHT : TOP_NO_HEADER;
-    for (int i = 0; i < actionCount; i++) {
-        int rowY = rowOriginY + i * ROW_HEIGHT;
-        if (i == selectedIndex) {
-            moveNineSlice(&hover, rowX, rowY);
-            drawNineSlice(&hover);
-        }
-        drawImageAt(&rowIcons[i],    rowX + ROW_ICON_OFFSET, rowY + ROW_ICON_OFFSET);
-        drawLabelAt(&rowTitles[i],    rowX + ROW_TEXT_X, rowY + ROW_TITLE_Y);
-        drawLabelAt(&rowSubtitles[i], rowX + ROW_TEXT_X, rowY + ROW_SUBTITLE_Y);
-    }
+   int rowX = px + ROW_X;
+   int rowOriginY = hasHeader ? HEADER_HEIGHT : TOP_NO_HEADER;
+   for (int i = 0; i < actionCount; i++) {
+      int rowY = rowOriginY + i * ROW_HEIGHT;
+      if (i == selectedIndex) {
+         moveNineSlice(&hover, rowX, rowY);
+         drawNineSlice(&hover);
+      }
+      drawImageAt(&rowIcons[i],    rowX + ROW_ICON_OFFSET, rowY + ROW_ICON_OFFSET);
+      drawLabelAt(&rowTitles[i],    rowX + ROW_TEXT_X, rowY + ROW_TITLE_Y);
+      drawLabelAt(&rowSubtitles[i], rowX + ROW_TEXT_X, rowY + ROW_SUBTITLE_Y);
+   }
 }
 
 static void term(void)
 {
-    cancelAllAnims(&anims);
-    freeLabel(&headerTitle);
-    freeLabel(&headerSubtitle);
-    freeLabel(&headerDetail);
-    for (int i = 0; i < SIDEPANEL_MAX_ACTIONS; i++) {
-        freeLabel(&rowTitles[i]);
-        freeLabel(&rowSubtitles[i]);
-    }
-    closeFont(&font);
-    sidepanel.status = OVERLAY_TERMINATED;
+   cancelAllAnims(&anims);
+   freeLabel(&headerTitle);
+   freeLabel(&headerSubtitle);
+   freeLabel(&headerDetail);
+   for (int i = 0; i < SIDEPANEL_MAX_ACTIONS; i++) {
+      freeLabel(&rowTitles[i]);
+      freeLabel(&rowSubtitles[i]);
+   }
+   closeFont(&font);
+   sidepanel.status = OVERLAY_TERMINATED;
 }
 
 Overlay sidepanel = { show, hide, update, draw, term, OVERLAY_TERMINATED };

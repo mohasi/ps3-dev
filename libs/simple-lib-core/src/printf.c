@@ -219,8 +219,8 @@
 
 #define OUTCHAR(str, len, size, ch) \
 {                                   \
-    if (++len < size)               \
-        str[len-1] = ch;            \
+   if (++len < size)               \
+      str[len-1] = ch;            \
 }
 
 static void fmtstr(char *, size_t *, size_t, const char *, int, int, int);
@@ -231,549 +231,549 @@ static int convert(UINTMAX_T, char *, size_t, int, int);
 
 int vsnprintf(char *str, size_t size, const char *format, va_list args)
 {
-    if (!format)
-        return 0;
+   if (!format)
+      return 0;
 
-    INTMAX_T value;
-    unsigned char cvalue;
-    const char *strvalue;
-    INTMAX_T *intmaxptr;
-    PTRDIFF_T *ptrdiffptr;
-    SSIZE_T *sizeptr;
-    LLONG *llongptr;
-    long int *longptr;
-    int *intptr;
-    short int *shortptr;
-    signed char *charptr;
-    size_t len = 0;
-    int overflow = 0;
-    int base = 0;
-    int cflags = 0;
-    int flags = 0;
-    int width = 0;
-    int precision = -1;
-    int state = PRINT_S_DEFAULT;
-    char ch = *format++;
+   INTMAX_T value;
+   unsigned char cvalue;
+   const char *strvalue;
+   INTMAX_T *intmaxptr;
+   PTRDIFF_T *ptrdiffptr;
+   SSIZE_T *sizeptr;
+   LLONG *llongptr;
+   long int *longptr;
+   int *intptr;
+   short int *shortptr;
+   signed char *charptr;
+   size_t len = 0;
+   int overflow = 0;
+   int base = 0;
+   int cflags = 0;
+   int flags = 0;
+   int width = 0;
+   int precision = -1;
+   int state = PRINT_S_DEFAULT;
+   char ch = *format++;
 
-    /*
-     * C99 says: "If `n' is zero, nothing is written, and `s' may be a null
-     * pointer." (7.19.6.5, 2)  We're forgiving and allow a NULL pointer
-     * even if a size larger than zero was specified.  At least NetBSD's
-     * snprintf(3) does the same, as well as other versions of this file.
-     * (Though some of these versions will write to a non-NULL buffer even
-     * if a size of zero was specified, which violates the standard.)
-     */
-    if ((str == NULL) && (size != 0))
-        size = 0;
+   /*
+    * C99 says: "If `n' is zero, nothing is written, and `s' may be a null
+    * pointer." (7.19.6.5, 2)  We're forgiving and allow a NULL pointer
+    * even if a size larger than zero was specified.  At least NetBSD's
+    * snprintf(3) does the same, as well as other versions of this file.
+    * (Though some of these versions will write to a non-NULL buffer even
+    * if a size of zero was specified, which violates the standard.)
+    */
+   if ((str == NULL) && (size != 0))
+      size = 0;
 
-    while (ch != '\0')
-        switch (state) {
-        case PRINT_S_DEFAULT:
-            if (ch == '%')
-                state = PRINT_S_FLAGS;
-            else
-                OUTCHAR(str, len, size, ch);
+   while (ch != '\0')
+      switch (state) {
+      case PRINT_S_DEFAULT:
+         if (ch == '%')
+            state = PRINT_S_FLAGS;
+         else
+            OUTCHAR(str, len, size, ch);
+         ch = *format++;
+         break;
+      case PRINT_S_FLAGS:
+         switch (ch) {
+         case '-':
+            flags |= PRINT_F_MINUS;
             ch = *format++;
             break;
-        case PRINT_S_FLAGS:
-            switch (ch) {
-            case '-':
-                flags |= PRINT_F_MINUS;
-                ch = *format++;
-                break;
-            case '+':
-                flags |= PRINT_F_PLUS;
-                ch = *format++;
-                break;
-            case ' ':
-                flags |= PRINT_F_SPACE;
-                ch = *format++;
-                break;
-            case '#':
-                flags |= PRINT_F_NUM;
-                ch = *format++;
-                break;
-            case '0':
-                flags |= PRINT_F_ZERO;
-                ch = *format++;
-                break;
-            case '\'':  /* SUSv2 flag (not in C99). */
-                flags |= PRINT_F_QUOTE;
-                ch = *format++;
-                break;
+         case '+':
+            flags |= PRINT_F_PLUS;
+            ch = *format++;
+            break;
+         case ' ':
+            flags |= PRINT_F_SPACE;
+            ch = *format++;
+            break;
+         case '#':
+            flags |= PRINT_F_NUM;
+            ch = *format++;
+            break;
+         case '0':
+            flags |= PRINT_F_ZERO;
+            ch = *format++;
+            break;
+         case '\'':  /* SUSv2 flag (not in C99). */
+            flags |= PRINT_F_QUOTE;
+            ch = *format++;
+            break;
+         default:
+            state = PRINT_S_WIDTH;
+            break;
+         }
+         break;
+      case PRINT_S_WIDTH:
+         if (ISDIGIT(ch)) {
+            ch = CHARTOINT(ch);
+            if (width > (INT_MAX - ch) / 10) {
+               overflow = 1;
+               goto out;
+            }
+            width = 10 * width + ch;
+            ch = *format++;
+         } else if (ch == '*') {
+            /*
+             * C99 says: "A negative field width argument is
+             * taken as a `-' flag followed by a positive
+             * field width." (7.19.6.1, 5)
+             */
+            if ((width = va_arg(args, int)) < 0) {
+               flags |= PRINT_F_MINUS;
+               width = -width;
+            }
+            ch = *format++;
+            state = PRINT_S_DOT;
+         } else
+            state = PRINT_S_DOT;
+         break;
+      case PRINT_S_DOT:
+         if (ch == '.') {
+            state = PRINT_S_PRECISION;
+            ch = *format++;
+         } else
+            state = PRINT_S_MOD;
+         break;
+      case PRINT_S_PRECISION:
+         if (precision == -1)
+            precision = 0;
+         if (ISDIGIT(ch)) {
+            ch = CHARTOINT(ch);
+            if (precision > (INT_MAX - ch) / 10) {
+               overflow = 1;
+               goto out;
+            }
+            precision = 10 * precision + ch;
+            ch = *format++;
+         } else if (ch == '*') {
+            /*
+             * C99 says: "A negative precision argument is
+             * taken as if the precision were omitted."
+             * (7.19.6.1, 5)
+             */
+            if ((precision = va_arg(args, int)) < 0)
+               precision = -1;
+            ch = *format++;
+            state = PRINT_S_MOD;
+         } else
+            state = PRINT_S_MOD;
+         break;
+      case PRINT_S_MOD:
+         switch (ch) {
+         case 'h':
+            ch = *format++;
+            if (ch == 'h') {    /* It's a char. */
+               ch = *format++;
+               cflags = PRINT_C_CHAR;
+            } else
+               cflags = PRINT_C_SHORT;
+            break;
+         case 'l':
+            ch = *format++;
+            if (ch == 'l') {    /* It's a long long. */
+               ch = *format++;
+               cflags = PRINT_C_LLONG;
+            } else
+               cflags = PRINT_C_LONG;
+            break;
+         case 'j':
+            cflags = PRINT_C_INTMAX;
+            ch = *format++;
+            break;
+         case 't':
+            cflags = PRINT_C_PTRDIFF;
+            ch = *format++;
+            break;
+         case 'z':
+            cflags = PRINT_C_SIZE;
+            ch = *format++;
+            break;
+         }
+         state = PRINT_S_CONV;
+         break;
+      case PRINT_S_CONV:
+         switch (ch) {
+         case 'd':
+            /* FALLTHROUGH */
+         case 'i':
+            switch (cflags) {
+            case PRINT_C_CHAR:
+               value = (signed char)va_arg(args, int);
+               break;
+            case PRINT_C_SHORT:
+               value = (short int)va_arg(args, int);
+               break;
+            case PRINT_C_LONG:
+               value = va_arg(args, long int);
+               break;
+            case PRINT_C_LLONG:
+               value = va_arg(args, LLONG);
+               break;
+            case PRINT_C_SIZE:
+               value = va_arg(args, SSIZE_T);
+               break;
+            case PRINT_C_INTMAX:
+               value = va_arg(args, INTMAX_T);
+               break;
+            case PRINT_C_PTRDIFF:
+               value = va_arg(args, PTRDIFF_T);
+               break;
             default:
-                state = PRINT_S_WIDTH;
-                break;
+               value = va_arg(args, int);
+               break;
+            }
+            fmtint(str, &len, size, value, 10, width,
+                precision, flags);
+            break;
+         case 'X':
+            flags |= PRINT_F_UP;
+            /* FALLTHROUGH */
+         case 'x':
+            base = 16;
+            /* FALLTHROUGH */
+         case 'o':
+            if (base == 0)
+               base = 8;
+            /* FALLTHROUGH */
+         case 'u':
+            if (base == 0)
+               base = 10;
+            flags |= PRINT_F_UNSIGNED;
+            switch (cflags) {
+            case PRINT_C_CHAR:
+               value = (unsigned char)va_arg(args,
+                   unsigned int);
+               break;
+            case PRINT_C_SHORT:
+               value = (unsigned short int)va_arg(args,
+                   unsigned int);
+               break;
+            case PRINT_C_LONG:
+               value = va_arg(args, unsigned long int);
+               break;
+            case PRINT_C_LLONG:
+               value = va_arg(args, ULLONG);
+               break;
+            case PRINT_C_SIZE:
+               value = va_arg(args, size_t);
+               break;
+            case PRINT_C_INTMAX:
+               value = va_arg(args, UINTMAX_T);
+               break;
+            case PRINT_C_PTRDIFF:
+               value = va_arg(args, UPTRDIFF_T);
+               break;
+            default:
+               value = va_arg(args, unsigned int);
+               break;
+            }
+            fmtint(str, &len, size, value, base, width,
+                precision, flags);
+            break;
+         case 'c':
+            cvalue = va_arg(args, int);
+            OUTCHAR(str, len, size, cvalue);
+            break;
+         case 's':
+            strvalue = va_arg(args, char *);
+            fmtstr(str, &len, size, strvalue, width,
+                precision, flags);
+            break;
+         case 'p':
+            /*
+             * C99 says: "The value of the pointer is
+             * converted to a sequence of printing
+             * characters, in an implementation-defined
+             * manner." (C99: 7.19.6.1, 8)
+             */
+            if ((strvalue = (const char*)va_arg(args, void *)) == NULL)
+               /*
+                * We use the glibc format.  BSD prints
+                * "0x0", SysV "0".
+                */
+               fmtstr(str, &len, size, "(nil)", width,
+                   -1, flags);
+            else {
+               /*
+                * We use the BSD/glibc format.  SysV
+                * omits the "0x" prefix (which we emit
+                * using the PRINT_F_NUM flag).
+                */
+               flags |= PRINT_F_NUM;
+               flags |= PRINT_F_UNSIGNED;
+               fmtint(str, &len, size,
+                   (UINTPTR_T)strvalue, 16, width,
+                   precision, flags);
             }
             break;
-        case PRINT_S_WIDTH:
-            if (ISDIGIT(ch)) {
-                ch = CHARTOINT(ch);
-                if (width > (INT_MAX - ch) / 10) {
-                    overflow = 1;
-                    goto out;
-                }
-                width = 10 * width + ch;
-                ch = *format++;
-            } else if (ch == '*') {
-                /*
-                 * C99 says: "A negative field width argument is
-                 * taken as a `-' flag followed by a positive
-                 * field width." (7.19.6.1, 5)
-                 */
-                if ((width = va_arg(args, int)) < 0) {
-                    flags |= PRINT_F_MINUS;
-                    width = -width;
-                }
-                ch = *format++;
-                state = PRINT_S_DOT;
-            } else
-                state = PRINT_S_DOT;
-            break;
-        case PRINT_S_DOT:
-            if (ch == '.') {
-                state = PRINT_S_PRECISION;
-                ch = *format++;
-            } else
-                state = PRINT_S_MOD;
-            break;
-        case PRINT_S_PRECISION:
-            if (precision == -1)
-                precision = 0;
-            if (ISDIGIT(ch)) {
-                ch = CHARTOINT(ch);
-                if (precision > (INT_MAX - ch) / 10) {
-                    overflow = 1;
-                    goto out;
-                }
-                precision = 10 * precision + ch;
-                ch = *format++;
-            } else if (ch == '*') {
-                /*
-                 * C99 says: "A negative precision argument is
-                 * taken as if the precision were omitted."
-                 * (7.19.6.1, 5)
-                 */
-                if ((precision = va_arg(args, int)) < 0)
-                    precision = -1;
-                ch = *format++;
-                state = PRINT_S_MOD;
-            } else
-                state = PRINT_S_MOD;
-            break;
-        case PRINT_S_MOD:
-            switch (ch) {
-            case 'h':
-                ch = *format++;
-                if (ch == 'h') {    /* It's a char. */
-                    ch = *format++;
-                    cflags = PRINT_C_CHAR;
-                } else
-                    cflags = PRINT_C_SHORT;
-                break;
-            case 'l':
-                ch = *format++;
-                if (ch == 'l') {    /* It's a long long. */
-                    ch = *format++;
-                    cflags = PRINT_C_LLONG;
-                } else
-                    cflags = PRINT_C_LONG;
-                break;
-            case 'j':
-                cflags = PRINT_C_INTMAX;
-                ch = *format++;
-                break;
-            case 't':
-                cflags = PRINT_C_PTRDIFF;
-                ch = *format++;
-                break;
-            case 'z':
-                cflags = PRINT_C_SIZE;
-                ch = *format++;
-                break;
+         case 'n':
+            switch (cflags) {
+            case PRINT_C_CHAR:
+               charptr = va_arg(args, signed char *);
+               *charptr = len;
+               break;
+            case PRINT_C_SHORT:
+               shortptr = va_arg(args, short int *);
+               *shortptr = len;
+               break;
+            case PRINT_C_LONG:
+               longptr = va_arg(args, long int *);
+               *longptr = len;
+               break;
+            case PRINT_C_LLONG:
+               llongptr = va_arg(args, LLONG *);
+               *llongptr = len;
+               break;
+            case PRINT_C_SIZE:
+               /*
+                * C99 says that with the "z" length
+                * modifier, "a following `n' conversion
+                * specifier applies to a pointer to a
+                * signed integer type corresponding to
+                * size_t argument." (7.19.6.1, 7)
+                */
+               sizeptr = va_arg(args, SSIZE_T *);
+               *sizeptr = len;
+               break;
+            case PRINT_C_INTMAX:
+               intmaxptr = va_arg(args, INTMAX_T *);
+               *intmaxptr = len;
+               break;
+            case PRINT_C_PTRDIFF:
+               ptrdiffptr = va_arg(args, PTRDIFF_T *);
+               *ptrdiffptr = len;
+               break;
+            default:
+               intptr = va_arg(args, int *);
+               *intptr = len;
+               break;
             }
-            state = PRINT_S_CONV;
             break;
-        case PRINT_S_CONV:
-            switch (ch) {
-            case 'd':
-                /* FALLTHROUGH */
-            case 'i':
-                switch (cflags) {
-                case PRINT_C_CHAR:
-                    value = (signed char)va_arg(args, int);
-                    break;
-                case PRINT_C_SHORT:
-                    value = (short int)va_arg(args, int);
-                    break;
-                case PRINT_C_LONG:
-                    value = va_arg(args, long int);
-                    break;
-                case PRINT_C_LLONG:
-                    value = va_arg(args, LLONG);
-                    break;
-                case PRINT_C_SIZE:
-                    value = va_arg(args, SSIZE_T);
-                    break;
-                case PRINT_C_INTMAX:
-                    value = va_arg(args, INTMAX_T);
-                    break;
-                case PRINT_C_PTRDIFF:
-                    value = va_arg(args, PTRDIFF_T);
-                    break;
-                default:
-                    value = va_arg(args, int);
-                    break;
-                }
-                fmtint(str, &len, size, value, 10, width,
-                    precision, flags);
-                break;
-            case 'X':
-                flags |= PRINT_F_UP;
-                /* FALLTHROUGH */
-            case 'x':
-                base = 16;
-                /* FALLTHROUGH */
-            case 'o':
-                if (base == 0)
-                    base = 8;
-                /* FALLTHROUGH */
-            case 'u':
-                if (base == 0)
-                    base = 10;
-                flags |= PRINT_F_UNSIGNED;
-                switch (cflags) {
-                case PRINT_C_CHAR:
-                    value = (unsigned char)va_arg(args,
-                        unsigned int);
-                    break;
-                case PRINT_C_SHORT:
-                    value = (unsigned short int)va_arg(args,
-                        unsigned int);
-                    break;
-                case PRINT_C_LONG:
-                    value = va_arg(args, unsigned long int);
-                    break;
-                case PRINT_C_LLONG:
-                    value = va_arg(args, ULLONG);
-                    break;
-                case PRINT_C_SIZE:
-                    value = va_arg(args, size_t);
-                    break;
-                case PRINT_C_INTMAX:
-                    value = va_arg(args, UINTMAX_T);
-                    break;
-                case PRINT_C_PTRDIFF:
-                    value = va_arg(args, UPTRDIFF_T);
-                    break;
-                default:
-                    value = va_arg(args, unsigned int);
-                    break;
-                }
-                fmtint(str, &len, size, value, base, width,
-                    precision, flags);
-                break;
-            case 'c':
-                cvalue = va_arg(args, int);
-                OUTCHAR(str, len, size, cvalue);
-                break;
-            case 's':
-                strvalue = va_arg(args, char *);
-                fmtstr(str, &len, size, strvalue, width,
-                    precision, flags);
-                break;
-            case 'p':
-                /*
-                 * C99 says: "The value of the pointer is
-                 * converted to a sequence of printing
-                 * characters, in an implementation-defined
-                 * manner." (C99: 7.19.6.1, 8)
-                 */
-                if ((strvalue = (const char*)va_arg(args, void *)) == NULL)
-                    /*
-                     * We use the glibc format.  BSD prints
-                     * "0x0", SysV "0".
-                     */
-                    fmtstr(str, &len, size, "(nil)", width,
-                        -1, flags);
-                else {
-                    /*
-                     * We use the BSD/glibc format.  SysV
-                     * omits the "0x" prefix (which we emit
-                     * using the PRINT_F_NUM flag).
-                     */
-                    flags |= PRINT_F_NUM;
-                    flags |= PRINT_F_UNSIGNED;
-                    fmtint(str, &len, size,
-                        (UINTPTR_T)strvalue, 16, width,
-                        precision, flags);
-                }
-                break;
-            case 'n':
-                switch (cflags) {
-                case PRINT_C_CHAR:
-                    charptr = va_arg(args, signed char *);
-                    *charptr = len;
-                    break;
-                case PRINT_C_SHORT:
-                    shortptr = va_arg(args, short int *);
-                    *shortptr = len;
-                    break;
-                case PRINT_C_LONG:
-                    longptr = va_arg(args, long int *);
-                    *longptr = len;
-                    break;
-                case PRINT_C_LLONG:
-                    llongptr = va_arg(args, LLONG *);
-                    *llongptr = len;
-                    break;
-                case PRINT_C_SIZE:
-                    /*
-                     * C99 says that with the "z" length
-                     * modifier, "a following `n' conversion
-                     * specifier applies to a pointer to a
-                     * signed integer type corresponding to
-                     * size_t argument." (7.19.6.1, 7)
-                     */
-                    sizeptr = va_arg(args, SSIZE_T *);
-                    *sizeptr = len;
-                    break;
-                case PRINT_C_INTMAX:
-                    intmaxptr = va_arg(args, INTMAX_T *);
-                    *intmaxptr = len;
-                    break;
-                case PRINT_C_PTRDIFF:
-                    ptrdiffptr = va_arg(args, PTRDIFF_T *);
-                    *ptrdiffptr = len;
-                    break;
-                default:
-                    intptr = va_arg(args, int *);
-                    *intptr = len;
-                    break;
-                }
-                break;
-            case '%':   /* Print a "%" character verbatim. */
-                OUTCHAR(str, len, size, ch);
-                break;
-            default:    /* Skip other characters. */
-                break;
-            }
-            ch = *format++;
-            state = PRINT_S_DEFAULT;
-            base = cflags = flags = width = 0;
-            precision = -1;
+         case '%':   /* Print a "%" character verbatim. */
+            OUTCHAR(str, len, size, ch);
             break;
-        }
+         default:    /* Skip other characters. */
+            break;
+         }
+         ch = *format++;
+         state = PRINT_S_DEFAULT;
+         base = cflags = flags = width = 0;
+         precision = -1;
+         break;
+      }
 out:
-    if (len < size)
-        str[len] = '\0';
-    else if (size > 0)
-        str[size - 1] = '\0';
+   if (len < size)
+      str[len] = '\0';
+   else if (size > 0)
+      str[size - 1] = '\0';
 
-    if (overflow || len >= INT_MAX) {
-        return -1;
-    }
-    return (int)len;
+   if (overflow || len >= INT_MAX) {
+      return -1;
+   }
+   return (int)len;
 }
 
 static void
 fmtstr(char *str, size_t *len, size_t size, const char *value, int width,
        int precision, int flags)
 {
-    int padlen, strln;  /* Amount to pad. */
-    int noprecision = (precision == -1);
+   int padlen, strln;  /* Amount to pad. */
+   int noprecision = (precision == -1);
 
-    if (value == NULL)  /* We're forgiving. */
-        value = "";
+   if (value == NULL)  /* We're forgiving. */
+      value = "";
 
-    /* If a precision was specified, don't read the string past it. */
-    for (strln = 0; value[strln] != '\0' &&
-        (noprecision || strln < precision); strln++)
-        continue;
+   /* If a precision was specified, don't read the string past it. */
+   for (strln = 0; value[strln] != '\0' &&
+       (noprecision || strln < precision); strln++)
+      continue;
 
-    if ((padlen = width - strln) < 0)
-        padlen = 0;
-    if (flags & PRINT_F_MINUS)  /* Left justify. */
-        padlen = -padlen;
+   if ((padlen = width - strln) < 0)
+      padlen = 0;
+   if (flags & PRINT_F_MINUS)  /* Left justify. */
+      padlen = -padlen;
 
-    while (padlen > 0) {    /* Leading spaces. */
-        OUTCHAR(str, *len, size, ' ');
-        padlen--;
-    }
-    while (*value != '\0' && (noprecision || precision-- > 0)) {
-        OUTCHAR(str, *len, size, *value);
-        value++;
-    }
-    while (padlen < 0) {    /* Trailing spaces. */
-        OUTCHAR(str, *len, size, ' ');
-        padlen++;
-    }
+   while (padlen > 0) {    /* Leading spaces. */
+      OUTCHAR(str, *len, size, ' ');
+      padlen--;
+   }
+   while (*value != '\0' && (noprecision || precision-- > 0)) {
+      OUTCHAR(str, *len, size, *value);
+      value++;
+   }
+   while (padlen < 0) {    /* Trailing spaces. */
+      OUTCHAR(str, *len, size, ' ');
+      padlen++;
+   }
 }
 
 static void
 fmtint(char *str, size_t *len, size_t size, INTMAX_T value, int base, int width,
        int precision, int flags)
 {
-    UINTMAX_T uvalue;
-    char iconvert[MAX_CONVERT_LENGTH];
-    char sign = 0;
-    char hexprefix = 0;
-    int spadlen = 0;    /* Amount to space pad. */
-    int zpadlen = 0;    /* Amount to zero pad. */
-    int pos;
-    int separators = (flags & PRINT_F_QUOTE);
-    int noprecision = (precision == -1);
+   UINTMAX_T uvalue;
+   char iconvert[MAX_CONVERT_LENGTH];
+   char sign = 0;
+   char hexprefix = 0;
+   int spadlen = 0;    /* Amount to space pad. */
+   int zpadlen = 0;    /* Amount to zero pad. */
+   int pos;
+   int separators = (flags & PRINT_F_QUOTE);
+   int noprecision = (precision == -1);
 
-    if (flags & PRINT_F_UNSIGNED)
-        uvalue = value;
-    else {
-        uvalue = (value >= 0) ? value : -value;
-        if (value < 0)
-            sign = '-';
-        else if (flags & PRINT_F_PLUS)  /* Do a sign. */
-            sign = '+';
-        else if (flags & PRINT_F_SPACE)
-            sign = ' ';
-    }
+   if (flags & PRINT_F_UNSIGNED)
+      uvalue = value;
+   else {
+      uvalue = (value >= 0) ? value : -value;
+      if (value < 0)
+         sign = '-';
+      else if (flags & PRINT_F_PLUS)  /* Do a sign. */
+         sign = '+';
+      else if (flags & PRINT_F_SPACE)
+         sign = ' ';
+   }
 
-    pos = convert(uvalue, iconvert, sizeof(iconvert), base,
-        flags & PRINT_F_UP);
+   pos = convert(uvalue, iconvert, sizeof(iconvert), base,
+       flags & PRINT_F_UP);
 
-    if (flags & PRINT_F_NUM && uvalue != 0) {
-        /*
-         * C99 says: "The result is converted to an `alternative form'.
-         * For `o' conversion, it increases the precision, if and only
-         * if necessary, to force the first digit of the result to be a
-         * zero (if the value and precision are both 0, a single 0 is
-         * printed).  For `x' (or `X') conversion, a nonzero result has
-         * `0x' (or `0X') prefixed to it." (7.19.6.1, 6)
-         */
-        switch (base) {
-        case 8:
-            if (precision <= pos)
-                precision = pos + 1;
-            break;
-        case 16:
-            hexprefix = (flags & PRINT_F_UP) ? 'X' : 'x';
-            break;
-        }
-    }
+   if (flags & PRINT_F_NUM && uvalue != 0) {
+      /*
+       * C99 says: "The result is converted to an `alternative form'.
+       * For `o' conversion, it increases the precision, if and only
+       * if necessary, to force the first digit of the result to be a
+       * zero (if the value and precision are both 0, a single 0 is
+       * printed).  For `x' (or `X') conversion, a nonzero result has
+       * `0x' (or `0X') prefixed to it." (7.19.6.1, 6)
+       */
+      switch (base) {
+      case 8:
+         if (precision <= pos)
+            precision = pos + 1;
+         break;
+      case 16:
+         hexprefix = (flags & PRINT_F_UP) ? 'X' : 'x';
+         break;
+      }
+   }
 
-    if (separators) /* Get the number of group separators we'll print. */
-        separators = getnumsep(pos);
+   if (separators) /* Get the number of group separators we'll print. */
+      separators = getnumsep(pos);
 
-    zpadlen = precision - pos - separators;
-    spadlen = width             /* Minimum field width. */
-        - separators            /* Number of separators. */
-        - MAX(precision, pos)   /* Number of integer digits. */
-        - (sign      ? 1 : 0)   /* Will we print a sign? */
-        - (hexprefix ? 2 : 0);  /* Will we print a prefix? */
+   zpadlen = precision - pos - separators;
+   spadlen = width             /* Minimum field width. */
+      - separators            /* Number of separators. */
+      - MAX(precision, pos)   /* Number of integer digits. */
+      - (sign      ? 1 : 0)   /* Will we print a sign? */
+      - (hexprefix ? 2 : 0);  /* Will we print a prefix? */
 
-    if (zpadlen < 0)
-        zpadlen = 0;
-    if (spadlen < 0)
-        spadlen = 0;
+   if (zpadlen < 0)
+      zpadlen = 0;
+   if (spadlen < 0)
+      spadlen = 0;
 
-    /*
-     * C99 says: "If the `0' and `-' flags both appear, the `0' flag is
-     * ignored.  For `d', `i', `o', `u', `x', and `X' conversions, if a
-     * precision is specified, the `0' flag is ignored." (7.19.6.1, 6)
-     */
-    if (flags & PRINT_F_MINUS)  /* Left justify. */
-        spadlen = -spadlen;
-    else if (flags & PRINT_F_ZERO && noprecision) {
-        zpadlen += spadlen;
-        spadlen = 0;
-    }
-    while (spadlen > 0) {   /* Leading spaces. */
-        OUTCHAR(str, *len, size, ' ');
-        spadlen--;
-    }
-    if (sign)   /* Sign. */
-        OUTCHAR(str, *len, size, sign);
-    if (hexprefix != 0) {   /* A "0x" or "0X" prefix. */
-        OUTCHAR(str, *len, size, '0');
-        OUTCHAR(str, *len, size, hexprefix);
-    }
-    while (zpadlen > 0) {   /* Leading zeros. */
-        OUTCHAR(str, *len, size, '0');
-        zpadlen--;
-    }
-    while (pos > 0) {   /* The actual digits. */
-        pos--;
-        OUTCHAR(str, *len, size, iconvert[pos]);
-        if (separators > 0 && pos > 0 && pos % 3 == 0)
-            printsep(str, len, size);
-    }
-    while (spadlen < 0) {   /* Trailing spaces. */
-        OUTCHAR(str, *len, size, ' ');
-        spadlen++;
-    }
+   /*
+    * C99 says: "If the `0' and `-' flags both appear, the `0' flag is
+    * ignored.  For `d', `i', `o', `u', `x', and `X' conversions, if a
+    * precision is specified, the `0' flag is ignored." (7.19.6.1, 6)
+    */
+   if (flags & PRINT_F_MINUS)  /* Left justify. */
+      spadlen = -spadlen;
+   else if (flags & PRINT_F_ZERO && noprecision) {
+      zpadlen += spadlen;
+      spadlen = 0;
+   }
+   while (spadlen > 0) {   /* Leading spaces. */
+      OUTCHAR(str, *len, size, ' ');
+      spadlen--;
+   }
+   if (sign)   /* Sign. */
+      OUTCHAR(str, *len, size, sign);
+   if (hexprefix != 0) {   /* A "0x" or "0X" prefix. */
+      OUTCHAR(str, *len, size, '0');
+      OUTCHAR(str, *len, size, hexprefix);
+   }
+   while (zpadlen > 0) {   /* Leading zeros. */
+      OUTCHAR(str, *len, size, '0');
+      zpadlen--;
+   }
+   while (pos > 0) {   /* The actual digits. */
+      pos--;
+      OUTCHAR(str, *len, size, iconvert[pos]);
+      if (separators > 0 && pos > 0 && pos % 3 == 0)
+         printsep(str, len, size);
+   }
+   while (spadlen < 0) {   /* Trailing spaces. */
+      OUTCHAR(str, *len, size, ' ');
+      spadlen++;
+   }
 }
 
 
 static void
 printsep(char *str, size_t *len, size_t size)
 {
-    OUTCHAR(str, *len, size, ',');
+   OUTCHAR(str, *len, size, ',');
 }
 
 static int
 getnumsep(int digits)
 {
-    int separators = (digits - ((digits % 3 == 0) ? 1 : 0)) / 3;
-    return separators;
+   int separators = (digits - ((digits % 3 == 0) ? 1 : 0)) / 3;
+   return separators;
 }
 
 static int
 convert(UINTMAX_T value, char *buf, size_t size, int base, int caps)
 {
-    const char *digits = caps ? "0123456789ABCDEF" : "0123456789abcdef";
-    size_t pos = 0;
+   const char *digits = caps ? "0123456789ABCDEF" : "0123456789abcdef";
+   size_t pos = 0;
 
-    /* We return an unterminated buffer with the digits in reverse order. */
-    do {
-        buf[pos++] = digits[value % base];
-        value /= base;
-    } while (value != 0 && pos < size);
+   /* We return an unterminated buffer with the digits in reverse order. */
+   do {
+      buf[pos++] = digits[value % base];
+      value /= base;
+   } while (value != 0 && pos < size);
 
-    return (int)pos;
+   return (int)pos;
 }
 
 int vsprintf(char *buf, const char *fmt, va_list args)
 {
-    return vsnprintf(buf, INT_MAX, fmt, args);
+   return vsnprintf(buf, INT_MAX, fmt, args);
 }
 
 int sprintf(char *buffer, const char *fmt, ...)
 {
-    va_list args;
+   va_list args;
 
-    va_start(args, fmt);
-    int i = vsprintf(buffer, fmt, args);
-    va_end(args);
-    return i;
+   va_start(args, fmt);
+   int i = vsprintf(buffer, fmt, args);
+   va_end(args);
+   return i;
 }
 
 int snprintf(char *buffer, size_t len, const char *fmt, ...)
 {
-    va_list args;
+   va_list args;
 
-    va_start(args, fmt);
-    int i = vsnprintf(buffer, len, fmt, args);
-    va_end(args);
-    return i;
+   va_start(args, fmt);
+   int i = vsnprintf(buffer, len, fmt, args);
+   va_end(args);
+   return i;
 }
 
 static char strfmt_buf[0x200];
 
 char *strfmt(const char *fmt, ...)
 {
-    va_list args;
+   va_list args;
 
-    va_start(args, fmt);
-    vsnprintf(strfmt_buf, sizeof(strfmt_buf), fmt, args);
-    va_end(args);
+   va_start(args, fmt);
+   vsnprintf(strfmt_buf, sizeof(strfmt_buf), fmt, args);
+   va_end(args);
 
-    return strfmt_buf;
+   return strfmt_buf;
 }

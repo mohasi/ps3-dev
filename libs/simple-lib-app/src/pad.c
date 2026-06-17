@@ -73,17 +73,17 @@ PadButtonState getPadButtonState(PadButton button)
 
 int isPadButtonPressed(PadButton button)
 {
-    return getPadButtonState(button) == PAD_BUTTON_STATE_PRESSED;
+   return getPadButtonState(button) == PAD_BUTTON_STATE_PRESSED;
 }
 
 int isPadButtonHeld(PadButton button)
 {
-    return getPadButtonState(button) == PAD_BUTTON_STATE_HELD;
+   return getPadButtonState(button) == PAD_BUTTON_STATE_HELD;
 }
 
 int isPadButtonReleased(PadButton button)
 {
-    return getPadButtonState(button) == PAD_BUTTON_STATE_RELEASED;
+   return getPadButtonState(button) == PAD_BUTTON_STATE_RELEASED;
 }
 
 Stick getPadLeftStick(void)

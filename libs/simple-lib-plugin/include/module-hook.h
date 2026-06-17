@@ -45,10 +45,10 @@
 // layout consumed by the asm trampoline (offsets fixed):
 //   0: writeIdx  4: ringBase  8: ringMask  12: readIdx (drain-side only)
 typedef struct {
-    uint32_t writeIdx;   // bumped by trampoline, ANDed with mask for store
-    uint32_t ringBase;   // == arena + RING_CTRL_BYTES
-    uint32_t ringMask;   // entry-count mask (ringSize-1)
-    uint32_t readIdx;    // drain cursor (consumer-only)
+   uint32_t writeIdx;   // bumped by trampoline, ANDed with mask for store
+   uint32_t ringBase;   // == arena + RING_CTRL_BYTES
+   uint32_t ringMask;   // entry-count mask (ringSize-1)
+   uint32_t readIdx;    // drain cursor (consumer-only)
 } HookRingCtrl;
 
 #define HOOK_RING_CTRL_BYTES  ((uint32_t)sizeof(HookRingCtrl))
@@ -118,51 +118,51 @@ __asm__(
 // ring-control fields (writeIdxAddr/ringBase/ringMask) are hoisted to
 // the global HookRingCtrl loaded by hookRingCtrl above.
 typedef struct {
-    uint32_t origEntry;
-    uint32_t origToc;
-    uint32_t eventTag;   // == slotAddr; manifest re-maps to (mod, nid)
+   uint32_t origEntry;
+   uint32_t origToc;
+   uint32_t eventTag;   // == slotAddr; manifest re-maps to (mod, nid)
 } HookContext;
 
 // fake OPD published into funcTable[i]. 8-byte aligned so a caller
 // doing `ld r12,0(r11); ld r2,8(r11)` sees a coherent pair.
 typedef struct __attribute__((aligned(8))) {
-    uint32_t trampEntry;
-    uint32_t ctxAddr;
+   uint32_t trampEntry;
+   uint32_t ctxAddr;
 } HookOpd;
 
 // per-slot record. 32 bytes (8-aligned). nid is kept inline so the
 // manifest writer doesn't have to re-walk libstubs at disarm time;
 // modIdx is dropped (recovered by binary-searching mods[].first).
 typedef struct __attribute__((aligned(8))) {
-    HookOpd     fakeOpd;     // funcTable[i] will point here after arm (8B)
-    HookContext ctx;         // trampoline reads via r2          (12B)
-    uint32_t    slotAddr;    // &funcTable[i] inside target seg1 (4B)
-    uint32_t    origValue;   // original funcTable[i]            (4B)
-    uint32_t    nid;         // for manifest                     (4B)
+   HookOpd     fakeOpd;     // funcTable[i] will point here after arm (8B)
+   HookContext ctx;         // trampoline reads via r2          (12B)
+   uint32_t    slotAddr;    // &funcTable[i] inside target seg1 (4B)
+   uint32_t    origValue;   // original funcTable[i]            (4B)
+   uint32_t    nid;         // for manifest                     (4B)
 } HookSlot;                  // total: 32B (padded from 32 - no slack)
 
 // one row per armed module: contiguous run of slots[first..first+count).
 // id is kept so disarm can re-query the module's current segments and
 // skip writes into pages that have been unloaded or relocated.
 typedef struct {
-    uint32_t first;
-    uint32_t count;
-    int32_t  id;                   // sys_prx id, for live-segment re-check at disarm
-    char     name[PRX_NAME_MAX];   // PRX_NAME_MAX == 30
+   uint32_t first;
+   uint32_t count;
+   int32_t  id;                   // sys_prx id, for live-segment re-check at disarm
+   char     name[PRX_NAME_MAX];   // PRX_NAME_MAX == 30
 } HookMod;
 
 // everything an armed session owns. all pointers index into the single
 // arena block (arenaAddr); freeHookArm releases it and zeroes state.
 typedef struct {
-    uint32_t  arenaAddr;     // sysMemFree handle for the 64KB block
-    HookMod  *mods;          // arena + ring header + ring bytes
-    HookSlot *slots;         // arena + ... + modsBytes
-    uint32_t  slotCap;       // max slots that fit in this arena
-    uint32_t  modCap;        // max mods that fit in this arena
-    uint32_t  slotCursor;    // append position; final == armed count
-    uint32_t  modCursor;     // same, for mods[]
-    uint32_t  slotsRequested;// total slots the caller wanted to arm
-    uint32_t  slotsDropped;  // slotsRequested - slotCursor (capacity miss)
+   uint32_t  arenaAddr;     // sysMemFree handle for the 64KB block
+   HookMod  *mods;          // arena + ring header + ring bytes
+   HookSlot *slots;         // arena + ... + modsBytes
+   uint32_t  slotCap;       // max slots that fit in this arena
+   uint32_t  modCap;        // max mods that fit in this arena
+   uint32_t  slotCursor;    // append position; final == armed count
+   uint32_t  modCursor;     // same, for mods[]
+   uint32_t  slotsRequested;// total slots the caller wanted to arm
+   uint32_t  slotsDropped;  // slotsRequested - slotCursor (capacity miss)
 } HookArm;
 
 static HookArm activeArm;
@@ -183,90 +183,90 @@ static inline uint32_t getHookSlotsDropped(void)   { return activeArm.slotsDropp
 //   -1 arena alloc failed   -3 already armed
 static inline int allocHookArm(uint32_t requestedSlots, uint32_t modCount)
 {
-    if (isHookArmed()) return -3;
-    if (modCount == 0) return -3;
+   if (isHookArmed()) return -3;
+   if (modCount == 0) return -3;
 
-    uint32_t arenaAddr = 0;
-    int32_t  rc = sysMemAllocate(HOOK_ARENA_BYTES, SYS_PAGE_64K, &arenaAddr);
-    logInfo("[hook] arena alloc rc=0x%x addr=0x%x bytes=%u\n",
-            (unsigned)rc, (unsigned)arenaAddr, (unsigned)HOOK_ARENA_BYTES);
-    if (rc < 0 || arenaAddr == 0) {
-        logError("[hook] arena alloc failed rc=0x%x\n", (unsigned)rc);
-        return -1;
-    }
+   uint32_t arenaAddr = 0;
+   int32_t  rc = sysMemAllocate(HOOK_ARENA_BYTES, SYS_PAGE_64K, &arenaAddr);
+   logInfo("[hook] arena alloc rc=0x%x addr=0x%x bytes=%u\n",
+           (unsigned)rc, (unsigned)arenaAddr, (unsigned)HOOK_ARENA_BYTES);
+   if (rc < 0 || arenaAddr == 0) {
+      logError("[hook] arena alloc failed rc=0x%x\n", (unsigned)rc);
+      return -1;
+   }
 
-    // layout: [ring ctrl][ring bytes][mods[modCount]][slots[capSlots]]
-    uint32_t modsBytes = modCount * (uint32_t)sizeof(HookMod);
-    uint32_t fixed     = HOOK_RING_CTRL_BYTES + HOOK_RING_BYTES + modsBytes;
-    if (fixed >= HOOK_ARENA_BYTES) {
-        // too many mods requested for one arena. shouldn't happen in
-        // practice (modCount capped well below this), but fail clean.
-        logError("[hook] arena too small for modCount=%u (fixed=%u)\n",
-                 (unsigned)modCount, (unsigned)fixed);
-        sysMemFree(arenaAddr);
-        return -1;
-    }
-    uint32_t slotsRoom = HOOK_ARENA_BYTES - fixed;
-    uint32_t slotCap   = slotsRoom / (uint32_t)sizeof(HookSlot);
+   // layout: [ring ctrl][ring bytes][mods[modCount]][slots[capSlots]]
+   uint32_t modsBytes = modCount * (uint32_t)sizeof(HookMod);
+   uint32_t fixed     = HOOK_RING_CTRL_BYTES + HOOK_RING_BYTES + modsBytes;
+   if (fixed >= HOOK_ARENA_BYTES) {
+      // too many mods requested for one arena. shouldn't happen in
+      // practice (modCount capped well below this), but fail clean.
+      logError("[hook] arena too small for modCount=%u (fixed=%u)\n",
+               (unsigned)modCount, (unsigned)fixed);
+      sysMemFree(arenaAddr);
+      return -1;
+   }
+   uint32_t slotsRoom = HOOK_ARENA_BYTES - fixed;
+   uint32_t slotCap   = slotsRoom / (uint32_t)sizeof(HookSlot);
 
-    HookRingCtrl *ctrl = (HookRingCtrl *)(uintptr_t)arenaAddr;
-    ctrl->writeIdx = 0;
-    ctrl->ringBase = arenaAddr + HOOK_RING_CTRL_BYTES;
-    ctrl->ringMask = HOOK_RING_MASK;
-    ctrl->readIdx  = 0;
+   HookRingCtrl *ctrl = (HookRingCtrl *)(uintptr_t)arenaAddr;
+   ctrl->writeIdx = 0;
+   ctrl->ringBase = arenaAddr + HOOK_RING_CTRL_BYTES;
+   ctrl->ringMask = HOOK_RING_MASK;
+   ctrl->readIdx  = 0;
 
-    // wipe ring so a fresh arm starts with a clean window. ring is
-    // (HOOK_RING_SIZE * HOOK_EVENT_WORDS) words of 4 bytes.
-    uint32_t *ring = (uint32_t *)(uintptr_t)ctrl->ringBase;
-    for (uint32_t r = 0; r < HOOK_RING_SIZE * HOOK_EVENT_WORDS; r++) ring[r] = 0;
+   // wipe ring so a fresh arm starts with a clean window. ring is
+   // (HOOK_RING_SIZE * HOOK_EVENT_WORDS) words of 4 bytes.
+   uint32_t *ring = (uint32_t *)(uintptr_t)ctrl->ringBase;
+   for (uint32_t r = 0; r < HOOK_RING_SIZE * HOOK_EVENT_WORDS; r++) ring[r] = 0;
 
-    activeArm.arenaAddr      = arenaAddr;
-    activeArm.mods           = (HookMod  *)(uintptr_t)(arenaAddr + HOOK_RING_CTRL_BYTES + HOOK_RING_BYTES);
-    activeArm.slots          = (HookSlot *)(uintptr_t)(arenaAddr + HOOK_RING_CTRL_BYTES + HOOK_RING_BYTES + modsBytes);
-    activeArm.slotCap        = slotCap;
-    activeArm.modCap         = modCount;
-    activeArm.slotCursor     = 0;
-    activeArm.modCursor      = 0;
-    activeArm.slotsRequested = requestedSlots;
-    activeArm.slotsDropped   = 0;
+   activeArm.arenaAddr      = arenaAddr;
+   activeArm.mods           = (HookMod  *)(uintptr_t)(arenaAddr + HOOK_RING_CTRL_BYTES + HOOK_RING_BYTES);
+   activeArm.slots          = (HookSlot *)(uintptr_t)(arenaAddr + HOOK_RING_CTRL_BYTES + HOOK_RING_BYTES + modsBytes);
+   activeArm.slotCap        = slotCap;
+   activeArm.modCap         = modCount;
+   activeArm.slotCursor     = 0;
+   activeArm.modCursor      = 0;
+   activeArm.slotsRequested = requestedSlots;
+   activeArm.slotsDropped   = 0;
 
-    hookRingCtrl = ctrl;
+   hookRingCtrl = ctrl;
 
-    logInfo("[hook] arena=0x%x ring=0x%x mods=0x%x slots=0x%x slotCap=%u modCap=%u requested=%u\n",
-            (unsigned)arenaAddr, (unsigned)ctrl->ringBase,
-            (unsigned)(uintptr_t)activeArm.mods,
-            (unsigned)(uintptr_t)activeArm.slots,
-            (unsigned)slotCap, (unsigned)modCount, (unsigned)requestedSlots);
-    return 0;
+   logInfo("[hook] arena=0x%x ring=0x%x mods=0x%x slots=0x%x slotCap=%u modCap=%u requested=%u\n",
+           (unsigned)arenaAddr, (unsigned)ctrl->ringBase,
+           (unsigned)(uintptr_t)activeArm.mods,
+           (unsigned)(uintptr_t)activeArm.slots,
+           (unsigned)slotCap, (unsigned)modCount, (unsigned)requestedSlots);
+   return 0;
 }
 
 // collector cookie threaded through forEachStubSlot during appendHookMod.
 // tracks per-mod drops so we know whether truncation hit this module.
 typedef struct {
-    uint32_t modDropped;
+   uint32_t modDropped;
 } HookAppendCookie;
 
 static int appendOneHookSlot(const char *libname, uint32_t nid,
                              uint32_t slotAddr, uint32_t origValue, void *userData)
 {
-    (void)libname;   // host resolves names via nid-dump; we don't store them on PS3
-    // skip unresolved imports: the loader leaves funcTable[i] pointing at
-    // a null/sentinel OPD when a declared dependency couldn't be bound at
-    // load time. reading loaderOpd[0..1] from such a slot kills the bridge.
-    if (origValue == 0) return 1;
-    if (activeArm.slotCursor >= activeArm.slotCap) {
-        // arena full - count the miss and keep walking so we get an
-        // accurate slotsDropped total for the truncation report.
-        HookAppendCookie *cookie = (HookAppendCookie *)userData;
-        cookie->modDropped++;
-        activeArm.slotsDropped++;
-        return 1;
-    }
-    HookSlot *slot = &activeArm.slots[activeArm.slotCursor++];
-    slot->nid       = nid;
-    slot->slotAddr  = slotAddr;
-    slot->origValue = origValue;
-    return 1;
+   (void)libname;   // host resolves names via nid-dump; we don't store them on PS3
+   // skip unresolved imports: the loader leaves funcTable[i] pointing at
+   // a null/sentinel OPD when a declared dependency couldn't be bound at
+   // load time. reading loaderOpd[0..1] from such a slot kills the bridge.
+   if (origValue == 0) return 1;
+   if (activeArm.slotCursor >= activeArm.slotCap) {
+      // arena full - count the miss and keep walking so we get an
+      // accurate slotsDropped total for the truncation report.
+      HookAppendCookie *cookie = (HookAppendCookie *)userData;
+      cookie->modDropped++;
+      activeArm.slotsDropped++;
+      return 1;
+   }
+   HookSlot *slot = &activeArm.slots[activeArm.slotCursor++];
+   slot->nid       = nid;
+   slot->slotAddr  = slotAddr;
+   slot->origValue = origValue;
+   return 1;
 }
 
 // append one module's import slots into the active arm. populates a
@@ -280,28 +280,28 @@ static inline int appendHookMod(int32_t id, const char *name,
                                 const PrxSegment *segs, uint32_t segCount,
                                 const PrxLinkage *linkage)
 {
-    if (activeArm.modCursor >= activeArm.modCap) return -1;
-    if (!addrInSegments(linkage->libstubAddr, linkage->libstubSize, segs, segCount)) return -2;
+   if (activeArm.modCursor >= activeArm.modCap) return -1;
+   if (!addrInSegments(linkage->libstubAddr, linkage->libstubSize, segs, segCount)) return -2;
 
-    HookMod *mod = &activeArm.mods[activeArm.modCursor++];
-    mod->first = activeArm.slotCursor;
-    mod->id    = id;
-    uint32_t i = 0;
-    while (i + 1 < PRX_NAME_MAX && name[i]) { mod->name[i] = name[i]; i++; }
-    mod->name[i] = '\0';
+   HookMod *mod = &activeArm.mods[activeArm.modCursor++];
+   mod->first = activeArm.slotCursor;
+   mod->id    = id;
+   uint32_t i = 0;
+   while (i + 1 < PRX_NAME_MAX && name[i]) { mod->name[i] = name[i]; i++; }
+   mod->name[i] = '\0';
 
-    HookAppendCookie cookie = { 0 };
-    forEachStubSlot(linkage->libstubAddr, linkage->libstubSize,
-                    segs, segCount, appendOneHookSlot, &cookie);
+   HookAppendCookie cookie = { 0 };
+   forEachStubSlot(linkage->libstubAddr, linkage->libstubSize,
+                   segs, segCount, appendOneHookSlot, &cookie);
 
-    mod->count = activeArm.slotCursor - mod->first;
-    if (cookie.modDropped > 0) {
-        logWarn("[hook] append %s slots=%u dropped=%u (arena full)\n",
-                mod->name, (unsigned)mod->count, (unsigned)cookie.modDropped);
-    } else {
-        logInfo("[hook] append %s slots=%u\n", mod->name, (unsigned)mod->count);
-    }
-    return 0;
+   mod->count = activeArm.slotCursor - mod->first;
+   if (cookie.modDropped > 0) {
+      logWarn("[hook] append %s slots=%u dropped=%u (arena full)\n",
+              mod->name, (unsigned)mod->count, (unsigned)cookie.modDropped);
+   } else {
+      logInfo("[hook] append %s slots=%u\n", mod->name, (unsigned)mod->count);
+   }
+   return 0;
 }
 
 // finalise every slot's context + fake OPD, then publish all funcTable
@@ -310,26 +310,26 @@ static inline int appendHookMod(int32_t id, const char *name,
 // aren't from O(N*setup) to O(N*store).
 static inline void publishHookArm(void)
 {
-    uint32_t trampEntry = (uint32_t)(uintptr_t)hookTrampolineCode;
-    for (uint32_t s = 0; s < activeArm.slotCursor; s++) {
-        HookSlot       *slot      = &activeArm.slots[s];
-        const uint32_t *loaderOpd = (const uint32_t *)(uintptr_t)slot->origValue;
-        slot->ctx.origEntry      = loaderOpd[0];
-        slot->ctx.origToc        = loaderOpd[1];
-        slot->ctx.eventTag       = slot->slotAddr;   // manifest maps slotAddr -> (mod, nid)
-        slot->fakeOpd.trampEntry = trampEntry;
-        slot->fakeOpd.ctxAddr    = (uint32_t)(uintptr_t)&slot->ctx;
-    }
-    __sync_synchronize();
-    for (uint32_t s = 0; s < activeArm.slotCursor; s++) {
-        HookSlot *slot = &activeArm.slots[s];
-        *(volatile uint32_t *)(uintptr_t)slot->slotAddr =
-            (uint32_t)(uintptr_t)&slot->fakeOpd;
-    }
-    __sync_synchronize();
-    logInfo("[hook] published mods=%u slots=%u tramp=0x%x dropped=%u\n",
-            (unsigned)activeArm.modCursor, (unsigned)activeArm.slotCursor,
-            (unsigned)trampEntry, (unsigned)activeArm.slotsDropped);
+   uint32_t trampEntry = (uint32_t)(uintptr_t)hookTrampolineCode;
+   for (uint32_t s = 0; s < activeArm.slotCursor; s++) {
+      HookSlot       *slot      = &activeArm.slots[s];
+      const uint32_t *loaderOpd = (const uint32_t *)(uintptr_t)slot->origValue;
+      slot->ctx.origEntry      = loaderOpd[0];
+      slot->ctx.origToc        = loaderOpd[1];
+      slot->ctx.eventTag       = slot->slotAddr;   // manifest maps slotAddr -> (mod, nid)
+      slot->fakeOpd.trampEntry = trampEntry;
+      slot->fakeOpd.ctxAddr    = (uint32_t)(uintptr_t)&slot->ctx;
+   }
+   __sync_synchronize();
+   for (uint32_t s = 0; s < activeArm.slotCursor; s++) {
+      HookSlot *slot = &activeArm.slots[s];
+      *(volatile uint32_t *)(uintptr_t)slot->slotAddr =
+         (uint32_t)(uintptr_t)&slot->fakeOpd;
+   }
+   __sync_synchronize();
+   logInfo("[hook] published mods=%u slots=%u tramp=0x%x dropped=%u\n",
+           (unsigned)activeArm.modCursor, (unsigned)activeArm.slotCursor,
+           (unsigned)trampEntry, (unsigned)activeArm.slotsDropped);
 }
 
 // restore every funcTable entry. producer stops feeding the ring as
@@ -345,58 +345,58 @@ static inline void publishHookArm(void)
 // only restored when still in range.
 static inline void restoreHookSlots(void)
 {
-    if (!isHookArmed()) return;
-    logInfo("[hook] restore begin: mods=%u slots=%u arena=0x%x\n",
-            (unsigned)activeArm.modCursor, (unsigned)activeArm.slotCursor,
-            (unsigned)activeArm.arenaAddr);
+   if (!isHookArmed()) return;
+   logInfo("[hook] restore begin: mods=%u slots=%u arena=0x%x\n",
+           (unsigned)activeArm.modCursor, (unsigned)activeArm.slotCursor,
+           (unsigned)activeArm.arenaAddr);
 
-    PrxSegment segs[PRX_SEGMENTS_MAX];
-    char       name[PRX_NAME_MAX];
-    char       file[PRX_FILENAME_MAX];
+   PrxSegment segs[PRX_SEGMENTS_MAX];
+   char       name[PRX_NAME_MAX];
+   char       file[PRX_FILENAME_MAX];
 
-    for (uint32_t m = 0; m < activeArm.modCursor; m++) {
-        const HookMod *mod = &activeArm.mods[m];
-        uint32_t segCount = 0;
-        int32_t  rc = prxInfo(mod->id, name, file, segs, PRX_SEGMENTS_MAX, &segCount);
-        if (rc < 0 || segCount == 0) {
-            logWarn("[hook] restore mod[%u]=%s gone (rc=0x%x), skipping %u slots\n",
-                    (unsigned)m, mod->name, (unsigned)rc, (unsigned)mod->count);
+   for (uint32_t m = 0; m < activeArm.modCursor; m++) {
+      const HookMod *mod = &activeArm.mods[m];
+      uint32_t segCount = 0;
+      int32_t  rc = prxInfo(mod->id, name, file, segs, PRX_SEGMENTS_MAX, &segCount);
+      if (rc < 0 || segCount == 0) {
+         logWarn("[hook] restore mod[%u]=%s gone (rc=0x%x), skipping %u slots\n",
+                 (unsigned)m, mod->name, (unsigned)rc, (unsigned)mod->count);
+         continue;
+      }
+      if (segCount > PRX_SEGMENTS_MAX) segCount = PRX_SEGMENTS_MAX;
+      uint32_t restored = 0, skipped = 0;
+      uint32_t end = mod->first + mod->count;
+      for (uint32_t s = mod->first; s < end; s++) {
+         HookSlot *slot = &activeArm.slots[s];
+         if (!addrInSegments(slot->slotAddr, 4, segs, segCount)) {
+            skipped++;
             continue;
-        }
-        if (segCount > PRX_SEGMENTS_MAX) segCount = PRX_SEGMENTS_MAX;
-        uint32_t restored = 0, skipped = 0;
-        uint32_t end = mod->first + mod->count;
-        for (uint32_t s = mod->first; s < end; s++) {
-            HookSlot *slot = &activeArm.slots[s];
-            if (!addrInSegments(slot->slotAddr, 4, segs, segCount)) {
-                skipped++;
-                continue;
-            }
-            __sync_synchronize();
-            *(volatile uint32_t *)(uintptr_t)slot->slotAddr = slot->origValue;
-            __sync_synchronize();
-            restored++;
-        }
-        if (skipped) {
-            logWarn("[hook] restore mod[%u]=%s restored=%u skipped=%u\n",
-                    (unsigned)m, mod->name, (unsigned)restored, (unsigned)skipped);
-        } else {
-            logInfo("[hook] restore mod[%u]=%s restored=%u\n",
-                    (unsigned)m, mod->name, (unsigned)restored);
-        }
-    }
-    logInfo("[hook] restored mods=%u slots=%u\n",
-            (unsigned)activeArm.modCursor, (unsigned)activeArm.slotCursor);
+         }
+         __sync_synchronize();
+         *(volatile uint32_t *)(uintptr_t)slot->slotAddr = slot->origValue;
+         __sync_synchronize();
+         restored++;
+      }
+      if (skipped) {
+         logWarn("[hook] restore mod[%u]=%s restored=%u skipped=%u\n",
+                 (unsigned)m, mod->name, (unsigned)restored, (unsigned)skipped);
+      } else {
+         logInfo("[hook] restore mod[%u]=%s restored=%u\n",
+                 (unsigned)m, mod->name, (unsigned)restored);
+      }
+   }
+   logInfo("[hook] restored mods=%u slots=%u\n",
+           (unsigned)activeArm.modCursor, (unsigned)activeArm.slotCursor);
 }
 
 // free arena, zero state. caller must have called restoreHookSlots
 // first and drained any final events.
 static inline void freeHookArm(void)
 {
-    if (activeArm.arenaAddr != 0) sysMemFree(activeArm.arenaAddr);
-    hookRingCtrl = 0;
-    HookArm cleared = { 0 };
-    activeArm = cleared;
+   if (activeArm.arenaAddr != 0) sysMemFree(activeArm.arenaAddr);
+   hookRingCtrl = 0;
+   HookArm cleared = { 0 };
+   activeArm = cleared;
 }
 
 // drain newly-recorded events from the ring. consumer-side: bumps
@@ -408,39 +408,39 @@ typedef int (*HookSpanSink)(void *cookie, const uint32_t *events, uint32_t count
 
 static inline uint32_t drainHookEvents(HookSpanSink sink, void *cookie)
 {
-    if (hookRingCtrl == 0) return 0;
-    HookRingCtrl   *ctrl = hookRingCtrl;
-    const uint32_t *ring = (const uint32_t *)(uintptr_t)ctrl->ringBase;
-    uint32_t write = ctrl->writeIdx;
-    uint32_t read  = ctrl->readIdx;
-    uint32_t avail = write - read;
-    if (avail == 0) return 0;
-    if (avail > HOOK_RING_SIZE) {
-        read  = write - HOOK_RING_SIZE;
-        avail = HOOK_RING_SIZE;
-    }
-    uint32_t start = read & HOOK_RING_MASK;
-    uint32_t first = HOOK_RING_SIZE - start;
-    if (first > avail) first = avail;
-    // each event is HOOK_EVENT_WORDS words; sink takes event count and
-    // gets the base word pointer for the contiguous span.
-    if (sink(cookie, &ring[start * HOOK_EVENT_WORDS], first) < 0) return 0;
-    if (avail > first) {
-        if (sink(cookie, &ring[0], avail - first) < 0) {
-            ctrl->readIdx = read + first;
-            return first;
-        }
-    }
-    ctrl->readIdx = write;
-    return avail;
+   if (hookRingCtrl == 0) return 0;
+   HookRingCtrl   *ctrl = hookRingCtrl;
+   const uint32_t *ring = (const uint32_t *)(uintptr_t)ctrl->ringBase;
+   uint32_t write = ctrl->writeIdx;
+   uint32_t read  = ctrl->readIdx;
+   uint32_t avail = write - read;
+   if (avail == 0) return 0;
+   if (avail > HOOK_RING_SIZE) {
+      read  = write - HOOK_RING_SIZE;
+      avail = HOOK_RING_SIZE;
+   }
+   uint32_t start = read & HOOK_RING_MASK;
+   uint32_t first = HOOK_RING_SIZE - start;
+   if (first > avail) first = avail;
+   // each event is HOOK_EVENT_WORDS words; sink takes event count and
+   // gets the base word pointer for the contiguous span.
+   if (sink(cookie, &ring[start * HOOK_EVENT_WORDS], first) < 0) return 0;
+   if (avail > first) {
+      if (sink(cookie, &ring[0], avail - first) < 0) {
+         ctrl->readIdx = read + first;
+         return first;
+      }
+   }
+   ctrl->readIdx = write;
+   return avail;
 }
 
 // drop count = events that were overwritten before the drain caught up.
 static inline uint32_t getHookDropCount(void)
 {
-    if (hookRingCtrl == 0) return 0;
-    uint32_t write = hookRingCtrl->writeIdx;
-    uint32_t read  = hookRingCtrl->readIdx;
-    uint32_t gap   = write - read;
-    return (gap > HOOK_RING_SIZE) ? (gap - HOOK_RING_SIZE) : 0;
+   if (hookRingCtrl == 0) return 0;
+   uint32_t write = hookRingCtrl->writeIdx;
+   uint32_t read  = hookRingCtrl->readIdx;
+   uint32_t gap   = write - read;
+   return (gap > HOOK_RING_SIZE) ? (gap - HOOK_RING_SIZE) : 0;
 }

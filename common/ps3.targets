@@ -2,24 +2,24 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!-- shared compiler defaults -->
   <ItemDefinitionGroup>
-    <ClCompile>
-      <OptimizationLevel>Level2</OptimizationLevel>
-      <WarningLevel>EnableAllWarnings</WarningLevel>
-      <!-- The MSBuild TreatWarningAsError property is a no-op for the PS3
-           GCC toolset (no rule mapping). Enforce warnings-as-errors on the
-           compiler command line directly. -->
-      <AdditionalOptions>-Werror %(AdditionalOptions)</AdditionalOptions>
-    </ClCompile>
+   <ClCompile>
+     <OptimizationLevel>Level2</OptimizationLevel>
+     <WarningLevel>EnableAllWarnings</WarningLevel>
+     <!-- The MSBuild TreatWarningAsError property is a no-op for the PS3
+         GCC toolset (no rule mapping). Enforce warnings-as-errors on the
+         compiler command line directly. -->
+     <AdditionalOptions>-Werror %(AdditionalOptions)</AdditionalOptions>
+   </ClCompile>
   </ItemDefinitionGroup>
 
   <!-- shared clean: wipe bin and obj contents so stale artifacts don't linger -->
   <Target Name="CustomClean" AfterTargets="Clean">
-    <ItemGroup>
-      <BinFiles Include="$(OutDir)**\*" />
-      <ObjFiles Include="$(IntDir)**\*" Exclude="$(IntDir)*.log" />
-    </ItemGroup>
-    <Delete Files="@(BinFiles)" ContinueOnError="true" />
-    <Delete Files="@(ObjFiles)" ContinueOnError="true" />
-    <RemoveDir Directories="$(OutDir)" ContinueOnError="true" />
+   <ItemGroup>
+     <BinFiles Include="$(OutDir)**\*" />
+     <ObjFiles Include="$(IntDir)**\*" Exclude="$(IntDir)*.log" />
+   </ItemGroup>
+   <Delete Files="@(BinFiles)" ContinueOnError="true" />
+   <Delete Files="@(ObjFiles)" ContinueOnError="true" />
+   <RemoveDir Directories="$(OutDir)" ContinueOnError="true" />
   </Target>
 </Project>

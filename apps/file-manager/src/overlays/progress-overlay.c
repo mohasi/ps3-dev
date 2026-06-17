@@ -75,32 +75,32 @@ static int      cancelling;  // cancel requested, awaiting the worker to exit
 
 void initProgressOverlay(GfxTexture s, Audio *sfx)
 {
-    sprites  = s;
-    clickSfx = sfx;
-    font     = openSystemFont(FONT_POP);
+   sprites  = s;
+   clickSfx = sfx;
+   font     = openSystemFont(FONT_POP);
 
-    initNineSlice(&panel,   sprites, 0, 0, DIALOG_W, DIALOG_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
-    initNineSlice(&frame,   sprites, 0, 0, FRAME_W, FRAME_H, spriteRegions[SPRITE_FRAME], FRAME_CAP, FRAME_CAP);
-    initNineSlice(&barFill, sprites, 0, 0, BAR_MIN_W, FRAME_H - 2 * BAR_PAD, spriteRegions[SPRITE_PROGRESS], PROGRESS_CAP, PROGRESS_CAP);
-    initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
-    initImage(&circleIcon, sprites, 0, 0, CANCEL_ICON, CANCEL_ICON, spriteRegions[SPRITE_CIRCLE], GFX_FILTER_LINEAR);
+   initNineSlice(&panel,   sprites, 0, 0, DIALOG_W, DIALOG_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
+   initNineSlice(&frame,   sprites, 0, 0, FRAME_W, FRAME_H, spriteRegions[SPRITE_FRAME], FRAME_CAP, FRAME_CAP);
+   initNineSlice(&barFill, sprites, 0, 0, BAR_MIN_W, FRAME_H - 2 * BAR_PAD, spriteRegions[SPRITE_PROGRESS], PROGRESS_CAP, PROGRESS_CAP);
+   initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
+   initImage(&circleIcon, sprites, 0, 0, CANCEL_ICON, CANCEL_ICON, spriteRegions[SPRITE_CIRCLE], GFX_FILTER_LINEAR);
 
-    initLabel(&titleLabel,    &font, 0, 0, DIALOG_W - TITLE_X - TEXT_RIGHT_PAD,    AUTO, TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
-    initLabel(&subtitleLabel, &font, 0, 0, DIALOG_W - SUBTITLE_X - TEXT_RIGHT_PAD, AUTO, SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
-    initLabel(&pctLabel,      &font, 0, 0, PCT_W,  AUTO, PCT_SIZE,    COLOR_WHITE, TEXT_NOWRAP, "");
-    initLabel(&cancelLabel,   &font, 0, 0, 120,    AUTO, CANCEL_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Cancel");
+   initLabel(&titleLabel,    &font, 0, 0, DIALOG_W - TITLE_X - TEXT_RIGHT_PAD,    AUTO, TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&subtitleLabel, &font, 0, 0, DIALOG_W - SUBTITLE_X - TEXT_RIGHT_PAD, AUTO, SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&pctLabel,      &font, 0, 0, PCT_W,  AUTO, PCT_SIZE,    COLOR_WHITE, TEXT_NOWRAP, "");
+   initLabel(&cancelLabel,   &font, 0, 0, 120,    AUTO, CANCEL_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Cancel");
 }
 
 void startProgress(const char *title, const char *subtitle, TaskBody run, ProgressDoneCallback onDone)
 {
-    onDoneCb   = onDone;
-    cancelling = 0;
-    setLabelText(&titleLabel,    strOrEmpty(title));
-    setLabelText(&subtitleLabel, strOrEmpty(subtitle));
-    setLabelText(&pctLabel,      "0%");
+   onDoneCb   = onDone;
+   cancelling = 0;
+   setLabelText(&titleLabel,    strOrEmpty(title));
+   setLabelText(&subtitleLabel, strOrEmpty(subtitle));
+   setLabelText(&pctLabel,      "0%");
 
-    startTask(run);
-    showOverlay(&progressOverlay);  // dialog shows from 0% while the task runs
+   startTask(run);
+   showOverlay(&progressOverlay);  // dialog shows from 0% while the task runs
 }
 
 static void show(void) { progressOverlay.status = OVERLAY_VISIBLE; }
@@ -108,88 +108,88 @@ static void hide(void) { progressOverlay.status = OVERLAY_HIDDEN; }
 
 static void update(void)
 {
-    // task finished: tear down and hand back to the caller on the main thread.
-    if (!isTaskRunning()) {
-        int cancelled = isCancelRequested();
-        ProgressDoneCallback cb = onDoneCb;
-        onDoneCb = NULL;
-        hideOverlay(&progressOverlay);
-        cancelling = 0;
-        if (cb) cb(cancelled);
-        return;
-    }
+   // task finished: tear down and hand back to the caller on the main thread.
+   if (!isTaskRunning()) {
+      int cancelled = isCancelRequested();
+      ProgressDoneCallback cb = onDoneCb;
+      onDoneCb = NULL;
+      hideOverlay(&progressOverlay);
+      cancelling = 0;
+      if (cb) cb(cancelled);
+      return;
+   }
 
-    if (!cancelling && isPadButtonPressed(PAD_BTN_CIRCLE)) {
-        playSfxOnce(clickSfx);
-        cancelling = 1;
-        cancelTask();
-        setLabelText(&subtitleLabel, "Cancelling...");
-    }
+   if (!cancelling && isPadButtonPressed(PAD_BTN_CIRCLE)) {
+      playSfxOnce(clickSfx);
+      cancelling = 1;
+      cancelTask();
+      setLabelText(&subtitleLabel, "Cancelling...");
+   }
 }
 
 static void draw(void)
 {
-    int sw = getGfxScreenWidth();
-    int sh = getGfxScreenHeight();
-    int dialogX = (sw - DIALOG_W) / 2;
-    int dialogY = (sh - DIALOG_H) / 2;
+   int sw = getGfxScreenWidth();
+   int sh = getGfxScreenHeight();
+   int dialogX = (sw - DIALOG_W) / 2;
+   int dialogY = (sh - DIALOG_H) / 2;
 
-    fillGfxRectangle(0, 0, sw, sh, COLOR_SCRIM);
-    fillGfxRectangle(dialogX, dialogY, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG);
-    moveNineSlice(&panel, dialogX, dialogY);
-    drawNineSlice(&panel);
+   fillGfxRectangle(0, 0, sw, sh, COLOR_SCRIM);
+   fillGfxRectangle(dialogX, dialogY, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG);
+   moveNineSlice(&panel, dialogX, dialogY);
+   drawNineSlice(&panel);
 
-    drawLabelAt(&titleLabel,    dialogX + TITLE_X,    dialogY + TITLE_Y);
-    drawLabelAt(&subtitleLabel, dialogX + SUBTITLE_X, dialogY + SUBTITLE_Y);
+   drawLabelAt(&titleLabel,    dialogX + TITLE_X,    dialogY + TITLE_Y);
+   drawLabelAt(&subtitleLabel, dialogX + SUBTITLE_X, dialogY + SUBTITLE_Y);
 
-    // frame around the bar
-    moveNineSlice(&frame, dialogX + FRAME_X, dialogY + FRAME_Y);
-    drawNineSlice(&frame);
+   // frame around the bar
+   moveNineSlice(&frame, dialogX + FRAME_X, dialogY + FRAME_Y);
+   drawNineSlice(&frame);
 
-    // fill, inset by BAR_PAD so it isn't flush with the frame
-    uint64_t total = getTotalBytes();
-    uint64_t done  = getProcessedBytes();
-    int pct = total > 0 ? (int)((done * 100) / total) : 0;
-    if (pct < 0)   pct = 0;
-    if (pct > 100) pct = 100;
+   // fill, inset by BAR_PAD so it isn't flush with the frame
+   uint64_t total = getTotalBytes();
+   uint64_t done  = getProcessedBytes();
+   int pct = total > 0 ? (int)((done * 100) / total) : 0;
+   if (pct < 0)   pct = 0;
+   if (pct > 100) pct = 100;
 
-    int barMaxW = FRAME_W - 2 * BAR_PAD;
-    int fillW   = barMaxW * pct / 100;
-    if (fillW > 0) {
-        if (fillW < BAR_MIN_W) fillW = BAR_MIN_W;  // keep the 9-slice legible
-        if (fillW > barMaxW)   fillW = barMaxW;
-        barFill.w = fillW;
-        moveNineSlice(&barFill, dialogX + FRAME_X + BAR_PAD, dialogY + FRAME_Y + BAR_PAD);
-        drawNineSlice(&barFill);
-    }
+   int barMaxW = FRAME_W - 2 * BAR_PAD;
+   int fillW   = barMaxW * pct / 100;
+   if (fillW > 0) {
+      if (fillW < BAR_MIN_W) fillW = BAR_MIN_W;  // keep the 9-slice legible
+      if (fillW > barMaxW)   fillW = barMaxW;
+      barFill.w = fillW;
+      moveNineSlice(&barFill, dialogX + FRAME_X + BAR_PAD, dialogY + FRAME_Y + BAR_PAD);
+      drawNineSlice(&barFill);
+   }
 
-    // percentage to the right of the bar, vertically centered to the frame
-    char pctStr[8];
-    int o = intToDec(pct, pctStr);
-    pctStr[o++] = '%';
-    pctStr[o]   = '\0';
-    setLabelText(&pctLabel, pctStr);
-    drawLabelAt(&pctLabel, dialogX + PCT_X, dialogY + FRAME_Y + (FRAME_H - PCT_SIZE) / 2);
+   // percentage to the right of the bar, vertically centered to the frame
+   char pctStr[8];
+   int o = intToDec(pct, pctStr);
+   pctStr[o++] = '%';
+   pctStr[o]   = '\0';
+   setLabelText(&pctLabel, pctStr);
+   drawLabelAt(&pctLabel, dialogX + PCT_X, dialogY + FRAME_Y + (FRAME_H - PCT_SIZE) / 2);
 
-    moveSlice(&separator, dialogX + SEP_X, dialogY + SEP_Y);
-    drawSlice(&separator);
+   moveSlice(&separator, dialogX + SEP_X, dialogY + SEP_Y);
+   drawSlice(&separator);
 
-    // single Cancel button: circle icon + label, centered as a group
-    float tw = measureFontText(&font, CANCEL_SIZE, "Cancel");
-    int groupW = CANCEL_ICON + CANCEL_GAP + (int)tw;
-    int gx = dialogX + (DIALOG_W - groupW) / 2;
-    drawImageAt(&circleIcon,  gx, dialogY + CANCEL_Y);
-    drawLabelAt(&cancelLabel, gx + CANCEL_ICON + CANCEL_GAP, dialogY + CANCEL_Y + (CANCEL_ICON - CANCEL_SIZE) / 2);
+   // single Cancel button: circle icon + label, centered as a group
+   float tw = measureFontText(&font, CANCEL_SIZE, "Cancel");
+   int groupW = CANCEL_ICON + CANCEL_GAP + (int)tw;
+   int gx = dialogX + (DIALOG_W - groupW) / 2;
+   drawImageAt(&circleIcon,  gx, dialogY + CANCEL_Y);
+   drawLabelAt(&cancelLabel, gx + CANCEL_ICON + CANCEL_GAP, dialogY + CANCEL_Y + (CANCEL_ICON - CANCEL_SIZE) / 2);
 }
 
 static void term(void)
 {
-    freeLabel(&titleLabel);
-    freeLabel(&subtitleLabel);
-    freeLabel(&pctLabel);
-    freeLabel(&cancelLabel);
-    closeFont(&font);
-    progressOverlay.status = OVERLAY_TERMINATED;
+   freeLabel(&titleLabel);
+   freeLabel(&subtitleLabel);
+   freeLabel(&pctLabel);
+   freeLabel(&cancelLabel);
+   closeFont(&font);
+   progressOverlay.status = OVERLAY_TERMINATED;
 }
 
 Overlay progressOverlay = { show, hide, update, draw, term, OVERLAY_TERMINATED };

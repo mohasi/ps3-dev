@@ -13,24 +13,24 @@
 // the runtime prx id is omitted - the host addresses modules by name.
 static void cmdModuleList(int cli)
 {
-    char     name[PRX_NAME_MAX];
-    char     file[PRX_FILENAME_MAX];
-    uint32_t count;
+   char     name[PRX_NAME_MAX];
+   char     file[PRX_FILENAME_MAX];
+   uint32_t count;
 
-    int32_t rc = prxList(moduleIds, MODULE_IDS_MAX, &count);
-    if (rc < 0) {
-        sendErrRc(cli, "prxList", rc);
-        return;
-    }
+   int32_t rc = prxList(moduleIds, MODULE_IDS_MAX, &count);
+   if (rc < 0) {
+      sendErrRc(cli, "prxList", rc);
+      return;
+   }
 
-    uint32_t off = 0;
-    for (uint32_t i = 0; i < count; i++) {
-        if (prxName((int32_t)moduleIds[i], name, file) < 0) continue;
-        off += (uint32_t)snprintf(replyBuf + off, REPLY_BUF_BYTES - off,
-                                  "%s\t%s\n", name, file);
-    }
-    if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
-    if (off) sendBytes(cli, replyBuf, (int)off);
+   uint32_t off = 0;
+   for (uint32_t i = 0; i < count; i++) {
+      if (prxName((int32_t)moduleIds[i], name, file) < 0) continue;
+      off += (uint32_t)snprintf(replyBuf + off, REPLY_BUF_BYTES - off,
+                                "%s\t%s\n", name, file);
+   }
+   if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
+   if (off) sendBytes(cli, replyBuf, (int)off);
 }
 
 // enumerate processes the bridge can introspect. on cex the dbg syscalls
@@ -43,10 +43,10 @@ static void cmdModuleList(int cli)
 // payload: one "<name>\tlive\n" record per process.
 static void cmdProcessList(int cli)
 {
-    static const char payload[] = "vsh\tlive\n";
-    uint32_t off = sizeof payload - 1;
-    if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
-    sendBytes(cli, payload, (int)off);
+   static const char payload[] = "vsh\tlive\n";
+   uint32_t off = sizeof payload - 1;
+   if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
+   sendBytes(cli, payload, (int)off);
 }
 
 // dump identity, segments, linkage tables, exports and imports of one
@@ -66,53 +66,53 @@ static void cmdProcessList(int cli)
 // than crashing the VSH process.
 static void cmdModuleInfo(int cli, const char *args)
 {
-    if (!args || !args[0]) {
-        sendReply(cli, SDB_ERR, "usage: module-info <name>");
-        return;
-    }
-    int32_t id = findModuleByName(args);
-    if (id < 0) { sendReply(cli, SDB_ERR, "module not found"); return; }
+   if (!args || !args[0]) {
+      sendReply(cli, SDB_ERR, "usage: module-info <name>");
+      return;
+   }
+   int32_t id = findModuleByName(args);
+   if (id < 0) { sendReply(cli, SDB_ERR, "module not found"); return; }
 
-    char       name[PRX_NAME_MAX];
-    char       file[PRX_FILENAME_MAX];
-    PrxSegment segs[PRX_SEGMENTS_MAX];
-    uint32_t   segCount = 0;
-    int32_t rc = prxInfo(id, name, file, segs, PRX_SEGMENTS_MAX, &segCount);
-    if (rc < 0) {
-        sendErrRc(cli, "prxInfo", rc);
-        return;
-    }
-    if (segCount > PRX_SEGMENTS_MAX) segCount = PRX_SEGMENTS_MAX;
+   char       name[PRX_NAME_MAX];
+   char       file[PRX_FILENAME_MAX];
+   PrxSegment segs[PRX_SEGMENTS_MAX];
+   uint32_t   segCount = 0;
+   int32_t rc = prxInfo(id, name, file, segs, PRX_SEGMENTS_MAX, &segCount);
+   if (rc < 0) {
+      sendErrRc(cli, "prxInfo", rc);
+      return;
+   }
+   if (segCount > PRX_SEGMENTS_MAX) segCount = PRX_SEGMENTS_MAX;
 
-    PrxLinkage link = {0};
-    int32_t lrc = prxLinkage(id, &link, NULL, 0, NULL);
-    int linkageOk = (lrc >= 0);
-    int libentOk  = linkageOk && addrInSegments(link.libentAddr,  link.libentSize,  segs, segCount);
-    int libstubOk = linkageOk && addrInSegments(link.libstubAddr, link.libstubSize, segs, segCount);
+   PrxLinkage link = {0};
+   int32_t lrc = prxLinkage(id, &link, NULL, 0, NULL);
+   int linkageOk = (lrc >= 0);
+   int libentOk  = linkageOk && addrInSegments(link.libentAddr,  link.libentSize,  segs, segCount);
+   int libstubOk = linkageOk && addrInSegments(link.libstubAddr, link.libstubSize, segs, segCount);
 
-    uint32_t off = (uint32_t)snprintf(replyBuf, REPLY_BUF_BYTES,
-                                      "id\t%u\nname\t%s\nfile\t%s\n",
-                                      (unsigned)id, name, file);
-    off = emitSegments(replyBuf, off, REPLY_BUF_BYTES, segs, segCount, "seg");
-    if (linkageOk) {
-        off += (uint32_t)snprintf(replyBuf + off, REPLY_BUF_BYTES - off,
-                                  "libent\t0x%x\t%u\nlibstub\t0x%x\t%u\n",
-                                  (unsigned)link.libentAddr, (unsigned)link.libentSize,
-                                  (unsigned)link.libstubAddr, (unsigned)link.libstubSize);
-    }
-    if (libentOk) {
-        off = emitLibEnts(replyBuf, off, REPLY_BUF_BYTES,
-                          link.libentAddr, link.libentSize,
-                          segs, segCount, "ent", "ef", "ev");
-    }
-    if (libstubOk) {
-        off = emitLibStubs(replyBuf, off, REPLY_BUF_BYTES,
-                           link.libstubAddr, link.libstubSize,
-                           segs, segCount, "stub", "sf", "sv");
-    }
+   uint32_t off = (uint32_t)snprintf(replyBuf, REPLY_BUF_BYTES,
+                                     "id\t%u\nname\t%s\nfile\t%s\n",
+                                     (unsigned)id, name, file);
+   off = emitSegments(replyBuf, off, REPLY_BUF_BYTES, segs, segCount, "seg");
+   if (linkageOk) {
+      off += (uint32_t)snprintf(replyBuf + off, REPLY_BUF_BYTES - off,
+                                "libent\t0x%x\t%u\nlibstub\t0x%x\t%u\n",
+                                (unsigned)link.libentAddr, (unsigned)link.libentSize,
+                                (unsigned)link.libstubAddr, (unsigned)link.libstubSize);
+   }
+   if (libentOk) {
+      off = emitLibEnts(replyBuf, off, REPLY_BUF_BYTES,
+                        link.libentAddr, link.libentSize,
+                        segs, segCount, "ent", "ef", "ev");
+   }
+   if (libstubOk) {
+      off = emitLibStubs(replyBuf, off, REPLY_BUF_BYTES,
+                         link.libstubAddr, link.libstubSize,
+                         segs, segCount, "stub", "sf", "sv");
+   }
 
-    if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
-    if (off) sendBytes(cli, replyBuf, (int)off);
+   if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
+   if (off) sendBytes(cli, replyBuf, (int)off);
 }
 
 // expand a single process. text payload:
@@ -129,50 +129,50 @@ static void cmdModuleInfo(int cli, const char *args)
 //     pef  <nid>\t<addr>                (repeated, one per export func)
 static void cmdProcessInfo(int cli, const char *args)
 {
-    if (!args || !args[0] || !strEq(args, "vsh")) {
-        sendReply(cli, SDB_ERR, "usage: process-info vsh");
-        return;
-    }
+   if (!args || !args[0] || !strEq(args, "vsh")) {
+      sendReply(cli, SDB_ERR, "usage: process-info vsh");
+      return;
+   }
 
-    char     name[PRX_NAME_MAX];
-    char     file[PRX_FILENAME_MAX];
-    uint32_t count = 0;
-    int32_t  rc = prxList(moduleIds, MODULE_IDS_MAX, &count);
-    if (rc < 0) {
-        sendErrRc(cli, "prxList", rc);
-        return;
-    }
+   char     name[PRX_NAME_MAX];
+   char     file[PRX_FILENAME_MAX];
+   uint32_t count = 0;
+   int32_t  rc = prxList(moduleIds, MODULE_IDS_MAX, &count);
+   if (rc < 0) {
+      sendErrRc(cli, "prxList", rc);
+      return;
+   }
 
-    int64_t  pid    = scCall1(1, 0);                                    // sys_process_getpid
-    uint32_t sdkVer = 0;
-    scCall2(25, (uint64_t)pid, (uint64_t)(uintptr_t)&sdkVer);           // sys_process_get_sdk_version
+   int64_t  pid    = scCall1(1, 0);                                    // sys_process_getpid
+   uint32_t sdkVer = 0;
+   scCall2(25, (uint64_t)pid, (uint64_t)(uintptr_t)&sdkVer);           // sys_process_get_sdk_version
 
-    // shared scratch is sized for the biggest payload: vsh.self exports
-    // are ~4400 functions (~120 KiB of "pef" rows). pid/sdk + ~128 mod
-    // rows + main-exe segs/libstub/libent all fit comfortably.
-    uint32_t off = (uint32_t)snprintf(replyBuf, REPLY_BUF_BYTES,
-                                      "pid\t0x%llx\nname\tvsh\nsdk\t0x%x\n",
-                                      (unsigned long long)pid, (unsigned)sdkVer);
-    for (uint32_t i = 0; i < count; i++) {
-        if (prxName((int32_t)moduleIds[i], name, file) < 0) continue;
-        off += (uint32_t)snprintf(replyBuf + off, REPLY_BUF_BYTES - off,
-                                  "mod\t%s\t%s\n", name, file);
-    }
+   // shared scratch is sized for the biggest payload: vsh.self exports
+   // are ~4400 functions (~120 KiB of "pef" rows). pid/sdk + ~128 mod
+   // rows + main-exe segs/libstub/libent all fit comfortably.
+   uint32_t off = (uint32_t)snprintf(replyBuf, REPLY_BUF_BYTES,
+                                     "pid\t0x%llx\nname\tvsh\nsdk\t0x%x\n",
+                                     (unsigned long long)pid, (unsigned)sdkVer);
+   for (uint32_t i = 0; i < count; i++) {
+      if (prxName((int32_t)moduleIds[i], name, file) < 0) continue;
+      off += (uint32_t)snprintf(replyBuf + off, REPLY_BUF_BYTES - off,
+                                "mod\t%s\t%s\n", name, file);
+   }
 
-    // main-exe linkage: parse the ELF mapped at 0x10000 (the conventional
-    // main-self load base; confirmed live via prior probes) and emit
-    // pseg / pstub / psf / pent / pef rows. tag prefix is "p" so the
-    // wire format stays generic for any future process the bridge can
-    // see, not vsh-specific.
-    const volatile uint8_t *elf = (const volatile uint8_t *)(uintptr_t)0x10000;
-    PrxSegment psegs[8];
-    uint32_t   pSegCount = loadElfSegments(elf, psegs, 8);
-    off = emitSegments(replyBuf, off, REPLY_BUF_BYTES, psegs, pSegCount, "pseg");
-    if (pSegCount > 0) {
-        off = scanLinkage(replyBuf, off, REPLY_BUF_BYTES, psegs, pSegCount,
-                          "pent", "pef", "pev", "pstub", "psf", "psv");
-    }
+   // main-exe linkage: parse the ELF mapped at 0x10000 (the conventional
+   // main-self load base; confirmed live via prior probes) and emit
+   // pseg / pstub / psf / pent / pef rows. tag prefix is "p" so the
+   // wire format stays generic for any future process the bridge can
+   // see, not vsh-specific.
+   const volatile uint8_t *elf = (const volatile uint8_t *)(uintptr_t)0x10000;
+   PrxSegment psegs[8];
+   uint32_t   pSegCount = loadElfSegments(elf, psegs, 8);
+   off = emitSegments(replyBuf, off, REPLY_BUF_BYTES, psegs, pSegCount, "pseg");
+   if (pSegCount > 0) {
+      off = scanLinkage(replyBuf, off, REPLY_BUF_BYTES, psegs, pSegCount,
+                        "pent", "pef", "pev", "pstub", "psf", "psv");
+   }
 
-    if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
-    if (off) sendBytes(cli, replyBuf, (int)off);
+   if (sendFrameHeader(cli, SDB_OK, off) < 0) return;
+   if (off) sendBytes(cli, replyBuf, (int)off);
 }

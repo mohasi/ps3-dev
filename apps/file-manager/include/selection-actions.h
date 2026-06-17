@@ -7,26 +7,26 @@
 #include "gfx.h"
 
 typedef enum {
-    ACTION_COPY,
-    ACTION_CUT,
-    ACTION_PASTE,
-    ACTION_DELETE,
-    ACTION_RENAME,
-    ACTION_NEW_FILE,
-    ACTION_NEW_FOLDER,
-    ACTION_EDIT,
-    ACTION_ZIP,
-    ACTION_UNZIP,
-    ACTION_MOUNT,
-    ACTION_PROPERTIES,
-    ACTION_COUNT
+   ACTION_COPY,
+   ACTION_CUT,
+   ACTION_PASTE,
+   ACTION_DELETE,
+   ACTION_RENAME,
+   ACTION_NEW_FILE,
+   ACTION_NEW_FOLDER,
+   ACTION_EDIT,
+   ACTION_ZIP,
+   ACTION_UNZIP,
+   ACTION_MOUNT,
+   ACTION_PROPERTIES,
+   ACTION_COUNT
 } SelectionAction;
 
 typedef struct {
-    const char  *title;     // "report.txt"   or "3 items"
-    const char  *subtitle;  // "Text"         or "Mixed"
-    const char  *detail;    // "1.2 KB"       or "4.7 MB total"
-    SpriteRegion icon;
+   const char  *title;     // "report.txt"   or "3 items"
+   const char  *subtitle;  // "Text"         or "Mixed"
+   const char  *detail;    // "1.2 KB"       or "4.7 MB total"
+   SpriteRegion icon;
 } SelectionSummary;
 
 const char  *getActionTitle(SelectionAction action);

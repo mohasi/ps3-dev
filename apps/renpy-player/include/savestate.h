@@ -15,16 +15,16 @@
 
 // The visual + line half of a save (the VM + vars are applied internally on load).
 typedef struct {
-    char who[96];
-    char what[600];
-    int  nvl;
-    int  ingame;   // in-game chat-box line (Say kind=2)
-    char scene[160];
-    char music[160];
-    int  showCount;
-    char shows[SPR_MAX][120];
-    char showAt[SPR_MAX][48];
-    int  showAtl[SPR_MAX];   // each sprite's atl id, so load restores ATL placement/anim (like rollback)
+   char who[96];
+   char what[600];
+   int  nvl;
+   int  ingame;   // in-game chat-box line (Say kind=2)
+   char scene[160];
+   char music[160];
+   int  showCount;
+   char shows[SPR_MAX][120];
+   char showAt[SPR_MAX][48];
+   int  showAtl[SPR_MAX];   // each sprite's atl id, so load restores ATL placement/anim (like rollback)
 } SaveScene;
 
 // Capture the current state to slot `display` ("1".."50", "a1".., "q1"..). The screen supplies the

@@ -40,11 +40,11 @@ extern "C" {
 int vsnprintf(char *str, size_t size, const char *format, va_list args);
 int vsprintf(char *buf, const char *fmt, va_list args);
 int snprintf(char *buffer, size_t size, const char *fmt, ...)
-    __attribute__((format(printf, 3, 4)));
+   __attribute__((format(printf, 3, 4)));
 int sprintf(char *buffer, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+   __attribute__((format(printf, 2, 3)));
 char *strfmt(const char *fmt, ...)
-    __attribute__((format(printf, 1, 2)));
+   __attribute__((format(printf, 1, 2)));
 
 #ifdef __cplusplus
 }

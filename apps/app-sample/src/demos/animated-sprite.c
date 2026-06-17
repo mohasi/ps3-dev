@@ -14,35 +14,35 @@ static int spriteTick = 0;
 
 void initAnimatedSprite(void)
 {
-    spriteTex = loadGfxTexture(SPRITE_PATH);
+   spriteTex = loadGfxTexture(SPRITE_PATH);
 }
 
 void updateAnimatedSprite(void)
 {
-    spriteTick++;
-    if (spriteTick >= SPRITE_ANIM_SPEED) {
-        spriteTick = 0;
-        spriteFrame++;
-        if (spriteFrame >= SPRITE_FRAME_COUNT) {
-            spriteFrame = 0;
-        }
-    }
+   spriteTick++;
+   if (spriteTick >= SPRITE_ANIM_SPEED) {
+      spriteTick = 0;
+      spriteFrame++;
+      if (spriteFrame >= SPRITE_FRAME_COUNT) {
+         spriteFrame = 0;
+      }
+   }
 }
 
 void termAnimatedSprite(void)
 {
-    finishGfx();
-    freeGfxTexture(&spriteTex);
+   finishGfx();
+   freeGfxTexture(&spriteTex);
 }
 
 void drawAnimatedSprite(int x, int y)
 {
-    if (spriteTex.w > 0) {
-        float frameH = (float)SPRITE_FRAME_SIZE / (float)spriteTex.h;
-        float v0 = frameH * spriteFrame;
-        float v1 = v0 + frameH;
-        drawGfxTexture(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, spriteTex, 0.0f, v0, 1.0f, v1, COLOR_WHITE, GFX_FILTER_NEAREST);
-    } else {
-        fillGfxRectangle(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, COLOR_RED);
-    }
+   if (spriteTex.w > 0) {
+      float frameH = (float)SPRITE_FRAME_SIZE / (float)spriteTex.h;
+      float v0 = frameH * spriteFrame;
+      float v1 = v0 + frameH;
+      drawGfxTexture(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, spriteTex, 0.0f, v0, 1.0f, v1, COLOR_WHITE, GFX_FILTER_NEAREST);
+   } else {
+      fillGfxRectangle(x, y, SPRITE_FRAME_SIZE * 4, SPRITE_FRAME_SIZE * 4, COLOR_RED);
+   }
 }

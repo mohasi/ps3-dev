@@ -12,37 +12,37 @@
 //   reply: OK <window>\n<window bytes> on success, ERR ... on failure.
 static void cmdPullFile(int cli, const char *args)
 {
-    char path[FILE_PATH_MAX];
-    const char *rest = parsePath(args, path, sizeof path);
-    if (!rest) {
-        sendReply(cli, SDB_ERR, "usage: pull-file <path> [offset length]");
-        return;
-    }
+   char path[FILE_PATH_MAX];
+   const char *rest = parsePath(args, path, sizeof path);
+   if (!rest) {
+      sendReply(cli, SDB_ERR, "usage: pull-file <path> [offset length]");
+      return;
+   }
 
-    uint64_t offset = 0, length = 0;
-    if (*rest) {
-        rest = parseUInt64(rest, &offset);
-        if (!rest) { sendReply(cli, SDB_ERR, "bad offset"); return; }
-        rest = parseUInt64(rest, &length);
-        if (!rest) { sendReply(cli, SDB_ERR, "bad length"); return; }
-    }
+   uint64_t offset = 0, length = 0;
+   if (*rest) {
+      rest = parseUInt64(rest, &offset);
+      if (!rest) { sendReply(cli, SDB_ERR, "bad offset"); return; }
+      rest = parseUInt64(rest, &length);
+      if (!rest) { sendReply(cli, SDB_ERR, "bad length"); return; }
+   }
 
-    if (!fileExists(path)) {
-        sendReply(cli, SDB_ERR, "no such file");
-        return;
-    }
-    int64_t window = fileWindowSize(path, offset, length);
-    if (window < 0) {
-        sendReply(cli, SDB_ERR, "offset past end of file");
-        return;
-    }
+   if (!fileExists(path)) {
+      sendReply(cli, SDB_ERR, "no such file");
+      return;
+   }
+   int64_t window = fileWindowSize(path, offset, length);
+   if (window < 0) {
+      sendReply(cli, SDB_ERR, "offset past end of file");
+      return;
+   }
 
-    if (sendFrameHeader(cli, SDB_OK, (uint32_t)window) < 0) return;
+   if (sendFrameHeader(cli, SDB_OK, (uint32_t)window) < 0) return;
 
-    if (window > 0 && sendFileWindow(cli, path, offset, (uint64_t)window) < 0) {
-        // header already on the wire; client gets short read and reports it.
-        logError("[sdb] pull-file send truncated\n");
-    }
+   if (window > 0 && sendFileWindow(cli, path, offset, (uint64_t)window) < 0) {
+      // header already on the wire; client gets short read and reports it.
+      logError("[sdb] pull-file send truncated\n");
+   }
 }
 
 // push-file <path> <size>\n<size raw bytes>
@@ -50,25 +50,25 @@ static void cmdPullFile(int cli, const char *args)
 //   does NOT auto-create parent directories - caller picks an existing path.
 static void cmdPushFile(int cli, const char *args)
 {
-    char path[FILE_PATH_MAX];
-    const char *rest = parsePath(args, path, sizeof path);
-    if (!rest) {
-        sendReply(cli, SDB_ERR, "usage: push-file <path> <size>");
-        return;
-    }
-    uint64_t size = 0;
-    rest = parseUInt64(rest, &size);
-    if (!rest) {
-        sendReply(cli, SDB_ERR, "bad size");
-        return;
-    }
-    if (recvFile(cli, path, (uint32_t)size) < 0) {
-        sendReply(cli, SDB_ERR, "save failed");
-        return;
-    }
-    char reply[FILE_PATH_MAX + 64];
-    snprintf(reply, sizeof reply, "saved %s (%llu bytes)", path, (unsigned long long)size);
-    sendReply(cli, SDB_OK, reply);
+   char path[FILE_PATH_MAX];
+   const char *rest = parsePath(args, path, sizeof path);
+   if (!rest) {
+      sendReply(cli, SDB_ERR, "usage: push-file <path> <size>");
+      return;
+   }
+   uint64_t size = 0;
+   rest = parseUInt64(rest, &size);
+   if (!rest) {
+      sendReply(cli, SDB_ERR, "bad size");
+      return;
+   }
+   if (recvFile(cli, path, (uint32_t)size) < 0) {
+      sendReply(cli, SDB_ERR, "save failed");
+      return;
+   }
+   char reply[FILE_PATH_MAX + 64];
+   snprintf(reply, sizeof reply, "saved %s (%llu bytes)", path, (unsigned long long)size);
+   sendReply(cli, SDB_OK, reply);
 }
 
 // delete-file <path>
@@ -76,18 +76,18 @@ static void cmdPushFile(int cli, const char *args)
 //   missing files are treated as success (idempotent).
 static void cmdDeleteFile(int cli, const char *args)
 {
-    char path[FILE_PATH_MAX];
-    if (!parsePath(args, path, sizeof path)) {
-        sendReply(cli, SDB_ERR, "usage: delete-file <path>");
-        return;
-    }
-    if (deleteFile(path) < 0) {
-        sendReply(cli, SDB_ERR, "delete failed");
-        return;
-    }
-    char reply[FILE_PATH_MAX + 64];
-    snprintf(reply, sizeof reply, "deleted %s", path);
-    sendReply(cli, SDB_OK, reply);
+   char path[FILE_PATH_MAX];
+   if (!parsePath(args, path, sizeof path)) {
+      sendReply(cli, SDB_ERR, "usage: delete-file <path>");
+      return;
+   }
+   if (deleteFile(path) < 0) {
+      sendReply(cli, SDB_ERR, "delete failed");
+      return;
+   }
+   char reply[FILE_PATH_MAX + 64];
+   snprintf(reply, sizeof reply, "deleted %s", path);
+   sendReply(cli, SDB_OK, reply);
 }
 
 // list-dir <path>
@@ -96,16 +96,16 @@ static void cmdDeleteFile(int cli, const char *args)
 //   install so we can find what xmb registration writes that we don't.
 static void cmdListDir(int cli, const char *args)
 {
-    char path[FILE_PATH_MAX];
-    if (!parsePath(args, path, sizeof path)) {
-        sendReply(cli, SDB_ERR, "usage: list-dir <path>");
-        return;
-    }
-    int n = listDir(path, replyBuf, REPLY_BUF_BYTES);
-    if (n < 0) {
-        sendReply(cli, SDB_ERR, "list failed");
-        return;
-    }
-    if (sendFrameHeader(cli, SDB_OK, (uint32_t)n) < 0) return;
-    if (n > 0) sendBytes(cli, replyBuf, n);
+   char path[FILE_PATH_MAX];
+   if (!parsePath(args, path, sizeof path)) {
+      sendReply(cli, SDB_ERR, "usage: list-dir <path>");
+      return;
+   }
+   int n = listDir(path, replyBuf, REPLY_BUF_BYTES);
+   if (n < 0) {
+      sendReply(cli, SDB_ERR, "list failed");
+      return;
+   }
+   if (sendFrameHeader(cli, SDB_OK, (uint32_t)n) < 0) return;
+   if (n > 0) sendBytes(cli, replyBuf, n);
 }

@@ -5,18 +5,18 @@
 // states: TERMINATED -> VISIBLE <-> HIDDEN -> TERMINATED
 
 typedef enum OverlayStatus {
-    OVERLAY_TERMINATED,
-    OVERLAY_VISIBLE,
-    OVERLAY_HIDDEN
+   OVERLAY_TERMINATED,
+   OVERLAY_VISIBLE,
+   OVERLAY_HIDDEN
 } OverlayStatus;
 
 typedef struct Overlay {
-    void (*show)(void);
-    void (*hide)(void);
-    void (*update)(void);
-    void (*draw)(void);
-    void (*term)(void);
-    OverlayStatus status;
+   void (*show)(void);
+   void (*hide)(void);
+   void (*update)(void);
+   void (*draw)(void);
+   void (*term)(void);
+   OverlayStatus status;
 } Overlay;
 
 static inline int  isOverlayVisible(const Overlay *o) { return o->status == OVERLAY_VISIBLE; }

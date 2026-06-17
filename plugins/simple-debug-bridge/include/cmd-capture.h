@@ -10,7 +10,7 @@
 // row sink: write straight to the client socket.
 static int captureSendRow(const void *row, uint32_t bytes, void *user)
 {
-    return sendBytes(*(int *)user, row, (int)bytes);
+   return sendBytes(*(int *)user, row, (int)bytes);
 }
 
 // capture <x> <y> <w> <h>
@@ -20,23 +20,23 @@ static int captureSendRow(const void *row, uint32_t bytes, void *user)
 //   the gpu (we only touch vram while xmb is the foreground compositor).
 static void cmdCapture(int cli, const char *args)
 {
-    uint64_t x = 0, y = 0, w = 0, h = 0;
-    const char *r = parseUInt64(args, &x);
-    if (r) r = parseUInt64(r, &y);
-    if (r) r = parseUInt64(r, &w);
-    if (r) r = parseUInt64(r, &h);
-    if (!r) { sendReply(cli, SDB_ERR, "usage: capture <x> <y> <w> <h>"); return; }
+   uint64_t x = 0, y = 0, w = 0, h = 0;
+   const char *r = parseUInt64(args, &x);
+   if (r) r = parseUInt64(r, &y);
+   if (r) r = parseUInt64(r, &w);
+   if (r) r = parseUInt64(r, &h);
+   if (!r) { sendReply(cli, SDB_ERR, "usage: capture <x> <y> <w> <h>"); return; }
 
-    if (!isXmbReady()) { sendReply(cli, SDB_ERR, "capture: xmb not in foreground"); return; }
+   if (!isXmbReady()) { sendReply(cli, SDB_ERR, "capture: xmb not in foreground"); return; }
 
-    uint32_t dw, dh, pitch, depth;
-    captureDisplayInfo(&dw, &dh, &pitch, &depth);
-    if (w == 0 || h == 0 || x >= dw || y >= dh) {
-        sendReply(cli, SDB_ERR, "out of bounds"); return;
-    }
-    uint32_t cw = (x + w > dw) ? (dw - (uint32_t)x) : (uint32_t)w;
-    uint32_t ch = (y + h > dh) ? (dh - (uint32_t)y) : (uint32_t)h;
+   uint32_t dw, dh, pitch, depth;
+   captureDisplayInfo(&dw, &dh, &pitch, &depth);
+   if (w == 0 || h == 0 || x >= dw || y >= dh) {
+      sendReply(cli, SDB_ERR, "out of bounds"); return;
+   }
+   uint32_t cw = (x + w > dw) ? (dw - (uint32_t)x) : (uint32_t)w;
+   uint32_t ch = (y + h > dh) ? (dh - (uint32_t)y) : (uint32_t)h;
 
-    if (sendFrameHeader(cli, SDB_OK, cw * ch * 4) < 0) return;
-    captureRegion((uint32_t)x, (uint32_t)y, cw, ch, captureSendRow, &cli);
+   if (sendFrameHeader(cli, SDB_OK, cw * ch * 4) < 0) return;
+   captureRegion((uint32_t)x, (uint32_t)y, cw, ch, captureSendRow, &cli);
 }

@@ -1,77 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Release|PS3">
-      <Configuration>Release</Configuration>
-      <Platform>PS3</Platform>
-    </ProjectConfiguration>
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}</ProjectGuid>
-    <ProjectName>app-sample</ProjectName>
+   <ProjectGuid>{A5E4D7B2-8C3F-4D1E-9F6A-2B5C8D7E1F4A}</ProjectGuid>
+   <ProjectName>app-sample</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>GCC</PlatformToolset>
+   <ConfigurationType>Application</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup>
-    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
-    <TargetName>$(MSBuildProjectName).ppu</TargetName>
-    <TargetExt>.elf</TargetExt>
-    <ExtensionsToDeleteOnClean>*.pkg;*.obj;$(TargetPath);$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <TargetName>$(MSBuildProjectName).ppu</TargetName>
+   <TargetExt>.elf</TargetExt>
+   <ExtensionsToDeleteOnClean>*.pkg;*.obj;$(TargetPath);$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
-    <ClCompile>
-      <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-app\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-    </ClCompile>
-    <Link>
-      <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core</AdditionalOptions>
-      <GccOutputFormat>ELFFile</GccOutputFormat>
-    </Link>
-    <PreBuildEvent>
-      <Message>Generating PARAM.SFO from XML</Message>
-      <Command>"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
-    </PreBuildEvent>
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-app\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+   </ClCompile>
+   <Link>
+     <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;%(AdditionalDependencies)</AdditionalDependencies>
+     <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core</AdditionalOptions>
+     <GccOutputFormat>ELFFile</GccOutputFormat>
+   </Link>
+   <PreBuildEvent>
+     <Message>Generating PARAM.SFO from XML</Message>
+     <Command>"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
+   </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="src\main.c" />
-    <ClCompile Include="src\screens\demo.c" />
-    <ClCompile Include="src\screens\palette.c" />
-    <ClCompile Include="src\overlays\sidepanel.c" />
-    <ClCompile Include="src\demos\bars.c" />
-    <ClCompile Include="src\demos\bouncing-box.c" />
-    <ClCompile Include="src\demos\gradient-tri.c" />
-    <ClCompile Include="src\demos\animated-sprite.c" />
-    <ClCompile Include="src\demos\pad-display.c" />
+   <ClCompile Include="src\main.c" />
+   <ClCompile Include="src\screens\demo.c" />
+   <ClCompile Include="src\screens\palette.c" />
+   <ClCompile Include="src\overlays\sidepanel.c" />
+   <ClCompile Include="src\demos\bars.c" />
+   <ClCompile Include="src\demos\bouncing-box.c" />
+   <ClCompile Include="src\demos\gradient-tri.c" />
+   <ClCompile Include="src\demos\animated-sprite.c" />
+   <ClCompile Include="src\demos\pad-display.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\bars.h" />
-    <ClInclude Include="include\bouncing-box.h" />
-    <ClInclude Include="include\gradient-tri.h" />
-    <ClInclude Include="include\animated-sprite.h" />
-    <ClInclude Include="include\pad-display.h" />
-    <ClInclude Include="include\screens\demo.h" />
-    <ClInclude Include="include\screens\palette.h" />
-    <ClInclude Include="include\overlays\sidepanel.h" />
+   <ClInclude Include="include\bars.h" />
+   <ClInclude Include="include\bouncing-box.h" />
+   <ClInclude Include="include\gradient-tri.h" />
+   <ClInclude Include="include\animated-sprite.h" />
+   <ClInclude Include="include\pad-display.h" />
+   <ClInclude Include="include\screens\demo.h" />
+   <ClInclude Include="include\screens\palette.h" />
+   <ClInclude Include="include\overlays\sidepanel.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="app-sample.conf" />
-    <None Include="PARAM.SFO" />
-    <None Include="PARAM.SFO.xml" />
-    <None Include="README.md" />
-    <None Include="res\makoto.png" />
-    <None Include="res\makoto.wav" />
-    <None Include="res\pattern.png" />
-    <None Include="res\price.ogg" />
-    <None Include="ICON0.PNG" />
+   <None Include="app-sample.conf" />
+   <None Include="PARAM.SFO" />
+   <None Include="PARAM.SFO.xml" />
+   <None Include="README.md" />
+   <None Include="res\makoto.png" />
+   <None Include="res\makoto.wav" />
+   <None Include="res\pattern.png" />
+   <None Include="res\price.ogg" />
+   <None Include="ICON0.PNG" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\npdrm.targets" />

@@ -1,45 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>10.0.0</ProductVersion>
-    <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{A7B3C2D1-9E4F-4D6A-B8C5-1F3E7A2D9B04}</ProjectGuid>
-    <OutputType>Exe</OutputType>
-    <RootNamespace>SpritePacker</RootNamespace>
-    <AssemblyName>sprite-packer</AssemblyName>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
-    <TargetFrameworkProfile></TargetFrameworkProfile>
-    <FileAlignment>512</FileAlignment>
-    <StartupObject>SpritePacker.Program</StartupObject>
+   <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+   <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+   <ProductVersion>10.0.0</ProductVersion>
+   <SchemaVersion>2.0</SchemaVersion>
+   <ProjectGuid>{A7B3C2D1-9E4F-4D6A-B8C5-1F3E7A2D9B04}</ProjectGuid>
+   <OutputType>Exe</OutputType>
+   <RootNamespace>SpritePacker</RootNamespace>
+   <AssemblyName>sprite-packer</AssemblyName>
+   <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+   <TargetFrameworkProfile></TargetFrameworkProfile>
+   <FileAlignment>512</FileAlignment>
+   <StartupObject>SpritePacker.Program</StartupObject>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
+   <DebugType>pdbonly</DebugType>
+   <Optimize>true</Optimize>
+   <OutputPath>bin\</OutputPath>
+   <DefineConstants>TRACE</DefineConstants>
+   <ErrorReport>prompt</ErrorReport>
+   <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Drawing" />
+   <Reference Include="System" />
+   <Reference Include="System.Core" />
+   <Reference Include="System.Drawing" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Program.cs" />
-    <Compile Include="Sprite.cs" />
-    <Compile Include="SpriteLoader.cs" />
-    <Compile Include="Packer.cs" />
-    <Compile Include="SheetWriter.cs" />
-    <Compile Include="HeaderWriter.cs" />
+   <Compile Include="Program.cs" />
+   <Compile Include="Sprite.cs" />
+   <Compile Include="SpriteLoader.cs" />
+   <Compile Include="Packer.cs" />
+   <Compile Include="SheetWriter.cs" />
+   <Compile Include="HeaderWriter.cs" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="README.md" />
+   <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="AfterBuild">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)..\" />
+   <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)..\" />
   </Target>
 </Project>

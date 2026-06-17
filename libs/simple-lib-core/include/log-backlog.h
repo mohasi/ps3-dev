@@ -40,8 +40,8 @@ static inline void drainLogBacklog(LogBacklog *ring, OnBacklogLine onLine, void 
    if (ring->count == 0) return;
    int start = (ring->head - ring->count + LOG_BACKLOG_MAX) % LOG_BACKLOG_MAX;
    for (int i = 0; i < ring->count; i++) {
-      BacklogLine *slot = &ring->lines[(start + i) % LOG_BACKLOG_MAX];
-      if (onLine(slot->data, slot->len, user) < 0) break;
+     BacklogLine *slot = &ring->lines[(start + i) % LOG_BACKLOG_MAX];
+     if (onLine(slot->data, slot->len, user) < 0) break;
    }
    ring->count = 0;
    ring->head  = 0;

@@ -17,24 +17,24 @@ static TaskBody          body;
 
 static void workerEntry(uint64_t arg)
 {
-    (void)arg;
-    if (body) body();
-    running = 0;
-    exitThread();
+   (void)arg;
+   if (body) body();
+   running = 0;
+   exitThread();
 }
 
 void startTask(TaskBody taskBody)
 {
-    body           = taskBody;
-    processedBytes = 0;
-    totalBytes     = 0;
-    cancel         = 0;
-    running        = 1;
-    // detached + LOW priority: the render loop stays responsive while the task
-    // grinds through the filesystem, and there's nothing to join.
-    sys_ppu_thread_t tid;
-    if (spawnThread(&tid, workerEntry, 0, THREAD_PRIORITY_LOW, THREAD_STACK_SIZE_64KB, "file-task") != 0)
-        running = 0;  // spawn failed: nothing to run, so the overlay closes cleanly
+   body           = taskBody;
+   processedBytes = 0;
+   totalBytes     = 0;
+   cancel         = 0;
+   running        = 1;
+   // detached + LOW priority: the render loop stays responsive while the task
+   // grinds through the filesystem, and there's nothing to join.
+   sys_ppu_thread_t tid;
+   if (spawnThread(&tid, workerEntry, 0, THREAD_PRIORITY_LOW, THREAD_STACK_SIZE_64KB, "file-task") != 0)
+       running = 0;  // spawn failed: nothing to run, so the overlay closes cleanly
 }
 
 int      isTaskRunning(void)     { return running; }

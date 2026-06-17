@@ -37,14 +37,14 @@
 // but generally unused since the thread is detached.
 static inline int spawnThread(sys_ppu_thread_t *tid, void (*entry)(uint64_t), uint64_t arg, int priority, size_t stack, const char *name)
 {
-    return sys_ppu_thread_create(tid, entry, arg, priority, stack, THREAD_CREATE_DETACHED, name);
+   return sys_ppu_thread_create(tid, entry, arg, priority, stack, THREAD_CREATE_DETACHED, name);
 }
 
 // spawn a joinable background thread. use when the caller needs to
 // sys_ppu_thread_join() for clean teardown (e.g. prx unload).
 static inline int spawnJoinableThread(sys_ppu_thread_t *tid, void (*entry)(uint64_t), uint64_t arg, int priority, size_t stack, const char *name)
 {
-    return sys_ppu_thread_create(tid, entry, arg, priority, stack, SYS_PPU_THREAD_CREATE_JOINABLE, name);
+   return sys_ppu_thread_create(tid, entry, arg, priority, stack, SYS_PPU_THREAD_CREATE_JOINABLE, name);
 }
 
 // lightweight mutex helpers wrapping the lv2 lwmutex primitives. lock/unlock
@@ -53,17 +53,17 @@ static inline int spawnJoinableThread(sys_ppu_thread_t *tid, void (*entry)(uint6
 // re-enter their own critical section (e.g. log tee inside a held lock).
 static inline int createLock(sys_lwmutex_t *m)
 {
-    sys_lwmutex_attribute_t attr;
-    sys_lwmutex_attribute_initialize(attr);
-    return sys_lwmutex_create(m, &attr);
+   sys_lwmutex_attribute_t attr;
+   sys_lwmutex_attribute_initialize(attr);
+   return sys_lwmutex_create(m, &attr);
 }
 
 static inline int createRecursiveLock(sys_lwmutex_t *m)
 {
-    sys_lwmutex_attribute_t attr;
-    sys_lwmutex_attribute_initialize(attr);
-    attr.attr_recursive = SYS_SYNC_RECURSIVE;
-    return sys_lwmutex_create(m, &attr);
+   sys_lwmutex_attribute_t attr;
+   sys_lwmutex_attribute_initialize(attr);
+   attr.attr_recursive = SYS_SYNC_RECURSIVE;
+   return sys_lwmutex_create(m, &attr);
 }
 
 static inline int destroyLock(sys_lwmutex_t *m) { return sys_lwmutex_destroy(m); }
@@ -86,6 +86,6 @@ static inline void yieldThread(void)    { sys_ppu_thread_yield(); }
 // but every existing teardown path here just wants "wait until it's gone".
 static inline int joinThread(sys_ppu_thread_t tid)
 {
-    uint64_t status = 0;
-    return sys_ppu_thread_join(tid, &status);
+   uint64_t status = 0;
+   return sys_ppu_thread_join(tid, &status);
 }

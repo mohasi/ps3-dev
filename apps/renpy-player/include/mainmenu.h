@@ -6,10 +6,10 @@
 // layout + frame are translated from the engine theme source -- see mainmenu.c.
 
 typedef enum {
-    MM_ACTION_NONE = 0,   // nothing chosen this frame (or an inert button: Gallery/Prefs)
-    MM_ACTION_START,      // "Start Game"
-    MM_ACTION_LOAD,       // "Load Game" -> _intra_jumps("load_screen") (the "Continue" art button)
-    MM_ACTION_QUIT        // "Quit", or the player backed out
+   MM_ACTION_NONE = 0,   // nothing chosen this frame (or an inert button: Gallery/Prefs)
+   MM_ACTION_START,      // "Start Game"
+   MM_ACTION_LOAD,       // "Load Game" -> _intra_jumps("load_screen") (the "Continue" art button)
+   MM_ACTION_QUIT        // "Quit", or the player backed out
 } MmAction;
 
 void     buildMainMenu(void);                         // build from the manifest + load art

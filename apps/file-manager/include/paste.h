@@ -31,3 +31,8 @@ int  countClipboardConflicts(int cap);
 // its copy has fully landed. on cancel it drops a partial fresh copy and keeps the
 // source. does not clear the clipboard - the finisher does, on the main thread.
 void runPaste(void);
+
+// 1 if the last runPaste() hit an I/O error mid-transfer (e.g. the device was
+// pulled), leaving partial output in place. read on the main thread by the
+// finisher after the task ends. cleared at the start of each runPaste().
+int pasteHadError(void);

@@ -1,26 +1,23 @@
 // dir-playlist - folder listing + prev/next-with-wrap navigation. See dir-playlist.h.
 #include "dir-playlist.h"
-#include "file.h"               // cellFs*, joinPath, getParentPath, getBaseName, MAX_PATH_LEN
+#include "file.h"               // VFS helpers, joinPath, getParentPath, getBaseName, MAX_PATH_LEN
 #include "string-utilities.h"   // strCopy, strCmpICase, strEq
 
 int listDirFiltered(const char *dir, char names[][DIR_PLAYLIST_NAME_MAX], int maxCount, FileFilter accept)
 {
    int count = 0;
 
-   int fd;
-   if (cellFsOpendir(dir, &fd) != CELL_FS_SUCCEEDED) return 0;
+   VfsDir d;
+   if (openDir(dir, &d) != 0) return 0;
 
-   CellFsDirent ent;
-   uint64_t readBytes;
-   while (cellFsReaddir(fd, &ent, &readBytes) == CELL_FS_SUCCEEDED && readBytes > 0) {
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
-      if (!accept(ent.d_name)) continue;
+   char name[256];
+   while (readDir(&d, name, sizeof name, NULL) == 1) {   // skips "." / ".."
+      if (!accept(name)) continue;
       if (count >= maxCount) break;
-      strCopy(names[count], DIR_PLAYLIST_NAME_MAX, ent.d_name);
+      strCopy(names[count], DIR_PLAYLIST_NAME_MAX, name);
       count++;
    }
-   cellFsClosedir(fd);
+   closeDir(&d);
 
    // insertion sort, case-insensitive by name
    for (int i = 1; i < count; i++) {

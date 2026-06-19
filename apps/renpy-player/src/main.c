@@ -2,6 +2,7 @@
 
 #include "app.h"
 #include "file.h"
+#include "syscall.h"   // mountDevBlind
 #include "gfx.h"
 #include "pad.h"
 #include "font.h"

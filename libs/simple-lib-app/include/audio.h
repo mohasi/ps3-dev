@@ -71,9 +71,10 @@ typedef struct {
    uint8_t *flacData;
 
    // wav disk streaming (SFX_STREAM): dr_wav reading from an open file via callbacks, so an hour-long
-   // wav plays without loading into memory. wav is an opaque drwav*; wavFd is the fd it reads from.
+   // wav plays without loading into memory. wav is an opaque drwav*; wavFile is the open VfsFile* it
+   // reads from (heap-allocated so the pointer survives Audio being returned by value).
    void    *wav;
-   int      wavFd;
+   void    *wavFile;
 
    // streaming resample carry (ogg/mp3/flac): decoded-but-unconsumed source frames plus the
    // fractional read position, kept across mixer blocks so resampling stays phase-continuous

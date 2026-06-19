@@ -1,58 +1,55 @@
 // file - progress-reporting, cancellable tree operations (declared in file.h;
 // the plain allocation-free helpers live inline there). these mirror the plain
 // copyTree/deleteTree but report bytes through onBytes(n) and bail when
-// cancelled() returns non-zero; either callback may be NULL. prx-safe: only
-// cellFs calls and the inline path helpers, no libc/malloc.
+// cancelled() returns non-zero; either callback may be NULL. prx-safe: only the
+// VFS primitives and the inline path helpers, no libc/malloc. all paths route
+// through the VFS, so these work the same on any backend (cellFs/NTFS/exFAT).
 #include "file.h"
 
 uint64_t measureTree(const char *path, int (*cancelled)(void))
 {
    if (cancelled && cancelled()) return 0;
 
-   CellFsStat st;
-   if (cellFsStat(path, &st) != CELL_FS_SUCCEEDED) return 0;
-   if (!(st.st_mode & CELL_FS_S_IFDIR)) return (uint64_t)st.st_size;
+   VfsStat info;
+   if (statPath(path, &info) != 0) return 0;
+   if (!info.isDir) return info.size;
 
-   int descriptor;
-   if (cellFsOpendir(path, &descriptor) != CELL_FS_SUCCEEDED) return 0;
+   VfsDir dir;
+   if (openDir(path, &dir) != 0) return 0;
 
    uint64_t sum = 0;
+   char name[256];
    char child[MAX_PATH_LEN];
-   CellFsDirent ent;
-   uint64_t n;
-   while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
+   while (readDir(&dir, name, sizeof name, NULL) == 1) {
       if (cancelled && cancelled()) break;
-      joinPath(child, MAX_PATH_LEN, path, ent.d_name);
+      joinPath(child, MAX_PATH_LEN, path, name);
       sum += measureTree(child, cancelled);
    }
-   cellFsClosedir(descriptor);
+   closeDir(&dir);
    return sum;
 }
 
 static int copyFileProgress(const char *src, const char *dst, void *buf, int bufSize,
                             void (*onBytes)(uint64_t), int (*cancelled)(void))
 {
-   int in;
-   if (cellFsOpen(src, CELL_FS_O_RDONLY, &in, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
-   int out;
-   if (cellFsOpen(dst, CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_TRUNC, &out, NULL, 0) != CELL_FS_SUCCEEDED) {
-      cellFsClose(in);
+   VfsFile in;
+   if (openFs(src, VFS_O_RDONLY, &in) != 0) return -1;
+   VfsFile out;
+   if (openFs(dst, VFS_O_WRONLY | VFS_O_CREAT | VFS_O_TRUNC, &out) != 0) {
+      closeFs(&in);
       return -1;
    }
    int rc = 0;
    for (;;) {
       if (cancelled && cancelled()) { rc = 1; break; }
-      uint64_t got = 0;
-      if (cellFsRead(in, buf, (uint64_t)bufSize, &got) != CELL_FS_SUCCEEDED) { rc = -1; break; }
+      int64_t got = readFs(&in, buf, (uint64_t)bufSize);
+      if (got < 0) { rc = -1; break; }
       if (got == 0) break;
-      uint64_t put = 0;
-      if (cellFsWrite(out, buf, got, &put) != CELL_FS_SUCCEEDED || put != got) { rc = -1; break; }
-      if (onBytes) onBytes(got);
+      if (writeFs(&out, buf, (uint64_t)got) != got) { rc = -1; break; }
+      if (onBytes) onBytes((uint64_t)got);
    }
-   cellFsClose(in);
-   cellFsClose(out);
+   closeFs(&in);
+   closeFs(&out);
    return rc;
 }
 
@@ -61,29 +58,26 @@ static int copyTreeRecursively(const char *src, const char *dst, void *buf, int 
 {
    if (cancelled && cancelled()) return 1;
 
-   CellFsStat st;
-   if (cellFsStat(src, &st) != CELL_FS_SUCCEEDED) return -1;
-   if (!(st.st_mode & CELL_FS_S_IFDIR)) return copyFileProgress(src, dst, buf, bufSize, onBytes, cancelled);
+   VfsStat info;
+   if (statPath(src, &info) != 0) return -1;
+   if (!info.isDir) return copyFileProgress(src, dst, buf, bufSize, onBytes, cancelled);
 
    if (makeDir(dst) != 0) return -1;
 
-   int descriptor;
-   if (cellFsOpendir(src, &descriptor) != CELL_FS_SUCCEEDED) return -1;
+   VfsDir dir;
+   if (openDir(src, &dir) != 0) return -1;
 
+   char name[256];
    char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
-   CellFsDirent ent;
-   uint64_t n;
    int rc = 0;
-   while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
+   while (readDir(&dir, name, sizeof name, NULL) == 1) {
       if (cancelled && cancelled()) { rc = 1; break; }
-      joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
-      joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
+      joinPath(childSrc, MAX_PATH_LEN, src, name);
+      joinPath(childDst, MAX_PATH_LEN, dst, name);
       rc = copyTreeRecursively(childSrc, childDst, buf, bufSize, onBytes, cancelled);
       if (rc != 0) break;
    }
-   cellFsClosedir(descriptor);
+   closeDir(&dir);
    return rc;
 }
 
@@ -95,7 +89,7 @@ int copyTreeProgress(const char *src, const char *dst, void *buf, int bufSize,
    // one flush at the true batch boundary: makes every byte just written durable
    // and the next free-size read accurate. run even on error/cancel, since a
    // partial copy still left data on the volume. best-effort -- never fails the op.
-   syncPath(dst);
+   syncVfs(dst);
    return rc;
 }
 
@@ -105,13 +99,13 @@ static int mergeTreeRecursively(const char *src, const char *dst, int replaceExi
 {
    if (cancelled && cancelled()) return 1;
 
-   CellFsStat st;
-   if (cellFsStat(src, &st) != CELL_FS_SUCCEEDED) return -1;
+   VfsStat info;
+   if (statPath(src, &info) != 0) return -1;
 
-   if (!(st.st_mode & CELL_FS_S_IFDIR)) {
+   if (!info.isDir) {
       // file leaf: on a collision, replace or keep the destination per the flag.
       if (!replaceExisting && fileExists(dst)) {
-         if (onBytes) onBytes((uint64_t)st.st_size);  // still part of the total
+         if (onBytes) onBytes(info.size);  // still part of the total
          return 0;
       }
       return copyFileProgress(src, dst, buf, bufSize, onBytes, cancelled);
@@ -119,23 +113,20 @@ static int mergeTreeRecursively(const char *src, const char *dst, int replaceExi
 
    if (makeDir(dst) != 0) return -1;  // no-op when dst already exists
 
-   int descriptor;
-   if (cellFsOpendir(src, &descriptor) != CELL_FS_SUCCEEDED) return -1;
+   VfsDir dir;
+   if (openDir(src, &dir) != 0) return -1;
 
+   char name[256];
    char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
-   CellFsDirent ent;
-   uint64_t n;
    int rc = 0;
-   while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
+   while (readDir(&dir, name, sizeof name, NULL) == 1) {
       if (cancelled && cancelled()) { rc = 1; break; }
-      joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
-      joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
+      joinPath(childSrc, MAX_PATH_LEN, src, name);
+      joinPath(childDst, MAX_PATH_LEN, dst, name);
       rc = mergeTreeRecursively(childSrc, childDst, replaceExisting, buf, bufSize, onBytes, cancelled);
       if (rc != 0) break;
    }
-   cellFsClosedir(descriptor);
+   closeDir(&dir);
    return rc;
 }
 
@@ -145,7 +136,7 @@ int mergeTreeProgress(const char *src, const char *dst, int replaceExisting,
 {
    int rc = mergeTreeRecursively(src, dst, replaceExisting, buf, bufSize, onBytes, cancelled);
 
-   syncPath(dst);
+   syncVfs(dst);
    return rc;
 }
 
@@ -153,33 +144,30 @@ int countTreeConflicts(const char *src, const char *dst, int cap)
 {
    if (cap <= 0) return 0;
 
-   CellFsStat ss;
-   if (cellFsStat(src, &ss) != CELL_FS_SUCCEEDED) return 0;
+   VfsStat srcInfo;
+   if (statPath(src, &srcInfo) != 0) return 0;
 
-   CellFsStat ds;
-   int dstExists = (cellFsStat(dst, &ds) == CELL_FS_SUCCEEDED);
+   VfsStat dstInfo;
+   int dstExists = (statPath(dst, &dstInfo) == 0);
 
-   if (!(ss.st_mode & CELL_FS_S_IFDIR))
-      return dstExists ? 1 : 0;       // a file leaf conflicts if anything is at dst
+   if (!srcInfo.isDir)
+      return dstExists ? 1 : 0;        // a file leaf conflicts if anything is at dst
 
    if (!dstExists) return 0;           // dir merging into nothing: all new
-   if (!(ds.st_mode & CELL_FS_S_IFDIR)) return 1;  // dir vs existing file: one clash
+   if (!dstInfo.isDir) return 1;       // dir vs existing file: one clash
 
-   int descriptor;
-   if (cellFsOpendir(src, &descriptor) != CELL_FS_SUCCEEDED) return 0;
+   VfsDir dir;
+   if (openDir(src, &dir) != 0) return 0;
 
+   char name[256];
    char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
-   CellFsDirent ent;
-   uint64_t n;
    int count = 0;
-   while (count < cap && cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
-      joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
-      joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
+   while (count < cap && readDir(&dir, name, sizeof name, NULL) == 1) {
+      joinPath(childSrc, MAX_PATH_LEN, src, name);
+      joinPath(childDst, MAX_PATH_LEN, dst, name);
       count += countTreeConflicts(childSrc, childDst, cap - count);
    }
-   cellFsClosedir(descriptor);
+   closeDir(&dir);
    return count;
 }
 
@@ -187,37 +175,34 @@ static int deleteTreeRecursively(const char *path, void (*onBytes)(uint64_t), in
 {
    if (cancelled && cancelled()) return 1;
 
-   CellFsStat st;
-   int r = cellFsStat(path, &st);
-   if (r == (int)CELL_FS_ENOENT) return 0;
-   if (r != CELL_FS_SUCCEEDED)   return -1;
+   VfsStat info;
+   // not stattable: removeFilePath is idempotent (already gone -> 0) but still
+   // reports a real failure (-1), so a delete never claims false success.
+   if (statPath(path, &info) != 0) return removeFilePath(path);
 
-   if (!(st.st_mode & CELL_FS_S_IFDIR)) {
-      uint64_t sz = (uint64_t)st.st_size;
+   if (!info.isDir) {
+      uint64_t size = info.size;
       if (deleteFile(path) < 0) return -1;
-      if (onBytes) onBytes(sz);
+      if (onBytes) onBytes(size);
       return 0;
    }
 
-   int descriptor;
-   if (cellFsOpendir(path, &descriptor) != CELL_FS_SUCCEEDED) return -1;
+   VfsDir dir;
+   if (openDir(path, &dir) != 0) return -1;
 
+   char name[256];
    char child[MAX_PATH_LEN];
-   CellFsDirent ent;
-   uint64_t n;
    int rc = 0;
-   while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
+   while (readDir(&dir, name, sizeof name, NULL) == 1) {
       if (cancelled && cancelled()) { rc = 1; break; }
-      joinPath(child, MAX_PATH_LEN, path, ent.d_name);
+      joinPath(child, MAX_PATH_LEN, path, name);
       rc = deleteTreeRecursively(child, onBytes, cancelled);
       if (rc != 0) break;
    }
-   cellFsClosedir(descriptor);
+   closeDir(&dir);
    if (rc != 0) return rc;
 
-   return cellFsRmdir(path) == CELL_FS_SUCCEEDED ? 0 : -1;
+   return removeDirPath(path) == 0 ? 0 : -1;
 }
 
 int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancelled)(void))
@@ -226,6 +211,6 @@ int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancel
 
    // flush the directory-entry removals and freed blocks to disk once, so the
    // volume can't be left mid-update and the freed space shows up immediately.
-   syncPath(path);
+   syncVfs(path);
    return rc;
 }

@@ -1,10 +1,9 @@
 #pragma once
 
 #include <stdint.h>
-#include <cell/fs/cell_fs_file_api.h>
-#include <cell/fs/cell_fs_errno.h>
+#include <stddef.h>   // NULL
 #include "string-utilities.h"
-#include "syscall.h"  // scCall trampolines, mountDevBlind (837), syncDevice (839)
+#include "vfs.h"      // every fs helper here routes through the VFS (cellFs/NTFS/exFAT)
 
 #define MAX_PATH_LEN 512
 
@@ -28,7 +27,7 @@ static inline void toParentPath(char *path)
    if (path[len - 1] == '/') len--;
    while (len > 1 && path[len - 1] != '/') len--;
    if (len <= 1) { path[0] = '/'; path[1] = '\0'; }
-   else          { path[len] = '\0'; }
+   else          { path[len - 1] = '\0'; }   // cut at the separating '/', not after it
 }
 
 // copies the parent of path into parent without mutating the input.
@@ -52,7 +51,7 @@ static inline const char *getBaseName(const char *path)
 // copies the device mount root of an absolute path into out (size >= 16):
 // "/dev_usb000/x/y" -> "/dev_usb000", "/dev_hdd0/..." -> "/dev_hdd0",
 // "/dev_blind" -> "/dev_blind". a bare root or a path with no second '/' is
-// copied whole. pass the result to syncDevice. returns out.
+// copied whole. returns out.
 static inline char *deviceRootOf(const char *path, char *out, int outSize)
 {
    int o = 0;
@@ -65,14 +64,11 @@ static inline char *deviceRootOf(const char *path, char *out, int outSize)
    return out;
 }
 
-// flushes the volume that path lives on (syncDevice on its device root). use
-// after a write/unlink/rename so the change is durable and the free-size the
-// XMB reports is accurate. for a genuine cross-volume operation (e.g. moveTree)
-// sync each root separately -- this only touches the one path's volume.
+// flushes the volume that path lives on so a write/unlink/rename is durable and
+// the free-size the XMB reports is accurate. backend-aware (no-op off cellFs).
 static inline void syncPath(const char *path)
 {
-   char root[16];
-   syncDevice(deviceRootOf(path, root, sizeof root));
+   syncVfs(path);
 }
 
 static inline const char *getExtension(const char *name)
@@ -104,9 +100,8 @@ static inline int isValidFileName(const char *name)
 
 static inline int isDir(const char *path)
 {
-   CellFsStat st;
-   if (cellFsStat(path, &st) != CELL_FS_SUCCEEDED) return 0;
-   return (st.st_mode & CELL_FS_S_IFDIR) != 0;
+   VfsStat info;
+   return statPath(path, &info) == 0 && info.isDir;
 }
 
 // formats byte count as "1.23 MB" / "456 B" etc. buf must hold at least 16 bytes.
@@ -146,80 +141,67 @@ static inline void formatSizeApprox(uint64_t bytes, int approx, char *buf)
 // reads up to cap-1 bytes into buf and NUL-terminates. returns bytes read, or -1.
 static inline int readFile(const char *path, char *buf, int cap)
 {
-   int descriptor;
-   if (cellFsOpen(path, CELL_FS_O_RDONLY, &descriptor, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
-   uint64_t bytesRead = 0;
-   int r = cellFsRead(descriptor, buf, (uint64_t)(cap - 1), &bytesRead);
-   cellFsClose(descriptor);
-   if (r != CELL_FS_SUCCEEDED || bytesRead == 0) return -1;
+   VfsFile file;
+   if (openFs(path, VFS_O_RDONLY, &file) != 0) return -1;
+   int64_t bytesRead = readFs(&file, buf, (uint64_t)(cap - 1));
+   closeFs(&file);
+   if (bytesRead <= 0) return -1;
    buf[bytesRead] = '\0';
    return (int)bytesRead;
 }
 
 static inline int fileExists(const char *path)
 {
-   CellFsStat st;
-   return cellFsStat(path, &st) == CELL_FS_SUCCEEDED;
+   VfsStat info;
+   return statPath(path, &info) == 0;
 }
 
 static inline int writeFile(const char *path, const char *data, uint64_t len)
 {
-   int descriptor;
-   if (cellFsOpen(path, CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_TRUNC,
-                  &descriptor, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
-   uint64_t written = 0;
-   int r = cellFsWrite(descriptor, data, len, &written);
-   cellFsClose(descriptor);
-   return (r == CELL_FS_SUCCEEDED && written == len) ? 0 : -1;
+   VfsFile file;
+   if (openFs(path, VFS_O_WRONLY | VFS_O_CREAT | VFS_O_TRUNC, &file) != 0) return -1;
+   int64_t written = writeFs(&file, data, len);
+   closeFs(&file);
+   return (written == (int64_t)len) ? 0 : -1;
 }
 
 // creates a directory. returns 0 if created or already present.
 static inline int makeDir(const char *path)
 {
-   int r = cellFsMkdir(path, CELL_FS_S_IFDIR | 0777);
-   return (r == CELL_FS_SUCCEEDED || r == (int)CELL_FS_EEXIST) ? 0 : r;
+   return makeDirPath(path);
 }
 
 // idempotent: returns 0 if the file did not exist.
 static inline int deleteFile(const char *path)
 {
-   int r = cellFsUnlink(path);
-   return (r == CELL_FS_SUCCEEDED || r == (int)CELL_FS_ENOENT) ? 0 : -1;
+   return removeFilePath(path);
 }
 
 // recursively deletes path (file or dir). adds the size of every removed
-// regular file into *bytesFreed (pass NULL to ignore). idempotent on ENOENT.
+// regular file into *bytesFreed (pass NULL to ignore). idempotent when absent.
 static inline int deleteTree(const char *path, uint64_t *bytesFreed)
 {
-   CellFsStat st;
-   int r = cellFsStat(path, &st);
-   if (r == (int)CELL_FS_ENOENT) return 0;
-   if (r != CELL_FS_SUCCEEDED)   return -1;
+   VfsStat info;
+   // not stattable: removeFilePath is idempotent (already gone -> 0) but still
+   // reports a real failure (-1), so a delete never claims false success.
+   if (statPath(path, &info) != 0) return removeFilePath(path);
 
-   if (!(st.st_mode & CELL_FS_S_IFDIR)) {
-      if (bytesFreed) *bytesFreed += st.st_size;
+   if (!info.isDir) {
+      if (bytesFreed) *bytesFreed += info.size;
       return deleteFile(path);
    }
 
-   int descriptor;
-   if (cellFsOpendir(path, &descriptor) != CELL_FS_SUCCEEDED) return -1;
+   VfsDir dir;
+   if (openDir(path, &dir) != 0) return -1;
 
-   char child[MAX_PATH_LEN];
-   CellFsDirent ent;
-   uint64_t n;
-   while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
-      int len = 0;
-      while (path[len] && len < (int)sizeof child - 2) { child[len] = path[len]; len++; }
-      if (len > 0 && child[len - 1] != '/' && len < (int)sizeof child - 1) child[len++] = '/';
-      for (int i = 0; ent.d_name[i] && len < (int)sizeof child - 1; i++) child[len++] = ent.d_name[i];
-      child[len] = '\0';
-      if (deleteTree(child, bytesFreed) < 0) { cellFsClosedir(descriptor); return -1; }
+   char name[256], child[MAX_PATH_LEN];
+   while (readDir(&dir, name, sizeof name, NULL) == 1) {
+      joinPath(child, MAX_PATH_LEN, path, name);
+      if (deleteTree(child, bytesFreed) < 0) { closeDir(&dir); return -1; }
    }
-   cellFsClosedir(descriptor);
+   closeDir(&dir);
 
-   return cellFsRmdir(path) == CELL_FS_SUCCEEDED ? 0 : -1;
+   return removeDirPath(path) == 0 ? 0 : -1;
 }
 
 // copies a single regular file src -> dst (created/truncated). buf is caller
@@ -228,23 +210,22 @@ static inline int deleteTree(const char *path, uint64_t *bytesFreed)
 // returns 0 on success, -1 on failure.
 static inline int copyFile(const char *src, const char *dst, void *buf, int bufSize)
 {
-   int in;
-   if (cellFsOpen(src, CELL_FS_O_RDONLY, &in, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
-   int out;
-   if (cellFsOpen(dst, CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_TRUNC, &out, NULL, 0) != CELL_FS_SUCCEEDED) {
-      cellFsClose(in);
+   VfsFile in;
+   if (openFs(src, VFS_O_RDONLY, &in) != 0) return -1;
+   VfsFile out;
+   if (openFs(dst, VFS_O_WRONLY | VFS_O_CREAT | VFS_O_TRUNC, &out) != 0) {
+      closeFs(&in);
       return -1;
    }
    int rc = 0;
    for (;;) {
-      uint64_t got = 0;
-      if (cellFsRead(in, buf, (uint64_t)bufSize, &got) != CELL_FS_SUCCEEDED) { rc = -1; break; }
+      int64_t got = readFs(&in, buf, (uint64_t)bufSize);
+      if (got < 0) { rc = -1; break; }
       if (got == 0) break;
-      uint64_t put = 0;
-      if (cellFsWrite(out, buf, got, &put) != CELL_FS_SUCCEEDED || put != got) { rc = -1; break; }
+      if (writeFs(&out, buf, (uint64_t)got) != got) { rc = -1; break; }
    }
-   cellFsClose(in);
-   cellFsClose(out);
+   closeFs(&in);
+   closeFs(&out);
    return rc;
 }
 
@@ -252,27 +233,23 @@ static inline int copyFile(const char *src, const char *dst, void *buf, int bufS
 // for the file payload (see copyFile). returns 0 on success, -1 on failure.
 static inline int copyTree(const char *src, const char *dst, void *buf, int bufSize)
 {
-   CellFsStat st;
-   if (cellFsStat(src, &st) != CELL_FS_SUCCEEDED) return -1;
-   if (!(st.st_mode & CELL_FS_S_IFDIR)) return copyFile(src, dst, buf, bufSize);
+   VfsStat info;
+   if (statPath(src, &info) != 0) return -1;
+   if (!info.isDir) return copyFile(src, dst, buf, bufSize);
 
    if (makeDir(dst) != 0) return -1;
 
-   int descriptor;
-   if (cellFsOpendir(src, &descriptor) != CELL_FS_SUCCEEDED) return -1;
+   VfsDir dir;
+   if (openDir(src, &dir) != 0) return -1;
 
-   char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
-   CellFsDirent ent;
-   uint64_t n;
+   char name[256], childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
    int rc = 0;
-   while (cellFsReaddir(descriptor, &ent, &n) == CELL_FS_SUCCEEDED && n > 0) {
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
-      joinPath(childSrc, MAX_PATH_LEN, src, ent.d_name);
-      joinPath(childDst, MAX_PATH_LEN, dst, ent.d_name);
+   while (readDir(&dir, name, sizeof name, NULL) == 1) {
+      joinPath(childSrc, MAX_PATH_LEN, src, name);
+      joinPath(childDst, MAX_PATH_LEN, dst, name);
       if (copyTree(childSrc, childDst, buf, bufSize) < 0) { rc = -1; break; }
    }
-   cellFsClosedir(descriptor);
+   closeDir(&dir);
    return rc;
 }
 
@@ -284,7 +261,7 @@ static inline int copyTree(const char *src, const char *dst, void *buf, int bufS
 static inline int moveTree(const char *src, const char *dst, void *buf, int bufSize)
 {
    int rc;
-   if (cellFsRename(src, dst) == CELL_FS_SUCCEEDED) {
+   if (renamePath(src, dst) == 0) {
       rc = 0;
    } else {
       rc = copyTree(src, dst, buf, bufSize);   // may leave partial data on dst
@@ -293,13 +270,13 @@ static inline int moveTree(const char *src, const char *dst, void *buf, int bufS
 
    // flush both ends, regardless of rc: the destination gained entries/data
    // (or a failed cross-volume copy left a partial tree there) and the source
-   // lost them. rename re-links within one volume; a cross-volume move touches
-   // two, so sync the source root too when it differs.
+   // lost them. a same-volume rename touches one root; a cross-volume move
+   // touches two, so sync the source root too when it differs.
    char srcRoot[16], dstRoot[16];
    deviceRootOf(src, srcRoot, sizeof srcRoot);
    deviceRootOf(dst, dstRoot, sizeof dstRoot);
-   syncDevice(dstRoot);
-   if (!strEq(srcRoot, dstRoot)) syncDevice(srcRoot);
+   syncVfs(dst);
+   if (!strEq(srcRoot, dstRoot)) syncVfs(src);
    return rc;
 }
 

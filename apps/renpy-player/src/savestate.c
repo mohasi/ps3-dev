@@ -9,7 +9,7 @@
 #include "gamepath.h" // getGameSaveDir() -- RENPY_ROOT/<game>
 #include "vars.h"     // getVarsCount / enumVars / setVar / resetVars / Value
 #include "vm.h"       // getVmState / setVmState
-#include "file.h"     // readFile / writeFile / makeDir / fileExists / cellFsStat
+#include "file.h"     // readFile / writeFile / makeDir / fileExists / statPath
 #include "dbg.h"      // logWarn
 #include "image-loader.h"   // savePngArgb (SDK PNG encode for the slot screenshot)
 
@@ -205,18 +205,18 @@ static void formatTime(uint64_t unixTime, char *dst, int cap)
 int saveSlotMtime(const char *display, long *out)
 {
    char path[256]; slotPath(display, path, sizeof path);
-   CellFsStat st;
-   if (cellFsStat(path, &st) != CELL_FS_SUCCEEDED) return 0;
-   if (out) *out = (long)st.st_mtime;
+   VfsStat st;
+   if (statPath(path, &st) != 0) return 0;
+   if (out) *out = (long)st.mtime;
    return 1;
 }
 
 int saveSlotInfo(const char *display, char *outTime, int timeCap, char *outName, int nameCap)
 {
    char path[256]; slotPath(display, path, sizeof path);
-   CellFsStat st;
-   if (cellFsStat(path, &st) != CELL_FS_SUCCEEDED) return 0;
-   if (outTime && timeCap > 0) formatTime((uint64_t)st.st_mtime, outTime, timeCap);
+   VfsStat st;
+   if (statPath(path, &st) != 0) return 0;
+   if (outTime && timeCap > 0) formatTime(st.mtime, outTime, timeCap);
 
    if (outName && nameCap > 0)
    {

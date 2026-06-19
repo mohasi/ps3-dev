@@ -26,56 +26,55 @@ static int shouldStop(uint64_t deadline)
 // open dir handle and the parent-path length for each level.
 static void walkPath(char *path, int pathLen, int *files, uint64_t *bytes, uint64_t deadline)
 {
-   int fdStack[WALK_DEPTH_MAX];
+   VfsDir dirStack[WALK_DEPTH_MAX];
    int lenStack[WALK_DEPTH_MAX];
    int top = 0;
 
-   CellFsStat st;
-   if (cellFsStat(path, &st) != CELL_FS_SUCCEEDED) return;
-   if (!(st.st_mode & CELL_FS_S_IFDIR)) {
+   VfsStat st;
+   if (statPath(path, &st) != 0) return;
+   if (!st.isDir) {
       (*files)++;
-      *bytes += st.st_size;
+      *bytes += st.size;
       return;
    }
-   if (cellFsOpendir(path, &fdStack[0]) != CELL_FS_SUCCEEDED) return;
+   if (openDir(path, &dirStack[0]) != 0) return;
    lenStack[0] = pathLen;
    top = 1;
 
-   CellFsDirent ent;
-   uint64_t read;
+   char name[256];
 
    while (top > 0) {
       if (shouldStop(deadline)) break;
 
-      if (cellFsReaddir(fdStack[top - 1], &ent, &read) != CELL_FS_SUCCEEDED || read == 0) {
-         cellFsClosedir(fdStack[top - 1]);
+      if (readDir(&dirStack[top - 1], name, sizeof name, NULL) != 1) {
+         closeDir(&dirStack[top - 1]);
          top--;
          if (top > 0) path[lenStack[top]] = '\0';
          continue;
       }
-      if (ent.d_name[0] == '.') continue;
+      if (name[0] == '.') continue;   // readDir already drops "."/".."; skip other dotfiles too
 
       int parentLen = lenStack[top - 1];
       path[parentLen] = '\0';
-      int nameLen = (int)strlen(ent.d_name);
+      int nameLen = (int)strlen(name);
       int needsSlash = parentLen > 0 && path[parentLen - 1] != '/';
       int childLen = parentLen + (needsSlash ? 1 : 0) + nameLen;
       if (childLen >= MAX_PATH_LEN) continue;
       if (needsSlash) path[parentLen++] = '/';
-      memcpy(path + parentLen, ent.d_name, nameLen);
+      memcpy(path + parentLen, name, nameLen);
       path[childLen] = '\0';
 
-      if (cellFsStat(path, &st) != CELL_FS_SUCCEEDED) {
+      if (statPath(path, &st) != 0) {
          path[lenStack[top - 1]] = '\0';
          continue;
       }
-      if (!(st.st_mode & CELL_FS_S_IFDIR)) {
+      if (!st.isDir) {
          (*files)++;
-         *bytes += st.st_size;
+         *bytes += st.size;
          path[lenStack[top - 1]] = '\0';
          continue;
       }
-      if (top >= WALK_DEPTH_MAX || cellFsOpendir(path, &fdStack[top]) != CELL_FS_SUCCEEDED) {
+      if (top >= WALK_DEPTH_MAX || openDir(path, &dirStack[top]) != 0) {
          path[lenStack[top - 1]] = '\0';
          continue;
       }
@@ -83,7 +82,7 @@ static void walkPath(char *path, int pathLen, int *files, uint64_t *bytes, uint6
       top++;
    }
 
-   while (top > 0) cellFsClosedir(fdStack[--top]);
+   while (top > 0) closeDir(&dirStack[--top]);
 }
 
 static void worker(uint64_t arg)
@@ -120,11 +119,15 @@ void updateFolderSizer(const FolderSizeCallbacks *callbacks)
       if (!callbacks->needsSizing(i, path, MAX_PATH_LEN, &generation)) continue;
       busy = 1;
       sys_ppu_thread_t tid;
-      spawnThread(&tid, worker, (uint64_t)(uintptr_t)callbacks, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "folder-sizer");
+      if (spawnThread(&tid, worker, (uint64_t)(uintptr_t)callbacks, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "folder-sizer") != 0)
+         busy = 0;   // spawn failed: no walker is running, so don't leave busy stuck
       return;
    }
 }
 
+// Signals the walker to bail. Non-blocking: the next updateFolderSizer() won't
+// start a new walker until this one clears `busy`, and stale results are dropped
+// by the generation check, so a directory change need not wait here.
 void cancelFolderSizer(void)
 {
    cancel = 1;

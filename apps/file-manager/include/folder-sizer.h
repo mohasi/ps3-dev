@@ -21,4 +21,4 @@ typedef struct FolderSizeCallbacks {
 } FolderSizeCallbacks;
 
 void updateFolderSizer(const FolderSizeCallbacks *callbacks);
-void cancelFolderSizer(void);
+void cancelFolderSizer(void);   // signal the walker to bail (non-blocking)

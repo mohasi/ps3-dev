@@ -4,21 +4,23 @@
 #include "timer.h"
 #include "file.h"
 #include "string-utilities.h"
-#include <cell/cell_fs.h>
 
 static Label label;
 static Timer timer;
+static char freeSpacePath[MAX_PATH_LEN] = "/dev_hdd0/";   // volume to report; tracks the current dir
 
 static void refresh(void *ctx)
 {
    (void)ctx;
-   uint32_t blockSize;
-   uint64_t freeBlocks;
-   if (cellFsGetFreeSize("/dev_hdd0/", &blockSize, &freeBlocks) != CELL_FS_SUCCEEDED) return;
+   uint64_t freeBytes = 0;
+   if (getFreeSpace(freeSpacePath, &freeBytes, NULL) != 0) {
+      setLabelText(&label, EM_DASH);   // no single volume here (e.g. the device-list root)
+      return;
+   }
 
-   uint64_t freeGB = (uint64_t)blockSize * freeBlocks / (1024 * 1024 * 1024);
+   uint64_t freeGB = freeBytes / (1024 * 1024 * 1024);
 
-   char buf[8];
+   char buf[16];
    int p = intToDec((int)freeGB, buf);
    buf[p++] = ' ';
    buf[p++] = 'G';
@@ -26,6 +28,15 @@ static void refresh(void *ctx)
    buf[p] = '\0';
 
    setLabelText(&label, buf);
+}
+
+// points the widget at the volume owning path (the directory the user is in) and
+// refreshes now. cheap no-op when the volume hasn't changed since last call.
+void setFreeSpacePath(const char *path)
+{
+   if (!path || strEq(freeSpacePath, path)) return;
+   strCopy(freeSpacePath, sizeof freeSpacePath, path);
+   refresh(NULL);
 }
 
 void initFreeSpaceWidget(Font *font, int x, int y, int size, uint32_t color, int width)

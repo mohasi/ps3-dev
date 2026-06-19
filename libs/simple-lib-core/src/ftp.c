@@ -11,8 +11,6 @@
 #include "ftp.h"
 
 #include <arpa/inet.h>
-#include <cell/fs/cell_fs_errno.h>
-#include <cell/fs/cell_fs_file_api.h>
 #include <cell/rtc.h>
 #include <netinet/in.h>
 #include <netex/errno.h>
@@ -27,6 +25,7 @@
 #include "dbg.h"
 #include "file.h"
 #include "string-utilities.h"
+#include "syscall.h"   // mountDevBlind
 #include "thread.h"
 
 enum {
@@ -94,6 +93,11 @@ static int listenOnPort(uint16_t port, FtpResult *reason)
      return -1;
    }
 
+   // Allow rebinding the port while a socket from a just-closed instance lingers
+   // in TIME_WAIT (e.g. plugin reload), instead of failing with "port in use".
+   int reuse = 1;
+   setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof reuse);
+
    struct sockaddr_in address;
    memSet(&address, 0, sizeof address);
    address.sin_family = AF_INET;
@@ -101,14 +105,19 @@ static int listenOnPort(uint16_t port, FtpResult *reason)
    address.sin_addr.s_addr = htonl(INADDR_ANY);
 
    if (bind(listenSocket, (struct sockaddr *)&address, sizeof address) < 0) {
+     int err = sys_net_errno;   // capture before socketclose can clear it
      socketclose(listenSocket);
-     if (reason) *reason = FTP_PORT_IN_USE;
+     // Only a genuine "address already in use" is a real conflict to fail fast on
+     // (keeps the app's FTP toggle responsive). Any other bind failure at boot —
+     // the network interface still coming up — is transient, so report it as
+     // network-not-ready and let the caller keep retrying.
+     if (reason) *reason = (err == SYS_NET_EADDRINUSE) ? FTP_PORT_IN_USE : FTP_NETWORK_UNAVAILABLE;
      return -1;
    }
 
    if (listen(listenSocket, FTP_MAX_SESSIONS) < 0) {
      socketclose(listenSocket);
-     if (reason) *reason = FTP_PORT_IN_USE;
+     if (reason) *reason = FTP_NETWORK_UNAVAILABLE;   // not a port conflict; retry through bring-up
      return -1;
    }
 
@@ -335,13 +344,8 @@ static void appendMlsdLine(char *buffer, int capacity, int *offset,
    *offset = outputLength;
 }
 
-static int statIsDir(const CellFsStat *stat)
-{
-   return (stat->st_mode & CELL_FS_S_IFDIR) ? 1 : 0;
-}
-
 static int emitMlsdEntry(int dataSocket, char *buffer, int capacity, int *offset,
-   const char *type, const CellFsStat *stat, const char *name)
+   const char *type, const VfsStat *stat, const char *name)
 {
    int needed = getStrLen(name) + 128;
    if (*offset > 0 && *offset + needed > capacity) {
@@ -349,53 +353,49 @@ static int emitMlsdEntry(int dataSocket, char *buffer, int capacity, int *offset
      *offset = 0;
    }
 
-   appendMlsdLine(buffer, capacity, offset, type, stat->st_size, (uint32_t)(stat->st_mode & 0777),
-      (uint64_t)stat->st_mtime, name);
+   appendMlsdLine(buffer, capacity, offset, type, stat->size, stat->mode & 0777, stat->mtime, name);
    return 0;
 }
 
 static int streamDirMlsd(int dataSocket, const char *path, char *buffer, int capacity)
 {
    int outputLength = 0;
-   CellFsStat stat;
-   if (cellFsStat(path, &stat) == CELL_FS_SUCCEEDED) {
+   VfsStat stat;
+   if (statPath(path, &stat) == 0) {
      if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, "cdir", &stat, ".") < 0) return -1;
    }
 
    if (!(path[0] == '/' && path[1] == 0)) {
      char parentPath[FTP_PATHBUF];
      getParentPath(path, parentPath, sizeof(parentPath));
-     CellFsStat parentStat;
-     if (cellFsStat(parentPath, &parentStat) == CELL_FS_SUCCEEDED) {
+     VfsStat parentStat;
+     if (statPath(parentPath, &parentStat) == 0) {
        if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, "pdir", &parentStat, "..") < 0) return -1;
      }
    }
 
-   int directoryHandle;
-   if (cellFsOpendir(path, &directoryHandle) != CELL_FS_SUCCEEDED) {
+   VfsDir directoryHandle;
+   if (openDir(path, &directoryHandle) != 0) {
      if (outputLength > 0) sendAll(dataSocket, buffer, outputLength);
      return -1;
    }
 
-   CellFsDirent entry;
-   uint64_t entrySize;
-   while (cellFsReaddir(directoryHandle, &entry, &entrySize) == CELL_FS_SUCCEEDED && entrySize > 0) {
-     if (entry.d_name[0] == '.' && (entry.d_name[1] == 0 || (entry.d_name[1] == '.' && entry.d_name[2] == 0))) continue;
-
+   char name[256];
+   while (readDir(&directoryHandle, name, sizeof name, NULL) == 1) {   // skips "." / ".."
      char fullPath[FTP_PATHBUF];
-     joinPath(fullPath, FTP_PATHBUF, path, entry.d_name);
+     joinPath(fullPath, FTP_PATHBUF, path, name);
 
-     CellFsStat entryStat;
-     if (cellFsStat(fullPath, &entryStat) != CELL_FS_SUCCEEDED) continue;
+     VfsStat entryStat;
+     if (statPath(fullPath, &entryStat) != 0) continue;
 
-     const char *type = statIsDir(&entryStat) ? "dir" : "file";
-     if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, type, &entryStat, entry.d_name) < 0) {
-       cellFsClosedir(directoryHandle);
+     const char *type = entryStat.isDir ? "dir" : "file";
+     if (emitMlsdEntry(dataSocket, buffer, capacity, &outputLength, type, &entryStat, name) < 0) {
+       closeDir(&directoryHandle);
        return -1;
      }
    }
 
-   cellFsClosedir(directoryHandle);
+   closeDir(&directoryHandle);
    if (outputLength > 0) return sendAll(dataSocket, buffer, outputLength);
    return 0;
 }
@@ -449,9 +449,9 @@ static void handleCwd(FtpSession *session, const char *arg)
      return;
    }
 
-   CellFsStat stat;
+   VfsStat stat;
 
-   if (cellFsStat(targetPath, &stat) != CELL_FS_SUCCEEDED || !statIsDir(&stat)) {
+   if (statPath(targetPath, &stat) != 0 || !stat.isDir) {
      replyLine(session->ctrlSocket, 550, "Directory not found.");
      return;
    }
@@ -530,8 +530,8 @@ static void handleMlst(FtpSession *session, const char *arg)
 {
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
-   CellFsStat stat;
-   if (cellFsStat(targetPath, &stat) != CELL_FS_SUCCEEDED) {
+   VfsStat stat;
+   if (statPath(targetPath, &stat) != 0) {
      replyLine(session->ctrlSocket, 550, "File not found.");
      return;
    }
@@ -544,9 +544,8 @@ static void handleMlst(FtpSession *session, const char *arg)
    buffer[outputLength++] = '\n';
    buffer[outputLength++] = ' ';
 
-   const char *type = statIsDir(&stat) ? "dir" : "file";
-   appendMlsdLine(buffer, (int)sizeof buffer, &outputLength, type, stat.st_size,
-      (uint32_t)(stat.st_mode & 0777), (uint64_t)stat.st_mtime, targetPath);
+   const char *type = stat.isDir ? "dir" : "file";
+   appendMlsdLine(buffer, (int)sizeof buffer, &outputLength, type, stat.size, stat.mode & 0777, stat.mtime, targetPath);
    appendStr(buffer, (int)sizeof buffer, &outputLength, "250 End\r\n");
    sendAll(session->ctrlSocket, buffer, outputLength);
 }
@@ -555,8 +554,8 @@ static void handleMdtm(FtpSession *session, const char *arg)
 {
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
-   CellFsStat stat;
-   if (cellFsStat(targetPath, &stat) != CELL_FS_SUCCEEDED) {
+   VfsStat stat;
+   if (statPath(targetPath, &stat) != 0) {
      replyLine(session->ctrlSocket, 550, "File not found.");
      return;
    }
@@ -567,7 +566,7 @@ static void handleMdtm(FtpSession *session, const char *arg)
    line[length++] = '1';
    line[length++] = '3';
    line[length++] = ' ';
-   formatMlsdTime((uint64_t)stat.st_mtime, line + length);
+   formatMlsdTime(stat.mtime, line + length);
    length += 14;
    line[length++] = '\r';
    line[length++] = '\n';
@@ -579,15 +578,15 @@ static void handleRetr(FtpSession *session, const char *arg)
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
 
-   int fileHandle;
-   if (cellFsOpen(targetPath, CELL_FS_O_RDONLY, &fileHandle, NULL, 0) != CELL_FS_SUCCEEDED) {
+   VfsFile fileHandle;
+   if (openFs(targetPath, VFS_O_RDONLY, &fileHandle) != 0) {
      replyLine(session->ctrlSocket, 550, "Open failed.");
      return;
    }
 
    int dataSocket = acceptPasv(session);
    if (dataSocket < 0) {
-     cellFsClose(fileHandle);
+     closeFs(&fileHandle);
      replyLine(session->ctrlSocket, 425, "No data connection.");
      return;
    }
@@ -598,8 +597,8 @@ static void handleRetr(FtpSession *session, const char *arg)
    replyLine(session->ctrlSocket, 150, "Opening data connection.");
    int failed = 0;
    for (;;) {
-     uint64_t bytesRead = 0;
-     if (cellFsRead(fileHandle, session->ioBuffer, FTP_BLOCK, &bytesRead) != CELL_FS_SUCCEEDED) {
+     int64_t bytesRead = readFs(&fileHandle, session->ioBuffer, FTP_BLOCK);
+     if (bytesRead < 0) {
        failed = 1;
        break;
      }
@@ -610,7 +609,7 @@ static void handleRetr(FtpSession *session, const char *arg)
      }
    }
 
-   cellFsClose(fileHandle);
+   closeFs(&fileHandle);
    closeSocket(&dataSocket);
    replyLine(session->ctrlSocket, failed ? 550 : 226, failed ? "Transfer aborted." : "Transfer complete.");
 }
@@ -620,16 +619,16 @@ static void handleStorOrAppe(FtpSession *session, const char *arg, int append)
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
 
-   int openFlags = CELL_FS_O_WRONLY | CELL_FS_O_CREAT | (append ? CELL_FS_O_APPEND : CELL_FS_O_TRUNC);
-   int fileHandle;
-   if (cellFsOpen(targetPath, openFlags, &fileHandle, NULL, 0) != CELL_FS_SUCCEEDED) {
+   int openFlags = VFS_O_WRONLY | VFS_O_CREAT | (append ? VFS_O_APPEND : VFS_O_TRUNC);
+   VfsFile fileHandle;
+   if (openFs(targetPath, openFlags, &fileHandle) != 0) {
      replyLine(session->ctrlSocket, 550, "Open failed.");
      return;
    }
 
    int dataSocket = acceptPasv(session);
    if (dataSocket < 0) {
-     cellFsClose(fileHandle);
+     closeFs(&fileHandle);
      replyLine(session->ctrlSocket, 425, "No data connection.");
      return;
    }
@@ -647,15 +646,13 @@ static void handleStorOrAppe(FtpSession *session, const char *arg, int append)
      }
      if (received == 0) break;
 
-     uint64_t bytesWritten = 0;
-     if (cellFsWrite(fileHandle, session->ioBuffer, (uint64_t)received, &bytesWritten) != CELL_FS_SUCCEEDED ||
-        bytesWritten != (uint64_t)received) {
+     if (writeFs(&fileHandle, session->ioBuffer, (uint64_t)received) != (int64_t)received) {
          failed = 1;
          break;
      }
    }
 
-   cellFsClose(fileHandle);
+   closeFs(&fileHandle);
    syncPath(targetPath);
    closeSocket(&dataSocket);
    replyLine(session->ctrlSocket, failed ? 550 : 226, failed ? "Transfer aborted." : "Transfer complete.");
@@ -668,8 +665,8 @@ static void handleSize(FtpSession *session, const char *arg)
 {
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
-   CellFsStat stat;
-   if (cellFsStat(targetPath, &stat) != CELL_FS_SUCCEEDED) {
+   VfsStat stat;
+   if (statPath(targetPath, &stat) != 0) {
      replyLine(session->ctrlSocket, 550, "File not found.");
      return;
    }
@@ -680,7 +677,7 @@ static void handleSize(FtpSession *session, const char *arg)
    line[length++] = '1';
    line[length++] = '3';
    line[length++] = ' ';
-   length = appendUint64(line, (int)sizeof line, length, (uint64_t)stat.st_size);
+   length = appendUint64(line, (int)sizeof line, length, stat.size);
    line[length++] = '\r';
    line[length++] = '\n';
    sendAll(session->ctrlSocket, line, length);
@@ -690,7 +687,8 @@ static void handleDele(FtpSession *session, const char *arg)
 {
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
-   if (cellFsUnlink(targetPath) == CELL_FS_SUCCEEDED) {
+   VfsStat stat;
+   if (statPath(targetPath, &stat) == 0 && removeFilePath(targetPath) == 0) {
      syncPath(targetPath);
      replyLine(session->ctrlSocket, 250, "File deleted.");
    } else {
@@ -702,7 +700,8 @@ static void handleMkd(FtpSession *session, const char *arg)
 {
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
-   if (cellFsMkdir(targetPath, CELL_FS_S_IFDIR | 0777) != CELL_FS_SUCCEEDED) {
+   VfsStat stat;
+   if (statPath(targetPath, &stat) == 0 || makeDirPath(targetPath) != 0) {   // fail if it already exists
      replyLine(session->ctrlSocket, 550, "Mkdir failed.");
      return;
    }
@@ -714,7 +713,7 @@ static void handleRmd(FtpSession *session, const char *arg)
 {
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
-   if (cellFsRmdir(targetPath) == CELL_FS_SUCCEEDED) {
+   if (removeDirPath(targetPath) == 0) {
      syncPath(targetPath);
      replyLine(session->ctrlSocket, 250, "Directory removed.");
    } else {
@@ -725,8 +724,8 @@ static void handleRmd(FtpSession *session, const char *arg)
 static void handleRnfr(FtpSession *session, const char *arg)
 {
    resolvePath(session, arg, session->renameFromPath);
-   CellFsStat stat;
-   if (cellFsStat(session->renameFromPath, &stat) != CELL_FS_SUCCEEDED) {
+   VfsStat stat;
+   if (statPath(session->renameFromPath, &stat) != 0) {
      session->renameFromPath[0] = 0;
      replyLine(session->ctrlSocket, 550, "File not found.");
      return;
@@ -743,7 +742,7 @@ static void handleRnto(FtpSession *session, const char *arg)
 
    char targetPath[FTP_PATHBUF];
    resolvePath(session, arg, targetPath);
-   if (cellFsRename(session->renameFromPath, targetPath) == CELL_FS_SUCCEEDED) {
+   if (renamePath(session->renameFromPath, targetPath) == 0) {
      syncPath(targetPath);
      replyLine(session->ctrlSocket, 250, "Rename complete.");
    } else {

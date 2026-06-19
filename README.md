@@ -11,7 +11,7 @@ ps3-dev/
 │   ├── npdrm.targets           shared NPDRM packaging post-build for apps
 │   └── prx.targets             shared PRX signing post-build for plugins
 ├── libs/
-│   ├── simple-lib-core/        cross-context primitives (printf, dbg, file, thread, wire, log-backlog, bridge-client)
+│   ├── simple-lib-core/        cross-context primitives (printf, dbg, file, VFS + exFAT, ftp, thread, wire, log-backlog, bridge-client)
 │   ├── simple-lib-app/         static library for apps (gfx, font, audio, pad, screen, anim, ui)
 │   ├── simple-lib-plugin/     header-only PRX-only extras (syscall, vsh)
 │   ├── libvshtask_export_stub.a
@@ -26,7 +26,6 @@ ps3-dev/
 ├── tools/
 │   ├── sprite-packer/          packs sprite PNGs into atlas + C header
 │   ├── xml-to-sfo/             generates PARAM.SFO from XML
-│   ├── xml-to-c/               generates C screen structs from XML
 │   └── scetool/                PRX signing tool + keys
 ├── out/                        build outputs (.sprx plugins, .pkg apps)
 └── README.md
@@ -70,10 +69,13 @@ bridge plugin reachable.
 
 ### simple-lib-core
 Cross-context primitives shared by both PRX plugins and apps: drop-in
-`printf`, leveled timestamped logging (`dbg`), cellFs helpers (`file`),
-PPU thread spawn (`thread`), string utilities, framed TCP protocol
-(`wire`), pre-connect log ring (`log-backlog`), and the producer-side
-bridge client (`bridge-client`). Built with `-fno-builtin-printf
+`printf`, leveled timestamped logging (`dbg`), a `/`-rooted **VFS** (`vfs`)
+with a built-in hand-written **exFAT** reader/writer backend for removable USB
+(`exfat` + the shared `usb-storage` device layer) that the file helpers (`file`)
+route through, the shared anonymous **FTP** server (`ftp`), PPU thread spawn
+(`thread`), string utilities, framed TCP protocol (`wire`), pre-connect log ring
+(`log-backlog`), and the producer-side bridge client (`bridge-client`). Built
+with `-fno-builtin-printf
 -nodefaultlibs` so it links safely into `vsh.self`. Must appear
 **before** SDK stubs in the link order or the PRX silently fails to
 load.
@@ -102,7 +104,8 @@ as an entry point to trigger the mount from the XMB menu. See
 
 ### simple-ftp
 Minimal FTP server: PASV-only, binary-only, anonymous. Listens on :21 once
-XMB is ready. Up to two concurrent sessions. Full filesystem access. See
+XMB is ready. Up to two concurrent sessions. Full filesystem access, including
+exFAT USB drives (mounted via the shared VFS and surfaced as `/exfat0` …). See
 `plugins/simple-ftp/README.md` for details.
 
 ## Apps
@@ -114,9 +117,10 @@ animation, input, and screen/overlay lifecycle. See
 
 ### file-manager
 PS3 file browser with sprite-based UI. Features directory listing with file-type
-icons, checkboxes, breadcrumb navigation, hold-to-scroll, and a sprite atlas
-generated at build time via `sprite-packer`. See `apps/file-manager/README.md`
-for details.
+icons, checkboxes, breadcrumb navigation, hold-to-scroll, image/audio viewers,
+read/write access to **exFAT USB drives** (via the shared VFS, with hotplug), and
+a sprite atlas generated at build time via `sprite-packer`. See
+`apps/file-manager/README.md` for details.
 
 ## Tools
 
@@ -128,5 +132,3 @@ pre-build step.
 ### xml-to-sfo
 Generates `PARAM.SFO` from a human-readable XML source. Used by app pre-build steps.
 
-### xml-to-c
-Generates C screen layout structs from XML definitions.

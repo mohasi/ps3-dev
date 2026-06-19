@@ -53,6 +53,7 @@ static Font            font;
 static Audio          *clickSfx;
 static ConfirmCallback onResolve;   // fired with the pressed button when one is chosen
 static int             showSquare;  // 1 when the middle button is visible
+static int             showCircle;  // 1 when the circle button is visible (0 = single-OK alert)
 static int             armed;       // 0 on the frame we open so the opening press is ignored
 
 static NineSlice panel;
@@ -87,6 +88,7 @@ void askConfirm(const char *title, const char *message,
 {
    onResolve  = onResult;
    showSquare = (squareText != NULL);
+   showCircle = (circleText != NULL);
    setLabelText(&titleLabel,   strOrEmpty(title));
    setLabelText(&messageLabel, strOrEmpty(message));
    setLabelText(&yesLabel,     strOrEmpty(crossText));
@@ -112,7 +114,7 @@ static void update(void)
    if (!armed) { armed = 1; return; }  // swallow the press that opened the dialog
    if (isPadButtonPressed(PAD_BTN_CROSS))                       resolve(CONFIRM_CROSS);
    else if (showSquare && isPadButtonPressed(PAD_BTN_SQUARE))   resolve(CONFIRM_SQUARE);
-   else if (isPadButtonPressed(PAD_BTN_CIRCLE))                 resolve(CONFIRM_CIRCLE);
+   else if (showCircle && isPadButtonPressed(PAD_BTN_CIRCLE))   resolve(CONFIRM_CIRCLE);
 }
 
 static void draw(void)
@@ -144,7 +146,7 @@ static void draw(void)
    int n = 0;
    icons[n] = &crossIcon;  labels[n] = &yesLabel;  n++;
    if (showSquare) { icons[n] = &squareIcon; labels[n] = &squareLabel; n++; }
-   icons[n] = &circleIcon; labels[n] = &noLabel;  n++;
+   if (showCircle) { icons[n] = &circleIcon; labels[n] = &noLabel;  n++; }
 
    int widths[3], total = 0;
    for (int i = 0; i < n; i++) {

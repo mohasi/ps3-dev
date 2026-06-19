@@ -43,6 +43,7 @@ typedef struct {
    int checked;
    int sized;        // folders: 0 until folder-sizer visits it
    int approx;       // sized but the walker hit its budget; size/fileCount are a lower bound
+   int isUsb;        // root listing only: a removable (USB) device, badged with the USB icon
 } FileEntry;
 
 static FileEntry *entries;
@@ -74,6 +75,7 @@ static int delTopmost;
 static Image checkboxes[FILE_LIST_PAGE_SIZE];
 static Image checkedBoxes[FILE_LIST_PAGE_SIZE];
 static Image fileIcons[FILE_TYPE_COUNT];
+static Image usbIcon;   // badge composited onto USB device folders at root
 static Slice separators[FILE_LIST_PAGE_SIZE];
 static NineSlice hover;
 static Breadcrumb *breadcrumb;
@@ -135,6 +137,15 @@ static void sortEntries(void)
    }
 }
 
+// At root the listing shows storage devices as folders; this flags the removable (USB)
+// ones for the badge. exFAT/NTFS/ext mounts are USB-only; FAT32 USB appears under cellFs
+// as dev_usbNNN. Only meaningful at root - files in a folder never set this.
+static int isUsbDevice(const char *name, const char *fullPath)
+{
+   if (getScheme(fullPath) != VFS_SCHEME_CELLFS) return 1;
+   return startsWith(name, "dev_usb");
+}
+
 // fills entry from a single stat() of the full path. size and modified time
 // come from that one stat call; directories still defer their recursive size
 // to the background folder-sizer (sized=0). unreadable entries are kept as a
@@ -146,9 +157,12 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
    e->fileCount = 0;
    e->approx    = 0;
    e->modified  = 0;
+   // root listing only: badge removable devices (folders) with the USB icon
+   int atRoot = currentPath[0] == '/' && currentPath[1] == '\0';
+   e->isUsb = atRoot && isUsbDevice(name, fullPath);
 
-   CellFsStat st;
-   if (cellFsStat(fullPath, &st) != CELL_FS_SUCCEEDED) {
+   VfsStat st;
+   if (statPath(fullPath, &st) != 0) {
       e->type      = FILE_TYPE_GENERIC;
       e->size      = 0;
       e->fileCount = 1;
@@ -156,14 +170,14 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
       return;
    }
 
-   int isDir = (st.st_mode & CELL_FS_S_IFDIR) != 0;
+   int isDir = st.isDir;
    e->type = classifyFileType(name, isDir);
-   e->modified = st.st_mtime;
+   e->modified = st.mtime;
    if (isDir) {
       e->size  = 0;
       e->sized = 0;  // folder-sizer fills this in
    } else {
-      e->size      = st.st_size;
+      e->size      = st.size;
       e->fileCount = 1;
       e->sized     = 1;
    }
@@ -210,42 +224,68 @@ static void loadDir(const char *path)
    selectedIndex = 0;
    scrollOffset = 0;
 
-   int fd;
-   if (cellFsOpendir(path, &fd) != CELL_FS_SUCCEEDED) {
+   VfsDir dir;
+   if (openDir(path, &dir) != 0) {
       labelsStale = 1;
       return;
    }
 
-   // root contains devkit / system mounts (app_home, dev_flash2/3, host_root)
-   // that userland cannot actually enter. probe each so they don't clutter the
-   // listing. only worth doing at root; below root cellFsStat already filters.
-   int filterUnenterable = (path[0] == '/' && path[1] == '\0');
-
-   CellFsDirent ent;
-   uint64_t readBytes;
-   while (cellFsReaddir(fd, &ent, &readBytes) == CELL_FS_SUCCEEDED && readBytes > 0) {
-      // skip . and .. but allow other dotfiles (.bashrc, .hidden, etc.)
-      if (ent.d_name[0] == '.' && (ent.d_name[1] == '\0' ||
-          (ent.d_name[1] == '.' && ent.d_name[2] == '\0'))) continue;
-
+   // readDir skips "." / ".." (other dotfiles still show). at root the VFS yields
+   // the enterable cellFs devices plus any mounted NTFS/exFAT volumes, so the old
+   // root-only "unenterable" probe now lives inside the VFS, not here.
+   char name[NAME_LEN];
+   while (readDir(&dir, name, NAME_LEN, NULL) == 1) {
       char full[MAX_PATH_LEN];
-      joinPath(full, MAX_PATH_LEN, path, ent.d_name);
-
-      if (filterUnenterable) {
-         int probe;
-         if (cellFsOpendir(full, &probe) != CELL_FS_SUCCEEDED) continue;
-         cellFsClosedir(probe);
-      }
+      joinPath(full, MAX_PATH_LEN, path, name);
 
       if (!growArray(entries, &entryCapacity, entryCount + 1)) break;
-      populateEntry(&entries[entryCount++], ent.d_name, full);
+      populateEntry(&entries[entryCount++], name, full);
    }
-   cellFsClosedir(fd);
+   closeDir(&dir);
 
    sortEntries();
    labelsStale = 1;
 
    if (breadcrumb) setBreadcrumbPath(breadcrumb, currentPath);
+}
+
+// the directory currently being browsed; used by the free-space widget to report
+// the volume the user is in (and routed by the VFS to whatever backend owns it).
+const char *getCurrentPath(void)
+{
+   return currentPath;
+}
+
+static void scrollToSelected(void);   // defined below; used by refreshMounts
+
+// Handles a mount-set change (USB hotplug). Registered with the VFS as the
+// mounts-changed callback (see initFileList), so pollMounts() drives it.
+static void refreshMounts(void)
+{
+   // inside a folder whose volume was just pulled: drop straight back to root.
+   if (!(currentPath[0] == '/' && currentPath[1] == '\0')) {
+      VfsStat st;
+      if (statPath(currentPath, &st) != 0) loadDir("/");
+      return;
+   }
+
+   // at root: a volume appeared/disappeared. reload but keep the cursor on the same
+   // row by name; if it's gone (the pulled volume), fall to the row above it, or the
+   // new first row if it was already first.
+   char prevName[NAME_LEN];
+   prevName[0] = '\0';
+   if (selectedIndex >= 0 && selectedIndex < entryCount)
+      strCopy(prevName, NAME_LEN, entries[selectedIndex].name);
+   int prevIndex = selectedIndex;
+
+   loadDir("/");
+
+   int found = 0;
+   for (int i = 0; i < entryCount; i++)
+      if (strEq(entries[i].name, prevName)) { selectedIndex = i; found = 1; break; }
+   if (!found) selectedIndex = prevIndex > 0 ? prevIndex - 1 : 0;
+   if (selectedIndex >= entryCount) selectedIndex = entryCount > 0 ? entryCount - 1 : 0;
+   scrollToSelected();
 }
 
 static void rebuildLabels(void)
@@ -386,6 +426,8 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
    labelsStale = 1;
    historyDepth = 0;
 
+   setMountsChangedCallback(refreshMounts);   // pollMounts() refreshes the root listing on USB hotplug
+
    initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
    initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
    addFooterButton(PAD_BTN_CROSS,  spriteRegions[SPRITE_CROSS],  "Enter", activateSelectedEntry);
@@ -394,6 +436,8 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
 
    for (int t = 0; t < FILE_TYPE_COUNT; t++)
       initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);
+   initImage(&usbIcon, spritesheet, 0, 0, spriteRegions[SPRITE_USB].w, spriteRegions[SPRITE_USB].h,
+             spriteRegions[SPRITE_USB], GFX_FILTER_LINEAR);   // native size; centred on the folder at draw
 
    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
       int ry = y + i * rowHeight;
@@ -521,10 +565,15 @@ void drawFileList(void)
       else
          drawImageAlpha(&checkboxes[i], alpha);
 
-      // draw type icon
+      // draw type icon (and a centred USB badge for removable devices at root)
       int iconY = listY + i * listRowHeight + (listRowHeight - 43) / 2;
       moveImage(&fileIcons[entries[idx].type], 120, iconY);
       drawImageAlpha(&fileIcons[entries[idx].type], alpha);
+      if (entries[idx].isUsb) {
+         int usbW = spriteRegions[SPRITE_USB].w, usbH = spriteRegions[SPRITE_USB].h;
+         moveImage(&usbIcon, 120 + (35 - usbW) / 2, iconY + (43 - usbH) / 2 + 4);
+         drawImageAlpha(&usbIcon, alpha);
+      }
 
       // draw labels
       drawLabelAlpha(&labels[i], alpha);
@@ -745,7 +794,7 @@ static void renamePlain(const char *newName)
    char oldPath[MAX_PATH_LEN], newPath[MAX_PATH_LEN];
    joinPath(oldPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
    joinPath(newPath, MAX_PATH_LEN, currentPath, newName);
-   if (cellFsRename(oldPath, newPath) != CELL_FS_SUCCEEDED) return;
+   if (renamePath(oldPath, newPath) != 0) return;
    loadDir(currentPath);
    selectEntryByName(newName);
 }
@@ -952,6 +1001,12 @@ static void onPasteFinished(int cancelled)
 
    if (!cancelled) clearClipboard();
    labelsStale = 1;
+
+   // surface an interrupted transfer (e.g. USB pulled mid-copy). partial output is
+   // left in place on purpose; a single-OK alert just tells the user what happened.
+   if (pasteHadError())
+      askConfirm("Device Disconnected", "Some items may be incomplete.",
+                 "OK", NULL, NULL, NULL);
 }
 
 // launches the paste worker with the conflict policy already chosen.

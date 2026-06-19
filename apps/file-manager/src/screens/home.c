@@ -128,6 +128,7 @@ static void updateHome(void)
    if (!overlayWasVisible) {
       updateFooterWidget();
       updateClockWidget();
+      setFreeSpacePath(getCurrentPath());   // report the volume the user is in
       updateFreeSpaceWidget();
       updateFileList();
    }

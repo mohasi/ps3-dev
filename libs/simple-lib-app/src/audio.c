@@ -18,20 +18,20 @@
 // reads entire file into a malloc'd buffer. caller frees. NULL on failure.
 static uint8_t *readFileAlloc(const char *path, uint32_t *outSize)
 {
-   int fd;
-   if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_FS_SUCCEEDED) return NULL;
-   CellFsStat st;
-   if (cellFsFstat(fd, &st) != CELL_FS_SUCCEEDED) { cellFsClose(fd); return NULL; }
-   uint32_t size = (uint32_t)st.st_size;
+   VfsStat st;
+   if (statPath(path, &st) != 0) return NULL;
+   uint32_t size = (uint32_t)st.size;
+   VfsFile file;
+   if (openFs(path, VFS_O_RDONLY, &file) != 0) return NULL;
    uint8_t *buf = (uint8_t *)malloc(size);
-   if (!buf) { cellFsClose(fd); return NULL; }
+   if (!buf) { closeFs(&file); return NULL; }
    uint64_t totalRead = 0;
    while (totalRead < size) {
-      uint64_t r;
-      if (cellFsRead(fd, buf + totalRead, size - totalRead, &r) != CELL_FS_SUCCEEDED || r == 0) break;
-      totalRead += r;
+      int64_t r = readFs(&file, buf + totalRead, size - totalRead);
+      if (r <= 0) break;
+      totalRead += (uint64_t)r;
    }
-   cellFsClose(fd);
+   closeFs(&file);
    if (totalRead != size) { free(buf); return NULL; }
    *outSize = size;
    return buf;
@@ -599,30 +599,28 @@ static Audio loadSfxBuffer(uint8_t *fd, uint32_t fsz, SfxMode mode) {
    return a;
 }
 
-// dr_wav IO callbacks backed by a cellFs file descriptor (passed through as pUserData).
+// dr_wav IO callbacks backed by an open VfsFile* (passed through as pUserData).
 static size_t wavRead(void *user, void *out, size_t bytes) {
-   uint64_t got = 0;
-   cellFsRead((int)(intptr_t)user, out, bytes, &got);
-   return (size_t)got;
+   int64_t got = readFs((VfsFile *)user, out, bytes);
+   return got > 0 ? (size_t)got : 0;
 }
 static drwav_bool32 wavSeek(void *user, int offset, drwav_seek_origin origin) {
-   uint64_t pos;
    // dr_wav (>= v0.14) seeks from the end to validate the data-chunk size against the real file
    // length. All three origins must be mapped -- treating a from-end seek as from-start makes the
    // file look 0 bytes long, so dr_wav reports a garbage frame count (a ~49-hour duration here).
-   int whence = (origin == DRWAV_SEEK_CUR) ? CELL_FS_SEEK_CUR
-            : (origin == DRWAV_SEEK_END) ? CELL_FS_SEEK_END
-            : CELL_FS_SEEK_SET;
-   return cellFsLseek((int)(intptr_t)user, offset, whence, &pos) == CELL_FS_SUCCEEDED;
+   int whence = (origin == DRWAV_SEEK_CUR) ? VFS_SEEK_CUR
+            : (origin == DRWAV_SEEK_END) ? VFS_SEEK_END
+            : VFS_SEEK_SET;
+   return seekFs((VfsFile *)user, offset, whence) >= 0;
 }
 static drwav_bool32 wavTell(void *user, drwav_int64 *cursor) {
-   uint64_t pos = 0;
-   if (cellFsLseek((int)(intptr_t)user, 0, CELL_FS_SEEK_CUR, &pos) != CELL_FS_SUCCEEDED) return 0;
+   int64_t pos = seekFs((VfsFile *)user, 0, VFS_SEEK_CUR);
+   if (pos < 0) return 0;
    *cursor = (drwav_int64)pos;
    return 1;
 }
 
-// Opens a wav for disk streaming via dr_wav with cellFs-backed callbacks: only the header is read
+// Opens a wav for disk streaming via dr_wav with VFS-backed callbacks: only the header is read
 // here, so even an hour-long file opens instantly and is never loaded into memory. Returns 0 on
 // success (a is a ready SFX_STREAM handle), -1 if the file isn't a wav dr_wav can open (fd closed).
 static int openWavStream(const char *path, Audio *a) {
@@ -634,17 +632,21 @@ static int openWavStream(const char *path, Audio *a) {
    a->mode   = SFX_STREAM;
    a->seekRequest = -1;
 
-   int fd;
-   if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
+   VfsFile *file = (VfsFile *)malloc(sizeof(VfsFile));
+   if (!file || openFs(path, VFS_O_RDONLY, file) != 0) {
+      if (file) free(file);
+      return -1;
+   }
 
    drwav *wav = (drwav *)malloc(sizeof(drwav));
-   if (!wav || !drwav_init(wav, wavRead, wavSeek, wavTell, (void *)(intptr_t)fd, NULL)) {
+   if (!wav || !drwav_init(wav, wavRead, wavSeek, wavTell, file, NULL)) {
       if (wav) free(wav);
-      cellFsClose(fd);
+      closeFs(file);
+      free(file);
       return -1;
    }
    a->wav        = wav;
-   a->wavFd      = fd;
+   a->wavFile    = file;
    a->channels   = wav->channels;
    a->sampleRate = (int)wav->sampleRate;
    a->pcmSamples = (uint32_t)wav->totalPCMFrameCount;
@@ -680,7 +682,8 @@ void freeSfx(Audio *a) {
    if (a->mp3SeekPoints)  { free(a->mp3SeekPoints); a->mp3SeekPoints = NULL; }
    if (a->flac)           { drflac_close((drflac *)a->flac); a->flac = NULL; }   // drflac_close frees the handle
    if (a->flacData)       { free(a->flacData); a->flacData = NULL; }
-   if (a->wav)            { drwav_uninit((drwav *)a->wav); free(a->wav); a->wav = NULL; cellFsClose(a->wavFd); a->wavFd = 0; }
+   if (a->wav)            { drwav_uninit((drwav *)a->wav); free(a->wav); a->wav = NULL; }
+   if (a->wavFile)        { closeFs((VfsFile *)a->wavFile); free(a->wavFile); a->wavFile = NULL; }
 }
 
 // ============================================================================
@@ -701,7 +704,7 @@ void playSfx(Audio *a, float volume, float speed, int loop) {
 
    // A replay restarts a stream that is still in the mix list. Wait out any block the mixer is
    // running on it, then rewind the decoder and go live LAST -- otherwise the mixer could decode
-   // (a slow cellFs-backed wav especially) while this rewind is mid-seek, leaving the replay silent.
+   // (a slow disk-backed wav especially) while this rewind is mid-seek, leaving the replay silent.
    __sync_synchronize();
    while (mixingStream == a) sys_timer_usleep(100);
 

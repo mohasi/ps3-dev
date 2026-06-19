@@ -10,6 +10,7 @@
 #include "vsh.h"
 #include "syscall.h"
 #include "ftp.h"
+#include "vfs.h"
 #include "thread.h"
 #include "bridge-client.h"
 
@@ -35,9 +36,21 @@ static void pluginThread(uint64_t arg)
 
    // startFtpServer retries socket creation while the network stack comes up.
    FtpResult result = startFtpServer(FTP_DEFAULT_PORT);
-   if (result != FTP_OK) logError("[ftp] failed to start ftp server on :%d (rc %d)\n", FTP_DEFAULT_PORT, (int)result);
+   if (result != FTP_OK) {
+      logError("[ftp] failed to start ftp server on :%d (rc %d)\n", FTP_DEFAULT_PORT, (int)result);
+      exitThread();
+      return;
+   }
 
-   exitThread();
+   // Bring up the VFS (exFAT backend + path routing) and poll for hotplug here, on this plugin
+   // thread - deliberately OFF the FTP listener/session path so a slow or contended USB storage
+   // probe (e.g. a stick the file-manager also has open) can never stall accepting or serving
+   // connections. FTP serves the HDD regardless; exFAT volumes surface here once mounted.
+   initVfs();
+   while (1) {
+      pollMounts();
+      sys_timer_sleep(1);
+   }
 }
 
 int _start(uint64_t arg)

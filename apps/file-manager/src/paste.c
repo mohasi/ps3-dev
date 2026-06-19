@@ -5,9 +5,19 @@
 #include "file-task.h"
 #include "string-utilities.h"
 
-#define COPY_BUF_SIZE (64 * 1024)
+// 1 MB, aligned to the lv2 storage DMA boundary: large transfers let the exFAT backend read/
+// write whole multi-cluster runs straight from this buffer in one storage call (alignment avoids
+// a bounce copy), which is what makes big copies to/from USB fast.
+#define COPY_BUF_SIZE  (1024 * 1024)
+#define COPY_BUF_ALIGN 32              // lv2 sys_storage DMA buffer alignment
 
-static char copyBuf[COPY_BUF_SIZE];
+static char copyBuf[COPY_BUF_SIZE] __attribute__((aligned(COPY_BUF_ALIGN)));
+
+// set when a copy/merge returns an I/O error mid-run (e.g. the USB was pulled).
+// partial output is left in place on purpose; the finisher reads this to alert.
+static int pasteFailed;
+
+int pasteHadError(void) { return pasteFailed; }
 static char destDir[MAX_PATH_LEN];
 static int  replaceOnConflict = 1;   // file-leaf collisions during a merge: 1 replace, 0 keep
 
@@ -93,6 +103,7 @@ int countClipboardConflicts(int cap)
 
 void runPaste(void)
 {
+   pasteFailed = 0;
    int copying = (getClipboardMode() == CLIP_COPY);
    int count   = getClipboardCount();
 
@@ -124,6 +135,7 @@ void runPaste(void)
             uniqueDest(dst, MAX_PATH_LEN, destDir, name, isDir(src));
             int r = copyTreeProgress(src, dst, copyBuf, COPY_BUF_SIZE, addProcessedBytes, isCancelRequested);
             if (r == 1) { deleteTree(dst, NULL); break; }  // cancelled: drop partial
+            if (r == -1) { pasteFailed = 1; break; }       // I/O error (device pulled): keep partial
             continue;
          }
 
@@ -131,10 +143,12 @@ void runPaste(void)
          if (!fileExists(dst)) {
             int r = copyTreeProgress(src, dst, copyBuf, COPY_BUF_SIZE, addProcessedBytes, isCancelRequested);
             if (r == 1) { deleteTree(dst, NULL); break; }
+            if (r == -1) { pasteFailed = 1; break; }   // keep partial
          } else {
             // merge into the existing destination, replacing or keeping leaves.
             int r = mergeTreeProgress(src, dst, replaceOnConflict, copyBuf, COPY_BUF_SIZE, addProcessedBytes, isCancelRequested);
             if (r == 1) break;  // partial merge: leave what landed in place
+            if (r == -1) { pasteFailed = 1; break; }
          }
          continue;
       }
@@ -147,7 +161,7 @@ void runPaste(void)
 
       if (!fileExists(dst)) {
          // brand-new destination: an instant same-volume rename when possible.
-         if (cellFsRename(src, dst) == CELL_FS_SUCCEEDED) {
+         if (renamePath(src, dst) == 0) {
             syncPath(dst);  // flush the rename so the change is durable
             addProcessedBytes(sz);
             continue;
@@ -157,6 +171,7 @@ void runPaste(void)
          // the source intact so nothing is lost.
          int r = copyTreeProgress(src, dst, copyBuf, COPY_BUF_SIZE, addProcessedBytes, isCancelRequested);
          if (r == 1) { deleteTree(dst, NULL); break; }
+         if (r == -1) { pasteFailed = 1; break; }   // keep partial dest, source intact
          if (r == 0) deleteTree(src, NULL);
          continue;
       }
@@ -165,6 +180,7 @@ void runPaste(void)
       // drop the source once it has fully landed. on cancel, keep the source.
       int r = mergeTreeProgress(src, dst, replaceOnConflict, copyBuf, COPY_BUF_SIZE, addProcessedBytes, isCancelRequested);
       if (r == 1) break;            // partial: source kept intact
+      if (r == -1) { pasteFailed = 1; break; }   // source kept intact
       if (r == 0) deleteTree(src, NULL);
    }
 }

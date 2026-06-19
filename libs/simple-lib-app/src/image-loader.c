@@ -53,13 +53,9 @@ int listSupportedImages(const char *dir, char names[][IMAGE_NAME_MAX], int maxCo
 static void *imgMalloc(uint32_t size, void *arg) { (void)arg; return malloc(size); }
 static int32_t imgFree(void *ptr, void *arg)     { (void)arg; free(ptr); return 0; }
 
-// Fill a PNG source descriptor for a file or an in-memory buffer.
-static void pngSrcFile(CellPngDecSrc *s, const char *path)
-{
-   s->srcSelect = CELL_PNGDEC_FILE; s->fileName = path;
-   s->fileOffset = 0; s->fileSize = 0; s->streamPtr = NULL; s->streamSize = 0;
-   s->spuThreadEnable = CELL_PNGDEC_SPU_THREAD_DISABLE;
-}
+// Fill a PNG source descriptor for an in-memory buffer. We always decode from
+// memory (the file is read through the VFS first) so images on userland volumes
+// like /exfat0 work -- the SDK codec's own file source can only see cellFs.
 static void pngSrcMem(CellPngDecSrc *s, const void *buf, uint32_t size)
 {
    s->srcSelect = CELL_PNGDEC_BUFFER; s->fileName = NULL;
@@ -141,13 +137,7 @@ static int decodePng(const CellPngDecSrc *src, ImageBuffer *out)
    return 0;
 }
 
-// Fill a JPEG source descriptor for a file or an in-memory buffer.
-static void jpgSrcFile(CellJpgDecSrc *s, const char *path)
-{
-   s->srcSelect = CELL_JPGDEC_FILE; s->fileName = path;
-   s->fileOffset = 0; s->fileSize = 0; s->streamPtr = NULL; s->streamSize = 0;
-   s->spuThreadEnable = CELL_JPGDEC_SPU_THREAD_DISABLE;
-}
+// Fill a JPEG source descriptor for an in-memory buffer (see pngSrcMem).
 static void jpgSrcMem(CellJpgDecSrc *s, const void *buf, uint32_t size)
 {
    s->srcSelect = CELL_JPGDEC_BUFFER; s->fileName = NULL;
@@ -235,18 +225,37 @@ static int decodeJpeg(const CellJpgDecSrc *src, ImageBuffer *out)
    return 0;
 }
 
-// dispatches a file by extension. returns 0 on success, -1 otherwise.
+static int decodeImageMem(const void *data, uint32_t size, ImageBuffer *out);
+
+// Reads a file through the VFS into a heap buffer and decodes it from memory.
+// Going via the VFS (rather than the SDK codec's own cellFs file source) is what
+// lets images on userland volumes such as /exfat0 decode -- the codec file source
+// can only see kernel cellFs devices. Works for cellFs paths too. 0 / -1.
 static int decodeImageToBuffer(const char *path, ImageBuffer *out)
 {
-   const char *ext = getExtension(path);
-   if (!ext) { logError("[image-loader] no extension: %s\n", path); return -1; }
+   VfsStat st;
+   if (statPath(path, &st) != 0) { logError("[image-loader] stat failed: %s\n", path); return -1; }
+   uint32_t size = (uint32_t)st.size;
+   if (size == 0) { logError("[image-loader] empty file: %s\n", path); return -1; }
 
-   if (strCmpICase(ext, "png") == 0)  { CellPngDecSrc s; pngSrcFile(&s, path); return decodePng(&s, out); }
-   if (strCmpICase(ext, "jpg") == 0 || strCmpICase(ext, "jpeg") == 0)
-      { CellJpgDecSrc s; jpgSrcFile(&s, path); return decodeJpeg(&s, out); }
+   VfsFile file;
+   if (openFs(path, VFS_O_RDONLY, &file) != 0) { logError("[image-loader] open failed: %s\n", path); return -1; }
 
-   logError("[image-loader] unsupported format: %s\n", path);
-   return -1;
+   uint8_t *data = (uint8_t *)malloc(size);
+   if (!data) { closeFs(&file); logError("[image-loader] out of memory (%u bytes): %s\n", size, path); return -1; }
+
+   uint64_t got = 0;
+   while (got < size) {
+      int64_t r = readFs(&file, data + got, (uint64_t)size - got);
+      if (r <= 0) break;
+      got += (uint64_t)r;
+   }
+   closeFs(&file);
+   if (got != size) { free(data); logError("[image-loader] short read %llu/%u: %s\n", (unsigned long long)got, size, path); return -1; }
+
+   int rc = decodeImageMem(data, size, out);
+   free(data);
+   return rc;
 }
 
 // dispatches an in-memory image by sniffing its magic bytes (PNG \x89PNG, JPEG \xFF\xD8).

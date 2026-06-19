@@ -13,6 +13,9 @@ void termFileList(void);
 void updateFileList(void);
 void drawFileList(void);
 
+// the directory currently being browsed (valid until the next directory change).
+const char *getCurrentPath(void);
+
 // queried by the home screen when the action menu is opened.
 // pointers are valid until the selection or directory changes.
 // folder sizes are walked progressively in the background under a per-folder

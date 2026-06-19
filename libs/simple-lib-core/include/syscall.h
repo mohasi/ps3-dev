@@ -19,14 +19,26 @@
 #include <stdint.h>
 
 // generic syscall trampolines. pick the one matching the arg count.
+// mirrors the SDK <sys/syscall.h> system_call_1 (GCC form) exactly: `sc` writes
+// r3..r11, so all are declared outputs; r3 (arg) and r11 (num) are the only inputs;
+// the result is returned in r3. The wider output set + lr / cr1,5,6,7 clobbers tell
+// the compiler `sc` can trash those, which the old compact form didn't.
 static inline int64_t scCall1(uint64_t num, uint64_t a1)
 {
    register uint64_t r3  __asm__("3")  = a1;
+   register uint64_t r4  __asm__("4");
+   register uint64_t r5  __asm__("5");
+   register uint64_t r6  __asm__("6");
+   register uint64_t r7  __asm__("7");
+   register uint64_t r8  __asm__("8");
+   register uint64_t r9  __asm__("9");
+   register uint64_t r10 __asm__("10");
    register uint64_t r11 __asm__("11") = num;
-   __asm__ volatile ("sc\n" : "+r"(r3)
-                     : "r"(r11)
-                     : "r0","r4","r5","r6","r7","r8","r9","r10","r12",
-                       "cr0","ctr","xer","memory");
+   __asm__ volatile ("sc\n"
+                     : "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                       "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11)
+                     : "r"(r3), "r"(r11)
+                     : "r0","r12","lr","ctr","xer","cr0","cr1","cr5","cr6","cr7","memory");
    return (int64_t)r3;
 }
 
@@ -34,11 +46,18 @@ static inline int64_t scCall2(uint64_t num, uint64_t a1, uint64_t a2)
 {
    register uint64_t r3  __asm__("3")  = a1;
    register uint64_t r4  __asm__("4")  = a2;
+   register uint64_t r5  __asm__("5");
+   register uint64_t r6  __asm__("6");
+   register uint64_t r7  __asm__("7");
+   register uint64_t r8  __asm__("8");
+   register uint64_t r9  __asm__("9");
+   register uint64_t r10 __asm__("10");
    register uint64_t r11 __asm__("11") = num;
-   __asm__ volatile ("sc\n" : "+r"(r3)
-                     : "r"(r4), "r"(r11)
-                     : "r0","r5","r6","r7","r8","r9","r10","r12",
-                       "cr0","ctr","xer","memory");
+   __asm__ volatile ("sc\n"
+                     : "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                       "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11)
+                     : "r"(r3), "r"(r4), "r"(r11)
+                     : "r0","r12","lr","ctr","xer","cr0","cr1","cr5","cr6","cr7","memory");
    return (int64_t)r3;
 }
 
@@ -47,11 +66,17 @@ static inline int64_t scCall3(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a
    register uint64_t r3  __asm__("3")  = a1;
    register uint64_t r4  __asm__("4")  = a2;
    register uint64_t r5  __asm__("5")  = a3;
+   register uint64_t r6  __asm__("6");
+   register uint64_t r7  __asm__("7");
+   register uint64_t r8  __asm__("8");
+   register uint64_t r9  __asm__("9");
+   register uint64_t r10 __asm__("10");
    register uint64_t r11 __asm__("11") = num;
-   __asm__ volatile ("sc\n" : "+r"(r3)
-                     : "r"(r4), "r"(r5), "r"(r11)
-                     : "r0","r6","r7","r8","r9","r10","r12",
-                       "cr0","ctr","xer","memory");
+   __asm__ volatile ("sc\n"
+                     : "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                       "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11)
+                     : "r"(r3), "r"(r4), "r"(r5), "r"(r11)
+                     : "r0","r12","lr","ctr","xer","cr0","cr1","cr5","cr6","cr7","memory");
    return (int64_t)r3;
 }
 
@@ -61,11 +86,16 @@ static inline int64_t scCall4(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a
    register uint64_t r4  __asm__("4")  = a2;
    register uint64_t r5  __asm__("5")  = a3;
    register uint64_t r6  __asm__("6")  = a4;
+   register uint64_t r7  __asm__("7");
+   register uint64_t r8  __asm__("8");
+   register uint64_t r9  __asm__("9");
+   register uint64_t r10 __asm__("10");
    register uint64_t r11 __asm__("11") = num;
-   __asm__ volatile ("sc\n" : "+r"(r3)
-                     : "r"(r4), "r"(r5), "r"(r6), "r"(r11)
-                     : "r0","r7","r8","r9","r10","r12",
-                       "cr0","ctr","xer","memory");
+   __asm__ volatile ("sc\n"
+                     : "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                       "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11)
+                     : "r"(r3), "r"(r4), "r"(r5), "r"(r6), "r"(r11)
+                     : "r0","r12","lr","ctr","xer","cr0","cr1","cr5","cr6","cr7","memory");
    return (int64_t)r3;
 }
 
@@ -76,11 +106,15 @@ static inline int64_t scCall5(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a
    register uint64_t r5  __asm__("5")  = a3;
    register uint64_t r6  __asm__("6")  = a4;
    register uint64_t r7  __asm__("7")  = a5;
+   register uint64_t r8  __asm__("8");
+   register uint64_t r9  __asm__("9");
+   register uint64_t r10 __asm__("10");
    register uint64_t r11 __asm__("11") = num;
-   __asm__ volatile ("sc\n" : "+r"(r3)
-                     : "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r11)
-                     : "r0","r8","r9","r10","r12",
-                       "cr0","ctr","xer","memory");
+   __asm__ volatile ("sc\n"
+                     : "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                       "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11)
+                     : "r"(r3), "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r11)
+                     : "r0","r12","lr","ctr","xer","cr0","cr1","cr5","cr6","cr7","memory");
    return (int64_t)r3;
 }
 
@@ -92,11 +126,33 @@ static inline int64_t scCall6(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a
    register uint64_t r6  __asm__("6")  = a4;
    register uint64_t r7  __asm__("7")  = a5;
    register uint64_t r8  __asm__("8")  = a6;
+   register uint64_t r9  __asm__("9");
+   register uint64_t r10 __asm__("10");
    register uint64_t r11 __asm__("11") = num;
-   __asm__ volatile ("sc\n" : "+r"(r3)
-                     : "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r8), "r"(r11)
-                     : "r0","r9","r10","r12",
-                       "cr0","ctr","xer","memory");
+   __asm__ volatile ("sc\n"
+                     : "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                       "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11)
+                     : "r"(r3), "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r8), "r"(r11)
+                     : "r0","r12","lr","ctr","xer","cr0","cr1","cr5","cr6","cr7","memory");
+   return (int64_t)r3;
+}
+
+static inline int64_t scCall7(uint64_t num, uint64_t a1, uint64_t a2, uint64_t a3, uint64_t a4, uint64_t a5, uint64_t a6, uint64_t a7)
+{
+   register uint64_t r3  __asm__("3")  = a1;
+   register uint64_t r4  __asm__("4")  = a2;
+   register uint64_t r5  __asm__("5")  = a3;
+   register uint64_t r6  __asm__("6")  = a4;
+   register uint64_t r7  __asm__("7")  = a5;
+   register uint64_t r8  __asm__("8")  = a6;
+   register uint64_t r9  __asm__("9")  = a7;
+   register uint64_t r10 __asm__("10");
+   register uint64_t r11 __asm__("11") = num;
+   __asm__ volatile ("sc\n"
+                     : "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+                       "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11)
+                     : "r"(r3), "r"(r4), "r"(r5), "r"(r6), "r"(r7), "r"(r8), "r"(r9), "r"(r11)
+                     : "r0","r12","lr","ctr","xer","cr0","cr1","cr5","cr6","cr7","memory");
    return (int64_t)r3;
 }
 
@@ -116,11 +172,14 @@ static inline int64_t mountDevBlind(void)
    register uint64_t r10 __asm__("10") = 0;
    register uint64_t r11 __asm__("11") = 837;
 
+   // matches the SDK system_call_8 form: sc writes r3..r11 (all outputs); every arg
+   // reg plus r11 is an input; full lr / cr1,5,6,7 clobbers.
    __asm__ volatile ("sc\n"
-       : "+r"(r3)
-       : "r"(r4), "r"(r5), "r"(r6), "r"(r7),
+       : "=r"(r3), "=r"(r4), "=r"(r5), "=r"(r6),
+         "=r"(r7), "=r"(r8), "=r"(r9), "=r"(r10), "=r"(r11)
+       : "r"(r3), "r"(r4), "r"(r5), "r"(r6), "r"(r7),
          "r"(r8), "r"(r9), "r"(r10), "r"(r11)
-       : "r0", "r12", "cr0", "ctr", "xer", "memory");
+       : "r0","r12","lr","ctr","xer","cr0","cr1","cr5","cr6","cr7","memory");
    return (int64_t)r3;
 }
 

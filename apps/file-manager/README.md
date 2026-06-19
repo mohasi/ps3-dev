@@ -4,7 +4,8 @@ PS3 homebrew file browser with a sprite-based UI. Sony official SDK 4.75, target
 
 ## Features
 
-- **Directory browsing** — navigates the full filesystem starting from `/`
+- **Directory browsing** — navigates the full filesystem starting from `/`, with exFAT USB drives mounted alongside the HDD
+- **Removable USB (exFAT)** — exFAT-formatted USB drives, which the PS3 firmware itself can't read, are mounted by a built-in hand-written exFAT driver and appear at the root as `/exfat0`, `/exfat1`, … beside the cellFs devices. Fully read/write (browse, copy, move, delete, rename, new file/folder), with superfloppy, MBR- and GPT-partitioned sticks supported. Insertion and ejection are detected automatically (hotplug); removable volumes are marked with a USB badge on the folder icon, and pulling a stick you're inside drops you back to root
 - **File-type icons** — classifies files into 12 types (folder, text, audio, video, image, executable, compressed, disc ISO, package, document, database, generic) with per-type sprite icons
 - **File metadata columns** — rows show `Type | Size | Modified`, with Modified displayed in local time as `DD/MM/YY HH:MM`
 - **Breadcrumb navigation** — path-driven breadcrumb bar with chevron separators, rebuilt on directory change
@@ -50,6 +51,14 @@ When a merge would land on existing files, a single prompt up front decides the 
 Conflicts are pre-scanned on the main thread before the background paste worker starts, so the worker is never interrupted for a per-file question.
 
 ## Architecture
+
+All filesystem access goes through the `simple-lib-core` **VFS** (`vfs.h` /
+`file.h`), a single `/`-rooted namespace over the cellFs devices (HDD, FAT32
+USB) and the built-in exFAT backend — so the browser, copy/move/delete workers
+and the folder-sizer never special-case a filesystem. `main.c` brings the VFS up
+(`initVfs` + `initExfat`) and drives hotplug from the main loop (`pollMounts`);
+when the mount set changes, the root listing refreshes so inserted/ejected USB
+volumes appear and disappear.
 
 `home.c` is the screen orchestrator: it owns shared resources (font,
 spritesheet, click sfx), wires the widgets and overlays, and routes
@@ -145,5 +154,6 @@ Drop new `.png` files into `sprites/`. They're automatically included in the pro
 ## Dependencies
 
 - **simple-lib-app** — renderer, font, input, screen lifecycle, UI components
+- **simple-lib-core** — VFS + exFAT backend, file/tree helpers, FTP server (Select/Start FTP Server)
 - **sprite-packer** — build-time atlas generation
 - **xml-to-sfo** — build-time PARAM.SFO generation

@@ -2,6 +2,7 @@
 
 #include "app.h"
 #include "file.h"
+#include "syscall.h"
 #include "gfx.h"
 #include "colors.h"
 #include "pad.h"
@@ -23,9 +24,10 @@ int main(int argc, char **argv)
    (void)argv;
 
    appRegisterExitCallback();
-   mountDevBlind();
-
    initRtc();
+   mountDevBlind();
+   initVfs();
+
    initNet();
    registerWithBridge("app", "file-manager");
 
@@ -40,6 +42,7 @@ int main(int argc, char **argv)
 
    while (!appExitRequested) {
       appPoll();
+      pollMounts();
       updatePad();
       updateStats();
       updateScreen();
@@ -55,5 +58,6 @@ int main(int argc, char **argv)
    termSfx();
    termFont();
    termGfx();
+   shutdownVfs();
    return 0;
 }

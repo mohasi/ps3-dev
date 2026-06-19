@@ -4,7 +4,7 @@
 
 #include "config.h"   // RENPY_ROOT
 #include "printf.h"   // snprintf
-#include "file.h"     // cellFsOpendir/Readdir + CellFsDirent + MAX_PATH_LEN
+#include "file.h"     // openDir/readDir + MAX_PATH_LEN
 #include "dbg.h"      // logInfo
 
 static char rpkPath[MAX_PATH_LEN];
@@ -21,12 +21,12 @@ static int hasRpkSuffix(const char *s)
 // Find the first *.rpk in RENPY_ROOT. Returns 1 and fills `out` with the bare filename, else 0.
 static int findRpk(char *out, int cap)
 {
-   int fd;
-   if (cellFsOpendir(RENPY_ROOT, &fd) != CELL_FS_SUCCEEDED) return 0;
-   CellFsDirent ent; uint64_t got; int found = 0;
-   while (!found && cellFsReaddir(fd, &ent, &got) == CELL_FS_SUCCEEDED && got > 0)
-      if (ent.d_name[0] != '.' && hasRpkSuffix(ent.d_name)) { snprintf(out, cap, "%s", ent.d_name); found = 1; }
-   cellFsClosedir(fd);
+   VfsDir dir;
+   if (openDir(RENPY_ROOT, &dir) != 0) return 0;
+   char entryName[256]; int found = 0;
+   while (!found && readDir(&dir, entryName, sizeof entryName, NULL) == 1)
+      if (entryName[0] != '.' && hasRpkSuffix(entryName)) { snprintf(out, cap, "%s", entryName); found = 1; }
+   closeDir(&dir);
    return found;
 }
 
@@ -58,14 +58,15 @@ const char *getGameSaveDir(void) { resolve(); return saveDir; }
 
 int listGames(char out[][GAME_NAME_MAX], int cap)
 {
-   int fd, count = 0;
+   int count = 0;
    if (cap <= 0) return 0;
-   if (cellFsOpendir(RENPY_ROOT, &fd) != CELL_FS_SUCCEEDED) return 0;
-   CellFsDirent ent; uint64_t got;
-   while (count < cap && cellFsReaddir(fd, &ent, &got) == CELL_FS_SUCCEEDED && got > 0)
-      if (ent.d_name[0] != '.' && hasRpkSuffix(ent.d_name))
-         snprintf(out[count++], GAME_NAME_MAX, "%s", ent.d_name);
-   cellFsClosedir(fd);
+   VfsDir dir;
+   if (openDir(RENPY_ROOT, &dir) != 0) return 0;
+   char entryName[256];
+   while (count < cap && readDir(&dir, entryName, sizeof entryName, NULL) == 1)
+      if (entryName[0] != '.' && hasRpkSuffix(entryName))
+         snprintf(out[count++], GAME_NAME_MAX, "%s", entryName);
+   closeDir(&dir);
    return count;
 }
 

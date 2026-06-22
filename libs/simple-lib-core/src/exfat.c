@@ -2621,13 +2621,31 @@ static int64_t seekExfatOp(VfsFile *file, int64_t offset, int whence)
    return position;
 }
 
+// true if any still-open pooled handle on `vol` is writable. Caller holds exfatLock.
+static int hasOpenWriter(const ExfatVolume *vol)
+{
+   for (int i = 0; i < EXFAT_MAX_OPEN_FILES; i++)
+      if (fileUsed[i] && filePool[i].vol == vol && filePool[i].writable) return 1;
+   return 0;
+}
+
 static int closeExfatOp(VfsFile *file)
 {
    int result = 0;
    lock(&exfatLock);
    if (file->descriptor >= 0 && file->descriptor < EXFAT_MAX_OPEN_FILES) {
+      ExfatVolume *vol = filePool[file->descriptor].vol;  // capture before closeExfat nulls file->vol
       result = closeExfat(&filePool[file->descriptor]);   // commit error surfaces to closeFs
-      fileUsed[file->descriptor] = 0;
+      fileUsed[file->descriptor] = 0;                     // this slot now excluded from the scan below
+
+      // The volume is consistent on disk once the last writable handle closes (write-through data +
+      // flushEntry just ran). Clear the host's VolumeDirty hint now, while the device is still
+      // present - the FTP "transfer then yank" path never reaches a present-time unmount, so the
+      // unmount-time clear (see unmountExfat) can't run for it. The next write re-arms the flag via
+      // ensureVolumeDirty. exfatLock serializes open/write/close, so this scan can't race a writer.
+      if (result == 0 && vol && vol->mounted && vol->volumeDirty && !hasOpenWriter(vol)) {
+         if (setVolumeDirty(vol, 0) == 0) vol->volumeDirty = 0;
+      }
    }
    file->descriptor = -1;
    unlock(&exfatLock);

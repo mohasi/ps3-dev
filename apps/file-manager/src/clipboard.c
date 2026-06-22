@@ -1,7 +1,7 @@
 // clipboard - cut/copy path set (see clipboard.h). pure storage; the paste
 // module reads it through the getters to carry the items across.
 #include "clipboard.h"
-#include "file.h"
+#include "vfs.h"
 #include "string-utilities.h"
 #include "dynarray.h"
 #include <stdlib.h>

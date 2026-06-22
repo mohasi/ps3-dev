@@ -23,7 +23,7 @@
 #include <sys/timer.h>
 
 #include "dbg.h"
-#include "file.h"
+#include "vfs.h"
 #include "string-utilities.h"
 #include "syscall.h"   // mountDevBlind
 #include "thread.h"
@@ -1214,11 +1214,11 @@ static void handleStorOrAppe(FtpSession *session, const char *arg, int append)
    if (failed) { replyCode = 550; replyMessage = "Transfer aborted."; }
 
 cleanup:
-   // flush + verify the commit before close: closeFs is void, so a failed final commit (e.g. an
-   // exFAT directory-entry write) would otherwise be invisible and we'd ack 226 on a corrupt
-   // upload. fsyncFs forces and reports it while we can still answer 550.
+   // flush + verify the commit before acking: a failed final commit (e.g. an exFAT directory-entry
+   // write) must not ack 226 on a corrupt upload. fsyncFs forces it, and closeFs now also reports a
+   // commit error deferred to close - escalate either to 550 while we can still answer.
    if (replyCode == 226 && fsyncFs(&fileHandle) != 0) { replyCode = 550; replyMessage = "Transfer aborted."; }
-   closeFs(&fileHandle);
+   if (closeFs(&fileHandle) != 0 && replyCode == 226) { replyCode = 550; replyMessage = "Transfer aborted."; }
    syncPath(targetPath);   // force the upload to stable storage before acknowledging it
    closeSessionSocket(&session->dataSocket);
    replyLine(session->controlSocket, replyCode, replyMessage);

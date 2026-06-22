@@ -16,7 +16,7 @@
 
 #include <stdint.h>
 
-#include "file.h"
+#include "vfs.h"
 #include "fileio.h"
 #include "string-utilities.h"
 

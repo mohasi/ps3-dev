@@ -24,6 +24,7 @@
 #include "cmd-common.h"
 #include "thread.h"
 #include "module-hook.h"
+#include "vfs.h"
 
 #define HOOK_CAPTURE_DIR  "/dev_hdd0/tmp"
 #define HOOK_CAPTURE_PATH HOOK_CAPTURE_DIR "/trace-capture.bin"
@@ -33,7 +34,8 @@
 static volatile int     hookDrainRunning = 0;
 static volatile int     hookDrainStop    = 0;
 static sys_ppu_thread_t hookDrainTid     = 0;
-static int              hookDrainFd      = -1;
+static VfsFile          hookDrainFile;         // capture file (valid while hookDrainOpen)
+static volatile int     hookDrainOpen    = 0;  // VfsFile has no -1 sentinel; track openness
 static uint32_t         hookDrainWritten = 0;  // events safely on disk
 
 // arm staging: per-module record we hold while resolving root + deps.
@@ -205,10 +207,8 @@ static uint32_t stageRootDeps(const ArmTarget *root, ArmTarget *targets, uint32_
 static int hookFileSink(void *cookie, const uint32_t *events, uint32_t count)
 {
    (void)cookie;
-   if (hookDrainFd < 0) return -1;
-   uint64_t written = 0;
-   if (cellFsWrite(hookDrainFd, events, (uint64_t)count * HOOK_EVENT_BYTES,
-                   &written) != CELL_FS_SUCCEEDED) return -1;
+   if (!hookDrainOpen) return -1;
+   if (writeFs(&hookDrainFile, events, (uint64_t)count * HOOK_EVENT_BYTES) < 0) return -1;
    hookDrainWritten += count;
    return 0;
 }
@@ -232,12 +232,13 @@ static void hookDrainThread(uint64_t arg)
 
 static int startHookDrain(void)
 {
-   if (cellFsOpen(HOOK_CAPTURE_PATH,
-                  CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_TRUNC,
-                  &hookDrainFd, NULL, 0) != CELL_FS_SUCCEEDED) {
-      hookDrainFd = -1;
+   if (openFs(HOOK_CAPTURE_PATH,
+              VFS_O_WRONLY | VFS_O_CREAT | VFS_O_TRUNC,
+              &hookDrainFile) != 0) {
+      hookDrainOpen = 0;
       return -1;
    }
+   hookDrainOpen = 1;
    // write 16-byte placeholder header. manifestOffset stays 0 until the
    // disarm path patches it in. version is fixed; reserved is zero.
    uint8_t header[HOOK_HEADER_BYTES] = {
@@ -246,10 +247,9 @@ static int startHookDrain(void)
       0,0,0,0,                          // manifestOffset (patched on close)
       0,0,0,0                           // reserved
    };
-   uint64_t written = 0;
-   if (cellFsWrite(hookDrainFd, header, HOOK_HEADER_BYTES, &written) != CELL_FS_SUCCEEDED) {
-      cellFsClose(hookDrainFd);
-      hookDrainFd = -1;
+   if (writeFs(&hookDrainFile, header, HOOK_HEADER_BYTES) < 0) {
+      closeFs(&hookDrainFile);
+      hookDrainOpen = 0;
       return -1;
    }
    hookDrainWritten = 0;
@@ -257,8 +257,8 @@ static int startHookDrain(void)
    int rc = spawnJoinableThread(&hookDrainTid, hookDrainThread, 0,
                                 THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "bridge-hook-drain");
    if (rc != 0) {
-      cellFsClose(hookDrainFd);
-      hookDrainFd = -1;
+      closeFs(&hookDrainFile);
+      hookDrainOpen = 0;
       return -1;
    }
    return 0;
@@ -269,15 +269,14 @@ static int startHookDrain(void)
 // "==SUMMARY==" block records truncation + ring-drop counters so the
 // analyzer can flag captures where the arena overflowed or the drain
 // fell behind, even without the live OK reply.
-static void writeHookManifest(int fd)
+static void writeHookManifest(VfsFile *f)
 {
-   uint64_t pos = 0;
-   if (cellFsLseek(fd, 0, CELL_FS_SEEK_CUR, &pos) != CELL_FS_SUCCEEDED) return;
+   int64_t pos = seekFs(f, 0, VFS_SEEK_CUR);
+   if (pos < 0) return;
    uint32_t manifestOff = (uint32_t)pos;
 
    static const char sentinel[] = "\n==MANIFEST==\n";
-   uint64_t w = 0;
-   cellFsWrite(fd, sentinel, sizeof sentinel - 1, &w);
+   writeFs(f, sentinel, sizeof sentinel - 1);
 
    char line[160];
    for (uint32_t m = 0; m < activeArm.modCursor; m++) {
@@ -286,11 +285,11 @@ static void writeHookManifest(int fd)
          const HookSlot *slot = &activeArm.slots[mod->first + i];
          int n = snprintf(line, sizeof line, "slot 0x%08x\t%s\t0x%08x\n",
                           (unsigned)slot->slotAddr, mod->name, (unsigned)slot->nid);
-         if (n > 0) cellFsWrite(fd, line, (uint64_t)n, &w);
+         if (n > 0) writeFs(f, line, (uint64_t)n);
       }
    }
    static const char sumHead[] = "==SUMMARY==\n";
-   cellFsWrite(fd, sumHead, sizeof sumHead - 1, &w);
+   writeFs(f, sumHead, sizeof sumHead - 1);
    int sn = snprintf(line, sizeof line,
                      "slots\trequested=%u armed=%u dropped=%u\n"
                      "events\twritten=%u ring_dropped=%u\n",
@@ -299,9 +298,9 @@ static void writeHookManifest(int fd)
                      (unsigned)getHookSlotsDropped(),
                      (unsigned)hookDrainWritten,
                      (unsigned)getHookDropCount());
-   if (sn > 0) cellFsWrite(fd, line, (uint64_t)sn, &w);
+   if (sn > 0) writeFs(f, line, (uint64_t)sn);
    static const char tail[] = "==END==\n";
-   cellFsWrite(fd, tail, sizeof tail - 1, &w);
+   writeFs(f, tail, sizeof tail - 1);
 
    // patch manifestOffset (big-endian u32) at byte 8 of the header.
    uint8_t be[4] = {
@@ -310,9 +309,8 @@ static void writeHookManifest(int fd)
       (uint8_t)(manifestOff >> 8),
       (uint8_t)(manifestOff)
    };
-   uint64_t hpos = 0;
-   if (cellFsLseek(fd, 8, CELL_FS_SEEK_SET, &hpos) == CELL_FS_SUCCEEDED) {
-      cellFsWrite(fd, be, 4, &w);
+   if (seekFs(f, 8, VFS_SEEK_SET) >= 0) {
+      writeFs(f, be, 4);
    }
 }
 
@@ -467,10 +465,10 @@ static void cmdModuleTraceOff(int cli, const char *args)
       joinThread(hookDrainTid);
       hookDrainTid = 0;
    }
-   if (hookDrainFd >= 0) {
-      writeHookManifest(hookDrainFd);
-      cellFsClose(hookDrainFd);
-      hookDrainFd = -1;
+   if (hookDrainOpen) {
+      writeHookManifest(&hookDrainFile);
+      closeFs(&hookDrainFile);
+      hookDrainOpen = 0;
    }
 
    uint32_t dropped = getHookDropCount();

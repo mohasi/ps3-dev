@@ -1,6 +1,6 @@
 // audio - multi-stream audio mixer: wav and ogg/vorbis, plus mp3 and flac via vendored decoders
 #include "audio.h"
-#include "file.h"               // getExtension
+#include "vfs.h"               // getExtension
 #include "string-utilities.h"   // strCmpICase
 #include "thread.h"
 #include <cell/audio.h>

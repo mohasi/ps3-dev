@@ -36,18 +36,20 @@
    <ClCompile Include="src\dbg.c" />
    <ClCompile Include="src\network.c" />
    <ClCompile Include="src\printf.c" />
-   <ClCompile Include="src\file.c" />
    <ClCompile Include="src\dir-playlist.c" />
    <ClCompile Include="src\vfs.c" />
+   <ClCompile Include="src\cellfs.c" />
    <ClCompile Include="src\exfat.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\ftp.h" />
    <ClInclude Include="include\printf.h" />
    <ClInclude Include="include\dbg.h" />
-   <ClInclude Include="include\file.h" />
+   <ClInclude Include="include\path.h" />
+   <ClInclude Include="include\format.h" />
    <ClInclude Include="include\dir-playlist.h" />
    <ClInclude Include="include\vfs.h" />
+   <ClInclude Include="include\cellfs.h" />
    <ClInclude Include="include\exfat.h" />
    <ClInclude Include="include\syscall.h" />
    <ClInclude Include="include\thread.h" />

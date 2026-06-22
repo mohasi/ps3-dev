@@ -18,9 +18,13 @@
 #define STORAGE_GET_INFO       609   // sys_storage_get_device_info
 
 // USB mass-storage device id for a port (0-5 and 6+ use different bases) - from
-// apps/ManaGunZ/MGZ/source/exFAT.h USB_MASS_STORAGE().
+// apps/ManaGunZ/MGZ/source/exFAT.h USB_MASS_STORAGE(). port is clamped to the
+// lv2 contract [0, USB_STORAGE_MAX_PORTS) so an out-of-range value can't fabricate
+// a device id that aliases a real device's id space.
 static inline uint64_t getUsbDeviceId(int port)
 {
+   if (port < 0) port = 0;
+   if (port >= USB_STORAGE_MAX_PORTS) port = USB_STORAGE_MAX_PORTS - 1;
    return port < 6 ? 0x10300000000000AULL + (uint64_t)port
                    : 0x10300000000001FULL + (uint64_t)(port - 6);
 }

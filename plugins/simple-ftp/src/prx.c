@@ -42,15 +42,10 @@ static void pluginThread(uint64_t arg)
       return;
    }
 
-   // Bring up the VFS (exFAT backend + path routing) and poll for hotplug here, on this plugin
-   // thread - deliberately OFF the FTP listener/session path so a slow or contended USB storage
-   // probe (e.g. a stick the file-manager also has open) can never stall accepting or serving
-   // connections. FTP serves the HDD regardless; exFAT volumes surface here once mounted.
+   // Bring up the VFS (exFAT backend + path routing). It owns its own 8 KB hotplug
+   // poll thread, so there's nothing to drive here; this boot thread is done.
    initVfs();
-   while (1) {
-      pollMounts();
-      sys_timer_sleep(1);
-   }
+   exitThread();
 }
 
 int _start(uint64_t arg)

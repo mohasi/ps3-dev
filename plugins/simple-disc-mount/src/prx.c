@@ -19,7 +19,7 @@
 #include "dbg.h"
 #include "vsh.h"
 #include "syscall.h"
-#include "file.h"
+#include "vfs.h"
 #include "thread.h"
 #include "cobra.h"
 #include "xmb-inject.h"

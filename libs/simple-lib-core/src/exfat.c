@@ -53,6 +53,10 @@
 #define GPT_HEADER_LBA     1      // the GPT header occupies the second sector
 #define GPT_MAX_ENTRIES    128    // cap on the partition-entry scan (the GPT default)
 #define GPT_ENTRY_MIN_SIZE 128    // smallest valid GPT partition-entry size
+// Fallback ceiling for partition-table LBAs when the device size is unknown (getStorageInfo failed,
+// deviceSectors == 0): 2^36 sectors is >=32 TB at 512-byte sectors - past any real removable medium,
+// yet finite, so a hostile partition entry can't steer a scan read to an arbitrary 64-bit sector.
+#define EXFAT_SCAN_LBA_CAP (1ull << 36)
 
 // getUsbDeviceId / StorageDeviceInfo / getStorageInfo now live in usb-storage.h (the device layer
 // shared with the VFS). The read/write data path below stays here - it's the exFAT backend's.
@@ -109,6 +113,10 @@ static uint8_t  fileSector[EXFAT_READ_BOUNCE] __attribute__((aligned(STORAGE_ALI
 // Scratch for read-modify-write of bitmap / FAT / directory sectors. Like the
 // buffers above it is only touched while the caller holds the exFAT lock.
 static uint8_t  writeScratch[EXFAT_MAX_SECTOR] __attribute__((aligned(STORAGE_ALIGN)));
+// Boot-sector scratch for mountExfat. Off the stack (it would be 4 KB) like the
+// buffers above; mount holds exfatLock so one shared buffer is safe, and keeping
+// it out of the call frame lets the hotplug poll thread run on a small stack.
+static uint8_t  bootSector[EXFAT_MAX_SECTOR] __attribute__((aligned(STORAGE_ALIGN)));
 
 // Decompressed up-case table cache (shared, keyed by mount epoch, identity outside the volume's defined
 // range). exFAT casefold and NameHash map through this instead of re-reading the on-disk table
@@ -363,8 +371,10 @@ static int tryExfatVbr(int storageHandle, uint64_t lba, uint32_t sectorBytes, ui
                        uint8_t *vbr, uint8_t *boot, uint64_t *volStart)
 {
    // Reject an out-of-range starting LBA (an attacker-controlled partition field) BEFORE reading it,
-   // so a crafted table can't steer a read to a wild sector. deviceSectors == 0 means size unknown.
-   if (lba == 0 || (deviceSectors != 0 && lba >= deviceSectors)) return 0;
+   // so a crafted table can't steer a read to a wild sector. When the device size is unknown
+   // (deviceSectors == 0) fall back to a finite ceiling instead of trusting the field unbounded.
+   uint64_t sectorBound = deviceSectors ? deviceSectors : EXFAT_SCAN_LBA_CAP;
+   if (lba == 0 || lba >= sectorBound) return 0;
    if (readSectors(storageHandle, lba, 1, vbr) != 0 || !hasExfatBoot(vbr)) return 0;
    memCopy(boot, vbr, (int)sectorBytes);
    *volStart = lba;
@@ -383,7 +393,8 @@ static int locateExfatInGpt(int storageHandle, uint32_t sectorBytes, uint64_t de
    uint32_t entryCount = readLe32(scratch + 80);   // NumberOfPartitionEntries
    uint32_t entrySize  = readLe32(scratch + 84);   // SizeOfPartitionEntry
    if (entrySize < GPT_ENTRY_MIN_SIZE || entrySize > sectorBytes) return 0;
-   if (deviceSectors != 0 && entriesLba >= deviceSectors) return 0;   // entry-array LBA from a hostile header
+   uint64_t sectorBound = deviceSectors ? deviceSectors : EXFAT_SCAN_LBA_CAP;   // finite ceiling when size unknown
+   if (entriesLba >= sectorBound) return 0;   // entry-array LBA from a hostile header (or wild when size unknown)
    if (entryCount > GPT_MAX_ENTRIES) entryCount = GPT_MAX_ENTRIES;
    uint32_t perSector = sectorBytes / entrySize;
 
@@ -508,7 +519,7 @@ int mountExfat(ExfatVolume *vol, int drive)
    // as plain scratch, not as the dir/FAT caches.
    uint8_t *scanScratch = dirSector;   // partition table / GPT-entry sectors
    uint8_t *scanVbr     = fatSector;   // candidate boot-record sectors
-   uint8_t boot[EXFAT_MAX_SECTOR] __attribute__((aligned(STORAGE_ALIGN)));
+   uint8_t *boot = bootSector;   // off the stack (see bootSector) so the mount path fits a small stack
    if (readSectors(storageHandle, 0, 1, boot) != 0) {
       closeStorage(storageHandle);
       return EXFAT_MOUNT_NOT_READY;
@@ -551,7 +562,11 @@ int mountExfat(ExfatVolume *vol, int drive)
 void unmountExfat(ExfatVolume *vol)
 {
    if (!vol->mounted) return;
-   if (vol->volumeDirty) setVolumeDirty(vol, 0);   // clean unmount: clear the dirty flag for the host
+   // Clear the on-disk dirty flag for the host, but only if the device is still physically present.
+   // On a hotplug eject the device is already gone, so the read-modify-write would just stall on
+   // STORAGE_BUSY retries (and could land on a recycled storage handle); skip it and leave the flag
+   // set - the safe direction, the host re-verifies on next mount.
+   if (vol->volumeDirty && isUsbDevicePresent(vol->drive)) setVolumeDirty(vol, 0);
    closeStorage(vol->storageHandle);
    vol->mounted = 0;
    invalidateCaches();   // drop the sector caches keyed by the old epoch
@@ -567,6 +582,7 @@ void openExfatDir(ExfatDir *dir, const ExfatVolume *vol, uint32_t firstCluster, 
    dir->entryInSector  = 0;
    dir->noFatChain     = noFatChain;
    dir->clustersWalked = 0;
+   dir->ioError        = 0;
    // Bound the walk by the directory's own DataLength so a malformed entry can't make us read
    // past the allocation (a contiguous/NoFatChain directory would otherwise spill into whatever
    // physically follows it and parse foreign clusters as entries). 0 = unbounded (the root, whose
@@ -603,12 +619,16 @@ static uint32_t advanceDirCluster(ExfatDir *dir)
 static const uint8_t *getNextEntry(ExfatDir *dir)
 {
    const ExfatVolume *vol = dir->vol;
-   if (!vol->mounted) return 0;   // ejected mid-walk: end the dir, never touch the closed storageHandle
+   // vol is NULL once the device was yanked while this dir was open (detachVolumeHandles),
+   // so test it BEFORE dereferencing mounted - a late read on a stale handle must end the
+   // walk, not crash (mirrors readExfat).
+   if (!vol || !vol->mounted) return 0;   // ejected mid-walk: end the dir, never touch the closed storageHandle
    if (!isClusterValid(vol, dir->cluster)) return 0;
 
    uint64_t lba = clusterToSector(vol, dir->cluster) + dir->sectorInClu;
    if (lba != dirSectorLba || vol->cacheEpoch != dirSectorEpoch) {
       if (readSectors(vol->storageHandle, lba, 1, dirSector) != 0) {
+         dir->ioError = 1;   // a real I/O fault, NOT end-of-directory: the VFS boundary turns this into -1
          dir->cluster = 0;
          return 0;
       }
@@ -634,6 +654,17 @@ static const uint8_t *getNextEntry(ExfatDir *dir)
 // find the entries to invalidate without re-parsing the directory.
 static uint32_t lastSetCluster, lastSetSectorInClu, lastSetEntryInSector;
 static int      lastSetCount, lastSetDirNoFatChain;
+
+// Copies the position of the entry set readExfatDir most recently returned (the shared lastSet*
+// globals) into `loc`. Valid only until the next readdir/backend call; caller holds the lock.
+static void captureLastSet(ExfatEntryLoc *loc)
+{
+   loc->cluster       = lastSetCluster;
+   loc->sectorInClu   = lastSetSectorInClu;
+   loc->entryInSector = lastSetEntryInSector;
+   loc->count         = lastSetCount;
+   loc->dirNoFatChain = lastSetDirNoFatChain;
+}
 
 // Rolling exFAT SetChecksum: folds one 32-byte directory entry into `sum`. The primary (File)
 // entry skips its own checksum field (bytes 2-3); secondary entries fold every byte.
@@ -735,7 +766,7 @@ static int findInDir(const ExfatVolume *vol, uint32_t dirCluster, int dirNoFatCh
    while (readExfatDir(&dir, name, (int)sizeof(name), info)) {
       if (namesEqualFold(vol, name, target)) return 1;
    }
-   return 0;
+   return dir.ioError ? -1 : 0;   // distinguish a mid-scan I/O fault from a genuine miss
 }
 
 int statExfat(const ExfatVolume *vol, const char *path, ExfatInfo *info)
@@ -765,7 +796,7 @@ int statExfat(const ExfatVolume *vol, const char *path, ExfatInfo *info)
       while (*p == '/') p++;
 
       if (n == 0) return -1;   // malformed (empty component)
-      if (!findInDir(vol, dirCluster, dirNoFatChain, dirByteLength, component, info)) return -1;
+      if (findInDir(vol, dirCluster, dirNoFatChain, dirByteLength, component, info) != 1) return -1;   // miss or I/O error
       if (*p == 0) return 0;            // last component matched
       if (!info->isDir) return -1;      // an intermediate must be a directory
       dirCluster    = info->firstCluster;
@@ -847,6 +878,7 @@ static void setupFileHandle(ExfatFile *file, ExfatVolume *vol, const ExfatInfo *
    file->allocClusters = (uint32_t)((info->size + clusterBytes - 1) / clusterBytes);
    file->entry         = *entry;
    file->writable      = 0;
+   file->appendMode    = 0;
    file->dirty         = 0;
 }
 
@@ -1676,13 +1708,7 @@ static int resolveParentDir(ExfatVolume *vol, const char *parent, ExfatInfo *inf
 {
    if (statExfat(vol, parent, info) != 0 || !info->isDir) return -1;
    *hasEntry = !(parent[0] == '/' && parent[1] == '\0');
-   if (*hasEntry) {
-      entry->cluster       = lastSetCluster;
-      entry->sectorInClu   = lastSetSectorInClu;
-      entry->entryInSector = lastSetEntryInSector;
-      entry->count         = lastSetCount;
-      entry->dirNoFatChain = lastSetDirNoFatChain;
-   }
+   if (*hasEntry) captureLastSet(entry);
    return 0;
 }
 
@@ -1697,8 +1723,9 @@ int mkdirExfatPath(ExfatVolume *vol, const char *path)
    int hasParentEntry;
    if (resolveParentDir(vol, parent, &parentInfo, &parentEntry, &hasParentEntry) != 0) return -1;
    ExfatInfo existing;
-   if (findInDir(vol, parentInfo.firstCluster, parentInfo.noFatChain, parentInfo.size, leaf, &existing))
-      return existing.isDir ? -2 : -1;
+   int clash = findInDir(vol, parentInfo.firstCluster, parentInfo.noFatChain, parentInfo.size, leaf, &existing);
+   if (clash < 0) return -1;                          // I/O error mid-scan: can't verify the clash, fail safe
+   if (clash == 1) return existing.isDir ? -2 : -1;
 
    // declarations before the first goto so no jump crosses an initializer
    uint8_t set[MAX_SET_ENTRIES * DIR_ENTRY_BYTES];
@@ -1751,8 +1778,9 @@ int createExfatPath(ExfatVolume *vol, const char *path)
    int hasParentEntry;
    if (resolveParentDir(vol, parent, &parentInfo, &parentEntry, &hasParentEntry) != 0) return -1;
    ExfatInfo existing;
-   if (findInDir(vol, parentInfo.firstCluster, parentInfo.noFatChain, parentInfo.size, leaf, &existing))
-      return existing.isDir ? -1 : -2;   // a directory of that name blocks it; a file = "exists"
+   int clash = findInDir(vol, parentInfo.firstCluster, parentInfo.noFatChain, parentInfo.size, leaf, &existing);
+   if (clash < 0) return -1;                          // I/O error mid-scan: can't verify the clash, fail safe
+   if (clash == 1) return existing.isDir ? -1 : -2;   // a directory of that name blocks it; a file = "exists"
 
    ensureVolumeDirty(vol);
    return placeEmptyFile(vol, &parentInfo, hasParentEntry ? &parentEntry : 0, leaf, 0) == 0 ? 0 : -1;
@@ -1775,16 +1803,12 @@ static int locateEntrySet(const ExfatVolume *vol, uint32_t dirCluster, int dirNo
    ExfatInfo info;
    while (readExfatDir(&dir, name, (int)sizeof name, &info) == 1) {
       if (namesEqualFold(vol, name, target)) {
-         loc->entry.cluster       = lastSetCluster;
-         loc->entry.sectorInClu   = lastSetSectorInClu;
-         loc->entry.entryInSector = lastSetEntryInSector;
-         loc->entry.count         = lastSetCount;
-         loc->entry.dirNoFatChain = lastSetDirNoFatChain;
-         loc->info                = info;
+         captureLastSet(&loc->entry);
+         loc->info = info;
          return 1;
       }
    }
-   return 0;
+   return dir.ioError ? -1 : 0;   // -1 = mid-scan I/O fault (not "absent"); 0 = genuine miss
 }
 
 // Opens the file at an in-volume path into `file`, creating it empty if absent and `create`
@@ -1804,7 +1828,9 @@ static int openOrCreateExfat(ExfatFile *file, ExfatVolume *vol, const char *path
 
    // one scan of the parent: open it if present, otherwise fall through to create
    ExsetFatLoc found;
-   if (locateEntrySet(vol, parentInfo.firstCluster, parentInfo.noFatChain, parentInfo.size, leaf, &found)) {
+   int located = locateEntrySet(vol, parentInfo.firstCluster, parentInfo.noFatChain, parentInfo.size, leaf, &found);
+   if (located < 0) return -1;                          // I/O error mid-scan: don't fall through and create a dup
+   if (located == 1) {
       if (found.info.isDir) return -1;                 // can't open a directory as a file
       setupFileHandle(file, vol, &found.info, &found.entry);
       return 0;
@@ -1890,12 +1916,14 @@ static int isDirEmpty(const ExfatVolume *vol, uint32_t dirCluster, int dirNoFatC
    openExfatDir(&dir, vol, dirCluster, dirNoFatChain, dirByteLength);
    char name[256];
    ExfatInfo info;
-   return readExfatDir(&dir, name, (int)sizeof name, &info) == 0;
+   int got = readExfatDir(&dir, name, (int)sizeof name, &info);
+   return got == 0 && !dir.ioError;   // "empty" only on a clean end-of-dir, never on an I/O fault
 }
 
 // Removes the file (requireDir 0) or empty directory (requireDir 1) at an in-volume
-// path: invalidates its entry set, then frees its clusters. Returns 0 on success, -1
-// on a bad path, type mismatch, non-empty directory, or I/O error. Caller holds the lock.
+// path: invalidates its entry set, then frees its clusters. Returns 0 on success, -2 if
+// the entry is already absent (the op maps this to idempotent success), -1 on a bad path,
+// type mismatch, non-empty directory, or I/O error. Caller holds the lock.
 static int removeNamedEntry(ExfatVolume *vol, const char *path, int requireDir)
 {
    char parent[512], leaf[256];
@@ -1905,7 +1933,9 @@ static int removeNamedEntry(ExfatVolume *vol, const char *path, int requireDir)
    if (statExfat(vol, parent, &parentInfo) != 0 || !parentInfo.isDir) return -1;
 
    ExsetFatLoc loc;
-   if (!locateEntrySet(vol, parentInfo.firstCluster, parentInfo.noFatChain, parentInfo.size, leaf, &loc)) return -1;
+   int located = locateEntrySet(vol, parentInfo.firstCluster, parentInfo.noFatChain, parentInfo.size, leaf, &loc);
+   if (located < 0) return -1;    // mid-scan I/O fault: a real failure, not "already gone"
+   if (located == 0) return -2;   // already absent: idempotent delete (mapped to 0 by the op)
    if (loc.info.isDir != requireDir) return -1;
    if (requireDir && !isDirEmpty(vol, loc.info.firstCluster, loc.info.noFatChain, loc.info.size)) return -1;
 
@@ -1955,6 +1985,10 @@ static int isPathWithin(const char *ancestor, const char *path)
    }
 }
 
+// Repoints any open file handle bound to the entry set at `from` to its new location `to`
+// (defined in the VFS-backend section with the file pool). Caller holds exfatLock.
+static void repointOpenHandles(const ExfatVolume *vol, const ExfatEntryLoc *from, const ExfatEntryLoc *to);
+
 // Renames/moves an entry within one volume: relocates its entry set to the destination
 // name (and directory) while leaving its data clusters in place. Returns 0 on success,
 // -1 on a bad path, a missing source, an existing destination, or I/O error. Caller
@@ -1973,13 +2007,15 @@ int renameExfatPath(ExfatVolume *vol, const char *fromPath, const char *toPath)
    if (statExfat(vol, fromParent, &fromDir) != 0 || !fromDir.isDir) return -1;
    if (resolveParentDir(vol, toParent, &toDir, &toEntry, &hasToEntry) != 0) return -1;
    ExsetFatLoc src;
-   if (!locateEntrySet(vol, fromDir.firstCluster, fromDir.noFatChain, fromDir.size, fromLeaf, &src)) return -1;
+   if (locateEntrySet(vol, fromDir.firstCluster, fromDir.noFatChain, fromDir.size, fromLeaf, &src) != 1) return -1;   // missing source or I/O error
 
    // Refuse to clobber an existing destination (the caller deletes first if it wants that).
    // A case-only rename (file.txt -> File.txt) resolves to the source's own entry, since
    // names compare case-insensitively; allow that - it just rewrites the stored name.
    ExsetFatLoc dst;
-   if (locateEntrySet(vol, toDir.firstCluster, toDir.noFatChain, toDir.size, toLeaf, &dst) &&
+   int dstFound = locateEntrySet(vol, toDir.firstCluster, toDir.noFatChain, toDir.size, toLeaf, &dst);
+   if (dstFound < 0) return -1;   // couldn't determine if the destination exists: fail, don't risk a clobber
+   if (dstFound == 1 &&
        !(dst.entry.cluster == src.entry.cluster && dst.entry.sectorInClu == src.entry.sectorInClu &&
          dst.entry.entryInSector == src.entry.entryInSector))
       return -1;
@@ -2002,6 +2038,9 @@ int renameExfatPath(ExfatVolume *vol, const char *fromPath, const char *toPath)
       clearEntrySet(vol, &placed);   // roll back the just-placed destination so the data isn't cross-linked
       return -1;
    }
+   // An open handle to the moved file still holds the old (now-cleared) entry location; repoint it
+   // to the new set so a later flush writes the live entry, not the freed source slot (cross-link).
+   repointOpenHandles(vol, &src.entry, &placed);
    return 0;
 }
 
@@ -2260,6 +2299,7 @@ int writeExfat(ExfatFile *file, const void *buffer, int length)
    // vol is NULL after a yank (detachVolumeHandles); test it before dereferencing mounted so a late
    // write on a stale handle fails instead of crashing.
    if (!vol || !vol->mounted) return -1;
+   if (file->appendMode) file->position = file->size;   // O_APPEND: every write lands at the current EOF
    ensureVolumeDirty(vol);                  // first write this session marks the volume dirty for the host
 
    const uint8_t *in = (const uint8_t *)buffer;
@@ -2391,12 +2431,17 @@ static ExfatVolume *volumeFromNative(const char *native, const char **inPath)
 
    const char *digits = native + 5;   // skip "exfat"
    if (digits >= colon) return 0;
-   int port = 0;
+   // Parse unsigned and bound the running value each step: a long all-digit string can no longer
+   // overflow a signed int (UB) before the range check - it is rejected the moment it exceeds the
+   // port range. (The native prefix is normally built by buildNames as a single digit; this guards
+   // a hostile/oversized path that reaches the router.)
+   unsigned port = 0;
    for (const char *d = digits; d < colon; d++) {
       if (*d < '0' || *d > '9') return 0;
-      port = port * 10 + (*d - '0');
+      port = port * 10u + (unsigned)(*d - '0');
+      if (port >= EXFAT_MAX_VOLUMES) return 0;   // out of range (and caps the value: never overflows)
    }
-   if (port < 0 || port >= EXFAT_MAX_VOLUMES || !volumes[port].mounted) return 0;
+   if (!volumes[port].mounted) return 0;
    return &volumes[port];
 }
 
@@ -2425,6 +2470,20 @@ static void detachVolumeHandles(const ExfatVolume *vol)
    }
    for (int i = 0; i < EXFAT_MAX_OPEN_DIRS; i++) {
       if (dirUsed[i] && dirPool[i].vol == vol) dirPool[i].vol = 0;
+   }
+}
+
+// Repoints every open file handle on `vol` whose entry set sits at `from` to `to`. Used after a
+// rename relocates an entry set, so a still-open handle flushes into the live set rather than the
+// cleared source slot (which would resurrect/cross-link a directory entry). Caller holds exfatLock.
+static void repointOpenHandles(const ExfatVolume *vol, const ExfatEntryLoc *from, const ExfatEntryLoc *to)
+{
+   for (int i = 0; i < EXFAT_MAX_OPEN_FILES; i++) {
+      if (!fileUsed[i] || filePool[i].vol != vol) continue;
+      ExfatEntryLoc *entry = &filePool[i].entry;
+      if (entry->cluster == from->cluster && entry->sectorInClu == from->sectorInClu &&
+          entry->entryInSector == from->entryInSector)
+         *entry = *to;   // copies cluster/sector/entry + the new set's count and chain mode
    }
 }
 
@@ -2473,14 +2532,19 @@ static int openExfatDirOp(const char *native, VfsDir *dir)
    return slot >= 0 ? 0 : -1;
 }
 
-static int readExfatDirOp(VfsDir *dir, char *nameOut, int nameCapacity, int *isDirOut)
+static int readExfatDirOp(VfsDir *dir, char *nameOut, int nameCapacity, VfsEntryType *typeOut)
 {
    lock(&exfatLock);
    ExfatInfo info;
    int result = 0;
    if (dir->descriptor >= 0 && dir->descriptor < EXFAT_MAX_OPEN_DIRS) {
-      result = readExfatDir(&dirPool[dir->descriptor], nameOut, nameCapacity, &info);
-      if (result == 1 && isDirOut) *isDirOut = info.isDir;
+      ExfatDir *ed = &dirPool[dir->descriptor];
+      result = readExfatDir(ed, nameOut, nameCapacity, &info);
+      if (result == 1 && typeOut) *typeOut = info.isDir ? VFS_ENTRY_DIR : VFS_ENTRY_FILE;  // exFAT has no symlinks
+      // surface a mid-walk I/O fault as -1 (readExfatDir reports it as end-of-dir for the
+      // internal lookups, but the VFS contract needs error != end so the tree walkers abort
+      // instead of treating a partial listing as a clean, complete walk).
+      if (result == 0 && ed->ioError) result = -1;
    }
    unlock(&exfatLock);
    return result;
@@ -2515,7 +2579,8 @@ static int openExfatOp(const char *native, int flags, VfsFile *file)
          slot = -1;
       }
       if (slot >= 0 && writing) {
-         filePool[slot].writable = 1;
+         filePool[slot].writable   = 1;
+         filePool[slot].appendMode = (flags & VFS_O_APPEND) ? 1 : 0;   // writes reposition to EOF (POSIX append)
          if (flags & VFS_O_TRUNC) {
             if (truncateExfat(&filePool[slot]) != 0) {   // truncation failed (I/O): don't open over leaked clusters
                closeExfat(&filePool[slot]);
@@ -2543,6 +2608,7 @@ static int64_t readExfatOp(VfsFile *file, void *buffer, uint64_t length)
 static int64_t seekExfatOp(VfsFile *file, int64_t offset, int whence)
 {
    if (file->descriptor < 0 || file->descriptor >= EXFAT_MAX_OPEN_FILES) return -1;
+   if (whence != VFS_SEEK_SET && whence != VFS_SEEK_CUR && whence != VFS_SEEK_END) return -1;   // reject unknown whence (matches cellFs), no silent SEEK_SET
    lock(&exfatLock);
    ExfatFile *handle = &filePool[file->descriptor];
    int64_t base = (whence == VFS_SEEK_CUR) ? (int64_t)handle->position
@@ -2555,15 +2621,17 @@ static int64_t seekExfatOp(VfsFile *file, int64_t offset, int whence)
    return position;
 }
 
-static void closeExfatOp(VfsFile *file)
+static int closeExfatOp(VfsFile *file)
 {
+   int result = 0;
    lock(&exfatLock);
    if (file->descriptor >= 0 && file->descriptor < EXFAT_MAX_OPEN_FILES) {
-      closeExfat(&filePool[file->descriptor]);
+      result = closeExfat(&filePool[file->descriptor]);   // commit error surfaces to closeFs
       fileUsed[file->descriptor] = 0;
    }
    file->descriptor = -1;
    unlock(&exfatLock);
+   return result;
 }
 
 // rename/move within one volume; cross-volume is refused (the VFS does copy+delete).
@@ -2589,6 +2657,8 @@ static int mkdirExfatOp(const char *native)
    unlock(&exfatLock);
    return (result == 0 || result == -2) ? 0 : -1;
 }
+// Removes a file. Maps "already absent" (-2) to success so removeFilePath/deleteFile are
+// idempotent ("0 if already absent"), matching the cellFs backend behind the same vtable slot.
 static int rmfileExfatOp(const char *native)
 {
    lock(&exfatLock);
@@ -2596,8 +2666,9 @@ static int rmfileExfatOp(const char *native)
    ExfatVolume *vol = volumeFromNative(native, &inPath);
    int result = vol ? unlinkExfatPath(vol, inPath) : -1;
    unlock(&exfatLock);
-   return result;
+   return (result == 0 || result == -2) ? 0 : -1;
 }
+// Removes an empty directory. Maps "already absent" (-2) to success for idempotency.
 static int rmdirExfatOp(const char *native)
 {
    lock(&exfatLock);
@@ -2605,7 +2676,7 @@ static int rmdirExfatOp(const char *native)
    ExfatVolume *vol = volumeFromNative(native, &inPath);
    int result = vol ? rmdirExfatPath(vol, inPath) : -1;
    unlock(&exfatLock);
-   return result;
+   return (result == 0 || result == -2) ? 0 : -1;
 }
 static int64_t writeExfatOp(VfsFile *file, const void *buffer, uint64_t length)
 {
@@ -2673,7 +2744,7 @@ static VfsProbeResult probeExfat(int port)
       char segment[16], native[16];
       buildNames(port, segment, native);                 // native := "exfat<port>:"
       chooseSegment(port, volumes[port].segment, (int)sizeof(volumes[port].segment));
-      vfsAddMount(volumes[port].segment, native, volumes[port].label, VFS_SCHEME_EXFAT, &exfatOps);
+      addVfsMount(volumes[port].segment, native, volumes[port].label, VFS_SCHEME_EXFAT, &exfatOps);
       result = VFS_PROBE_MOUNTED;
    } else if (rc == EXFAT_MOUNT_NOT_EXFAT) {
       result = VFS_PROBE_NOT_MINE;
@@ -2689,7 +2760,7 @@ static void releaseExfat(int port)
 {
    lock(&exfatLock);
    if (port >= 0 && port < EXFAT_MAX_VOLUMES && volumes[port].mounted) {
-      vfsRemoveMount(volumes[port].segment);
+      removeVfsMount(volumes[port].segment);
       detachVolumeHandles(&volumes[port]);   // stop any still-open handle from flushing into a future mount
       unmountExfat(&volumes[port]);
    }
@@ -2701,7 +2772,7 @@ static void shutdownExfatBackend(void)
    lock(&exfatLock);
    for (int port = 0; port < EXFAT_MAX_VOLUMES; port++) {
       if (!volumes[port].mounted) continue;
-      vfsRemoveMount(volumes[port].segment);
+      removeVfsMount(volumes[port].segment);
       detachVolumeHandles(&volumes[port]);
       unmountExfat(&volumes[port]);
    }

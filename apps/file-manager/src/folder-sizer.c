@@ -1,6 +1,6 @@
 // folder-sizer - see folder-sizer.h
 #include "folder-sizer.h"
-#include "file.h"
+#include "vfs.h"
 #include "thread.h"
 #include <string.h>
 #include <sys/sys_time.h>

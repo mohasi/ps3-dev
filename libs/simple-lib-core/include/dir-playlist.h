@@ -4,7 +4,7 @@
 // Shared by media viewers/players (image viewer, audio player, future video player): each passes a
 // file-type predicate and gets back a sorted list plus a current position it can step through.
 
-#include "file.h"   // MAX_PATH_LEN
+#include "vfs.h"   // MAX_PATH_LEN
 
 #define DIR_PLAYLIST_MAX       512   // max files tracked in one folder
 #define DIR_PLAYLIST_NAME_MAX  256   // max bytes (incl NUL) per filename

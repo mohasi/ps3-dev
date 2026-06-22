@@ -9,7 +9,7 @@
 #include "pad.h"
 #include "font.h"
 #include "ui/label.h"
-#include "file.h"              // joinPath, getParentPath, getBaseName, MAX_PATH_LEN
+#include "vfs.h"              // joinPath, getParentPath, getBaseName, MAX_PATH_LEN
 #include "string-utilities.h"  // strCopy, strEq, appendStr
 #include "dbg.h"               // logError
 

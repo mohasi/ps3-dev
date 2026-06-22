@@ -4,7 +4,7 @@
 
 #include "config.h"   // RENPY_ROOT
 #include "printf.h"   // snprintf
-#include "file.h"     // openDir/readDir + MAX_PATH_LEN
+#include "vfs.h"     // openDir/readDir + MAX_PATH_LEN
 #include "dbg.h"      // logInfo
 
 static char rpkPath[MAX_PATH_LEN];

@@ -1,7 +1,7 @@
 #include <sys/process.h>
 
 #include "app.h"
-#include "file.h"
+#include "vfs.h"
 #include "syscall.h"   // mountDevBlind
 #include "gfx.h"
 #include "pad.h"

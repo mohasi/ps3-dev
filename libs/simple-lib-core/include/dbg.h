@@ -3,7 +3,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 
-#include <cell/fs/cell_fs_file_api.h>
+#include "vfs.h"
 // local-time source — librtc_stub, PRX-safe. Callers must link -lrtc_stub.
 #include <cell/rtc.h>
 
@@ -110,13 +110,13 @@ static inline void logEmit(const char *level, const char *fmt, va_list ap)
    int max = (int)sizeof line - o - 1;
    if (n > max) n = max;
 
-   int fd;
-   if (cellFsOpen(DBG_LOG, CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_APPEND,
-                  &fd, NULL, 0) == CELL_FS_SUCCEEDED)
+   // O_APPEND so the kernel positions+writes atomically per call: concurrent
+   // loggers from different threads/PRXs can't interleave halves of a line.
+   VfsFile f;
+   if (openFs(DBG_LOG, VFS_O_WRONLY | VFS_O_CREAT | VFS_O_APPEND, &f) == 0)
    {
-      uint64_t written;
-      cellFsWrite(fd, line, (uint64_t)(o + n), &written);
-      cellFsClose(fd);
+      writeFs(&f, line, (uint64_t)(o + n));
+      closeFs(&f);
    }
 
    if (logCallback) logCallback(line, o + n);

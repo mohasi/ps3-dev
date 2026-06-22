@@ -54,9 +54,16 @@ static inline char toLowerChar(char c)
 
 // Normalizes a slash-separated path in place: ensures a leading '/',
 // collapses repeated '/', and resolves '.' / '..' segments within cap.
+// cap is BOTH the work bound and the size of `path`: pass cap == sizeof(path).
+// The function has no independent knowledge of path's real size, so a cap larger
+// than the buffer would overflow on copy-back.
 static inline void normalizePath(char *path, int cap)
 {
    if (!path || cap <= 0) return;
+   // cap < 2 leaves no room for the "/" + NUL the function always produces; the
+   // empty-result fixup below would otherwise write path[0]='/' and path[1]=0,
+   // a 1-byte overflow at cap==1. Terminate in place and return instead.
+   if (cap < 2) { path[0] = 0; return; }
 
    // Stack-allocated temp buffer with reasonable limit to avoid VLA issues.
    char normalized[1024];
@@ -120,13 +127,13 @@ static inline int endsWithICase(const char *s, const char *suf)
 }
 
 // Finds needle in hay. Returns offset or -1.
-static inline int findBytes(const char *hay, int hLen, const char *needle, int nLen)
+static inline int findBytes(const char *hay, int hayLength, const char *needle, int needleLength)
 {
-   if (nLen == 0 || nLen > hLen) return -1;
-   for (int i = 0; i <= hLen - nLen; i++) {
+   if (needleLength == 0 || needleLength > hayLength) return -1;
+   for (int i = 0; i <= hayLength - needleLength; i++) {
      int j = 0;
-     while (j < nLen && hay[i + j] == needle[j]) j++;
-     if (j == nLen) return i;
+     while (j < needleLength && hay[i + j] == needle[j]) j++;
+     if (j == needleLength) return i;
    }
    return -1;
 }
@@ -195,6 +202,11 @@ static inline int urlDecode(const char *src, char *dst, int cap)
    while (*src && *src != ' ' && *src != '?' && *src != '\r' && o < cap - 1) {
      char c = *src++;
      if (c == '%') {
+       // require both hex digits to be present before reading them: a trailing
+       // bare '%' (or '%X') at the end of a non-NUL-terminated slice would
+       // otherwise read one byte past the buffer. checking src[0] short-circuits
+       // before hexDigit(src[1]) is evaluated.
+       if (!src[0] || !src[1]) return -1;
        int hi = hexDigit(*src); if (hi < 0) return -1; src++;
        int lo = hexDigit(*src); if (lo < 0) return -1; src++;
        dst[o++] = (char)((hi << 4) | lo);
@@ -309,6 +321,10 @@ static inline int formatIpv4(char *dst, int cap, uint32_t addr)
 // Converts a UTF-8 string to UTF-16, emitting surrogate pairs for astral code
 // points and skipping malformed bytes. Writes at most maxUnits code units plus a
 // NUL terminator. The PS3 system APIs (e.g. cellOskDialog) speak UTF-16.
+// `in` MUST be NUL-terminated: continuation-byte validation relies on the NUL to
+// stop at a truncated trailing lead byte. A non-terminated slice would let a
+// dangling multi-byte lead read one byte past the buffer -- wrap such input in a
+// NUL-terminated copy first (urlDecode handles its own length-delimited input).
 static inline void utf8ToUtf16(const char *in, uint16_t *out, int maxUnits)
 {
    int n = 0;
@@ -357,6 +373,8 @@ static inline void utf16ToUtf8(const uint16_t *in, char *out, int cap)
      uint32_t cp = in[i];
      if (cp >= 0xD800 && cp <= 0xDBFF && in[i + 1] >= 0xDC00 && in[i + 1] <= 0xDFFF)
        cp = 0x10000 + ((cp - 0xD800) << 10) + (in[++i] - 0xDC00);
+     else if (cp >= 0xD800 && cp <= 0xDFFF)
+       cp = 0xFFFD;   // unpaired surrogate: emit U+FFFD, not an ill-formed WTF-8 3-byte sequence
 
      if (cp < 0x80) {
        out[o++] = (char)cp;

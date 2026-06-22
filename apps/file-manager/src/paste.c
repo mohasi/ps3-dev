@@ -1,7 +1,7 @@
 // paste - move/copy the clipboard's items into a destination (see paste.h).
 #include "paste.h"
 #include "clipboard.h"
-#include "file.h"
+#include "vfs.h"
 #include "file-task.h"
 #include "string-utilities.h"
 

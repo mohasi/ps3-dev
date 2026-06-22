@@ -11,7 +11,7 @@
 #include "clipboard.h"
 #include "paste.h"
 #include "delete.h"
-#include "file.h"
+#include "vfs.h"
 #include "file-task.h"
 #include "dynarray.h"
 #include "overlays/progress-overlay.h"
@@ -306,7 +306,7 @@ static void rebuildLabels(void)
       if (!entries[idx].sized) {
          setLabelText(&sizeLabels[i], EM_DASH);
       } else {
-         char buf[16];
+         char buf[24];
          formatSizeApprox(entries[idx].size, entries[idx].approx, buf);
          setLabelText(&sizeLabels[i], buf);
       }
@@ -641,7 +641,7 @@ const SelectionSummary *getSelectionSummary(void)
          totalBytes += entries[i].size;
       }
       const char *plus = anyApprox ? "+" : "";
-      char sizeBuf[16];
+      char sizeBuf[24];
       formatSizeApprox(totalBytes, anyApprox, sizeBuf);
       snprintf(title,    sizeof(title),    "%d items",    checkedCount);
       snprintf(subtitle, sizeof(subtitle), "%d files%s", totalFiles, plus);
@@ -668,7 +668,7 @@ const SelectionSummary *getSelectionSummary(void)
    if (!e->sized) {
       strCopy(detail, sizeof(detail), EM_DASH);
    } else if (e->type == FILE_TYPE_FOLDER) {
-      char sizeBuf[16];
+      char sizeBuf[24];
       formatSizeApprox(e->size, e->approx, sizeBuf);
       const char *plus = e->approx ? "+" : "";
       snprintf(detail, sizeof(detail), "%d files%s, %s", e->fileCount, plus, sizeBuf);

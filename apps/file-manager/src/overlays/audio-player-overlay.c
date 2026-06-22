@@ -22,7 +22,7 @@
 #include "button-repeat.h"
 #include "thread.h"             // spawnJoinableThread, joinThread
 #include "dir-playlist.h"       // folder scan + prev/next-with-wrap navigation
-#include "file.h"               // getBaseName, MAX_PATH_LEN
+#include "vfs.h"               // getBaseName, MAX_PATH_LEN
 #include "string-utilities.h"   // strCopy
 #include "sprite-regions.h"
 #include "dbg.h"                // logError

@@ -10,7 +10,7 @@
 // image never freezes the UI; the caller uploads the result on the main thread.
 #include "image-loader.h"
 #include "dir-playlist.h"       // listDirFiltered (shared folder scan + sort)
-#include "file.h"               // getExtension
+#include "vfs.h"               // getExtension
 #include "string-utilities.h"   // strCmpICase, strCopy
 #include "dbg.h"                // logError
 #include "thread.h"             // spawnThread, lwmutex helpers, sleepMs

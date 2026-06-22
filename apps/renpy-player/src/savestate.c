@@ -9,7 +9,7 @@
 #include "gamepath.h" // getGameSaveDir() -- RENPY_ROOT/<game>
 #include "vars.h"     // getVarsCount / enumVars / setVar / resetVars / Value
 #include "vm.h"       // getVmState / setVmState
-#include "file.h"     // readFile / writeFile / makeDir / fileExists / statPath
+#include "vfs.h"     // readFile / writeFile / makeDir / fileExists / statPath
 #include "dbg.h"      // logWarn
 #include "image-loader.h"   // savePngArgb (SDK PNG encode for the slot screenshot)
 

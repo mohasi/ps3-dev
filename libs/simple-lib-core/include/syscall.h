@@ -4,8 +4,10 @@
 //
 // reference: https://www.psdevwiki.com/ps3/LV2_Functions_and_Syscalls
 // always cross-check syscall numbers / arg layouts against that page when
-// adding or modifying anything in this file. the sony sdk ships no
-// system_call_N() macros, so we emit `sc` directly using the ppu lv2 abi:
+// adding or modifying anything in this file. the sony sdk does ship
+// system_call_N() macros (sdk/.../sys/syscall.h); these trampolines are a
+// faithful transcription of them so callers don't pull in PPU-only SDK headers.
+// we emit `sc` directly using the ppu lv2 abi:
 //   r11 = syscall number
 //   r3..r10 = args
 //   r3 = result
@@ -255,8 +257,10 @@ static inline int32_t prxList(uint32_t *ids, uint32_t maxIds, uint32_t *outCount
       uint64_t size;
       uint32_t pad, max, count, idlist, unk;
    } opt;
-   // kernel rejects opt.unk == NULL, but we never read it. local scratch.
-   static uint32_t scratch[256];
+   // the kernel rejects opt.unk == NULL but never reads through it, and `opt`
+   // itself is a per-call stack local, so this scratch is a true stack local too
+   // (not a process-global) -- keeps prxList reentrant and matches its comment.
+   uint32_t scratch[256];
    if (maxIds > sizeof scratch / sizeof scratch[0]) maxIds = sizeof scratch / sizeof scratch[0];
 
    opt.size   = sizeof opt;

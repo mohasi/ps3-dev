@@ -1,7 +1,7 @@
 #include <sys/process.h>
 
 #include "app.h"
-#include "file.h"
+#include "vfs.h"
 #include "syscall.h"
 #include "gfx.h"
 #include "colors.h"
@@ -42,7 +42,6 @@ int main(int argc, char **argv)
 
    while (!appExitRequested) {
       appPoll();
-      pollMounts();
       updatePad();
       updateStats();
       updateScreen();

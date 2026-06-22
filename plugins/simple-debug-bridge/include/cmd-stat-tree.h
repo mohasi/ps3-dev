@@ -19,11 +19,15 @@
 // "OK files=<n> dirs=<n> -> <out path>" - the data lives in the file
 // on the ps3, pulled later with pull-file.
 //
+// classification uses the VFS entry type (readDir's typeOut), which reports
+// symlinks without following them - so the whole walk routes through the VFS
+// like everything else, on any backend.
+//
 // memory: one 64 KiB heap allocation via sysMemAllocate (SYS_PAGE_64K)
 // at command entry, freed on every exit path. nothing retained between
 // calls, no per-node allocations, no static buffers. the ctx carves the
 // 64 KiB into: path (2 KiB), write buf (16 KiB), read buf (32 KiB),
-// 64-frame dfs stack, one reused CellFsDirent, sha1 state, slack.
+// 64-frame dfs stack, one reused name buffer, sha1 state, slack.
 //
 // stability: favours not wedging vsh over throughput. yields after
 // every directory close and after every read buffer hashed. errors
@@ -34,9 +38,6 @@
 #include "fileio.h"
 
 #include <stdint.h>
-#include <cell/fs/cell_fs_file_api.h>
-#include <cell/fs/cell_fs_errno.h>
-#include <sys/fs_external.h>
 
 #include "sha1.h"
 
@@ -49,7 +50,7 @@
 #define STAT_TREE_ARENA_BYTES (64u * 1024u)  // sys_memory_allocate needs a 64K-aligned size for SYS_PAGE_64K
 
 typedef struct {
-   int      fd;
+   VfsDir   dir;
    uint32_t pathLen;
 } StatFrame;
 
@@ -60,9 +61,9 @@ typedef struct {
    uint8_t      readBuf[STAT_TREE_READ_MAX];
    StatFrame    stack[STAT_TREE_STACK_MAX];
    int          depth;
-   CellFsDirent ent;
+   char         entName[256];
    Sha1State    sha;
-   int          outFd;
+   VfsFile      outFile;
    uint32_t     files;
    uint32_t     dirs;
 } StatTreeCtx;
@@ -75,10 +76,9 @@ static const char STAT_TREE_HEX[17] = "0123456789abcdef";
 static int statTreeFlush(StatTreeCtx *c)
 {
    if (c->writeLen == 0) return 0;
-   uint64_t written = 0;
-   int rc = (int)cellFsWrite(c->outFd, c->writeBuf, c->writeLen, &written);
+   int64_t w = writeFs(&c->outFile, c->writeBuf, c->writeLen);
    c->writeLen = 0;
-   return (rc == CELL_FS_SUCCEEDED) ? 0 : -1;
+   return (w < 0) ? -1 : 0;
 }
 
 static void statTreeReserve(StatTreeCtx *c, uint32_t need)
@@ -126,24 +126,24 @@ static void statTreeHashFile(StatTreeCtx *c, const char *path, uint64_t size, ch
    for (int i = 0; i < 40; i++) out[i] = '0';
    if (size > STAT_TREE_HASH_MAX) return;
 
-   int fd;
-   if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_FS_SUCCEEDED) return;
+   VfsFile file;
+   if (openFs(path, VFS_O_RDONLY, &file) != 0) return;
 
    initSha1(&c->sha);
    uint64_t remaining = size;
    int ok = 1;
    while (remaining > 0) {
       uint64_t want = (remaining < STAT_TREE_READ_MAX) ? remaining : STAT_TREE_READ_MAX;
-      uint64_t got = 0;
-      if (cellFsRead(fd, c->readBuf, want, &got) != CELL_FS_SUCCEEDED || got == 0) {
+      int64_t got = readFs(&file, c->readBuf, want);
+      if (got <= 0) {
          ok = 0;
          break;
       }
       updateSha1(&c->sha, c->readBuf, (int)got);
-      remaining -= got;
+      remaining -= (uint64_t)got;
       yieldThread();
    }
-   cellFsClose(fd);
+   closeFs(&file);
 
    if (!ok) return;
 
@@ -172,7 +172,7 @@ static void statTreeEmit(StatTreeCtx *c, char kind, uint64_t size, int64_t mtime
 // process one child of the directory at the top of the stack. mutates
 // ctx->path to "<parent>/<name>", emits its line, and for a directory
 // also pushes a new frame for the main loop to descend into.
-static void statTreeVisitChild(StatTreeCtx *c, const char *name, uint8_t d_type)
+static void statTreeVisitChild(StatTreeCtx *c, const char *name, VfsEntryType type)
 {
    uint32_t parentLen = c->stack[c->depth - 1].pathLen;
    uint32_t nameLen   = (uint32_t)getStrLen(name);
@@ -184,19 +184,19 @@ static void statTreeVisitChild(StatTreeCtx *c, const char *name, uint8_t d_type)
    uint32_t childLen = parentLen + 1 + nameLen;
    c->path[childLen] = '\0';
 
-   if (d_type == CELL_FS_TYPE_SYMLINK) {
+   if (type == VFS_ENTRY_SYMLINK) {
       statTreeEmit(c, 'l', 0, 0, STAT_TREE_ZERO_SHA1);
       c->path[parentLen] = '\0';
       return;
    }
 
-   if (d_type == CELL_FS_TYPE_DIRECTORY) {
+   if (type == VFS_ENTRY_DIR) {
       uint64_t size  = 0;
       int64_t  mtime = 0;
-      CellFsStat st;
-      if (cellFsStat(c->path, &st) == CELL_FS_SUCCEEDED) {
-         size  = st.st_size;
-         mtime = (int64_t)st.st_mtime;
+      VfsStat st;
+      if (statPath(c->path, &st) == 0) {
+         size  = st.size;
+         mtime = (int64_t)st.mtime;
       }
       statTreeEmit(c, 'd', size, mtime, STAT_TREE_ZERO_SHA1);
       c->dirs++;
@@ -205,24 +205,22 @@ static void statTreeVisitChild(StatTreeCtx *c, const char *name, uint8_t d_type)
          c->path[parentLen] = '\0';
          return;
       }
-      int dfd;
-      if (cellFsOpendir(c->path, &dfd) != CELL_FS_SUCCEEDED) {
+      if (openDir(c->path, &c->stack[c->depth].dir) != 0) {
          c->path[parentLen] = '\0';
          return;
       }
-      c->stack[c->depth].fd      = dfd;
       c->stack[c->depth].pathLen = childLen;
       c->depth++;
       return;
    }
 
-   if (d_type == CELL_FS_TYPE_REGULAR) {
+   if (type == VFS_ENTRY_FILE) {
       uint64_t size  = 0;
       int64_t  mtime = 0;
-      CellFsStat st;
-      if (cellFsStat(c->path, &st) == CELL_FS_SUCCEEDED) {
-         size  = st.st_size;
-         mtime = (int64_t)st.st_mtime;
+      VfsStat st;
+      if (statPath(c->path, &st) == 0) {
+         size  = st.size;
+         mtime = (int64_t)st.mtime;
       }
       char sha[40];
       statTreeHashFile(c, c->path, size, sha);
@@ -240,20 +238,16 @@ static void statTreeWalk(StatTreeCtx *c)
    while (c->depth > 0) {
       StatFrame *top = &c->stack[c->depth - 1];
 
-      uint64_t nread = 0;
-      if (cellFsReaddir(top->fd, &c->ent, &nread) != CELL_FS_SUCCEEDED || nread == 0) {
-         cellFsClosedir(top->fd);
+      VfsEntryType type = VFS_ENTRY_OTHER;
+      if (readDir(&top->dir, c->entName, sizeof c->entName, &type) != 1) {
+         closeDir(&top->dir);
          c->depth--;
          c->path[top->pathLen] = '\0';
          yieldThread();
          continue;
       }
 
-      const char *name = c->ent.d_name;
-      if (name[0] == '.' && (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'))) {
-         continue;
-      }
-      statTreeVisitChild(c, name, c->ent.d_type);
+      statTreeVisitChild(c, c->entName, type);   // VFS readDir already skips "." / ".."
    }
 }
 
@@ -265,9 +259,8 @@ static void cmdStatTree(int cli, const char *args)
       return;
    }
 
-   CellFsStat rst;
-   if (cellFsStat(root, &rst) != CELL_FS_SUCCEEDED ||
-       (rst.st_mode & CELL_FS_S_IFMT) != CELL_FS_S_IFDIR) {
+   VfsStat rst;
+   if (statPath(root, &rst) != 0 || !rst.isDir) {
       sendReply(cli, SDB_ERR, "root not a directory");
       return;
    }
@@ -282,13 +275,12 @@ static void cmdStatTree(int cli, const char *args)
    StatTreeCtx *c = (StatTreeCtx *)(uintptr_t)ctxAddr;
    c->writeLen = 0;
    c->depth    = 0;
-   c->outFd    = -1;
    c->files    = 0;
    c->dirs     = 0;
 
-   if (cellFsOpen(STAT_TREE_OUT_PATH,
-                  CELL_FS_O_WRONLY | CELL_FS_O_CREAT | CELL_FS_O_TRUNC,
-                  &c->outFd, NULL, 0) != CELL_FS_SUCCEEDED) {
+   if (openFs(STAT_TREE_OUT_PATH,
+              VFS_O_WRONLY | VFS_O_CREAT | VFS_O_TRUNC,
+              &c->outFile) != 0) {
       sysMemFree(ctxAddr);
       sendReply(cli, SDB_ERR, "open output failed");
       return;
@@ -297,7 +289,7 @@ static void cmdStatTree(int cli, const char *args)
    uint32_t rlen = (uint32_t)getStrLen(root);
    while (rlen > 1 && root[rlen - 1] == '/') rlen--;
    if (rlen >= STAT_TREE_PATH_MAX) {
-      cellFsClose(c->outFd);
+      closeFs(&c->outFile);
       sysMemFree(ctxAddr);
       sendReply(cli, SDB_ERR, "root path too long");
       return;
@@ -305,24 +297,22 @@ static void cmdStatTree(int cli, const char *args)
    for (uint32_t i = 0; i < rlen; i++) c->path[i] = root[i];
    c->path[rlen] = '\0';
 
-   int rfd;
-   if (cellFsOpendir(c->path, &rfd) != CELL_FS_SUCCEEDED) {
-      cellFsClose(c->outFd);
+   if (openDir(c->path, &c->stack[0].dir) != 0) {
+      closeFs(&c->outFile);
       sysMemFree(ctxAddr);
       sendReply(cli, SDB_ERR, "opendir root failed");
       return;
    }
 
-   statTreeEmit(c, 'd', rst.st_size, (int64_t)rst.st_mtime, STAT_TREE_ZERO_SHA1);
+   statTreeEmit(c, 'd', rst.size, (int64_t)rst.mtime, STAT_TREE_ZERO_SHA1);
    c->dirs++;
 
-   c->stack[0].fd      = rfd;
    c->stack[0].pathLen = rlen;
    c->depth            = 1;
 
    statTreeWalk(c);
    statTreeFlush(c);
-   cellFsClose(c->outFd);
+   closeFs(&c->outFile);
 
    uint32_t files = c->files;
    uint32_t dirs  = c->dirs;

@@ -1,10 +1,10 @@
 //
-// vfs.c - filesystem abstraction: path-scheme router + per-backend vtables.
-//
-// backends (each registers a probe/release pair; the VFS owns hotplug - see registerVfsBackend):
-//   cellFs - HDD + kernel-mounted FAT32 USB. always present. identity paths.
-//   exFAT  - hand-written exfat.c. registered and live (read/write/create/delete/rename).
-//   NTFS   - libntfs_ext (ps3ntfs_*). not yet added; drops in as another probe/release backend.
+// vfs.c - filesystem abstraction: the path-scheme router only. It owns the mount
+// registry, USB hotplug and the public dispatch wrappers, and names no concrete
+// backend's internals - every backend is its own file behind the VfsOps vtable:
+//   cellfs.c - HDD + kernel-mounted FAT32 USB + /dev_flash. the default route.
+//   exfat.c  - hand-written exFAT. registers a probe/release pair at runtime.
+//   ntfs.c   - libntfs_ext (future); drops in the same way, no router change.
 //
 // resolvePath peels the first path segment, matches it against the virtual-mount
 // registry, and rewrites the path to the backend's native form ("/ntfs0/x" ->
@@ -16,21 +16,20 @@
 #include "vfs.h"
 
 #include <stdint.h>
-#include <cell/fs/cell_fs_file_api.h>
-#include <cell/fs/cell_fs_errno.h>
-#include <sys/fs_external.h>
 #include <sys/sys_time.h>       // sys_time_get_system_time (pollMounts self-throttle)
 #include "string-utilities.h"   // strCopy, strEq
 #include "syscall.h"            // syncDevice
 #include "usb-storage.h"        // isUsbDevicePresent + port count (format-agnostic hotplug)
+#include "cellfs.h"             // CELLFS_OPS / ROOT_OPS - the default backend (its own file now)
 #include "exfat.h"              // initExfat (brought up as part of the VFS)
+#include "thread.h"             // sys_lwmutex helpers - serialize the mount registry
 
 #define VFS_POLL_INTERVAL_US 1000000   // scan hotplug at most once a second, however often callers poll
 
 #define VFS_MAX_MOUNTS 24       // ntfs0..7 + exfat0..7 + ext0..7
 
-// VfsOps is the public vtable from vfs.h. cellFs ops are built in below;
-// NTFS/exFAT register theirs at runtime so their code never links into core.
+// VfsOps is the public vtable from vfs.h. The default cellFs vtable lives in
+// cellfs.c (CELLFS_OPS / ROOT_OPS); NTFS/exFAT register theirs at runtime.
 
 // virtual mounts only (NTFS/exFAT/ext). cellFs devices are the default route and
 // are real children of "/", so they are never registered here.
@@ -46,6 +45,49 @@ typedef struct {
 static MountEntry mounts[VFS_MAX_MOUNTS];
 static int        mountCount;
 static int        initialized;
+
+// Serializes the mount registry. pollMounts (app loop / ftp listener) mutates mounts[] via
+// addVfsMount/removeVfsMount on a different thread than the readers (findMount/resolvePath/
+// readDirRoot/listMounts), so every touch of mounts[]/mountCount takes this lock. Lock order is
+// always exfatLock -> mountsLock (backends hold exfatLock when they publish/withdraw); readers
+// take mountsLock alone, so there is no reverse path and no deadlock.
+static sys_lwmutex_t mountsLock;
+static int           mountsLockReady;
+
+// Bootstrap-safe registry locking. The lock is created in initVfs, but the VFS
+// must be callable before then (e.g. the logger writes to /dev_hdd0 via openFs
+// during early startup). Until the lock exists, mountCount is 0 and nothing
+// mutates the registry, so reading it without the lock is safe; these become
+// real lock/unlock once initVfs has run.
+static void lockMounts(void)   { if (mountsLockReady) lock(&mountsLock); }
+static void unlockMounts(void) { if (mountsLockReady) unlock(&mountsLock); }
+
+// pollMounts debounce + concurrency guard (file-scope so shutdownVfs can reset them). lastScan is
+// the last accepted scan time; polling marks a scan in progress so a second caller bows out instead
+// of running a duplicate scan (which would double-probe/double-mount a port). Both are read and set
+// under mountsLock.
+static system_time_t lastScan;   // 0 until the first scan
+static int           polling;
+
+// Hotplug poll thread, owned by the VFS so no consumer has to drive polling:
+// initVfs spawns it, shutdownVfs stops+joins it. It runs the exFAT mount path,
+// but that path keeps its big buffers off the stack (exfat.c bootSector + the
+// static sector caches), so an 8 KB stack is enough - which matters on a VSH PRX
+// where the thread/stack budget is tight. pollMounts is internal now.
+static int               pollMounts(void);
+static sys_ppu_thread_t  pollThreadTid;
+static volatile int      pollThreadStop;
+static int               pollThreadRunning;
+
+static void vfsHotplugThread(uint64_t arg)
+{
+   (void)arg;
+   while (!pollThreadStop) {
+      pollMounts();        // debounced; fires the mounts-changed callback on change
+      sleepMs(1000);       // 1 Hz
+   }
+   exitThread();
+}
 
 // Registered format backends (probe/release/shutdown hooks); set by the app, never by core, so
 // libntfs/FatFs link only where they're actually used. The VFS owns USB hotplug detection and
@@ -79,6 +121,7 @@ static const char *splitFirstSegment(const char *path, char *segment, int capaci
    return cursor;
 }
 
+// caller holds mountsLock.
 static MountEntry *findMount(const char *segment)
 {
    if (segment[0] == '\0') return NULL;
@@ -92,228 +135,55 @@ static int isRootPath(const char *path)
    return path[0] == '/' && path[1] == '\0';
 }
 
-static int isDotEntry(const char *name)
+// Backend support for the synthetic "/" reader in cellfs.c: hand it the next
+// present virtual mount. The registry and its lock live here, so the cellFs
+// backend asks rather than reaching in. advances *cursor; 1 if a name was
+// written, 0 when exhausted.
+int getNextRootMount(int *cursor, char *nameOut, int nameCapacity)
 {
-   return name[0] == '.' && (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'));
-}
-
-// section: cellFs backend - thin wrappers over the calls the codebase used
-// directly, so HDD/FAT32 behaviour is unchanged.
-
-static int statCellFs(const char *native, VfsStat *outStat)
-{
-   CellFsStat info;
-   if (cellFsStat(native, &info) != CELL_FS_SUCCEEDED) return -1;
-   outStat->size  = info.st_size;
-   outStat->mtime = (uint64_t)info.st_mtime;
-   outStat->isDir = (info.st_mode & CELL_FS_S_IFDIR) != 0;
-   outStat->mode  = (uint32_t)info.st_mode;
-   return 0;
-}
-
-static int renameCellFs(const char *from, const char *to)
-{
-   return cellFsRename(from, to) == CELL_FS_SUCCEEDED ? 0 : -1;
-}
-
-static int makeDirCellFs(const char *native)
-{
-   int result = cellFsMkdir(native, CELL_FS_S_IFDIR | 0777);
-   return (result == CELL_FS_SUCCEEDED || result == (int)CELL_FS_EEXIST) ? 0 : -1;
-}
-
-static int removeFileCellFs(const char *native)
-{
-   int result = cellFsUnlink(native);
-   return (result == CELL_FS_SUCCEEDED || result == (int)CELL_FS_ENOENT) ? 0 : -1;
-}
-
-static int removeDirCellFs(const char *native)
-{
-   return cellFsRmdir(native) == CELL_FS_SUCCEEDED ? 0 : -1;
-}
-
-static int getFreeCellFs(const char *native, uint64_t *freeBytes, uint64_t *totalBytes)
-{
-   uint32_t blockSize = 0;
-   uint64_t freeBlocks = 0;
-   if (cellFsGetFreeSize(native, &blockSize, &freeBlocks) != CELL_FS_SUCCEEDED) return -1;
-   if (freeBytes)  *freeBytes  = (uint64_t)blockSize * freeBlocks;
-   if (totalBytes) *totalBytes = 0;   // cellFs has no cheap total; 0 means "unknown"
-   return 0;
-}
-
-static int openDirCellFs(const char *native, VfsDir *dir)
-{
-   int descriptor;
-   if (cellFsOpendir(native, &descriptor) != CELL_FS_SUCCEEDED) return -1;
-   dir->descriptor   = descriptor;
-   dir->nativeHandle = 0;
-   return 0;
-}
-
-static int readDirCellFs(VfsDir *dir, char *nameOut, int nameCapacity, int *isDirOut)
-{
-   CellFsDirent entry;
-   uint64_t bytesRead = 0;
-   while (cellFsReaddir(dir->descriptor, &entry, &bytesRead) == CELL_FS_SUCCEEDED && bytesRead > 0) {
-      if (isDotEntry(entry.d_name)) continue;
-      strCopy(nameOut, nameCapacity, entry.d_name);
-      if (isDirOut) *isDirOut = (entry.d_type == CELL_FS_TYPE_DIRECTORY);
-      return 1;
-   }
-   return 0;
-}
-
-static void closeDirCellFs(VfsDir *dir)
-{
-   cellFsClosedir(dir->descriptor);
-   dir->descriptor = -1;
-}
-
-static int openCellFs(const char *native, int flags, VfsFile *file)
-{
-   int cellFlags = 0;
-   if (flags & VFS_O_WRONLY) cellFlags |= CELL_FS_O_WRONLY;
-   if (flags & VFS_O_RDWR)   cellFlags |= CELL_FS_O_RDWR;
-   if (!(flags & (VFS_O_WRONLY | VFS_O_RDWR))) cellFlags |= CELL_FS_O_RDONLY;
-   if (flags & VFS_O_CREAT)  cellFlags |= CELL_FS_O_CREAT;
-   if (flags & VFS_O_TRUNC)  cellFlags |= CELL_FS_O_TRUNC;
-   if (flags & VFS_O_APPEND) cellFlags |= CELL_FS_O_APPEND;
-   int descriptor;
-   if (cellFsOpen(native, cellFlags, &descriptor, NULL, 0) != CELL_FS_SUCCEEDED) return -1;
-   file->descriptor = descriptor;
-   return 0;
-}
-
-static int64_t readCellFs(VfsFile *file, void *buffer, uint64_t length)
-{
-   uint64_t bytesRead = 0;
-   if (cellFsRead(file->descriptor, buffer, length, &bytesRead) != CELL_FS_SUCCEEDED) return -1;
-   return (int64_t)bytesRead;
-}
-
-static int64_t writeCellFs(VfsFile *file, const void *buffer, uint64_t length)
-{
-   uint64_t bytesWritten = 0;
-   if (cellFsWrite(file->descriptor, buffer, length, &bytesWritten) != CELL_FS_SUCCEEDED) return -1;
-   return (int64_t)bytesWritten;
-}
-
-static int64_t seekCellFs(VfsFile *file, int64_t offset, int whence)
-{
-   int cellWhence = (whence == VFS_SEEK_CUR) ? CELL_FS_SEEK_CUR
-         : (whence == VFS_SEEK_END) ? CELL_FS_SEEK_END : CELL_FS_SEEK_SET;
-   uint64_t position = 0;
-   if (cellFsLseek(file->descriptor, offset, cellWhence, &position) != CELL_FS_SUCCEEDED) return -1;
-   return (int64_t)position;
-}
-
-static int fsyncCellFs(VfsFile *file)
-{
-   (void)file;   // cellFs durability is path-level (syncDevice); see syncVfs
-   return 0;
-}
-
-static void closeCellFs(VfsFile *file)
-{
-   cellFsClose(file->descriptor);
-   file->descriptor = -1;
-}
-
-static const VfsOps CELLFS_OPS = {
-   statCellFs, renameCellFs, makeDirCellFs, removeFileCellFs, removeDirCellFs, getFreeCellFs,
-   openDirCellFs, readDirCellFs, closeDirCellFs,
-   openCellFs, readCellFs, writeCellFs, seekCellFs, fsyncCellFs, closeCellFs,
-};
-
-// section: synthetic "/" listing - cellFs root devices first, then the virtual
-// mounts, so loadDir() needs no special case. descriptor holds the cellFs "/"
-// handle while phase 1 runs; once drained it is -1 and nativeHandle carries the
-// registry cursor for phase 2.
-
-static int openDirRoot(const char *native, VfsDir *dir)
-{
-   (void)native;
-   int descriptor;
-   if (cellFsOpendir("/", &descriptor) != CELL_FS_SUCCEEDED) descriptor = -1;   // phase 2 still runs
-   dir->descriptor   = descriptor;
-   dir->nativeHandle = 0;
-   return 0;
-}
-
-static int readDirRoot(VfsDir *dir, char *nameOut, int nameCapacity, int *isDirOut)
-{
-   // phase 1: real cellFs root entries, filtered to those userland can enter
-   while (dir->descriptor >= 0) {
-      CellFsDirent entry;
-      uint64_t bytesRead = 0;
-      if (cellFsReaddir(dir->descriptor, &entry, &bytesRead) != CELL_FS_SUCCEEDED || bytesRead == 0) {
-         cellFsClosedir(dir->descriptor);
-         dir->descriptor = -1;
-         break;
-      }
-      if (isDotEntry(entry.d_name)) continue;
-
-      char probePath[64];
-      probePath[0] = '/';
-      strCopy(probePath + 1, (int)sizeof probePath - 1, entry.d_name);
-
-      int probe;
-      if (cellFsOpendir(probePath, &probe) != CELL_FS_SUCCEEDED) continue;   // unenterable (devkit/system)
-      cellFsClosedir(probe);
-
-      strCopy(nameOut, nameCapacity, entry.d_name);
-      if (isDirOut) *isDirOut = 1;
-      return 1;
-   }
-
-   // phase 2: virtual NTFS/exFAT mounts from the registry
-   int cursor = (int)(intptr_t)dir->nativeHandle;
-   while (cursor < mountCount) {
-      MountEntry *mount = &mounts[cursor++];
+   lockMounts();
+   while (*cursor < mountCount) {
+      MountEntry *mount = &mounts[(*cursor)++];
       if (!mount->present) continue;
       strCopy(nameOut, nameCapacity, mount->segment);
-      if (isDirOut) *isDirOut = 1;
-      dir->nativeHandle = (void *)(intptr_t)cursor;
+      unlockMounts();
       return 1;
    }
-   dir->nativeHandle = (void *)(intptr_t)cursor;
+   unlockMounts();
    return 0;
 }
-
-static void closeDirRoot(VfsDir *dir)
-{
-   if (dir->descriptor >= 0) { cellFsClosedir(dir->descriptor); dir->descriptor = -1; }
-}
-
-static const VfsOps ROOT_OPS = {
-   statCellFs, renameCellFs, makeDirCellFs, removeFileCellFs, removeDirCellFs, getFreeCellFs,
-   openDirRoot, readDirRoot, closeDirRoot,
-   openCellFs, readCellFs, writeCellFs, seekCellFs, fsyncCellFs, closeCellFs,
-};
 
 // section: path resolution
 
-// resolves a consumer path to its backend and native form. cellFs paths are used
-// verbatim (no copy); virtual-mount paths are rewritten into buffer.
+// resolves a consumer path to its backend and native form. cellFs paths are used verbatim (no
+// copy); virtual-mount paths are rewritten into buffer. returns NULL if the rewrite would overflow
+// buffer - truncating it would silently target the wrong file, so the caller must fail instead.
+// reads the mount registry under mountsLock so a concurrent hotplug can't tear mount->native.
 static const VfsOps *resolvePath(const char *path, char *buffer, int capacity, const char **native)
 {
    char segment[32];
    const char *rest = splitFirstSegment(path, segment, sizeof segment);
-   MountEntry *mount = findMount(segment);
-   if (!mount) { *native = path; return &CELLFS_OPS; }
 
-   // native = prefix + rest with exactly one '/' joining them ("/ntfs0/x" -> "ntfs0:/x")
+   lockMounts();
+   MountEntry *mount = findMount(segment);
+   if (!mount) { unlockMounts(); *native = path; return &CELLFS_OPS; }
+
+   // native = prefix + '/' + tail, exactly one '/' joining them ("/ntfs0/x" -> "ntfs0:/x")
    int length = 0;
    const char *prefix = mount->native;
    while (prefix[length] && length < capacity - 1) { buffer[length] = prefix[length]; length++; }
+   int overflow = (prefix[length] != '\0');
    if (length < capacity - 1) buffer[length++] = '/';
+   else overflow = 1;   // no room left for the joining '/': a prefix-only native would mis-target
    const char *tail = (rest[0] == '/') ? rest + 1 : rest;
    while (*tail && length < capacity - 1) buffer[length++] = *tail++;
    buffer[length] = '\0';
+   const VfsOps *backend = mount->backend;
+   unlockMounts();
+
+   if (overflow || *tail) { *native = path; return NULL; }   // truncated: refuse rather than mis-target
    *native = buffer;
-   return mount->backend;
+   return backend;
 }
 
 // section: lifecycle
@@ -325,12 +195,22 @@ static const VfsOps *resolvePath(const char *path, char *buffer, int capacity, c
 void initVfs(void)
 {
    if (initialized) return;
+   if (!mountsLockReady) { createLock(&mountsLock); mountsLockReady = 1; }   // before any addVfsMount
    initialized  = 1;
    mountCount   = 0;
    backendCount = 0;
-   for (int p = 0; p < USB_STORAGE_MAX_PORTS; p++) { portPresent[p] = 0; portResolved[p] = 0; portOwner[p] = -1; }
+   lastScan     = 0;   // a fresh lifetime must not be debounced against the previous one
+   polling      = 0;
+   for (int port = 0; port < USB_STORAGE_MAX_PORTS; port++) { portPresent[port] = 0; portResolved[port] = 0; portOwner[port] = -1; }
    initExfat();    // registers the exFAT backend (NTFS will register the same way)
    pollMounts();   // initial scan so already-inserted volumes appear immediately
+
+   // Own the hotplug cadence: one 8 KB thread, written once, so no consumer drives
+   // polling. Self-heals if storage isn't ready yet (it keeps scanning).
+   pollThreadStop = 0;
+   if (spawnJoinableThread(&pollThreadTid, vfsHotplugThread, 0,
+                           THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "vfs-hotplug") == 0)
+      pollThreadRunning = 1;
 }
 
 // invoked by pollMounts when the mount set changes, on whatever thread polled.
@@ -346,12 +226,16 @@ void setMountsChangedCallback(void (*callback)(void))
 // without putting the sys_storage probe on a hot path. when the mount set changes it
 // fires the mounts-changed callback (so a consumer's view refreshes without the caller
 // having to inspect the return value), and also returns 1.
-int pollMounts(void)
+static int pollMounts(void)
 {
-   static system_time_t lastScan;   // 0 until the first scan
+   // accept-or-bow-out, atomically: debounce, and let only one thread scan at a time
+   // (the initVfs initial scan races the poll thread's first wake until lastScan is set).
+   lockMounts();
    system_time_t now = sys_time_get_system_time();
-   if (lastScan && now - lastScan < VFS_POLL_INTERVAL_US) return 0;
+   if (polling || (lastScan && now - lastScan < VFS_POLL_INTERVAL_US)) { unlockMounts(); return 0; }
    lastScan = now;
+   polling  = 1;
+   unlockMounts();
 
    int changed = 0;
    for (int port = 0; port < USB_STORAGE_MAX_PORTS; port++) {
@@ -376,14 +260,18 @@ int pollMounts(void)
       if (present && !portResolved[port]) {
          int notReady = 0;
          for (int i = 0; i < backendCount; i++) {
-            VfsProbeResult r = backends[i].probe(port);
-            if (r == VFS_PROBE_MOUNTED)   { portOwner[port] = (int8_t)i; portResolved[port] = 1; changed = 1; break; }
-            if (r == VFS_PROBE_NOT_READY) { notReady = 1; break; }
+            VfsProbeResult result = backends[i].probe(port);
+            if (result == VFS_PROBE_MOUNTED)   { portOwner[port] = (int8_t)i; portResolved[port] = 1; changed = 1; break; }
+            if (result == VFS_PROBE_NOT_READY) { notReady = 1; break; }
             // VFS_PROBE_NOT_MINE: try the next backend
          }
          if (!portResolved[port] && !notReady) portResolved[port] = 1;   // none claimed it
       }
    }
+
+   lockMounts();
+   polling = 0;
+   unlockMounts();
 
    if (changed && mountsChangedCallback) mountsChangedCallback();
    return changed;
@@ -391,10 +279,17 @@ int pollMounts(void)
 
 void shutdownVfs(void)
 {
+   pollThreadStop = 1;
+   if (pollThreadRunning) { joinThread(pollThreadTid); pollThreadRunning = 0; }
+
    for (int i = 0; i < backendCount; i++)
       if (backends[i].shutdown) backends[i].shutdown();
-   mountCount   = 0;
+   lockMounts();
+   mountCount = 0;
+   unlockMounts();
    backendCount = 0;
+   lastScan     = 0;   // don't debounce the next initVfs against this lifetime's last scan
+   polling      = 0;
    initialized  = 0;
 }
 
@@ -409,13 +304,14 @@ void registerVfsBackend(VfsProbeResult (*probe)(int port), void (*release)(int p
 
 // publishes a mounted volume. reuses a withdrawn slot when one is free so repeated
 // hotplug cycles can't exhaust the table. returns 0, or -1 if the table is full.
-int vfsAddMount(const char *segment, const char *native, const char *label, VfsScheme scheme, const VfsOps *ops)
+int addVfsMount(const char *segment, const char *native, const char *label, VfsScheme scheme, const VfsOps *ops)
 {
+   lockMounts();
    MountEntry *mount = NULL;
    for (int i = 0; i < mountCount; i++)
       if (!mounts[i].present) { mount = &mounts[i]; break; }
    if (!mount) {
-      if (mountCount >= VFS_MAX_MOUNTS) return -1;
+      if (mountCount >= VFS_MAX_MOUNTS) { unlockMounts(); return -1; }
       mount = &mounts[mountCount++];
    }
    strCopy(mount->segment, sizeof mount->segment, segment);
@@ -423,14 +319,17 @@ int vfsAddMount(const char *segment, const char *native, const char *label, VfsS
    strCopy(mount->label,   sizeof mount->label,   label && label[0] ? label : segment);
    mount->scheme  = scheme;
    mount->backend = ops;
-   mount->present = 1;
+   mount->present = 1;   // publish last: a reader sees a fully-written entry or none
+   unlockMounts();
    return 0;
 }
 
-void vfsRemoveMount(const char *segment)
+void removeVfsMount(const char *segment)
 {
+   lockMounts();
    MountEntry *mount = findMount(segment);
    if (mount) mount->present = 0;
+   unlockMounts();
 }
 
 // section: public api
@@ -438,6 +337,7 @@ void vfsRemoveMount(const char *segment)
 int listMounts(VfsMount *outMounts, int capacity)
 {
    int count = 0;
+   lockMounts();
    for (int i = 0; i < mountCount && count < capacity; i++) {
       if (!mounts[i].present) continue;
       strCopy(outMounts[count].segment, sizeof outMounts[count].segment, mounts[i].segment);
@@ -447,6 +347,7 @@ int listMounts(VfsMount *outMounts, int capacity)
       outMounts[count].totalBytes = 0;
       count++;
    }
+   unlockMounts();
    return count;
 }
 
@@ -454,15 +355,20 @@ VfsScheme getScheme(const char *path)
 {
    char segment[32];
    splitFirstSegment(path, segment, sizeof segment);
+   lockMounts();
    MountEntry *mount = findMount(segment);
-   return mount ? mount->scheme : VFS_SCHEME_CELLFS;
+   VfsScheme scheme = mount ? mount->scheme : VFS_SCHEME_CELLFS;
+   unlockMounts();
+   return scheme;
 }
 
 int statPath(const char *path, VfsStat *outStat)
 {
    char buffer[MAX_PATH_LEN];
    const char *native;
-   return resolvePath(path, buffer, sizeof buffer, &native)->stat(native, outStat);
+   const VfsOps *backend = resolvePath(path, buffer, sizeof buffer, &native);
+   if (!backend) return -1;   // path too long to route safely
+   return backend->stat(native, outStat);
 }
 
 int renamePath(const char *oldPath, const char *newPath)
@@ -471,7 +377,7 @@ int renamePath(const char *oldPath, const char *newPath)
    const char *from, *to;
    const VfsOps *fromBackend = resolvePath(oldPath, fromBuffer, sizeof fromBuffer, &from);
    const VfsOps *toBackend   = resolvePath(newPath, toBuffer,   sizeof toBuffer,   &to);
-   if (fromBackend != toBackend) return -1;   // cross-volume: caller falls back to moveTree
+   if (!fromBackend || fromBackend != toBackend) return -1;   // too long, or cross-volume (caller uses moveTree)
    return fromBackend->rename(from, to);
 }
 
@@ -479,27 +385,33 @@ int makeDirPath(const char *path)
 {
    char buffer[MAX_PATH_LEN];
    const char *native;
-   return resolvePath(path, buffer, sizeof buffer, &native)->mkdir(native);
+   const VfsOps *backend = resolvePath(path, buffer, sizeof buffer, &native);
+   if (!backend) return -1;
+   return backend->mkdir(native);
 }
 
 int removeFilePath(const char *path)
 {
    char buffer[MAX_PATH_LEN];
    const char *native;
-   return resolvePath(path, buffer, sizeof buffer, &native)->rmfile(native);
+   const VfsOps *backend = resolvePath(path, buffer, sizeof buffer, &native);
+   if (!backend) return -1;
+   return backend->rmfile(native);
 }
 
 int removeDirPath(const char *path)
 {
    char buffer[MAX_PATH_LEN];
    const char *native;
-   return resolvePath(path, buffer, sizeof buffer, &native)->rmdir(native);
+   const VfsOps *backend = resolvePath(path, buffer, sizeof buffer, &native);
+   if (!backend) return -1;
+   return backend->rmdir(native);
 }
 
 void syncVfs(const char *path)
 {
    if (getScheme(path) != VFS_SCHEME_CELLFS) return;   // userland backends flush per-file (fsync)
-   char root[16];
+   char root[34];   // '/' + up to a 31-char mount segment + NUL (see path.h deviceRootOf)
    int length = 0;
    if (path[0] == '/') {
       root[length++] = '/';
@@ -513,7 +425,9 @@ int getFreeSpace(const char *path, uint64_t *freeBytes, uint64_t *totalBytes)
 {
    char buffer[MAX_PATH_LEN];
    const char *native;
-   return resolvePath(path, buffer, sizeof buffer, &native)->getfree(native, freeBytes, totalBytes);
+   const VfsOps *backend = resolvePath(path, buffer, sizeof buffer, &native);
+   if (!backend) return -1;
+   return backend->getfree(native, freeBytes, totalBytes);
 }
 
 int openDir(const char *path, VfsDir *dir)
@@ -527,13 +441,14 @@ int openDir(const char *path, VfsDir *dir)
    char buffer[MAX_PATH_LEN];
    const char *native;
    const VfsOps *backend = resolvePath(path, buffer, sizeof buffer, &native);
+   if (!backend) return -1;   // path too long to route safely
    dir->backend = backend;
    return backend->opendir(native, dir);
 }
 
-int readDir(VfsDir *dir, char *nameOut, int nameCapacity, int *isDirOut)
+int readDir(VfsDir *dir, char *nameOut, int nameCapacity, VfsEntryType *typeOut)
 {
-   return ((const VfsOps *)dir->backend)->readdir(dir, nameOut, nameCapacity, isDirOut);
+   return ((const VfsOps *)dir->backend)->readdir(dir, nameOut, nameCapacity, typeOut);
 }
 
 void closeDir(VfsDir *dir)
@@ -547,6 +462,7 @@ int openFs(const char *path, int flags, VfsFile *file)
    char buffer[MAX_PATH_LEN];
    const char *native;
    const VfsOps *backend = resolvePath(path, buffer, sizeof buffer, &native);
+   if (!backend) return -1;   // path too long to route safely
    file->backend = backend;
    return backend->open(native, flags, file);
 }
@@ -571,7 +487,411 @@ int fsyncFs(VfsFile *file)
    return ((const VfsOps *)file->backend)->fsync(file);
 }
 
-void closeFs(VfsFile *file)
+int closeFs(VfsFile *file)
 {
-   ((const VfsOps *)file->backend)->close(file);
+   return ((const VfsOps *)file->backend)->close(file);
+}
+
+// ============================================================================
+// section: cross-backend file & tree operations
+//
+// Higher-level actions composed from the primitives above. They route entirely
+// through the public VFS API (open/read/dir/stat), so they work identically on
+// every backend and contain no backend specifics. The plain operations are thin
+// wrappers over the cancellable/progress ones so each tree-walk algorithm exists
+// once (DRY). prx-safe: only VFS primitives + the inline path helpers, no libc.
+// ============================================================================
+
+// ---- single-shot metadata / file helpers -----------------------------------
+
+int isDir(const char *path)
+{
+   VfsStat info;
+   return statPath(path, &info) == 0 && info.isDir;
+}
+
+int fileExists(const char *path)
+{
+   VfsStat info;
+   return statPath(path, &info) == 0;
+}
+
+int makeDir(const char *path)
+{
+   return makeDirPath(path);
+}
+
+// idempotent: returns 0 if the file did not exist.
+int deleteFile(const char *path)
+{
+   return removeFilePath(path);
+}
+
+void syncPath(const char *path)
+{
+   syncVfs(path);
+}
+
+// reads up to cap-1 bytes into buf and NUL-terminates. returns bytes read
+// (0 for a legitimately empty file, with buf[0] == '\0'), or -1 on error.
+int readFile(const char *path, char *buf, int cap)
+{
+   if (!buf || cap < 1) return -1;   // cap<1 would promote cap-1 to a huge unsigned read
+   VfsFile file;
+   if (openFs(path, VFS_O_RDONLY, &file) != 0) return -1;
+   int64_t bytesRead = readFs(&file, buf, (uint64_t)(cap - 1));
+   closeFs(&file);
+   if (bytesRead < 0) return -1;     // a 0-byte (empty) file is success, not failure
+   buf[bytesRead] = '\0';
+   return (int)bytesRead;
+}
+
+int writeFile(const char *path, const char *data, uint64_t len)
+{
+   VfsFile file;
+   if (openFs(path, VFS_O_WRONLY | VFS_O_CREAT | VFS_O_TRUNC, &file) != 0) return -1;
+   int64_t written = writeFs(&file, data, len);
+   // closeFs surfaces a commit error deferred to close (vfs.h): a backend can
+   // ACK every writeFs yet still fail to flush. fold its result into the verdict
+   // so a half-committed write never reports success.
+   int closeRc = closeFs(&file);
+   return (written == (int64_t)len && closeRc == 0) ? 0 : -1;
+}
+
+// ---- tree measurement ------------------------------------------------------
+
+static uint64_t measureTreeDepth(const char *path, int (*cancelled)(void), int depth)
+{
+   if (cancelled && cancelled()) return 0;
+
+   VfsStat info;
+   if (statPath(path, &info) != 0) return 0;
+   if (!info.isDir) return info.size;
+
+   if (depth >= MAX_TREE_DEPTH) return 0;   // too deep: stop before stack overflow
+
+   VfsDir dir;
+   if (openDir(path, &dir) != 0) return 0;
+
+   uint64_t sum = 0;
+   char name[256];
+   char child[MAX_PATH_LEN];
+   while (readDir(&dir, name, sizeof name, NULL) == 1) {
+      if (cancelled && cancelled()) break;
+      if (strEq(name, ".") || strEq(name, "..")) continue;
+      if (!joinPath(child, MAX_PATH_LEN, path, name)) continue;   // unjoinable child: skip its bytes
+      sum += measureTreeDepth(child, cancelled, depth + 1);
+   }
+   closeDir(&dir);
+   return sum;
+}
+
+uint64_t measureTree(const char *path, int (*cancelled)(void))
+{
+   return measureTreeDepth(path, cancelled, 0);
+}
+
+// ---- copy (single source of truth: copyFileProgress / copyTreeRecursively) --
+
+// copies one regular file with optional progress + cancellation. buf is caller
+// scratch of bufSize bytes (e.g. 64 KB) - kept caller-provided so this stays
+// allocation-free and light on stack, safe to use from prx contexts.
+// returns 0 ok, -1 error, 1 cancelled.
+static int copyFileProgress(const char *src, const char *dst, void *buf, int bufSize,
+                            void (*onBytes)(uint64_t), int (*cancelled)(void))
+{
+   VfsFile in;
+   if (openFs(src, VFS_O_RDONLY, &in) != 0) return -1;
+   VfsFile out;
+   if (openFs(dst, VFS_O_WRONLY | VFS_O_CREAT | VFS_O_TRUNC, &out) != 0) {
+      closeFs(&in);
+      return -1;
+   }
+   int rc = 0;
+   for (;;) {
+      if (cancelled && cancelled()) { rc = 1; break; }
+      int64_t got = readFs(&in, buf, (uint64_t)bufSize);
+      if (got < 0) { rc = -1; break; }
+      if (got == 0) break;
+      if (writeFs(&out, buf, (uint64_t)got) != got) { rc = -1; break; }
+      if (onBytes) onBytes((uint64_t)got);
+   }
+   closeFs(&in);
+   // fold the destination close: a deferred commit error means the copy isn't
+   // durable. don't override a cancel (rc == 1) -- that's not a failure.
+   int closeRc = closeFs(&out);
+   if (closeRc != 0 && rc == 0) rc = -1;
+   return rc;
+}
+
+// copies a single regular file src -> dst (created/truncated). 0 ok, -1 error.
+int copyFile(const char *src, const char *dst, void *buf, int bufSize)
+{
+   return copyFileProgress(src, dst, buf, bufSize, NULL, NULL);
+}
+
+static int copyTreeRecursively(const char *src, const char *dst, void *buf, int bufSize,
+                               void (*onBytes)(uint64_t), int (*cancelled)(void), int depth)
+{
+   if (cancelled && cancelled()) return 1;
+
+   VfsStat info;
+   if (statPath(src, &info) != 0) return -1;
+   if (!info.isDir) return copyFileProgress(src, dst, buf, bufSize, onBytes, cancelled);
+
+   if (depth >= MAX_TREE_DEPTH) return -1;   // too deep: bail before stack overflow
+
+   if (makeDir(dst) != 0) return -1;
+
+   VfsDir dir;
+   if (openDir(src, &dir) != 0) return -1;
+
+   char name[256];
+   char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
+   int rc = 0;
+   int readResult;
+   while ((readResult = readDir(&dir, name, sizeof name, NULL)) == 1) {
+      if (cancelled && cancelled()) { rc = 1; break; }
+      if (strEq(name, ".") || strEq(name, "..")) continue;
+      if (!joinPath(childSrc, MAX_PATH_LEN, src, name) ||
+          !joinPath(childDst, MAX_PATH_LEN, dst, name)) { rc = -1; break; }
+      rc = copyTreeRecursively(childSrc, childDst, buf, bufSize, onBytes, cancelled, depth + 1);
+      if (rc != 0) break;
+   }
+   // a directory-read error (vfs.h: -1) must not pass as a clean copy -- the caller
+   // deletes the source on success, so a partial copy would silently lose data.
+   if (readResult < 0 && rc == 0) rc = -1;
+   closeDir(&dir);
+   return rc;
+}
+
+// recursively copies src (file or dir) to dst. 0 ok, -1 error.
+int copyTree(const char *src, const char *dst, void *buf, int bufSize)
+{
+   return copyTreeRecursively(src, dst, buf, bufSize, NULL, NULL, 0);
+}
+
+int copyTreeProgress(const char *src, const char *dst, void *buf, int bufSize,
+                     void (*onBytes)(uint64_t), int (*cancelled)(void))
+{
+   int rc = copyTreeRecursively(src, dst, buf, bufSize, onBytes, cancelled, 0);
+
+   // one flush at the true batch boundary: makes every byte just written durable
+   // and the next free-size read accurate. run even on error/cancel, since a
+   // partial copy still left data on the volume. best-effort -- never fails the op.
+   syncVfs(dst);
+   return rc;
+}
+
+// ---- merge -----------------------------------------------------------------
+
+static int mergeTreeRecursively(const char *src, const char *dst, int replaceExisting,
+                                void *buf, int bufSize,
+                                void (*onBytes)(uint64_t), int (*cancelled)(void), int depth)
+{
+   if (cancelled && cancelled()) return 1;
+
+   VfsStat info;
+   if (statPath(src, &info) != 0) return -1;
+
+   if (!info.isDir) {
+      // file leaf: on a collision, replace or keep the destination per the flag.
+      if (!replaceExisting && fileExists(dst)) {
+         if (onBytes) onBytes(info.size);  // still part of the total
+         return 0;
+      }
+      return copyFileProgress(src, dst, buf, bufSize, onBytes, cancelled);
+   }
+
+   if (depth >= MAX_TREE_DEPTH) return -1;   // too deep: bail before stack overflow
+
+   if (makeDir(dst) != 0) return -1;  // no-op when dst already exists
+
+   VfsDir dir;
+   if (openDir(src, &dir) != 0) return -1;
+
+   char name[256];
+   char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
+   int rc = 0;
+   int readResult;
+   while ((readResult = readDir(&dir, name, sizeof name, NULL)) == 1) {
+      if (cancelled && cancelled()) { rc = 1; break; }
+      if (strEq(name, ".") || strEq(name, "..")) continue;
+      if (!joinPath(childSrc, MAX_PATH_LEN, src, name) ||
+          !joinPath(childDst, MAX_PATH_LEN, dst, name)) { rc = -1; break; }
+      rc = mergeTreeRecursively(childSrc, childDst, replaceExisting, buf, bufSize, onBytes, cancelled, depth + 1);
+      if (rc != 0) break;
+   }
+   // a directory-read error (vfs.h: -1) must not pass as a clean merge.
+   if (readResult < 0 && rc == 0) rc = -1;
+   closeDir(&dir);
+   return rc;
+}
+
+int mergeTreeProgress(const char *src, const char *dst, int replaceExisting,
+                      void *buf, int bufSize,
+                      void (*onBytes)(uint64_t), int (*cancelled)(void))
+{
+   int rc = mergeTreeRecursively(src, dst, replaceExisting, buf, bufSize, onBytes, cancelled, 0);
+
+   syncVfs(dst);
+   return rc;
+}
+
+// ---- conflict counting -----------------------------------------------------
+
+static int countTreeConflictsDepth(const char *src, const char *dst, int cap, int depth)
+{
+   if (cap <= 0) return 0;
+
+   VfsStat srcInfo;
+   if (statPath(src, &srcInfo) != 0) return 0;
+
+   VfsStat dstInfo;
+   int dstExists = (statPath(dst, &dstInfo) == 0);
+
+   if (!srcInfo.isDir)
+      return dstExists ? 1 : 0;        // a file leaf conflicts if anything is at dst
+
+   if (!dstExists) return 0;           // dir merging into nothing: all new
+   if (!dstInfo.isDir) return 1;       // dir vs existing file: one clash
+
+   if (depth >= MAX_TREE_DEPTH) return 0;   // too deep: stop counting before stack overflow
+
+   VfsDir dir;
+   if (openDir(src, &dir) != 0) return 0;
+
+   char name[256];
+   char childSrc[MAX_PATH_LEN], childDst[MAX_PATH_LEN];
+   int count = 0;
+   while (count < cap && readDir(&dir, name, sizeof name, NULL) == 1) {
+      if (strEq(name, ".") || strEq(name, "..")) continue;
+      if (!joinPath(childSrc, MAX_PATH_LEN, src, name) ||
+          !joinPath(childDst, MAX_PATH_LEN, dst, name)) continue;
+      count += countTreeConflictsDepth(childSrc, childDst, cap - count, depth + 1);
+   }
+   closeDir(&dir);
+   return count;
+}
+
+int countTreeConflicts(const char *src, const char *dst, int cap)
+{
+   return countTreeConflictsDepth(src, dst, cap, 0);
+}
+
+// ---- delete ----------------------------------------------------------------
+// Two variants are kept deliberately: deleteTreeProgress reports bytes per file
+// through an onBytes callback; deleteTree accumulates the total into a uint64_t*
+// out-param. C callbacks carry no context pointer, so one cannot be expressed as
+// a thin wrapper over the other without changing the public callback signature -
+// the duplication is the minimal cost of staying source-compatible.
+
+static int deleteTreeRecursively(const char *path, void (*onBytes)(uint64_t), int (*cancelled)(void), int depth)
+{
+   if (cancelled && cancelled()) return 1;
+
+   VfsStat info;
+   // not stattable: removeFilePath is idempotent (already gone -> 0) but still
+   // reports a real failure (-1), so a delete never claims false success.
+   if (statPath(path, &info) != 0) return removeFilePath(path);
+
+   if (!info.isDir) {
+      uint64_t size = info.size;
+      if (deleteFile(path) < 0) return -1;
+      if (onBytes) onBytes(size);
+      return 0;
+   }
+
+   if (depth >= MAX_TREE_DEPTH) return -1;   // too deep: bail before stack overflow
+
+   VfsDir dir;
+   if (openDir(path, &dir) != 0) return -1;
+
+   char name[256];
+   char child[MAX_PATH_LEN];
+   int rc = 0;
+   int readResult;
+   while ((readResult = readDir(&dir, name, sizeof name, NULL)) == 1) {
+      if (cancelled && cancelled()) { rc = 1; break; }
+      if (strEq(name, ".") || strEq(name, "..")) continue;
+      if (!joinPath(child, MAX_PATH_LEN, path, name)) { rc = -1; break; }
+      rc = deleteTreeRecursively(child, onBytes, cancelled, depth + 1);
+      if (rc != 0) break;
+   }
+   // a directory-read error (vfs.h: -1) must not pass as a clean delete.
+   if (readResult < 0 && rc == 0) rc = -1;
+   closeDir(&dir);
+   if (rc != 0) return rc;
+
+   return removeDirPath(path) == 0 ? 0 : -1;
+}
+
+int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancelled)(void))
+{
+   int rc = deleteTreeRecursively(path, onBytes, cancelled, 0);
+
+   // flush the directory-entry removals and freed blocks to disk once, so the
+   // volume can't be left mid-update and the freed space shows up immediately.
+   syncVfs(path);
+   return rc;
+}
+
+static int deleteTreeDepth(const char *path, uint64_t *bytesFreed, int depth)
+{
+   VfsStat info;
+   if (statPath(path, &info) != 0) return removeFilePath(path);
+
+   if (!info.isDir) {
+      int rc = deleteFile(path);
+      if (rc == 0 && bytesFreed) *bytesFreed += info.size;   // count only what was actually removed
+      return rc;
+   }
+
+   if (depth >= MAX_TREE_DEPTH) return -1;   // too deep: bail before stack overflow
+
+   VfsDir dir;
+   if (openDir(path, &dir) != 0) return -1;
+
+   char name[256], child[MAX_PATH_LEN];
+   int readResult;
+   while ((readResult = readDir(&dir, name, sizeof name, NULL)) == 1) {
+      if (strEq(name, ".") || strEq(name, "..")) continue;
+      if (!joinPath(child, MAX_PATH_LEN, path, name)) { closeDir(&dir); return -1; }
+      if (deleteTreeDepth(child, bytesFreed, depth + 1) < 0) { closeDir(&dir); return -1; }
+   }
+   closeDir(&dir);
+   if (readResult < 0) return -1;   // directory read error: a partial walk must not claim success
+
+   return removeDirPath(path) == 0 ? 0 : -1;
+}
+
+// recursively deletes path (file or dir). adds the size of every removed
+// regular file into *bytesFreed (pass NULL to ignore). idempotent when absent.
+int deleteTree(const char *path, uint64_t *bytesFreed)
+{
+   return deleteTreeDepth(path, bytesFreed, 0);
+}
+
+// ---- move ------------------------------------------------------------------
+
+int moveTree(const char *src, const char *dst, void *buf, int bufSize)
+{
+   int rc;
+   if (renamePath(src, dst) == 0) {
+      rc = 0;
+   } else {
+      rc = copyTree(src, dst, buf, bufSize);   // may leave partial data on dst
+      if (rc == 0) rc = deleteTree(src, NULL);
+   }
+
+   // flush both ends, regardless of rc: the destination gained entries/data
+   // (or a failed cross-volume copy left a partial tree there) and the source
+   // lost them. a same-volume rename touches one root; a cross-volume move
+   // touches two, so sync the source root too when it differs.
+   char srcRoot[34], dstRoot[34];   // '/' + 31-char mount segment + NUL needs 33
+   deviceRootOf(src, srcRoot, sizeof srcRoot);
+   deviceRootOf(dst, dstRoot, sizeof dstRoot);
+   syncVfs(dst);
+   if (!strEq(srcRoot, dstRoot)) syncVfs(src);
+   return rc;
 }

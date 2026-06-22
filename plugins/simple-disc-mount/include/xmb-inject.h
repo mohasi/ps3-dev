@@ -5,7 +5,7 @@
 
 #include "dbg.h"
 #include "vsh.h"
-#include "file.h"
+#include "vfs.h"
 #include "string-utilities.h"
 
 // Paths
@@ -75,29 +75,27 @@ static int buildSdmXml(char *buf, int cap)
        " <View id=\"seg_sdm_list\">\n"
        "  <Attributes>\n");
 
-   // Phase 1: collect ISO filenames into namePool. cellFsReaddir returns
-   // entries in filesystem order (creation time), not alphabetical, so we
-   // can't emit during the walk if we want a sorted menu.
+   // Phase 1: collect ISO filenames into namePool. readDir returns entries in
+   // filesystem order (creation time), not alphabetical, so we can't emit
+   // during the walk if we want a sorted menu. Routed through the VFS like every
+   // other filesystem access ("." / ".." are already filtered by the backend).
    int poolOff = 0;
    int count = 0;
-   int fd;
-   if (cellFsOpendir(pathIsoDir, &fd) == CELL_FS_SUCCEEDED) {
-      CellFsDirent ent; uint64_t entSz;
-      while (count < MAX_ISOS &&
-             cellFsReaddir(fd, &ent, &entSz) == CELL_FS_SUCCEEDED && entSz > 0)
+   VfsDir dir;
+   if (openDir(pathIsoDir, &dir) == 0) {
+      char entName[256];
+      while (count < MAX_ISOS && readDir(&dir, entName, sizeof entName, NULL) == 1)
       {
-         if (ent.d_name[0] == '.' && (ent.d_name[1] == 0 ||
-             (ent.d_name[1] == '.' && ent.d_name[2] == 0))) continue;
-         if (!endsWithICase(ent.d_name, ".iso")) continue;
+         if (!endsWithICase(entName, ".iso")) continue;
 
-         int nlen = getStrLen(ent.d_name);
+         int nlen = getStrLen(entName);
          if (poolOff + nlen + 1 > NAME_POOL_SIZE) break;
          nameOff[count] = poolOff;
-         for (int i = 0; i <= nlen; i++) namePool[poolOff + i] = ent.d_name[i];
+         for (int i = 0; i <= nlen; i++) namePool[poolOff + i] = entName[i];
          poolOff += nlen + 1;
          count++;
       }
-      cellFsClosedir(fd);
+      closeDir(&dir);
    }
 
    // Phase 2: insertion sort by case-insensitive name. n <= 256, n² fine.

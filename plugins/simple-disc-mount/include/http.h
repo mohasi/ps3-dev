@@ -11,7 +11,7 @@
 #include <netex/net.h>
 
 #include "dbg.h"
-#include "file.h"
+#include "vfs.h"
 #include "cobra.h"
 #include "thread.h"
 #include "vsh.h"

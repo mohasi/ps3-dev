@@ -1,6 +1,6 @@
 // file-type - see file-type.h
 #include "file-type.h"
-#include "file.h"
+#include "vfs.h"
 #include "string-utilities.h"
 
 static const char *names[FILE_TYPE_COUNT] = {

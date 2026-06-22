@@ -65,6 +65,7 @@ typedef struct {
    int      noFatChain;     // directory clusters are contiguous (skip the FAT)
    uint32_t clustersWalked; // clusters visited so far, to bound a cyclic/corrupt directory FAT
    uint32_t clusterLimit;   // max clusters the directory may span (0 = unbounded; from DataLength)
+   int      ioError;        // a sector read failed mid-walk: surface as -1 at the VFS boundary
 } ExfatDir;
 
 // On-disk location of a directory entry set: the position of its File (0x85) entry
@@ -93,6 +94,7 @@ typedef struct {
                             // over-reservation for a streaming write, released on close)
    ExfatEntryLoc entry;     // this file's entry set, for flushing writes back
    int      writable;       // opened for writing
+   int      appendMode;     // O_APPEND: every write repositions to end-of-file first
    int      dirty;          // size/allocation changed since open -> flush on close
 } ExfatFile;
 
@@ -104,12 +106,15 @@ typedef struct {
 
 // THREADING / LOCKING INVARIANT
 // None of the functions below take any lock and they are NOT thread-safe on their own: they share
-// static scratch buffers and caches (the dir/FAT/file sector caches, the up-case table, the
-// end-of-directory cache and the last-read entry-set position) across all volumes and handles, so
-// two running at once would corrupt that state. They are safe ONLY because every caller reaches them
-// through the exFAT VFS backend (the *Op wrappers in exfat.c), each of which holds the single global
-// backend mutex (exfatLock) for the whole call. Anyone calling these directly must hold exfatLock for
-// the entire call, and must not re-enter it (the mutex is not recursive: no *Op calls another *Op).
+// static scratch buffers and caches across all volumes and handles, so two running at once would
+// corrupt that state. The shared statics (all in exfat.c, all touched only under the lock) are:
+// the dir/FAT/file sector caches and the boot/write scratch buffers; the up-case table; the
+// end-of-directory cache (and its round-robin victim index); the per-mount epoch counter; the
+// last-read entry-set position (lastSet*); and the rename set buffers (oldSet/newSet). They are safe
+// ONLY because every caller reaches them through the exFAT VFS backend (the *Op wrappers in exfat.c),
+// each of which holds the single global backend mutex (exfatLock) for the whole call. Anyone calling
+// these directly must hold exfatLock for the entire call, and must not re-enter it (the mutex is not
+// recursive: no *Op calls another *Op).
 
 // Mounts the exFAT volume on storage drive `drive` (USB port) into `vol`. Returns one of the
 // EXFAT_MOUNT_* results above.
@@ -157,7 +162,8 @@ int  createExfatPath(ExfatVolume *vol, const char *path);
 
 // Deletes a file (unlinkExfatPath) or an empty directory (rmdirExfatPath) at an
 // in-volume path: invalidates its entry set and frees its clusters (bitmap + FAT).
-// Returns 0 on success, -1 on a bad path, type mismatch, non-empty directory, or I/O.
+// Returns 0 on success, -2 if the entry is already absent (the VFS op maps this to
+// idempotent success), -1 on a bad path, type mismatch, non-empty directory, or I/O.
 int  unlinkExfatPath(ExfatVolume *vol, const char *path);
 int  rmdirExfatPath(ExfatVolume *vol, const char *path);
 

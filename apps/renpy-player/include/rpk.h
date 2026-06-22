@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "vfs.h"
 
 // Minimal reader for the single-file .rpk game bundle produced by renpy-to-ps3.
 // Layout (all integers little-endian; we assemble bytes explicitly because the
@@ -10,7 +11,7 @@
 //   blobs.
 
 typedef struct {
-   int      fd;
+   VfsFile  file;
    int      open;
    uint32_t version;
    uint32_t count;

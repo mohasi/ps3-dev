@@ -3,13 +3,13 @@
 #include <cell/font.h>
 #include <cell/fontFT.h>
 #include <cell/sysmodule.h>
-#include <cell/cell_fs.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
 #include "gfx.h"
 #include "colors.h"
 #include "dbg.h"
+#include "vfs.h"
 
 static const int FONT_MAX_RENDER_W = 1024;
 
@@ -147,19 +147,19 @@ Font openFontFile(const char *path)
 
    if (!fontInited) initFont();
 
-   int fd;
-   if (cellFsOpen(path, CELL_FS_O_RDONLY, &fd, NULL, 0) != CELL_FS_SUCCEEDED) return f;
+   // size via path-stat (the VFS has no fstat-by-handle); then open + read.
+   VfsStat st;
+   if (statPath(path, &st) != 0) return f;
+   uint32_t size = (uint32_t)st.size;
 
-   CellFsStat stat;
-   if (cellFsFstat(fd, &stat) != CELL_FS_SUCCEEDED) { cellFsClose(fd); return f; }
+   VfsFile file;
+   if (openFs(path, VFS_O_RDONLY, &file) != 0) return f;
 
-   uint32_t size = (uint32_t)stat.st_size;
    void *buf = malloc(size);
-   if (!buf) { cellFsClose(fd); return f; }
+   if (!buf) { closeFs(&file); return f; }
 
-   uint64_t nread;
-   cellFsRead(fd, buf, size, &nread);
-   cellFsClose(fd);
+   readFs(&file, buf, size);
+   closeFs(&file);
 
    if (cellFontOpenFontMemory(fontLib, buf, size, 0, nextFontUid(), &f.font) == CELL_OK) {
       f.open = 1;

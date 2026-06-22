@@ -1,6 +1,6 @@
 // delete - delete path set plus the removal worker (see delete.h).
 #include "delete.h"
-#include "file.h"
+#include "vfs.h"
 #include "file-task.h"
 #include "string-utilities.h"
 #include "dynarray.h"

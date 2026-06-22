@@ -1,6 +1,6 @@
 // dir-playlist - folder listing + prev/next-with-wrap navigation. See dir-playlist.h.
 #include "dir-playlist.h"
-#include "file.h"               // VFS helpers, joinPath, getParentPath, getBaseName, MAX_PATH_LEN
+#include "vfs.h"               // VFS helpers, joinPath, getParentPath, getBaseName, MAX_PATH_LEN
 #include "string-utilities.h"   // strCopy, strCmpICase, strEq
 
 int listDirFiltered(const char *dir, char names[][DIR_PLAYLIST_NAME_MAX], int maxCount, FileFilter accept)

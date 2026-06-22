@@ -2,7 +2,7 @@
 #include "widgets/free-space-widget.h"
 #include "ui/label.h"
 #include "timer.h"
-#include "file.h"
+#include "vfs.h"
 #include "string-utilities.h"
 
 static Label label;

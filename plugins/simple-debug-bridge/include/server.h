@@ -131,19 +131,19 @@ static int dispatchCommand(int cli, char *buf)
    // do the same thing - see apps/xai_plugin/xai_plugin/functions.cpp rebootXMB().
    if (matchCommand(buf, "restart-ps3")) {
       sendReply(cli, SDB_OK, "rebooting");
-      cellFsUnlink("/dev_hdd0/tmp/turnoff");
+      removeFilePath("/dev_hdd0/tmp/turnoff");
       sysPower(POWER_REBOOT);
       return 0;
    }
    if (matchCommand(buf, "restart-xmb")) {
       sendReply(cli, SDB_OK, "restarting xmb");
-      cellFsUnlink("/dev_hdd0/tmp/turnoff");
+      removeFilePath("/dev_hdd0/tmp/turnoff");
       sysPower(POWER_VSH_REBOOT);
       return 0;
    }
    if (matchCommand(buf, "shutdown")) {
       sendReply(cli, SDB_OK, "shutting down");
-      cellFsUnlink("/dev_hdd0/tmp/turnoff");
+      removeFilePath("/dev_hdd0/tmp/turnoff");
       sysPower(POWER_SHUTDOWN);
       return 0;
    }
@@ -471,6 +471,10 @@ static void runAcceptLoop(uint64_t arg)
       }
    }
    logInfo("[sdb] xmb ready\n");
+
+   // bring up the VFS now that the system is ready (it owns its own hotplug poll
+   // thread); lets file commands reach exFAT/NTFS volumes, not just cellFs.
+   initVfs();
 
    int fd      = -1;
    int retries = 0;

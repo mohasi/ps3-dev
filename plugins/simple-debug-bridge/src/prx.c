@@ -3,12 +3,17 @@
 // TCP listener on port 8785. host clients send framed commands; producer
 // plugins/apps connect on the same port and forward their log lines. full
 // command surface is the dispatch table in server.h.
+//
+// The VFS (for exFAT/NTFS access from file commands) is brought up by the server
+// thread once XMB is ready (see startServer in server.h); the VFS owns its own
+// 8 KB hotplug poll thread, so nothing here drives it. _stop tears it down.
 
 #include <sys/prx.h>
 
 #include "dbg.h"
 #include "syscall.h"
 #include "server.h"
+#include "vfs.h"   // shutdownVfs
 
 SYS_MODULE_INFO(SimpleDebugBridge, 0, 1, 0);
 SYS_MODULE_START(_start);
@@ -29,7 +34,8 @@ int _start(uint64_t arg)
 int _stop(void)
 {
    logInfo("[sdb] _stop\n");
-   stopServer();
+   stopServer();      // joins the connection threads first: no VFS user remains
+   shutdownVfs();     // release any volume the dispatch path mounted
    prxFinalizeSelf();
    return SYS_PRX_STOP_OK;
 }

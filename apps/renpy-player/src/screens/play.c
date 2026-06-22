@@ -9,7 +9,7 @@
 #include "colors.h"
 #include "font.h"
 #include "pad.h"
-#include "file.h"
+#include "vfs.h"
 #include "printf.h"
 #include "dbg.h"
 #include "screen-manager.h"

@@ -96,7 +96,11 @@ void setSidepanelContent(const SelectionSummary *s, const SelectionAction *a, in
    if (count > SIDEPANEL_MAX_ACTIONS) count = SIDEPANEL_MAX_ACTIONS;
    actionCount = count;
    for (int i = 0; i < count; i++) actions[i] = a[i];
+
+   // default to Paste when it's offered - a cut/copy is usually followed by a paste.
    selectedIndex = 0;
+   for (int i = 0; i < actionCount; i++)
+      if (actions[i] == ACTION_PASTE) { selectedIndex = i; break; }
 
    for (int i = 0; i < actionCount; i++) {
       setLabelText(&rowTitles[i],    getActionTitle(actions[i]));

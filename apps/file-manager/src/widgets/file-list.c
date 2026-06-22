@@ -500,20 +500,14 @@ static void handleCheckInput(int hasSelection)
 
 void updateFileList(void)
 {
-   if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_DOWN)) && selectedIndex < entryCount - 1) {
-      selectedIndex++;
-      if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE) {
-         scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
-         labelsStale = 1;
-      }
+   if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_DOWN)) && entryCount > 0) {
+      selectedIndex = (selectedIndex + 1) % entryCount;             // wraps bottom -> top
+      scrollToSelected();
       playSfxOnce(clickSfx);
    }
-   else if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_UP)) && selectedIndex > 0) {
-      selectedIndex--;
-      if (selectedIndex < scrollOffset) {
-         scrollOffset = selectedIndex;
-         labelsStale = 1;
-      }
+   else if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_UP)) && entryCount > 0) {
+      selectedIndex = (selectedIndex - 1 + entryCount) % entryCount;  // wraps top -> bottom
+      scrollToSelected();
       playSfxOnce(clickSfx);
    }
 
@@ -712,12 +706,15 @@ const char *getActiveEntryName(void)
 }
 
 // keeps the active row on screen after the index is moved programmatically.
+// flags labels stale when the visible window actually shifts.
 static void scrollToSelected(void)
 {
+   int previousOffset = scrollOffset;
    if (selectedIndex < scrollOffset)
       scrollOffset = selectedIndex;
    else if (selectedIndex >= scrollOffset + FILE_LIST_PAGE_SIZE)
       scrollOffset = selectedIndex - FILE_LIST_PAGE_SIZE + 1;
+   if (scrollOffset != previousOffset) labelsStale = 1;
 }
 
 // moves the cursor to the existing row named name (if present) and scrolls it

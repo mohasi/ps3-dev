@@ -101,29 +101,61 @@ static void writeLe64(uint8_t *p, uint64_t v) { writeLe32(p, (uint32_t)v); write
 // had, so a cache entry can never match a later mount even if a reset were missed. 0 = "none" sentinel.
 static uint32_t mountEpoch;          // last epoch handed out (first mount gets 1; wraps skip 0)
 
-static uint8_t  dirSector[EXFAT_MAX_SECTOR] __attribute__((aligned(STORAGE_ALIGN)));
+// All large scratch lives in ONE heap block allocated on first mount and freed when the last volume
+// unmounts (ensureScratch / releaseScratchIfIdle), so an idle system with no USB inserted holds none of
+// it. Pointers below carve that block; they are valid only while a volume is mounted. mount holds
+// exfatLock so these shared buffers are safe, and keeping them off the stack lets the hotplug poll
+// thread run on a small stack.
+static uint8_t *dirSector;       // cached directory sector (lba/epoch below as before)
 static uint64_t dirSectorLba = ~0ULL;
 static uint32_t dirSectorEpoch = 0;
-static uint8_t  fatSector[EXFAT_MAX_SECTOR] __attribute__((aligned(STORAGE_ALIGN)));
+static uint8_t *fatSector;       // cached FAT sector
 static uint64_t fatSectorLba = ~0ULL;
 static uint32_t fatSectorEpoch = 0;
-// Doubles as the single-sector scratch for getExfatFree and the multi-sector
-// bounce for readExfat (sized to read a whole ~32 KB cluster per storage call).
-static uint8_t  fileSector[EXFAT_READ_BOUNCE] __attribute__((aligned(STORAGE_ALIGN)));
-// Scratch for read-modify-write of bitmap / FAT / directory sectors. Like the
-// buffers above it is only touched while the caller holds the exFAT lock.
-static uint8_t  writeScratch[EXFAT_MAX_SECTOR] __attribute__((aligned(STORAGE_ALIGN)));
-// Boot-sector scratch for mountExfat. Off the stack (it would be 4 KB) like the
-// buffers above; mount holds exfatLock so one shared buffer is safe, and keeping
-// it out of the call frame lets the hotplug poll thread run on a small stack.
-static uint8_t  bootSector[EXFAT_MAX_SECTOR] __attribute__((aligned(STORAGE_ALIGN)));
+static uint8_t *fileSector;      // single-sector scratch for getExfatFree + ~32 KB read bounce
+static uint8_t *writeScratch;    // read-modify-write scratch for bitmap / FAT / directory sectors
+static uint8_t *bootSector;      // boot-sector scratch for mountExfat
 
-// Decompressed up-case table cache (shared, keyed by mount epoch, identity outside the volume's defined
-// range). exFAT casefold and NameHash map through this instead of re-reading the on-disk table
-// from storage on every create / rename / lookup. Reset on mount and unmount, not by the
-// per-operation cache invalidation, so a burst of writes keeps it warm.
-static uint16_t upcaseTable[0x10000] __attribute__((aligned(STORAGE_ALIGN)));
-static uint32_t upcaseTableEpoch = 0;
+// Up-case casefold table, sparse: only the code points that differ from identity are stored (a standard
+// exFAT $UpCase has ~900 of 65536), as parallel sorted-by-code-point arrays. exFAT casefold and NameHash
+// map through upcaseOf() instead of re-reading the on-disk table on every create / rename / lookup.
+// Reset on mount and unmount, not by per-operation cache invalidation, so a burst of writes keeps it warm.
+#define EXFAT_UPCASE_MAX 2048    // headroom over the ~900 non-identity entries a standard $UpCase defines
+static uint16_t *upcaseCp;       // code points whose up-cased form differs (ascending)
+static uint16_t *upcaseUp;       // their up-cased forms (parallel to upcaseCp)
+static uint32_t  upcaseCount;
+static uint32_t  upcaseTableEpoch = 0;
+
+// One 64 KB-page heap block holds every buffer above. lv2 rejects a SYS_PAGE_64K request whose size is
+// not a 64 KB multiple, so round the ~56 KB the buffers need up to a single 64 KB page (which is also the
+// smallest page sys_memory_allocate offers). Costs one page while any volume is mounted, nothing otherwise.
+#define EXFAT_SCRATCH_USED  (4u * EXFAT_MAX_SECTOR + EXFAT_READ_BOUNCE + 4u * EXFAT_UPCASE_MAX)
+#define EXFAT_SCRATCH_BYTES ((EXFAT_SCRATCH_USED + 0xFFFFu) & ~0xFFFFu)
+// keep the working set inside a single 64 KB page: growing it past one page would break the VSH budget
+typedef char exfatScratchFitsOnePage[(EXFAT_SCRATCH_BYTES <= 0x10000u) ? 1 : -1];
+static uint32_t scratchAddr;     // sysMemAllocate handle (0 = not allocated)
+static void releaseScratchIfIdle(void);   // defined after the volume pool
+
+// Allocates and carves the shared scratch block if it isn't already. Returns 0 / -1.
+static int ensureScratch(void)
+{
+   if (scratchAddr) return 0;
+   uint32_t addr = 0;
+   if (sysMemAllocate(EXFAT_SCRATCH_BYTES, SYS_PAGE_64K, &addr) != 0 || !addr) return -1;
+   uint8_t *base = (uint8_t *)(uintptr_t)addr;
+   dirSector    = base;
+   fatSector    = base + 1u * EXFAT_MAX_SECTOR;
+   writeScratch = base + 2u * EXFAT_MAX_SECTOR;
+   bootSector   = base + 3u * EXFAT_MAX_SECTOR;
+   fileSector   = base + 4u * EXFAT_MAX_SECTOR;
+   uint8_t *up  = fileSector + EXFAT_READ_BOUNCE;       // EXFAT_MAX_SECTOR is a multiple of 32: u16-aligned
+   upcaseCp     = (uint16_t *)up;
+   upcaseUp     = (uint16_t *)(up + 2u * EXFAT_UPCASE_MAX);
+   upcaseCount  = 0;
+   dirSectorLba = fatSectorLba = ~0ULL;                 // the carved caches start empty
+   scratchAddr  = addr;
+   return 0;
+}
 
 // End-of-directory cache: the 0x00 marker position of recently-appended-to directories, so a burst of
 // inserts into one directory (e.g. pasting a folder) doesn't rescan it from the start each time, which
@@ -511,6 +543,9 @@ int mountExfat(ExfatVolume *vol, int drive)
    // reference stacks (libntfs ps3_io.c, IRISMAN) do, not via log-induced delays.
    sys_timer_usleep(SYSIO_SETTLE_US);
 
+   // bring up the shared scratch (needed from the first read below); release it again on any failure
+   if (ensureScratch() != 0) { closeStorage(storageHandle); return EXFAT_MOUNT_NOT_READY; }
+
    // Read LBA 0 and locate the exFAT volume: superfloppy, or an MBR- or GPT-partitioned disk.
    // The scan needs two scratch sectors. Rather than spend 8 KB of stack (this can run on a size-
    // sensitive 16 KB plugin thread), reuse the operational sector caches AS generic scratch: the
@@ -522,11 +557,13 @@ int mountExfat(ExfatVolume *vol, int drive)
    uint8_t *boot = bootSector;   // off the stack (see bootSector) so the mount path fits a small stack
    if (readSectors(storageHandle, 0, 1, boot) != 0) {
       closeStorage(storageHandle);
+      releaseScratchIfIdle();
       return EXFAT_MOUNT_NOT_READY;
    }
    uint64_t volStart = 0;
    if (!locateExfatVolume(storageHandle, boot, scanScratch, scanVbr, deviceSectorSize, deviceSectors, &volStart)) {
       closeStorage(storageHandle);                       // read OK but no exFAT volume here (e.g. FAT32/NTFS)
+      releaseScratchIfIdle();
       return EXFAT_MOUNT_NOT_EXFAT;
    }
 
@@ -534,6 +571,7 @@ int mountExfat(ExfatVolume *vol, int drive)
    // cluster->LBA computation. A hostile/malformed exFAT image is rejected, not acted on.
    if (!validExfatGeometry(boot, deviceSectorSize, deviceSectors, volStart)) {
       closeStorage(storageHandle);
+      releaseScratchIfIdle();
       return EXFAT_MOUNT_NOT_EXFAT;
    }
 
@@ -572,6 +610,7 @@ void unmountExfat(ExfatVolume *vol)
    invalidateCaches();   // drop the sector caches keyed by the old epoch
    invalidateDirEnd();   // and the end-of-directory cache
    upcaseTableEpoch = 0;   // and the up-case table cache
+   releaseScratchIfIdle();   // last volume out frees the shared scratch block
 }
 
 void openExfatDir(ExfatDir *dir, const ExfatVolume *vol, uint32_t firstCluster, int noFatChain, uint64_t byteLength)
@@ -1271,10 +1310,13 @@ static int zeroCluster(ExfatVolume *vol, uint32_t cluster)
 // Decompresses the volume's on-disk up-case table (run-length compressed with the 0xFFFF marker)
 // into the shared upcaseTable[] cache, once per storageHandle. Entries outside the table's defined range stay
 // identity. Returns 0 / -1 (I/O). After this, upcaseTable[c] is the up-cased form of any unit c.
+// Decodes the on-disk $UpCase into the sparse cache: only code points whose up-cased form differs from
+// identity are recorded (in ascending code-point order, ready for binary search). The on-disk table is
+// the run-length form (a 0xFFFF marker means the next u16 is a count of identity code points to skip).
 static int ensureUpcaseTable(const ExfatVolume *vol)
 {
    if (upcaseTableEpoch == vol->cacheEpoch) return 0;                                // already cached
-   for (uint32_t i = 0; i < 0x10000; i++) upcaseTable[i] = (uint16_t)i;   // identity default
+   upcaseCount = 0;                                  // identity default = empty sparse table
    if (vol->upcaseCluster == 0 || vol->upcaseBytes == 0) { upcaseTableEpoch = vol->cacheEpoch; return 0; }
 
    uint64_t total    = vol->upcaseBytes & ~1ULL;    // whole u16 units only
@@ -1293,7 +1335,12 @@ static int ensureUpcaseTable(const ExfatVolume *vol)
             uint16_t v = readLe16(writeScratch + o);
             if (pending) { cp += v; pending = 0; continue; }   // identity run of `v` code points
             if (v == 0xFFFF) { pending = 1; continue; }
-            upcaseTable[cp++] = v;
+            if (v != (uint16_t)cp && upcaseCount < EXFAT_UPCASE_MAX) {   // store only real mappings
+               upcaseCp[upcaseCount] = (uint16_t)cp;
+               upcaseUp[upcaseCount] = v;
+               upcaseCount++;
+            }
+            cp++;
          }
       }
       if (++guard > vol->clusterCount) break;   // corrupt/cyclic up-case chain: stop
@@ -1303,12 +1350,25 @@ static int ensureUpcaseTable(const ExfatVolume *vol)
    return 0;
 }
 
+// Up-cased form of UTF-16 unit `c` via the sparse table (binary search; identity if not mapped).
+static uint16_t upcaseOf(uint16_t c)
+{
+   int lo = 0, hi = (int)upcaseCount - 1;
+   while (lo <= hi) {
+      int mid = (lo + hi) >> 1;
+      uint16_t key = upcaseCp[mid];
+      if (key == c) return upcaseUp[mid];
+      if (key < c) lo = mid + 1; else hi = mid - 1;
+   }
+   return c;
+}
+
 // Up-cases a UTF-16 name through the cached up-case table. `out` is filled with the up-cased
 // units (identity where the table has no mapping or it couldn't be read). For the NameHash.
 static void upcaseName(const ExfatVolume *vol, const uint16_t *in, int len, uint16_t *out)
 {
    if (ensureUpcaseTable(vol) != 0) { for (int k = 0; k < len; k++) out[k] = in[k]; return; }
-   for (int k = 0; k < len; k++) out[k] = upcaseTable[in[k]];
+   for (int k = 0; k < len; k++) out[k] = upcaseOf(in[k]);
 }
 
 // exFAT NameHash over the up-cased name (little-endian bytes of each unit).
@@ -1353,7 +1413,7 @@ static int namesEqualFold(const ExfatVolume *vol, const char *a, const char *b)
    if (la != lb) return 0;
    if (ensureUpcaseTable(vol) != 0) return strCmpICase(a, b) == 0;   // I/O failure: ASCII fallback
    for (int i = 0; i < la; i++)
-      if (upcaseTable[a16[i]] != upcaseTable[b16[i]]) return 0;
+      if (upcaseOf(a16[i]) != upcaseOf(b16[i])) return 0;
    return 1;
 }
 
@@ -2406,6 +2466,19 @@ static ExfatFile     filePool[EXFAT_MAX_OPEN_FILES];
 static uint8_t       fileUsed[EXFAT_MAX_OPEN_FILES];
 static sys_lwmutex_t exfatLock;
 static int           exfatLockReady;
+
+// Frees the shared scratch block once no volume is mounted, so an idle system holds no exFAT heap.
+// Called after any mount failure and after every unmount; a no-op while a volume is still mounted.
+static void releaseScratchIfIdle(void)
+{
+   if (!scratchAddr) return;
+   for (int i = 0; i < EXFAT_MAX_VOLUMES; i++) if (volumes[i].mounted) return;   // still in use
+   sysMemFree(scratchAddr);
+   scratchAddr = 0;
+   dirSector = fatSector = writeScratch = bootSector = fileSector = 0;
+   upcaseCp = upcaseUp = 0;
+   upcaseTableEpoch = 0;   // force a reload on the next mount
+}
 
 // "exfat<port>" and its native prefix "exfat<port>:" (port is a single digit).
 static void buildNames(int port, char *segment, char *native)

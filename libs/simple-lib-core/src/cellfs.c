@@ -29,6 +29,7 @@ static int statCellFs(const char *native, VfsStat *outStat)
    outStat->mtime = (uint64_t)info.st_mtime;
    outStat->isDir = (info.st_mode & CELL_FS_S_IFDIR) != 0;
    outStat->mode  = (uint32_t)info.st_mode;
+   outStat->attributes = 0;   // cellFs exposes no DOS attribute flags; keep the field initialized
    return 0;
 }
 

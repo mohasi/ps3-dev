@@ -28,7 +28,7 @@
    <ClCompile>
      <AdditionalIncludeDirectories>include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-     <AdditionalOptions>-fno-builtin-printf -fno-builtin-sprintf -fno-builtin-snprintf -fno-builtin-vsnprintf -nodefaultlibs</AdditionalOptions>
+     <AdditionalOptions>-ffunction-sections -fdata-sections -fno-builtin-printf -fno-builtin-sprintf -fno-builtin-snprintf -fno-builtin-vsnprintf -nodefaultlibs</AdditionalOptions>
    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -40,6 +40,7 @@
    <ClCompile Include="src\vfs.c" />
    <ClCompile Include="src\cellfs.c" />
    <ClCompile Include="src\exfat.c" />
+   <ClCompile Include="src\ntfs.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\ftp.h" />
@@ -51,6 +52,7 @@
    <ClInclude Include="include\vfs.h" />
    <ClInclude Include="include\cellfs.h" />
    <ClInclude Include="include\exfat.h" />
+   <ClInclude Include="include\ntfs.h" />
    <ClInclude Include="include\syscall.h" />
    <ClInclude Include="include\thread.h" />
    <ClInclude Include="include\string-utilities.h" />

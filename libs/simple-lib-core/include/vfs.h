@@ -40,6 +40,7 @@ typedef struct {
    uint64_t mtime;         // seconds, unix-ish (exFAT is coarse: DOS 2s, no TZ)
    int      isDir;
    uint32_t mode;          // st_mode-style bits; use & 0777 for unix permissions
+   uint32_t attributes;    // DOS/Win32 FILE_ATTRIBUTE_* flags (NTFS); 0 if the backend has none
 } VfsStat;
 
 // opaque handles, deliberately small: the folder-sizer keeps a stack of 64 open

@@ -2498,6 +2498,7 @@ static int statExfatOp(const char *native, VfsStat *outStat)
       outStat->size  = info.size;
       outStat->mtime = info.mtime;
       outStat->isDir = info.isDir;
+      outStat->attributes = 0;   // exFAT attribute mapping not surfaced here (NTFS feature); keep the field initialized
       // exFAT has no POSIX permissions; synthesize a plain mode (writes are gated by the VFS ops).
       outStat->mode  = info.isDir ? (0040000u | 0555u) : (0100000u | 0444u);
    }

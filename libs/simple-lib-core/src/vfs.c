@@ -22,6 +22,7 @@
 #include "usb-storage.h"        // isUsbDevicePresent + port count (format-agnostic hotplug)
 #include "cellfs.h"             // CELLFS_OPS / ROOT_OPS - the default backend (its own file now)
 #include "exfat.h"              // initExfat (brought up as part of the VFS)
+#include "ntfs.h"               // initNtfs (brought up as part of the VFS)
 #include "thread.h"             // sys_lwmutex helpers - serialize the mount registry
 
 #define VFS_POLL_INTERVAL_US 1000000   // scan hotplug at most once a second, however often callers poll
@@ -202,7 +203,8 @@ void initVfs(void)
    lastScan     = 0;   // a fresh lifetime must not be debounced against the previous one
    polling      = 0;
    for (int port = 0; port < USB_STORAGE_MAX_PORTS; port++) { portPresent[port] = 0; portResolved[port] = 0; portOwner[port] = -1; }
-   initExfat();    // registers the exFAT backend (NTFS will register the same way)
+   initExfat();    // registers the exFAT backend
+   initNtfs();     // registers the NTFS backend (probed after exFAT; claims only "NTFS    " volumes)
    pollMounts();   // initial scan so already-inserted volumes appear immediately
 
    // Own the hotplug cadence: one 8 KB thread, written once, so no consumer drives

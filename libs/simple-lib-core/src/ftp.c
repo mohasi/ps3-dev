@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <sys/ppu_thread.h>
 #include <sys/socket.h>
+#include <sys/sys_time.h>   // sys_time_get_system_time (data-connection pacing)
 #include <sys/time.h>
 #include <sys/timer.h>
 
@@ -38,6 +39,20 @@ enum {
    FTP_LOGIN_TIMEOUT_S = 30,         // free a slot fast if a client connects then never speaks
    FTP_DATA_ACCEPT_TIMEOUT_S = 10,   // give up waiting for the client's data connection
    FTP_DATA_XFER_TIMEOUT_S = 30,     // abort a transfer stalled this long (dead or silent peer)
+   // PASV listener creation self-paces against the tiny lv2 socket pool: when a rapid run of
+   // small-file pulls fills the pool with data sockets lingering in TIME_WAIT, socket()/bind()
+   // fail transiently. We retry with a short backoff instead of failing the PASV, so the server
+   // throttles to the rate at which TIME_WAIT drains rather than refusing connections. Budget is
+   // bounded (~5s) so a genuinely dead stack still gives up and replies 425.
+   FTP_PASV_OPEN_BACKOFF_US = 100000,
+   FTP_PASV_OPEN_RETRIES = 50,
+   // Token-bucket pacing for new data connections (see throttleDataOpen). A measured PS3 holds
+   // ~460 sockets and a data socket lingers ~60s (2*MSL) in TIME_WAIT after each transfer, so the
+   // sustainable rate is ~7/s. BURST runs at full speed, then the rate settles to REFILL/s, chosen
+   // so concurrent TIME_WAIT (~BURST + REFILL*2*MSL) stays well under the pool with headroom for
+   // the control connection. Bursty/light loads never spend the burst and see zero added latency.
+   FTP_THROTTLE_REFILL_PER_SEC = 5,
+   FTP_THROTTLE_BURST = 64,
 };
 
 // lv2 mount (syscall 837) returns EINVAL when the target is already mounted.
@@ -279,35 +294,83 @@ static void resolvePath(FtpSession *session, const char *inputPath, char *output
    normalizePath(outputPath, FTP_PATH_BUFFER);
 }
 
+// Token-bucket pacing for new data connections. Each PASV transfer leaves one socket in TIME_WAIT
+// on the PS3 for ~2*MSL after a graceful close, and the lv2 pool holds only ~460 sockets, so pulling
+// small files faster than TIME_WAIT drains fills the pool and the stack starts dropping even the
+// control connection. We can't skip the TIME_WAIT (a graceful close is required to signal end-of-file
+// to the client, and the closer always owns TIME_WAIT) and can't grow the pool, so we cap the rate of
+// data-connection creation: a burst of FTP_THROTTLE_BURST runs at full speed, then it settles to
+// FTP_THROTTLE_REFILL_PER_SEC/s — keeping concurrent TIME_WAIT (~BURST + REFILL*2*MSL) under the pool
+// with headroom for the control connection. Tokens are scaled by ONE_PERMIT so the rate is exact in
+// integer math. Bursty/light loads never spend the burst and pay zero latency; only sustained hammering
+// throttles, and the server never wedges. State is shared, so it is read/updated under sessionPoolLock;
+// the wait sleeps with the lock released.
+static int64_t throttleTokens;     // available permits, scaled by ONE_PERMIT
+static uint64_t throttleLastUs;    // timestamp of the last refill
+
+static void throttleDataOpen(void)
+{
+   const int64_t ONE_PERMIT = 1000000;
+   for (;;) {
+     if (server.stopping) return;
+
+     lock(&sessionPoolLock);
+     uint64_t now = sys_time_get_system_time();
+     throttleTokens += (int64_t)(now - throttleLastUs) * FTP_THROTTLE_REFILL_PER_SEC;   // elapsed_us * permits/s
+     throttleLastUs = now;
+     int64_t capacity = (int64_t)FTP_THROTTLE_BURST * ONE_PERMIT;
+     if (throttleTokens > capacity) throttleTokens = capacity;
+     int spend = (throttleTokens >= ONE_PERMIT);
+     if (spend) throttleTokens -= ONE_PERMIT;
+     int64_t deficit = ONE_PERMIT - throttleTokens;   // permits still owed before the next open (only used if !spend)
+     unlock(&sessionPoolLock);
+
+     if (spend) return;
+
+     // sleep just long enough to accrue the deficit at the refill rate (REFILL permits/s == REFILL
+     // scaled-units/us), capped so a stop request is still noticed promptly.
+     uint64_t waitUs = (uint64_t)(deficit / FTP_THROTTLE_REFILL_PER_SEC);
+     if (waitUs < 1000) waitUs = 1000;
+     if (waitUs > 500000) waitUs = 500000;
+     sys_timer_usleep((usecond_t)waitUs);
+   }
+}
+
+// Opens an OS-assigned PASV listen socket, retrying with backoff while the lv2 socket pool is
+// momentarily exhausted (see FTP_PASV_OPEN_* above). Returns the socket, or -1 if the pool stays
+// dry past the retry budget (or a stop was requested). The retry only sleeps on failure, so a
+// pool with headroom returns immediately at full speed; only a saturated pool throttles.
 static int openPasv(uint16_t *outPort)
 {
-   int listenSocket = socket(AF_INET, SOCK_STREAM, 0);
-   if (listenSocket < 0) return -1;
+   throttleDataOpen();   // pace data-connection creation against the socket pool / TIME_WAIT drain
+   if (server.stopping) return -1;
 
-   struct sockaddr_in address;
-   memSet(&address, 0, sizeof address);
-   address.sin_family = AF_INET;
-   address.sin_port = htons(0);
-   address.sin_addr.s_addr = htonl(INADDR_ANY);
+   for (int attempt = 0; ; attempt++) {
+     int listenSocket = socket(AF_INET, SOCK_STREAM, 0);
+     if (listenSocket >= 0) {
+       // let the OS-assigned data port rebind immediately rather than lingering "in use"
+       int reuse = 1;
+       setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof reuse);
 
-   if (bind(listenSocket, (struct sockaddr *)&address, sizeof address) < 0) {
-     socketclose(listenSocket);
-     return -1;
+       struct sockaddr_in address;
+       memSet(&address, 0, sizeof address);
+       address.sin_family = AF_INET;
+       address.sin_port = htons(0);
+       address.sin_addr.s_addr = htonl(INADDR_ANY);
+
+       socklen_t addressLength = sizeof address;
+       if (bind(listenSocket, (struct sockaddr *)&address, sizeof address) == 0 &&
+           listen(listenSocket, 1) == 0 &&
+           getsockname(listenSocket, (struct sockaddr *)&address, &addressLength) == 0) {
+         *outPort = ntohs(address.sin_port);
+         return listenSocket;
+       }
+       socketclose(listenSocket);   // bind/listen/getsockname failed under pressure — release and retry
+     }
+
+     if (server.stopping || attempt >= FTP_PASV_OPEN_RETRIES) return -1;
+     sys_timer_usleep(FTP_PASV_OPEN_BACKOFF_US);
    }
-
-   if (listen(listenSocket, 1) < 0) {
-     socketclose(listenSocket);
-     return -1;
-   }
-
-   socklen_t addressLength = sizeof address;
-   if (getsockname(listenSocket, (struct sockaddr *)&address, &addressLength) < 0) {
-     socketclose(listenSocket);
-     return -1;
-   }
-
-   *outPort = ntohs(address.sin_port);
-   return listenSocket;
 }
 
 // Waits for the client to open the data connection, but only up to a deadline:
@@ -1537,7 +1600,7 @@ static void runFtpListenerThread(uint64_t arg)
      session->dataSocket = -1;
 
      int result = spawnJoinableThread(&sessionThreadIds[slot], runFtpSessionThread, (uint64_t)(uintptr_t)session,
-        THREAD_PRIORITY_LOW, THREAD_STACK_SIZE_16KB, "ftp-session");
+        THREAD_PRIORITY_LOW, THREAD_STACK_SIZE_64KB, "ftp-session");
      if (result != 0) {
        unlock(&sessionPoolLock);
        replyLine(controlSocket, 421, "Server busy.");
@@ -1565,6 +1628,10 @@ FtpResult startFtpServer(uint16_t port)
    listenerSpawned = 0;
    memSet(sessionPool, 0, sizeof(sessionPool));
    memSet((void *)sessionSlotState, 0, sizeof(sessionSlotState));
+
+   // Start the data-connection pacer with a full burst available (see throttleDataOpen).
+   throttleTokens = (int64_t)FTP_THROTTLE_BURST * 1000000;
+   throttleLastUs = sys_time_get_system_time();
 
    // Create the session-pool lock before any session thread can run.
    if (createLock(&sessionPoolLock) != 0) {

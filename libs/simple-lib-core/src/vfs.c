@@ -1,31 +1,30 @@
 //
 // vfs.c - filesystem abstraction: the path-scheme router only. It owns the mount
-// registry, USB hotplug and the public dispatch wrappers, and names no concrete
-// backend's internals - every backend is its own file behind the VfsOps vtable:
+// registry and the public dispatch wrappers, and names no concrete backend's
+// internals - every backend is its own file behind the VfsOps vtable:
 //   cellfs.c - HDD + kernel-mounted FAT32 USB + /dev_flash. the default route.
 //   exfat.c  - hand-written exFAT. registers a probe/release pair at runtime.
-//   ntfs.c   - libntfs_ext (future); drops in the same way, no router change.
+//   ntfs.c   - hand-written NTFS. registers the same way, no router change.
+//
+// The bringup that actually names those backends (initVfs/shutdownVfs + the USB
+// hotplug poll thread) lives in vfs-init.c, deliberately a separate translation
+// unit: this toolchain's linker can't strip unreachable code, so a consumer that
+// only routes paths (openDir on /dev_hdd0) pulls this object alone and never the
+// exFAT/NTFS drivers. See vfs-internal.h.
 //
 // resolvePath peels the first path segment, matches it against the virtual-mount
 // registry, and rewrites the path to the backend's native form ("/ntfs0/x" ->
 // "ntfs0:/x"). unmatched paths are cellFs and pass through unchanged, so
 // HDD/FAT32 behaviour is identical to before the VFS existed.
-//
-// see VFS-DESIGN.md for the design and the reference-app source map.
 
 #include "vfs.h"
 
 #include <stdint.h>
-#include <sys/sys_time.h>       // sys_time_get_system_time (pollMounts self-throttle)
 #include "string-utilities.h"   // strCopy, strEq
 #include "syscall.h"            // syncDevice
-#include "usb-storage.h"        // isUsbDevicePresent + port count (format-agnostic hotplug)
 #include "cellfs.h"             // CELLFS_OPS / ROOT_OPS - the default backend (its own file now)
-#include "exfat.h"              // initExfat (brought up as part of the VFS)
-#include "ntfs.h"               // initNtfs (brought up as part of the VFS)
 #include "thread.h"             // sys_lwmutex helpers - serialize the mount registry
-
-#define VFS_POLL_INTERVAL_US 1000000   // scan hotplug at most once a second, however often callers poll
+#include "vfs-internal.h"       // lock primitives shared with vfs-init.c
 
 #define VFS_MAX_MOUNTS 24       // ntfs0..7 + exfat0..7 + ext0..7
 
@@ -45,68 +44,30 @@ typedef struct {
 
 static MountEntry mounts[VFS_MAX_MOUNTS];
 static int        mountCount;
-static int        initialized;
 
-// Serializes the mount registry. pollMounts (app loop / ftp listener) mutates mounts[] via
+// Serializes the mount registry. The hotplug poll thread (vfs-init.c) mutates mounts[] via
 // addVfsMount/removeVfsMount on a different thread than the readers (findMount/resolvePath/
-// readDirRoot/listMounts), so every touch of mounts[]/mountCount takes this lock. Lock order is
-// always exfatLock -> mountsLock (backends hold exfatLock when they publish/withdraw); readers
-// take mountsLock alone, so there is no reverse path and no deadlock.
+// listMounts), so every touch of mounts[]/mountCount takes this lock. Lock order is always
+// exfatLock -> mountsLock (backends hold exfatLock when they publish/withdraw); readers take
+// mountsLock alone, so there is no reverse path and no deadlock.
 static sys_lwmutex_t mountsLock;
 static int           mountsLockReady;
 
-// Bootstrap-safe registry locking. The lock is created in initVfs, but the VFS
-// must be callable before then (e.g. the logger writes to /dev_hdd0 via openFs
-// during early startup). Until the lock exists, mountCount is 0 and nothing
-// mutates the registry, so reading it without the lock is safe; these become
-// real lock/unlock once initVfs has run.
-static void lockMounts(void)   { if (mountsLockReady) lock(&mountsLock); }
-static void unlockMounts(void) { if (mountsLockReady) unlock(&mountsLock); }
+// Bootstrap-safe registry locking, shared with vfs-init.c via vfs-internal.h. The lock is created
+// by ensureMountsLock (from initVfs), but the VFS must be callable before then (e.g. the logger
+// writes to /dev_hdd0 via openFs during early startup). Until the lock exists, mountCount is 0 and
+// nothing mutates the registry, so reading it without the lock is safe; these become real
+// lock/unlock once initVfs has run.
+void ensureMountsLock(void) { if (!mountsLockReady) { createLock(&mountsLock); mountsLockReady = 1; } }
+void lockMounts(void)       { if (mountsLockReady) lock(&mountsLock); }
+void unlockMounts(void)     { if (mountsLockReady) unlock(&mountsLock); }
 
-// pollMounts debounce + concurrency guard (file-scope so shutdownVfs can reset them). lastScan is
-// the last accepted scan time; polling marks a scan in progress so a second caller bows out instead
-// of running a duplicate scan (which would double-probe/double-mount a port). Both are read and set
-// under mountsLock.
-static system_time_t lastScan;   // 0 until the first scan
-static int           polling;
-
-// Hotplug poll thread, owned by the VFS so no consumer has to drive polling:
-// initVfs spawns it, shutdownVfs stops+joins it. It runs the exFAT mount path,
-// but that path keeps its big buffers off the stack (exfat.c bootSector + the
-// static sector caches), so an 8 KB stack is enough - which matters on a VSH PRX
-// where the thread/stack budget is tight. pollMounts is internal now.
-static int               pollMounts(void);
-static sys_ppu_thread_t  pollThreadTid;
-static volatile int      pollThreadStop;
-static int               pollThreadRunning;
-
-static void vfsHotplugThread(uint64_t arg)
+void clearMounts(void)
 {
-   (void)arg;
-   while (!pollThreadStop) {
-      pollMounts();        // debounced; fires the mounts-changed callback on change
-      sleepMs(1000);       // 1 Hz
-   }
-   exitThread();
+   lockMounts();
+   mountCount = 0;
+   unlockMounts();
 }
-
-// Registered format backends (probe/release/shutdown hooks); set by the app, never by core, so
-// libntfs/FatFs link only where they're actually used. The VFS owns USB hotplug detection and
-// offers present devices to these backends - they never poll the ports themselves.
-#define VFS_MAX_BACKENDS 4
-static struct {
-   VfsProbeResult (*probe)(int port);
-   void           (*release)(int port);
-   void           (*shutdown)(void);
-} backends[VFS_MAX_BACKENDS];
-static int backendCount;
-
-// Per-USB-port hotplug state, owned by the VFS (format-agnostic). present: a device is on the
-// port. resolved: we've settled what it is (a backend mounted it, or all declined / cellFs).
-// owner: index of the backend that mounted it, or -1.
-static uint8_t portPresent[USB_STORAGE_MAX_PORTS];
-static uint8_t portResolved[USB_STORAGE_MAX_PORTS];
-static int8_t  portOwner[USB_STORAGE_MAX_PORTS];
 
 // section: path routing helpers
 
@@ -187,122 +148,7 @@ static const VfsOps *resolvePath(const char *path, char *buffer, int capacity, c
    return backend;
 }
 
-// section: lifecycle
-
-// cellFs is the built-in default route; the removable-media backends are brought
-// up here so any VFS consumer sees them without a separate call. exFAT is small
-// and prx-safe (no libc - just scCall + memCopy), so it can ride into the plugins
-// that link the VFS. The heavier NTFS backend will start the same way once added.
-void initVfs(void)
-{
-   if (initialized) return;
-   if (!mountsLockReady) { createLock(&mountsLock); mountsLockReady = 1; }   // before any addVfsMount
-   initialized  = 1;
-   mountCount   = 0;
-   backendCount = 0;
-   lastScan     = 0;   // a fresh lifetime must not be debounced against the previous one
-   polling      = 0;
-   for (int port = 0; port < USB_STORAGE_MAX_PORTS; port++) { portPresent[port] = 0; portResolved[port] = 0; portOwner[port] = -1; }
-   initExfat();    // registers the exFAT backend
-   initNtfs();     // registers the NTFS backend (probed after exFAT; claims only "NTFS    " volumes)
-   pollMounts();   // initial scan so already-inserted volumes appear immediately
-
-   // Own the hotplug cadence: one 8 KB thread, written once, so no consumer drives
-   // polling. Self-heals if storage isn't ready yet (it keeps scanning).
-   pollThreadStop = 0;
-   if (spawnJoinableThread(&pollThreadTid, vfsHotplugThread, 0,
-                           THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "vfs-hotplug") == 0)
-      pollThreadRunning = 1;
-}
-
-// invoked by pollMounts when the mount set changes, on whatever thread polled.
-static void (*mountsChangedCallback)(void);
-
-void setMountsChangedCallback(void (*callback)(void))
-{
-   mountsChangedCallback = callback;
-}
-
-// drives each registered backend's hotplug scan, self-throttled to VFS_POLL_INTERVAL_US
-// so any caller (the app loop, an ftp listener, ...) can call it as often as it likes
-// without putting the sys_storage probe on a hot path. when the mount set changes it
-// fires the mounts-changed callback (so a consumer's view refreshes without the caller
-// having to inspect the return value), and also returns 1.
-static int pollMounts(void)
-{
-   // accept-or-bow-out, atomically: debounce, and let only one thread scan at a time
-   // (the initVfs initial scan races the poll thread's first wake until lastScan is set).
-   lockMounts();
-   system_time_t now = sys_time_get_system_time();
-   if (polling || (lastScan && now - lastScan < VFS_POLL_INTERVAL_US)) { unlockMounts(); return 0; }
-   lastScan = now;
-   polling  = 1;
-   unlockMounts();
-
-   int changed = 0;
-   for (int port = 0; port < USB_STORAGE_MAX_PORTS; port++) {
-      int present = isUsbDevicePresent(port);   // device-level, format-agnostic (non-DMA, no LED)
-
-      if (present && !portPresent[port]) {                  // device inserted
-         portPresent[port]  = 1;
-         portResolved[port] = 0;
-         portOwner[port]    = -1;
-         changed = 1;                                       // refresh now - also surfaces cellFs/FAT32
-      } else if (!present && portPresent[port]) {           // device removed
-         portPresent[port] = 0;
-         if (portOwner[port] >= 0) backends[portOwner[port]].release(port);
-         portOwner[port]    = -1;
-         portResolved[port] = 0;
-         changed = 1;
-      }
-
-      // Offer an unresolved present device to each backend until one claims it. NOT_READY means
-      // the device can't be read yet (no backend could) - leave it unresolved to retry next poll.
-      // If every backend declines, it's a format we don't mount (cellFs handles it, e.g. FAT32).
-      if (present && !portResolved[port]) {
-         int notReady = 0;
-         for (int i = 0; i < backendCount; i++) {
-            VfsProbeResult result = backends[i].probe(port);
-            if (result == VFS_PROBE_MOUNTED)   { portOwner[port] = (int8_t)i; portResolved[port] = 1; changed = 1; break; }
-            if (result == VFS_PROBE_NOT_READY) { notReady = 1; break; }
-            // VFS_PROBE_NOT_MINE: try the next backend
-         }
-         if (!portResolved[port] && !notReady) portResolved[port] = 1;   // none claimed it
-      }
-   }
-
-   lockMounts();
-   polling = 0;
-   unlockMounts();
-
-   if (changed && mountsChangedCallback) mountsChangedCallback();
-   return changed;
-}
-
-void shutdownVfs(void)
-{
-   pollThreadStop = 1;
-   if (pollThreadRunning) { joinThread(pollThreadTid); pollThreadRunning = 0; }
-
-   for (int i = 0; i < backendCount; i++)
-      if (backends[i].shutdown) backends[i].shutdown();
-   lockMounts();
-   mountCount = 0;
-   unlockMounts();
-   backendCount = 0;
-   lastScan     = 0;   // don't debounce the next initVfs against this lifetime's last scan
-   polling      = 0;
-   initialized  = 0;
-}
-
-void registerVfsBackend(VfsProbeResult (*probe)(int port), void (*release)(int port), void (*shutdown)(void))
-{
-   if (backendCount >= VFS_MAX_BACKENDS) return;
-   backends[backendCount].probe    = probe;
-   backends[backendCount].release  = release;
-   backends[backendCount].shutdown = shutdown;
-   backendCount++;
-}
+// section: mount registry
 
 // publishes a mounted volume. reuses a withdrawn slot when one is free so repeated
 // hotplug cycles can't exhaust the table. returns 0, or -1 if the table is full.

@@ -4,8 +4,8 @@ PS3 homebrew file browser with a sprite-based UI. Sony official SDK 4.75, target
 
 ## Features
 
-- **Directory browsing** — navigates the full filesystem starting from `/`, with exFAT USB drives mounted alongside the HDD
-- **Removable USB (exFAT)** — exFAT-formatted USB drives, which the PS3 firmware itself can't read, are mounted by a built-in hand-written exFAT driver and appear at the root as `/exfat0`, `/exfat1`, … beside the cellFs devices. Fully read/write (browse, copy, move, delete, rename, new file/folder), with superfloppy, MBR- and GPT-partitioned sticks supported. Insertion and ejection are detected automatically (hotplug); removable volumes are marked with a USB badge on the folder icon, and pulling a stick you're inside drops you back to root
+- **Directory browsing** — navigates the full filesystem starting from `/`, with exFAT and NTFS USB drives mounted alongside the HDD
+- **Removable USB (exFAT + NTFS)** — exFAT- and NTFS-formatted USB drives, which the PS3 firmware itself can't read, are mounted by built-in hand-written drivers and appear at the root as `/exfat0`, `/exfat1`, … and `/ntfs0`, `/ntfs1`, … beside the cellFs devices. Fully read/write (browse, copy, move, delete, rename, new file/folder), with superfloppy, MBR- and GPT-partitioned sticks supported. Insertion and ejection are detected automatically (hotplug); removable volumes are marked with a USB badge on the folder icon, and pulling a stick you're inside drops you back to root
 - **File-type icons** — classifies files into 12 types (folder, text, audio, video, image, executable, compressed, disc ISO, package, document, database, generic) with per-type sprite icons
 - **File metadata columns** — rows show `Type | Size | Modified`, with Modified displayed in local time as `DD/MM/YY HH:MM`
 - **Breadcrumb navigation** — path-driven breadcrumb bar with chevron separators, rebuilt on directory change
@@ -56,9 +56,9 @@ All filesystem access goes through the `simple-lib-core` **VFS** (`vfs.h` /
 `file.h`), a single `/`-rooted namespace over the cellFs devices (HDD, FAT32
 USB) and the built-in exFAT backend — so the browser, copy/move/delete workers
 and the folder-sizer never special-case a filesystem. `main.c` brings the VFS up
-(`initVfs` + `initExfat`) and drives hotplug from the main loop (`pollMounts`);
-when the mount set changes, the root listing refreshes so inserted/ejected USB
-volumes appear and disappear.
+(`initVfs`, which registers the exFAT and NTFS backends and starts the VFS-owned
+hotplug poll thread); the app registers a mounts-changed callback so the root
+listing refreshes when the poll thread sees an inserted/ejected USB volume.
 
 `home.c` is the screen orchestrator: it owns shared resources (font,
 spritesheet, click sfx), wires the widgets and overlays, and routes

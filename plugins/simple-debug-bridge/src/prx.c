@@ -13,7 +13,6 @@
 #include "dbg.h"
 #include "syscall.h"
 #include "server.h"
-#include "vfs.h"   // shutdownVfs
 
 SYS_MODULE_INFO(SimpleDebugBridge, 0, 1, 0);
 SYS_MODULE_START(_start);
@@ -34,8 +33,7 @@ int _start(uint64_t arg)
 int _stop(void)
 {
    logInfo("[sdb] _stop\n");
-   stopServer();      // joins the connection threads first: no VFS user remains
-   shutdownVfs();     // release any volume the dispatch path mounted
+   stopServer();      // joins the connection threads first
    prxFinalizeSelf();
    return SYS_PRX_STOP_OK;
 }

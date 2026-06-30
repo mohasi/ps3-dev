@@ -38,6 +38,7 @@
    <ClCompile Include="src\printf.c" />
    <ClCompile Include="src\dir-playlist.c" />
    <ClCompile Include="src\vfs.c" />
+   <ClCompile Include="src\vfs-init.c" />
    <ClCompile Include="src\cellfs.c" />
    <ClCompile Include="src\exfat.c" />
    <ClCompile Include="src\ntfs.c" />
@@ -50,6 +51,7 @@
    <ClInclude Include="include\format.h" />
    <ClInclude Include="include\dir-playlist.h" />
    <ClInclude Include="include\vfs.h" />
+   <ClInclude Include="include\vfs-internal.h" />
    <ClInclude Include="include\cellfs.h" />
    <ClInclude Include="include\exfat.h" />
    <ClInclude Include="include\ntfs.h" />

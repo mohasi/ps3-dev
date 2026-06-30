@@ -472,9 +472,11 @@ static void runAcceptLoop(uint64_t arg)
    }
    logInfo("[sdb] xmb ready\n");
 
-   // bring up the VFS now that the system is ready (it owns its own hotplug poll
-   // thread); lets file commands reach exFAT/NTFS volumes, not just cellFs.
-   initVfs();
+   // The VFS is intentionally NOT brought up here: the bridge's file commands only
+   // need cellFs (HDD / dev_flash / kernel FAT32 USB), which the dispatch wrappers
+   // route to without initVfs. Skipping bringup keeps the exFAT/NTFS drivers out of
+   // this sprx (this linker can't strip them once initVfs/shutdownVfs are linked).
+   // Use FTP or the file-manager to reach exFAT/NTFS sticks.
 
    int fd      = -1;
    int retries = 0;

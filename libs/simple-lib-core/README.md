@@ -28,12 +28,12 @@ to link into `vsh.self` PRXs; apps link it the same way.
 - **file** — filesystem helpers (`readFile`, `writeFile`, `fileExists`,
   `makeDir`, `deleteFile`, `deleteTree`, `copyFile`, `copyTree`,
   `moveTree`) routed through the **vfs** layer below, so they work on the HDD,
-  FAT32 USB (cellFs) and exFAT volumes alike — plus libc-free path utilities
+  FAT32 USB (cellFs), exFAT and NTFS volumes alike — plus libc-free path utilities
   (`joinPath`, `toParentPath`,
   `getParentPath`, `getExtension`, `getBaseName`, `deviceRootOf`, `isValidFileName`,
   `isDir`, `formatSize`, `MAX_PATH_LEN`). The inline helpers are
   header-only; the cancellable, byte-reporting tree operations live in
-  `src/file.c`: `measureTree`, `copyTreeProgress`, `deleteTreeProgress`,
+  `src/vfs.c`: `measureTree`, `copyTreeProgress`, `deleteTreeProgress`,
   `mergeTreeProgress` (merge into an existing tree, replacing or keeping
   colliding file leaves), and `countTreeConflicts` (how many files a merge
   would land on, capped for a quick none/one/many check). Each takes
@@ -42,17 +42,20 @@ to link into `vsh.self` PRXs; apps link it the same way.
   and accurate free-space reporting.
 - **vfs** — the one filesystem abstraction every consumer goes through.
   A single `/`-rooted namespace where cellFs devices (`/dev_hdd0`, kernel-mounted
-  FAT32 `/dev_usb000`) and virtual exFAT mounts (`/exfat0` …) sit side by side;
+  FAT32 `/dev_usb000`) and virtual exFAT / NTFS mounts (`/exfat0` …, `/ntfs0` …) sit side by side;
   `resolvePath` routes each call to the right backend (unmatched paths pass
   through to cellFs unchanged). Ops: `statPath`, `openDir`/`readDir`/`closeDir`,
   `openFs`/`readFs`/`writeFs`/`seekFs`/`fsyncFs`, `renamePath`, `makeDirPath`,
   `removeFilePath`/`removeDirPath`, `getFreeSpace`, `listMounts`, `getScheme`.
   The VFS owns USB hotplug detection (device presence is format-agnostic) and
   offers each newly-present device to registered backends via
-  `registerVfsBackend(probe, release, shutdown)` — cellFs is built in, exFAT (and
-  later NTFS) register at runtime. Lifecycle (`initVfs` / `pollMounts` /
-  `shutdownVfs`) is driven by the host: the app's main loop, or a plugin's own
-  thread — never on a request-serving path.
+  `registerVfsBackend(probe, release, shutdown)` — cellFs is built in, exFAT and
+  NTFS register at runtime. The router (`vfs.c`) names no concrete backend; the
+  bringup that does (`initVfs` / `shutdownVfs` + the hotplug poll thread) lives in
+  a separate TU, `vfs-init.c`, so a consumer that only routes paths links `vfs.c`
+  alone and never pulls the exFAT/NTFS drivers (this linker can't strip
+  unreachable code). `initVfs` is driven by the host: the app's main loop, or a
+  plugin's own thread — never on a request-serving path.
 - **exfat** — hand-written, libc-free exFAT reader/writer for removable USB
   volumes via the LV2 storage manager: mount (superfloppy, MBR- and GPT-
   partitioned), directory listing, stat, free space, and read / write / create /
@@ -60,9 +63,15 @@ to link into `vsh.self` PRXs; apps link it the same way.
   via `initExfat()`, so callers reach exFAT through the same VFS API as the HDD.
   No FAT12/16/32 and no formatting. Cross-checked against ChaN's FatFs and
   validated with exfatprogs `fsck`.
+- **ntfs** — hand-written, libc-free NTFS reader/writer for removable USB volumes
+  via the LV2 storage manager: mount (MBR- and GPT-partitioned), directory
+  listing, stat, free space, and read / write / create / delete / rename.
+  Registers as a VFS backend via `initNtfs()` (probed after exFAT, claims only
+  `NTFS`-labelled volumes), so callers reach NTFS through the same VFS API as the
+  HDD. No formatting. Validated against libntfs-3g on a raw image.
 - **usb-storage** — header-only USB mass-storage device layer (`getUsbDeviceId`,
   `isUsbDevicePresent`, `getStorageInfo`) shared by the VFS hotplug detection and
-  the exFAT backend, so device identity/presence lives in one place.
+  the exFAT/NTFS backends, so device identity/presence lives in one place.
 - **thread** — `spawnThread()` PPU-thread spawn helper and stack-size
   constants.
 - **ftp** — shared anonymous FTP server, managed as a singleton
@@ -101,7 +110,9 @@ simple-lib-core/
 │   ├── dbg.h
 │   ├── file.h
 │   ├── vfs.h            # filesystem abstraction (router + backend contract)
+│   ├── vfs-internal.h   # registry-lock primitives shared by vfs.c / vfs-init.c
 │   ├── exfat.h          # exFAT reader/writer (VFS backend)
+│   ├── ntfs.h           # NTFS reader/writer (VFS backend)
 │   ├── usb-storage.h    # shared USB device id / presence / info
 │   ├── ftp.h
 │   ├── thread.h
@@ -111,8 +122,11 @@ simple-lib-core/
 │   └── bridge-client.h
 └── src/
    ├── ftp.c             # shared FTP server implementation
-   ├── vfs.c             # path-scheme router + cellFs/root backends + hotplug
+   ├── vfs.c             # path-scheme router + mount registry (names no backend)
+   ├── vfs-init.c        # VFS bringup: registers exFAT/NTFS + USB hotplug thread
+   ├── cellfs.c          # default cellFs + synthetic-root backend
    ├── exfat.c           # hand-written exFAT reader/writer backend
+   ├── ntfs.c            # hand-written NTFS reader/writer backend
    ├── printf.c
    └── file.c            # cancellable tree ops (measure/copy/delete/merge/count)
 ```
@@ -135,7 +149,9 @@ simple-lib-core/
 Most utilities (`dbg.h`, `thread.h`, `string-utilities.h`, `wire.h`,
 `log-backlog.h`, `bridge-client.h`, `usb-storage.h`, and the lighter half of
 `file.h`) are `static inline`. The compiled units are `printf.c`, `file.c`,
-`ftp.c`, `vfs.c`, and `exfat.c` (`file.c` holds the recursive tree operations;
-`vfs.c` the filesystem router + cellFs backend + USB hotplug; `exfat.c` the
-exFAT backend; `ftp.c` the shared FTP server). The library has no dependencies on
+`ftp.c`, `vfs.c`, `vfs-init.c`, `cellfs.c`, `exfat.c`, and `ntfs.c` (`vfs.c` is
+the filesystem router + mount registry + recursive tree operations, naming no
+backend; `vfs-init.c` brings the VFS up — registers exFAT/NTFS and runs the USB
+hotplug thread; `cellfs.c` the default HDD/FAT32 backend; `exfat.c` / `ntfs.c`
+the removable-media backends; `ftp.c` the shared FTP server). The library has no dependencies on
 `simple-lib-plugin` or `simple-lib-app` — those depend on it, not the other way around.

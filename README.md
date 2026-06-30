@@ -118,7 +118,7 @@ animation, input, and screen/overlay lifecycle. See
 ### file-manager
 PS3 file browser with sprite-based UI. Features directory listing with file-type
 icons, checkboxes, breadcrumb navigation, hold-to-scroll, image/audio viewers,
-read/write access to **exFAT USB drives** (via the shared VFS, with hotplug), and
+read/write access to **exFAT and NTFS USB drives** (via the shared VFS, with hotplug), and
 a sprite atlas generated at build time via `sprite-packer`. See
 `apps/file-manager/README.md` for details.
 

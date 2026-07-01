@@ -18,6 +18,7 @@
 #include "overlays/confirm-overlay.h"
 #include "overlays/image-viewer-overlay.h"
 #include "overlays/audio-player-overlay.h"
+#include "overlays/text-editor-overlay.h"
 #include "image-loader.h"
 #include "pad.h"
 #include <stdio.h>
@@ -356,9 +357,16 @@ static int selectedIsPlayableAudio(void)
          isPlayableAudioFile(entries[selectedIndex].name);
 }
 
+// whether the selected row is a text file the editor can open.
+static int selectedIsTextFile(void)
+{
+   if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
+   return entries[selectedIndex].type == FILE_TYPE_TEXT;
+}
+
 // cross handler: folders enter, supported images open in the viewer, playable audio opens in
-// the player. anything else has no default action (the button is disabled for it, see
-// syncFooterButtons), so this is a no-op in that case.
+// the player, text files open in the editor. anything else has no default action (the button
+// is disabled for it, see syncFooterButtons), so this is a no-op in that case.
 static void activateSelectedEntry(void)
 {
    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
@@ -373,6 +381,7 @@ static void activateSelectedEntry(void)
 
    if (selectedIsViewableImage())      openImageViewer(full);
    else if (selectedIsPlayableAudio()) openAudioPlayer(full);
+   else if (selectedIsTextFile())      openTextEditor(full);
 }
 
 static void goToParentDir(void)
@@ -391,7 +400,8 @@ static void syncFooterButtons(void)
    int isFolder   = hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER;
    int isAnyImage = hasSelection && entries[selectedIndex].type == FILE_TYPE_IMAGE;
    int isAnyAudio = hasSelection && entries[selectedIndex].type == FILE_TYPE_AUDIO;
-   int isOpenable = selectedIsViewableImage() || selectedIsPlayableAudio();
+   int isAnyText  = hasSelection && entries[selectedIndex].type == FILE_TYPE_TEXT;
+   int isOpenable = selectedIsViewableImage() || selectedIsPlayableAudio() || selectedIsTextFile();
 
    // enabled for folders and openable media; any image/audio (even an unsupported codec)
    // still reads "Open", just greyed out when we can't decode it.
@@ -400,7 +410,7 @@ static void syncFooterButtons(void)
    // only retouch the label when the cross action actually changes, so we
    // don't re-rasterize the glyphs every frame.
    static int crossShowsOpen = -1;
-   int showsOpen = isAnyImage || isAnyAudio;
+   int showsOpen = isAnyImage || isAnyAudio || isAnyText;
    if (showsOpen != crossShowsOpen) {
       setFooterButtonText(PAD_BTN_CROSS, showsOpen ? "Open" : "Enter");
       crossShowsOpen = showsOpen;

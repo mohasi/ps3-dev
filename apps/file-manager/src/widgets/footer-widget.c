@@ -6,7 +6,7 @@
 #include "ui/label.h"
 
 #define FOOTER_MAX_BUTTONS      8
-#define FOOTER_X               95
+#define FOOTER_X               35   // matches text-editor-overlay's own footer row
 #define FOOTER_Y             1015
 #define FOOTER_TEXT_SIZE       20
 #define FOOTER_GROUP_GAP       80

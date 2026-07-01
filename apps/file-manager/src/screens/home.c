@@ -15,6 +15,7 @@
 #include "overlays/progress-overlay.h"
 #include "overlays/image-viewer-overlay.h"
 #include "overlays/audio-player-overlay.h"
+#include "overlays/text-editor-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
 #include "string-utilities.h"
@@ -81,11 +82,12 @@ static void initHome(void)
    initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
    initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
    initFooterWidget(&pop, sprites);
-   initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 1200, 74, 24, COLOR_WHITE, &breadcrumb);
+   initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 1024, 74, 24, COLOR_WHITE, &breadcrumb);
    initSidepanel(sprites, &clickSfx, dispatchAction);
    initConfirmOverlay(sprites, &clickSfx);
    initProgressOverlay(sprites, &clickSfx);
    initAudioPlayerOverlay(sprites);
+   initTextEditorOverlay(sprites);
    addFooterButton(PAD_BTN_TRIANGLE, spriteRegions[SPRITE_TRIANGLE], "Options", openSidepanel);
    addFooterButton(PAD_BTN_SELECT, spriteRegions[SPRITE_SELECT], "Start FTP Server", toggleFtpServer);
 
@@ -109,7 +111,8 @@ static inline int anyOverlayVisible(void)
       || isOverlayVisible(&confirmOverlay)
       || isOverlayVisible(&progressOverlay)
       || isOverlayVisible(&imageViewerOverlay)
-      || isOverlayVisible(&audioPlayerOverlay);
+      || isOverlayVisible(&audioPlayerOverlay)
+      || isOverlayVisible(&textEditorOverlay);
 }
 
 static void updateHome(void)
@@ -124,6 +127,7 @@ static void updateHome(void)
    updateOverlay(&progressOverlay);
    updateOverlay(&imageViewerOverlay);
    updateOverlay(&audioPlayerOverlay);
+   updateOverlay(&textEditorOverlay);
 
    if (!overlayWasVisible) {
       updateFooterWidget();
@@ -144,6 +148,7 @@ static void drawHome(void)
    drawFooterWidget();
    drawOverlay(&imageViewerOverlay);
    drawOverlay(&audioPlayerOverlay);
+   drawOverlay(&textEditorOverlay);
    drawOverlay(&sidepanel);
    drawOverlay(&confirmOverlay);
    drawOverlay(&progressOverlay);
@@ -154,6 +159,7 @@ static void suspendHome(void) {}
 static void termHome(void)
 {
    stopFtpServer();
+   termOverlay(&textEditorOverlay);
    termOverlay(&audioPlayerOverlay);
    termOverlay(&imageViewerOverlay);
    termOverlay(&progressOverlay);

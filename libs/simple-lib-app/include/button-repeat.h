@@ -1,12 +1,15 @@
 #pragma once
 
-// button-repeat - turns "press" + "hold" into a repeating fire signal.
+// button-repeat - turns "press" + "hold" into a repeating fire signal, accelerating
+// the longer the button stays held.
 //
 // each axis the caller cares about (e.g. an up/down scroll axis) gets one
-// ButtonRepeat. call isRepeatDue() with the current pad state for each button
-// on that axis; it returns true the frame the button should fire. on initial
-// press it fires immediately, then while held it fires once after
-// BUTTON_HOLD_INITIAL_US and then every BUTTON_HOLD_REPEAT_US.
+// ButtonRepeat. call isRepeatDue() with the current pad state for each button on
+// that axis; it returns true the frame the button should fire. on initial press
+// it fires immediately, then while held it fires once after BUTTON_HOLD_INITIAL_US,
+// every BUTTON_HOLD_REPEAT_US after that, and every BUTTON_HOLD_FAST_US once held
+// past BUTTON_HOLD_FAST_AFTER repeats - so a long hold (e.g. paging through many
+// rows/columns) speeds up instead of crawling at the same rate the whole time.
 
 #include "pad.h"
 #include <stdint.h>
@@ -14,6 +17,8 @@
 
 #define BUTTON_HOLD_INITIAL_US 300000  // delay before the first auto-repeat
 #define BUTTON_HOLD_REPEAT_US   60000  // interval between subsequent auto-repeats
+#define BUTTON_HOLD_FAST_AFTER     10  // repeats at the base rate before speeding up
+#define BUTTON_HOLD_FAST_US     20000  // interval once accelerated
 
 typedef struct {
    uint64_t timer;
@@ -29,7 +34,9 @@ static inline int isRepeatDue(ButtonRepeat *r, PadButtonState state)
    }
    if (state == PAD_BUTTON_STATE_HELD) {
       uint64_t now       = sys_time_get_system_time();
-      uint64_t threshold = r->repeats == 0 ? BUTTON_HOLD_INITIAL_US : BUTTON_HOLD_REPEAT_US;
+      uint64_t threshold = BUTTON_HOLD_REPEAT_US;
+      if (r->repeats == 0) threshold = BUTTON_HOLD_INITIAL_US;
+      else if (r->repeats >= BUTTON_HOLD_FAST_AFTER) threshold = BUTTON_HOLD_FAST_US;
       if (now - r->timer >= threshold) {
          r->timer = now;
          r->repeats++;

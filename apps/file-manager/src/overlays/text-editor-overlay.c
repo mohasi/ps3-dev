@@ -18,6 +18,7 @@
 #include "button-repeat.h"
 #include "dynarray.h"
 #include "vfs.h"
+#include "dbg.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -423,12 +424,14 @@ void initTextEditorOverlay(GfxTexture sprites)
 {
    monoFont   = openFontFile(FONT_PATH);
    headerFont = openSystemFont(FONT_POP);
+   if (!monoFont.open) logError("[text-editor] failed to open mono font: %s\n", FONT_PATH);
 
    // snap every glyph advance to a whole pixel: without this, the font's true
    // (fractional) advance drifts from our integer charWidth*column math a little
    // more each character, until the caret visibly lags behind the real glyphs.
    setFontMetrics(&monoFont, FONT_METRICS_GRID_CEIL, 1.0f);
    charWidth = (int)measureFontText(&monoFont, FONT_SIZE, "0");   // monospace: any glyph is representative
+   if (charWidth <= 0) charWidth = 1;                             // font failed to open: avoid a divide-by-zero below
    visibleCols = BODY_WIDTH / charWidth;
 
    // the caret's height is the font's line-box height, not any one line's actual

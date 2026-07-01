@@ -167,7 +167,7 @@ void updateAnim(Anims *a)
       if (!a->slots[i].active || a->slots[i].paused) continue;
 
       uint64_t elapsed = now - a->slots[i].startUs;
-      float t = (float)elapsed / (float)a->slots[i].durationUs;
+      float t = (a->slots[i].durationUs == 0) ? 1.0f : (float)elapsed / (float)a->slots[i].durationUs;
 
       if (t >= 1.0f) {
          switch (a->slots[i].repeat) {

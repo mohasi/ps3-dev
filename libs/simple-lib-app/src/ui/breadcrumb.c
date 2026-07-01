@@ -17,10 +17,12 @@ void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor,
    b->chevronTex = chevronTex;
    b->chevronW = chevronSrc.w;
    b->chevronH = chevronSrc.h;
-   b->chevronU0 = (float)chevronSrc.x / (float)chevronTex.w;
-   b->chevronV0 = (float)chevronSrc.y / (float)chevronTex.h;
-   b->chevronU1 = (float)(chevronSrc.x + chevronSrc.w) / (float)chevronTex.w;
-   b->chevronV1 = (float)(chevronSrc.y + chevronSrc.h) / (float)chevronTex.h;
+   if (chevronTex.w > 0 && chevronTex.h > 0) {
+      b->chevronU0 = (float)chevronSrc.x / (float)chevronTex.w;
+      b->chevronV0 = (float)chevronSrc.y / (float)chevronTex.h;
+      b->chevronU1 = (float)(chevronSrc.x + chevronSrc.w) / (float)chevronTex.w;
+      b->chevronV1 = (float)(chevronSrc.y + chevronSrc.h) / (float)chevronTex.h;
+   }
    setBreadcrumbPath(b, "/");
 }
 

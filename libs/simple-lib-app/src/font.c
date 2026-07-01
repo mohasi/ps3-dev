@@ -12,6 +12,7 @@
 #include "vfs.h"
 
 static const int FONT_MAX_RENDER_W = 1024;
+static const size_t FONT_MAX_SURFACE_BYTES = 16u * 1024u * 1024u;   // sanity cap for the rasterize() scratch buffer
 
 static const CellFontLibrary *fontLib = NULL;
 static CellFontRenderer       fontRenderer;
@@ -128,6 +129,7 @@ static void parseSfntMetrics(Font *f, const uint8_t *buf, uint32_t size)
       if (rec + 16u > size) break;
       const uint8_t *tag = buf + rec;
       uint32_t off = sfntU32(buf + rec + 8);
+      if (off > size) continue;   // reject bogus offsets before they can overflow the checks below
       if (tag[0]=='h'&&tag[1]=='e'&&tag[2]=='a'&&tag[3]=='d') headOff = off;
       else if (tag[0]=='h'&&tag[1]=='h'&&tag[2]=='e'&&tag[3]=='a') hheaOff = off;
    }
@@ -192,20 +194,6 @@ Font openFontMemory(const void *buf, uint32_t size)
       f.buffer = own;  // closeFont frees it
       cellFontSetResolutionDpi(&f.font, 72, 72);
       parseSfntMetrics(&f, (const uint8_t *)own, size);   // hhea/head metrics for the faithful line height
-      // DIAGNOSTIC (data-driven, not a guess): cellFont is FreeType-backed, so its advance for a glyph
-      // should equal the font's hmtx advance scaled. Log cellFont's advance for 'M'/'a'/' ' at em=1000
-      // so it can be compared directly to the font's hmtx (font units): if cellFont reports MORE, it is
-      // rendering this (OTF/CFF) font wider than its metrics -> the early-wrap cause + the size factor.
-      {
-         cellFontSetScalePixel(&f.font, 1000.0f, 1000.0f);
-         CellFontGlyphMetrics gm; float aM=0,aa=0,asp=0;
-         if (cellFontGetCharGlyphMetrics(&f.font, 'M', &gm) == CELL_OK) aM = gm.Horizontal.advance;
-         if (cellFontGetCharGlyphMetrics(&f.font, 'a', &gm) == CELL_OK) aa = gm.Horizontal.advance;
-         if (cellFontGetCharGlyphMetrics(&f.font, ' ', &gm) == CELL_OK) asp = gm.Horizontal.advance;
-         // NOTE: the homebrew printf has no %f -> log integers (x10 for one decimal of resolution).
-         logInfo("[font] upm=%d hheaAsc=%d hheaDesc=%d  cellFont adv@em1000 x10: M=%d a=%d space=%d\n",
-                 f.unitsPerEm, f.hheaAscent, f.hheaDescent, (int)(aM*10+0.5f), (int)(aa*10+0.5f), (int)(asp*10+0.5f));
-      }
    } else {
       logError("[font] cellFontOpenFontMemory failed: 0x%x (size=%u)\n", ret, size);
       free(own);
@@ -551,7 +539,9 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
    int surfH = (int)(lineH * lineCount + fsize) + 4;
    if (hasShadow && sdy > 0) surfH += sdy;   // room for the shadow below the last line
 
-   int bufSize = surfW * surfH * 4;
+   size_t bufSize64 = (size_t)surfW * (size_t)surfH * 4u;
+   if (bufSize64 == 0 || bufSize64 > FONT_MAX_SURFACE_BYTES) { free(items); free(lineW); return NULL; }
+   int bufSize = (int)bufSize64;
    uint8_t *buf = (uint8_t *)malloc(bufSize);
    if (!buf) { free(items); free(lineW); return NULL; }
    memset(buf, 0, bufSize);
@@ -774,7 +764,9 @@ static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uin
 
    // reuse the existing slot when the new content still fits its high-water size.
    if (tt->valid && drawW <= tt->slotW && drawH <= tt->slotH) {
-      // overwrite in place -- updateGfxTexture clears stale pixels
+      // overwrite in place -- updateGfxTexture clears stale pixels. finishGfx first: the RSX
+      // may still be sampling this slot for a draw call queued from the previous frame.
+      finishGfx();
       updateGfxTexture(tt->tex.offset, buf, drawW, drawH, surfW * 4, tt->slotW, tt->slotH);
       tt->tex.w = drawW;
       tt->tex.h = drawH;

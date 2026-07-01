@@ -2,7 +2,7 @@
 // Double-buffered, uncapped. Shader-based batched quad renderer.
 #include "gfx.h"
 #include "colors.h"
-#include <stdio.h>
+#include "dbg.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -24,6 +24,9 @@
 // max quads per frame (6 verts each)
 #define MAX_QUADS         4096
 #define MAX_VERTS         (MAX_QUADS * 6)
+
+// RSX hard limit on texture/surface dimensions (mirrors image-loader.c's MAX_TEX_DIM)
+#define MAX_TEX_DIM       4096
 
 typedef struct {
    float x, y, z;
@@ -66,6 +69,7 @@ static uint32_t   batchColOffset[FRAME_COUNT];
 static uint32_t   batchUvOffset[FRAME_COUNT];
 static int        batchVertCount = 0;
 static int        batchFlushStart = 0;
+static int        batchOverflowWarned = 0;   // logs the full-batch warning once per frame, not once per dropped draw call
 
 // shader state
 extern struct _CGprogram _binary_vpshader_vpo_start;
@@ -150,7 +154,7 @@ void *allocateVram(size_t size, size_t alignment)
       return block->addr;
    }
 
-   printf("[gfx] allocateVram: out of VRAM (%zu bytes)\n", size);
+   logError("[gfx] allocateVram: out of VRAM (%zu bytes)\n", size);
    return NULL;
 }
 
@@ -256,13 +260,13 @@ int initGfx(GfxVsync vsync)
    // allocate host-side command buffer pool
    void *hostAddr = memalign(1024 * 1024, HOST_MEM_SIZE);
    if (!hostAddr) {
-      printf("[gfx] memalign host failed\n");
+      logError("[gfx] memalign host failed\n");
       return -1;
    }
 
    ret = cellGcmInit(CMD_BUFFER_SIZE, HOST_MEM_SIZE, hostAddr);
    if (ret < 0) {
-      printf("[gfx] cellGcmInit failed: 0x%08x\n", ret);
+      logError("[gfx] cellGcmInit failed: 0x%08x\n", ret);
       return ret;
    }
 
@@ -288,7 +292,7 @@ int initGfx(GfxVsync vsync)
 
    ret = cellVideoOutConfigure(CELL_VIDEO_OUT_PRIMARY, &videoCfg, 0, 0);
    if (ret < 0) {
-      printf("[gfx] cellVideoOutConfigure: 0x%08x\n", ret);
+      logError("[gfx] cellVideoOutConfigure: 0x%08x\n", ret);
       return ret;
    }
 
@@ -312,7 +316,7 @@ int initGfx(GfxVsync vsync)
 
       ret = cellGcmAddressToOffset(addr, &frameOffset[i]);
       if (ret < 0) {
-         printf("[gfx] cellGcmAddressToOffset[%d]: 0x%08x\n", i, ret);
+         logError("[gfx] cellGcmAddressToOffset[%d]: 0x%08x\n", i, ret);
          return ret;
       }
 
@@ -321,7 +325,7 @@ int initGfx(GfxVsync vsync)
 
       ret = cellGcmSetDisplayBuffer(i, frameOffset[i], framePitch, screenW, screenH);
       if (ret < 0) {
-         printf("[gfx] cellGcmSetDisplayBuffer[%d]: 0x%08x\n", i, ret);
+         logError("[gfx] cellGcmSetDisplayBuffer[%d]: 0x%08x\n", i, ret);
          return ret;
       }
    }
@@ -371,7 +375,7 @@ int initGfx(GfxVsync vsync)
       cellGcmAddressToOffset(&batchVerts[i][0].u, &batchUvOffset[i]);
    }
 
-   printf("[gfx] ready: %d x %d, pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, framePitch, getUsedVram(), vramSize);
+   logInfo("[gfx] ready: %d x %d, pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, framePitch, getUsedVram(), vramSize);
    return 0;
 }
 
@@ -418,6 +422,7 @@ void beginGfxFrame(void)
    batchTexH = 1;
    batchTexPitch = 64;
    batchTexLinear = 0;
+   batchOverflowWarned = 0;
 }
 
 void clearGfx(uint32_t argb)
@@ -451,11 +456,22 @@ static void ensureWhiteTex(void)
    }
 }
 
+// batch is full for this frame: log once per frame (not once per dropped draw call) and drop the call.
+static int batchWouldOverflow(int vertsNeeded)
+{
+   if (batchVertCount + vertsNeeded <= MAX_VERTS) return 0;
+   if (!batchOverflowWarned) {
+      logWarn("[gfx] batch full (%d verts/frame): dropping further draw calls this frame\n", MAX_VERTS);
+      batchOverflowWarned = 1;
+   }
+   return 1;
+}
+
 void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb)
 {
    if (!initialized) return;
    ensureWhiteTex();
-   if (batchVertCount + 6 > MAX_VERTS) return;
+   if (batchWouldOverflow(6)) return;
 
    if (x < 0) { w += x; x = 0; }
    if (y < 0) { h += y; y = 0; }
@@ -483,7 +499,7 @@ void drawGfxTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32
 {
    if (!initialized) return;
    ensureWhiteTex();
-   if (batchVertCount + 3 > MAX_VERTS) return;
+   if (batchWouldOverflow(3)) return;
 
    float invW = 2.0f / (float)targetW;
    float invH = 2.0f / (float)targetH;
@@ -528,7 +544,7 @@ void fillGfxCircle(int cx, int cy, int r, uint32_t argb)
 {
    if (!initialized || r <= 0) return;
    ensureWhiteTex();
-   if (batchVertCount + CIRCLE_SEGMENTS * 3 > MAX_VERTS) return;
+   if (batchWouldOverflow(CIRCLE_SEGMENTS * 3)) return;
 
    uint32_t rgba = argbToRgba(argb);
    float fcx = toClipX(cx);
@@ -614,7 +630,7 @@ void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
       batchTexLinear = filter;
    }
 
-   if (batchVertCount + 6 > MAX_VERTS) return;
+   if (batchWouldOverflow(6)) return;
 
    float cx0 = (float)x / (float)targetW * 2.0f - 1.0f;
    float cy0 = 1.0f - (float)y / (float)targetH * 2.0f;
@@ -700,7 +716,7 @@ void freeGfxTexture(GfxTexture *tex)
 
 int createGfxRenderTarget(GfxRenderTarget *rt, int w, int h)
 {
-   if (!initialized || !rt || w <= 0 || h <= 0) return -1;
+   if (!initialized || !rt || w <= 0 || h <= 0 || w > MAX_TEX_DIM || h > MAX_TEX_DIM) return -1;
    uint32_t pitch = ((uint32_t)(w * 4) + 63) & ~63;   // RSX color-surface pitch: 64B multiple
    uint32_t size  = pitch * (uint32_t)h;
    void *pixels = allocateVram(size, 128);            // 128B align (>= color-surface req)
@@ -758,6 +774,7 @@ void freeGfxRenderTarget(GfxRenderTarget *rt)
 
 uint32_t uploadGfxTexture(const void *rgba, int w, int h, int srcPitch)
 {
+   if (w <= 0 || h <= 0 || w > MAX_TEX_DIM || h > MAX_TEX_DIM) return 0;
    uint32_t alignedPitch = ((uint32_t)(w * 4) + 63) & ~63;
    uint32_t size = alignedPitch * (uint32_t)h;
    void *pixels = allocateVram(size, 64);

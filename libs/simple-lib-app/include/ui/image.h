@@ -17,7 +17,7 @@ static inline void initImage(Image *img, GfxTexture tex, int x, int y, int w, in
    img->filter = filter;
    img->x = x;
    img->y = y;
-   if (src.w > 0 && src.h > 0) {
+   if (src.w > 0 && src.h > 0 && tex.w > 0 && tex.h > 0) {
       img->w = w > 0 ? w : src.w;
       img->h = h > 0 ? h : src.h;
       img->u0 = (float)src.x / (float)tex.w;

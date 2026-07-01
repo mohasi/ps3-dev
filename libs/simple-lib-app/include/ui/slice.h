@@ -22,6 +22,11 @@ static inline void initSlice(Slice *s, GfxTexture tex, int x, int y, int w, int 
    s->w = w;
    s->h = h;
    s->capW = capW;
+   if (tex.w <= 0 || tex.h <= 0) {
+      s->v0 = s->v1 = 0.0f;
+      s->uLeft0 = s->uLeft1 = s->uMid0 = s->uMid1 = s->uRight0 = s->uRight1 = 0.0f;
+      return;
+   }
    s->v0 = (float)src.y / (float)tex.h;
    s->v1 = (float)(src.y + src.h) / (float)tex.h;
    s->uLeft0  = (float)src.x / (float)tex.w;
@@ -77,6 +82,11 @@ static inline void initNineSlice(NineSlice *s, GfxTexture tex, int x, int y, int
    s->capW = capW; s->capH = capH;
    s->dstCapW = capW; s->dstCapH = capH;
    s->tint = 0xFFFFFFFFu;
+   if (tex.w <= 0 || tex.h <= 0) {
+      s->uL0 = s->uL1 = s->uM0 = s->uM1 = s->uR0 = s->uR1 = 0.0f;
+      s->vT0 = s->vT1 = s->vM0 = s->vM1 = s->vB0 = s->vB1 = 0.0f;
+      return;
+   }
    s->uL0 = (float)src.x              / (float)tex.w;
    s->uL1 = (float)(src.x + capW)     / (float)tex.w;
    s->uM0 = s->uL1;

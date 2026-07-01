@@ -10,7 +10,7 @@ The goal is to be as simple as possible — one job, no bloat. An FTP plugin sho
 
 The plugin starts with the VSH, waits for XMB readiness, then starts the shared `simple-lib-core` FTP server on port 21. The shared server best-effort mounts `/dev_blind` so that `/dev_flash` is writable over the connection (the same "Enable /dev_blind on startup" behaviour webMAN-MOD exposes as an option). Once you're connected you can browse, download, upload, delete, rename, and make directories anywhere on the filesystem. Every error path logs a timestamped line to `/dev_hdd0/tmp/dbg.txt` — if something goes wrong, that's the first place to look.
 
-**exFAT and NTFS USB drives** are exposed too. The plugin brings up the shared VFS, so exFAT- and NTFS-formatted sticks (which the PS3 firmware itself can't read) appear at the root as `/exfat0`, `/exfat1`, … and `/ntfs0`, `/ntfs1`, … beside the cellFs devices, and are fully readable and writable over the connection — the same drivers the file-manager uses. Insertion/removal is detected by a ~1 Hz hotplug poll; because FTP is client-driven, a connected client only sees a newly-inserted or ejected stick after it refreshes the listing (navigating "up" usually shows a cached listing).
+Only cellFs-backed storage (`/dev_hdd0`, FAT32 USB sticks) is exposed. This plugin does not bring up the shared VFS, so exFAT- and NTFS-formatted USB drives are not readable or writable over the connection, and none of that driver code links into the build.
 
 ## Installation
 
@@ -26,7 +26,7 @@ Port 21 is a hard requirement — if another FTP server is already bound there (
 
 ## How it works
 
-The PRX side is deliberately thin: it registers with the debug bridge, waits for XMB, and calls the shared `simple-lib-core` FTP startup API on port 21. After the server is up, the same plugin thread brings up the VFS (`initVfs`, which registers the exFAT and NTFS backends and starts the VFS-owned hotplug poll thread) — that poll thread runs deliberately *off* the FTP listener/session path, so a slow or contended USB storage probe can never stall accepting or serving a connection (the FTP server itself stays filesystem-agnostic and never brings up the VFS). The shared server owns one listener thread, a fixed two-entry session pool, and a dedicated PPU thread per accepted client. Each session thread parses the control channel, opens an OS-assigned PASV data socket per transfer, and runs until the client sends `QUIT` or the connection drops. Up to two concurrent sessions are supported — one is too tight for WinSCP, which opens a second control channel for its editor flows.
+The PRX side is deliberately thin: it registers with the debug bridge, waits for XMB, and calls the shared `simple-lib-core` FTP startup API on port 21. It never calls `initVfs`, so the exFAT/NTFS backends and the VFS hotplug poll thread never link in or run — the FTP server still routes paths through the shared VFS, but only the built-in cellFs route is ever reachable. The shared server owns one listener thread, a fixed two-entry session pool, and a dedicated PPU thread per accepted client. Each session thread parses the control channel, opens an OS-assigned PASV data socket per transfer, and runs until the client sends `QUIT` or the connection drops. Up to two concurrent sessions are supported — one is too tight for WinSCP, which opens a second control channel for its editor flows.
 
 Directory listings are RFC 3659 only (`MLSD` / `MLST` / `MDTM`). `LIST` and `NLST` aren't implemented. Every modern client prefers MLSD when `FEAT` advertises it, and dropping the old listing formats removes a lot of ls-style formatting and timezone bookkeeping that MLSD doesn't need. Timestamps are sourced from the Cell RTC rather than libc's `time()`/`gmtime()`, which don't reliably resolve from a PRX.
 
@@ -34,9 +34,9 @@ The protocol behaviour was cross-checked against IRISMAN and webMAN-MOD during d
 
 ## Memory footprint
 
-The static session pool is the dominant cost: two `FtpSession` structs at roughly 141 KB each (128 KB transfer buffer, 8 KB MLSD staging buffer, 3 KB of command/path/rename-from buffers), so about 282 KB of BSS regardless of whether anyone's connected. The exFAT and NTFS backends add tens of KB of static sector buffers (a 32 KB read bounce plus a few 4 KB caches). On top of that, the listener thread has a 6 KB stack; the startup plugin thread keeps a 16 KB stack and now lives for the plugin's life as the hotplug poller (`exfatMount` borrows the operational caches as scratch rather than putting sector buffers on this stack, so 16 KB stays comfortable). When a client is actively connected, its session thread adds another 16 KB of stack.
+The static session pool is the dominant cost: two `FtpSession` structs at roughly 141 KB each (128 KB transfer buffer, 8 KB MLSD staging buffer, 3 KB of command/path/rename-from buffers), so about 282 KB of BSS regardless of whether anyone's connected. Since this plugin never calls `initVfs`, the exFAT and NTFS backends and the VFS hotplug poll thread don't link in at all. On top of that, the listener thread has a 6 KB stack; the startup plugin thread keeps a 16 KB stack and exits once the FTP server is up. When a client is actively connected, its session thread adds another 16 KB of stack.
 
-At rest: roughly 350 KB. With two concurrent clients: roughly 380 KB.
+At rest: roughly 300 KB. With two concurrent clients: roughly 330 KB.
 
 ## Stability and speed
 

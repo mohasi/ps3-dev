@@ -10,7 +10,6 @@
 #include "vsh.h"
 #include "syscall.h"
 #include "ftp.h"
-#include "vfs.h"
 #include "thread.h"
 #include "bridge-client.h"
 
@@ -42,9 +41,6 @@ static void pluginThread(uint64_t arg)
       return;
    }
 
-   // Bring up the VFS (exFAT backend + path routing). It owns its own 8 KB hotplug
-   // poll thread, so there's nothing to drive here; this boot thread is done.
-   initVfs();
    exitThread();
 }
 

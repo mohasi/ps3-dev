@@ -16,8 +16,8 @@ static const ActionPresentation table[ACTION_COUNT] = {
    [ACTION_NEW_FILE]   = { "New File",   "Create a new file here.",               SPRITE_NEW_FILE   },
    [ACTION_NEW_FOLDER] = { "New Folder", "Create a new folder here.",             SPRITE_NEW_FOLDER },
    [ACTION_EDIT]       = { "Edit",       "Open the selected file in an editor.",  SPRITE_EDIT       },
-   [ACTION_ZIP]        = { "Zip",        "Compress selected file(s) to archive.", SPRITE_COMPRESSED },
-   [ACTION_UNZIP]      = { "Unzip",      "Extract the selected archive.",         SPRITE_PACKAGE    },
+   [ACTION_ZIP]        = { "Zip",        "Compress selected file(s) to archive.", SPRITE_ZIP        },
+   [ACTION_UNZIP]      = { "Unzip",      "Extract the selected archive.",         SPRITE_UNZIP      },
    [ACTION_MOUNT]      = { "Mount",      "Mount the selected disc image.",        SPRITE_DISC_ISO   },
    [ACTION_PROPERTIES] = { "Properties", "Show details about the selection.",     SPRITE_INFO       },
 };

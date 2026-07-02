@@ -64,3 +64,15 @@ void copySelection(void);
 // (a background worker), then refreshes the listing. see runPaste (paste.h)
 // for the move/copy/overwrite/no-op semantics.
 void pasteClipboard(void);
+
+// zips the current selection (checked rows, or the active row when none are
+// checked) into name within the current directory, via the progress overlay.
+// a free name zips at once; a collision with an existing file opens a Replace /
+// Cancel prompt (mirrors createFile); a collision with a folder is refused.
+void zipSelectionTo(const char *name);
+
+// extracts the active row (must be a .zip file, per getAvailableActions) into a
+// new subfolder named after the archive, via the progress overlay. a free name
+// extracts at once; an existing subfolder merges in with a Replace All / Keep
+// All prompt for file collisions inside it.
+void unzipActive(void);

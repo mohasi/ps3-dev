@@ -42,6 +42,7 @@
    <ClCompile Include="src\cellfs.c" />
    <ClCompile Include="src\exfat.c" />
    <ClCompile Include="src\ntfs.c" />
+   <ClCompile Include="src\zip.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\ftp.h" />
@@ -63,6 +64,7 @@
    <ClInclude Include="include\bridge-client.h" />
    <ClInclude Include="include\sha1.h" />
    <ClInclude Include="include\network.h" />
+   <ClInclude Include="include\zip.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="README.md" />

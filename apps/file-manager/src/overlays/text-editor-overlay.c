@@ -68,7 +68,7 @@
 
 // own footer row (Exit only for now - no edit handler yet), independent of the
 // file list's shared footer widget
-#define FOOTER_X         35
+#define FOOTER_X         51
 #define FOOTER_Y        998
 #define FOOTER_TEXT_SIZE 20
 
@@ -101,7 +101,7 @@
 #define COLOR_LINE_NUMBER_ACTIVE COLOR_WHITE
 
 // caret: a blinking bar between characters, one character-column wide
-#define CARET_W           2
+#define CARET_W            2
 #define CARET_BLINK_US     500000
 #define CARET_SETTLE_US    300000   // holds solid for this long after a move, so scrolling doesn't look like blinking
 

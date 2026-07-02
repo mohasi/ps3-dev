@@ -3,6 +3,8 @@
 #include "overlays/confirm-overlay.h"
 #include "osk-input.h"
 #include "dbg.h"
+#include "path.h"
+#include "string-utilities.h"
 #include <stdio.h>
 
 // default field text the keyboard opens with for each kind of create.
@@ -21,6 +23,7 @@ static void onDeleteConfirmed(ConfirmChoice choice)
 static void onRenameDone(const char *text)    { if (text) renameActiveTo(text); }
 static void onNewFileDone(const char *text)    { if (text) createFile(text); }
 static void onNewFolderDone(const char *text)  { if (text) createFolder(text); }
+static void onZipNameDone(const char *text)    { if (text) zipSelectionTo(text); }
 
 void dispatchAction(SelectionAction action)
 {
@@ -59,6 +62,27 @@ void dispatchAction(SelectionAction action)
 
       case ACTION_NEW_FOLDER:
          oskInputBegin("New Folder", NEW_FOLDER_DEFAULT, onNewFolderDone);
+         break;
+
+      case ACTION_ZIP: {
+         // default text: the active entry's name with its extension swapped for
+         // .zip (a folder's name has none, so it's just appended).
+         const char *name = getActiveEntryName();
+         if (!name) break;
+
+         char defaultName[MAX_PATH_LEN];
+         strCopy(defaultName, sizeof defaultName, name);
+         const char *ext = getExtension(defaultName);
+         if (ext) defaultName[ext - 1 - defaultName] = '\0';   // cut at the '.'
+         int offset = getStrLen(defaultName);
+         appendStr(defaultName, sizeof defaultName, &offset, ".zip");
+         defaultName[offset] = '\0';   // appendStr does not terminate - leaves trailing stack garbage otherwise
+         oskInputBegin("Zip", defaultName, onZipNameDone);
+         break;
+      }
+
+      case ACTION_UNZIP:
+         unzipActive();
          break;
 
       default:

@@ -11,6 +11,8 @@
 #include "clipboard.h"
 #include "paste.h"
 #include "delete.h"
+#include "zip-task.h"
+#include "unzip-task.h"
 #include "vfs.h"
 #include "file-task.h"
 #include "dynarray.h"
@@ -608,6 +610,7 @@ void termFileList(void)
    entryCapacity = 0;
    freeDelete();
    freeClipboard();
+   freeZip();
 }
 
 static SelectionSummary summary;
@@ -686,18 +689,46 @@ const SelectionSummary *getSelectionSummary(void)
    return &summary;
 }
 
+// true when name's extension is ".zip" (case-insensitive).
+static int hasZipExtension(const char *name)
+{
+   const char *ext = getExtension(name);
+   return ext && strCmpICase(ext, "zip") == 0;
+}
+
+// true when the active row is the entire target - nothing else checked, and if the
+// active row itself is checked, that's fine too - and that row is a .zip file. unzip
+// operates on entries[selectedIndex] alone (see unzipActive), so this is also exactly
+// "unzip is offered": a checked row other than the active one disqualifies it, same as
+// two or more checked rows would.
+static int targetIsSingleZipFile(void)
+{
+   if (entryCount == 0) return 0;
+   int checkedCount = countChecked(NULL);
+   if (checkedCount > 1) return 0;
+   if (checkedCount == 1 && !entries[selectedIndex].checked) return 0;
+   if (entries[selectedIndex].type == FILE_TYPE_FOLDER) return 0;
+   return hasZipExtension(entries[selectedIndex].name);
+}
+
 // cut, copy and delete apply to any non-empty selection (one row or many).
 // paste is offered whenever the clipboard holds something - even in an empty
 // directory, since pasting there is valid. rename follows delete and acts on the
 // active row alone (ignoring checkboxes), so it is offered whenever the directory
-// is non-empty. order is cut, copy, paste, delete, rename.
+// is non-empty. zip and unzip are opposites of the same single-zip-target check:
+// unzip needs exactly that one target and it to be a zip (zipping a lone zip is
+// pointless, and unzip only ever acts on the active row - see targetIsSingleZipFile);
+// zip is offered in every other non-empty case. order is cut, copy, paste, delete,
+// rename, zip, unzip.
 const SelectionAction *getAvailableActions(int *outCount)
 {
-   static SelectionAction list[7];
+   static SelectionAction list[9];
    int n = 0;
    if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
    if (!isClipboardEmpty())  list[n++] = ACTION_PASTE;
    if (entryCount > 0)     { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
+   if (entryCount > 0 && !targetIsSingleZipFile()) list[n++] = ACTION_ZIP;
+   if (targetIsSingleZipFile())                    list[n++] = ACTION_UNZIP;
    // creation always applies to the current directory, even when it is empty.
    list[n++] = ACTION_NEW_FILE;
    list[n++] = ACTION_NEW_FOLDER;
@@ -761,6 +792,15 @@ static int createNewEntry(const char *name, int isFolder)
 // time (the overlay is modal), so a single buffer is enough. sized to a full path
 // since isValidFileName admits names up to MAX_PATH_LEN.
 static char pendingName[MAX_PATH_LEN];
+
+// the active row's name and scroll offset just before a zip/unzip task launches, so a
+// cancelled or failed run can restore the exact prior view instead of landing on row 0
+// (pendingName's target never got created, so selectEntryByName(pendingName) fails) - and
+// selectEntryByName's own scrollToSelected only guarantees the row is visible, not that the
+// scroll offset matches what it was before, so the offset is restored separately.
+static char preTaskName[NAME_LEN];
+static int  preTaskScrollOffset;
+
 static char mergeBuf[64 * 1024];   // payload scratch for a synchronous rename-merge
 
 // how a merge resolves a file-leaf collision; also what the cross/circle answer
@@ -1038,4 +1078,149 @@ void pasteClipboard(void)
    // ask how to resolve collisions up front (and only when they exist) via the
    // shared prompt, then run the paste with the chosen policy.
    promptMergeConflicts(countClipboardConflicts(MANY_CONFLICTS), onPasteConflictResolved);
+}
+
+// a completed zip parks the cursor on the new archive; a cancelled or failed run
+// restores the cursor to wherever it was before the task launched (partial output,
+// if any, is left in place - matches the paste/delete convention).
+static void onZipFinished(int cancelled)
+{
+   loadDir(currentPath);
+   if (!cancelled && !zipHadError()) {
+      selectEntryByName(pendingName);
+   } else {
+      // seed scrollOffset with the pre-task value so selectEntryByName's own
+      // scrollToSelected() keeps it as-is when the row is still in view, and only
+      // adjusts (in whichever direction) when the reload actually moved it out of view -
+      // overwriting scrollToSelected's result afterward would drop its bottom-edge clamp.
+      scrollOffset = preTaskScrollOffset;
+      selectEntryByName(preTaskName);
+   }
+   if (!cancelled && zipHadError())
+      askConfirm("Zip Failed", "The archive could not be created.", "OK", NULL, NULL, NULL);
+}
+
+static void startZipRun(void)
+{
+   startProgress("Zipping...", "Please wait while the selected items are compressed.", runZip, onZipFinished);
+}
+
+// the Replace/Cancel answer for a zip name colliding with an existing file.
+static void onZipReplaceConfirmed(ConfirmChoice choice)
+{
+   if (choice == CONFIRM_CROSS) startZipRun();
+}
+
+// zips the current selection (checked rows, or the active row when none are
+// checked) into name within the current directory. a free name zips at once; a
+// collision with an existing file opens a Replace / Cancel prompt (mirrors
+// createFile); a collision with a folder is refused outright, same as createFile.
+void zipSelectionTo(const char *name)
+{
+   if (entryCount == 0) return;
+   if (!isValidFileName(name)) return;
+
+   char destPath[MAX_PATH_LEN];
+   if (!joinPath(destPath, MAX_PATH_LEN, currentPath, name)) return;
+   if (isDir(destPath)) return;
+
+   int checkedCount = countChecked(NULL);
+   char full[MAX_PATH_LEN];
+
+   // refuse outright if the archive would overwrite one of the very items being
+   // zipped: zipPathsProgress truncates destPath before reading its sources, so a
+   // name collision here would corrupt that source out from under itself. compared
+   // case-insensitively since exFAT/NTFS treat differently-cased paths as the same file.
+   for (int i = 0; i < entryCount; i++) {
+      if (!entryTargeted(i, checkedCount)) continue;
+      if (!joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name)) return;
+      if (strCmpICase(full, destPath) == 0) {
+         askConfirm("Cannot Zip", "That name matches one of the items being zipped. Choose a different name.",
+                    "OK", NULL, NULL, NULL);
+         return;
+      }
+   }
+
+   strCopy(pendingName, sizeof pendingName, name);
+   strCopy(preTaskName, sizeof preTaskName, entries[selectedIndex].name);
+   preTaskScrollOffset = scrollOffset;
+   setZipDest(destPath);
+
+   beginZip();
+   for (int i = 0; i < entryCount; i++) {
+      if (!entryTargeted(i, checkedCount)) continue;
+      if (!joinPath(full, MAX_PATH_LEN, currentPath, entries[i].name)) break;
+      if (addToZip(full) != 0) break;
+   }
+
+   if (!fileExists(destPath)) { startZipRun(); return; }
+
+   char msg[MAX_PATH_LEN + 32];
+   snprintf(msg, sizeof msg, "\"%s\" already exists. Replace it?", name);
+   askConfirm("Replace File", msg, "Replace", NULL, "Cancel", onZipReplaceConfirmed);
+}
+
+// a completed unzip parks the cursor on the extracted subfolder; a cancelled or
+// failed run restores the cursor to wherever it was before the task launched
+// (partial output, if any, is left in place).
+static void onUnzipFinished(int cancelled)
+{
+   loadDir(currentPath);
+   if (!cancelled && !unzipHadError()) {
+      selectEntryByName(pendingName);
+   } else {
+      // see onZipFinished for why scrollOffset is seeded before, not overwritten after.
+      scrollOffset = preTaskScrollOffset;
+      selectEntryByName(preTaskName);
+   }
+   if (!cancelled && unzipHadError())
+      askConfirm("Extraction Failed", "The archive could not be fully extracted.", "OK", NULL, NULL, NULL);
+}
+
+static void startUnzipRun(void)
+{
+   startProgress("Extracting...", "Please wait while the archive is extracted.", runUnzip, onUnzipFinished);
+}
+
+// the Replace All/Keep All answer for extracting on top of an existing subfolder.
+static void onUnzipConflictResolved(ConfirmChoice choice)
+{
+   setUnzipReplaceOnConflict(replaceChosen(choice));
+   startUnzipRun();
+}
+
+// extracts the active row (a .zip file, per getAvailableActions's gating) into a
+// new subfolder named after the archive. a free name extracts at once; an
+// existing subfolder merges in, with a Replace All / Keep All prompt for file
+// collisions inside it.
+void unzipActive(void)
+{
+   if (entryCount == 0) return;
+
+   char zipPath[MAX_PATH_LEN], destDir[MAX_PATH_LEN], stem[NAME_LEN];
+   if (!joinPath(zipPath, MAX_PATH_LEN, currentPath, entries[selectedIndex].name)) return;
+
+   // strip the ".zip" extension (4 chars); relies on getAvailableActions's hasZipExtension
+   // gate having already confirmed the active row ends in ".zip".
+   strCopy(stem, sizeof stem, entries[selectedIndex].name);
+   int dot = getStrLen(stem) - 4;
+   if (dot > 0) stem[dot] = '\0';
+
+   if (!joinPath(destDir, MAX_PATH_LEN, currentPath, stem)) return;
+   strCopy(pendingName, sizeof pendingName, stem);
+   strCopy(preTaskName, sizeof preTaskName, entries[selectedIndex].name);
+   preTaskScrollOffset = scrollOffset;
+
+   setUnzipSource(zipPath);
+   setUnzipDest(destDir);
+
+   if (!fileExists(destDir)) { setUnzipReplaceOnConflict(REPLACE_EXISTING); startUnzipRun(); return; }
+   if (!isDir(destDir)) return;   // a file sits where the subfolder would go: refuse, same as createFile
+
+   // unlike promptMergeConflicts, this can't first count actual collisions - doing so would
+   // mean opening and walking the archive's central directory a second time just to ask the
+   // question. so the wording stays generic ("its files") rather than the 0/1/many phrasing
+   // rename/paste use, even though the folder existing doesn't guarantee any file collides.
+   askConfirm("Extracting Archive", "A folder with this name already exists. Replace its files?",
+              "Replace All", NULL, "Keep All", onUnzipConflictResolved);
 }

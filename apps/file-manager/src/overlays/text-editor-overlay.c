@@ -14,10 +14,12 @@
 #include "ui/image.h"
 #include "ui/button.h"
 #include "ui/slice.h"
+#include "ui/scrollbar.h"
 #include "sprite-regions.h"
 #include "button-repeat.h"
 #include "dynarray.h"
 #include "vfs.h"
+#include "format.h"
 #include "dbg.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,7 +84,6 @@
 #define SCROLLBAR_THUMB_W       10
 #define SCROLLBAR_THUMB_CAP      5   // the pill's rounded-end radius (half its native width)
 #define SCROLLBAR_THUMB_MIN_H   40
-#define SCROLLBAR_THUMB_X       (SCROLLBAR_X + (SCROLLBAR_W - SCROLLBAR_THUMB_W) / 2)
 
 // body text area stops short of the scrollbar track rather than running under it
 #define TEXT_GAP_BEFORE_SCROLLBAR 10
@@ -105,6 +106,19 @@
 #define CARET_BLINK_US     500000
 #define CARET_SETTLE_US    300000   // holds solid for this long after a move, so scrolling doesn't look like blinking
 
+// status bar: size | position | encoding | line ending, below the panel's bottom
+// separator. right-aligned within its block, so it stays flush with the panel's
+// right edge regardless of how wide the segments are.
+#define STATUS_X         1330
+#define STATUS_Y          917
+#define STATUS_W          522
+#define STATUS_H           27
+#define STATUS_TEXT_SIZE   20
+#define STATUS_GAP         40   // gap between adjacent segments; each "|" sits centred in it
+#define STATUS_TEXT_Y      (STATUS_Y + (STATUS_H - STATUS_TEXT_SIZE) / 2 + 2)
+
+typedef enum { LINE_ENDING_NONE, LINE_ENDING_LF, LINE_ENDING_CRLF, LINE_ENDING_CR } LineEnding;
+
 static struct {
    char  *buffer;        // whole file content, NUL-terminated; '\n'/'\r' replaced with '\0' in place
    char **lines;         // pointers into buffer, one per line
@@ -118,7 +132,9 @@ static struct {
    int scrollCol;    // first visible character column, shared by every visible row
    int rowsStale;    // visible row labels need rebuilding
 
-   uint64_t lastMoveUs;   // when the cursor last moved; the caret holds solid for a bit after
+   uint64_t   lastMoveUs;    // when the cursor last moved; the caret holds solid for a bit after
+   uint64_t   fileSize;      // for the status bar's size segment
+   LineEnding lineEnding;    // the first line ending style seen in the file
 } state;
 
 static Font  monoFont;     // body text + line numbers
@@ -127,7 +143,7 @@ static Image headerIcon;
 static Label headerNameLabel;
 static Label headerStarLabel;
 static NineSlice panel;
-static NineSlice scrollThumb;
+static Scrollbar scrollbar;
 static Button exitFooterButton;
 static int   charWidth;    // monospace glyph advance in px, so column <-> pixel is exact
 static int   visibleCols;  // how many character columns BODY_WIDTH holds
@@ -142,7 +158,42 @@ static Label activeNumberLabels[EDITOR_PAGE_SIZE];
 static Label bodyLabels[EDITOR_PAGE_SIZE];
 static int   numberOffsetX[EDITOR_PAGE_SIZE];
 
+// status bar segments: size and line ending are set once per file open; position
+// is refreshed every cursor move; encoding is a fixed label (no detection yet).
+static Label sizeLabel, positionLabel, encodingLabel, lineEndingLabel, pipeLabel;
+
 static ButtonRepeat scrollUpRepeat, scrollDownRepeat, scrollLeftRepeat, scrollRightRepeat;
+
+static const char *lineEndingText(LineEnding le)
+{
+   switch (le) {
+      case LINE_ENDING_CRLF: return "CRLF";
+      case LINE_ENDING_CR:   return "CR";
+      case LINE_ENDING_LF:   return "LF";
+      default:               return "-";
+   }
+}
+
+// lays out the 4 status segments left to right, each followed by a "|" centred
+// in a STATUS_GAP-wide space before the next segment, then shifts the whole row
+// right so it ends flush with the block's right edge (STATUS_X + STATUS_W).
+static void drawStatusBar(void)
+{
+   Label *segments[] = { &sizeLabel, &positionLabel, &encodingLabel, &lineEndingLabel };
+
+   int totalWidth = 3 * (STATUS_GAP + pipeLabel.tt.tex.w);
+   for (int i = 0; i < 4; i++) totalWidth += segments[i]->tt.tex.w;
+
+   int x = STATUS_X + STATUS_W - totalWidth;
+   for (int i = 0; i < 4; i++) {
+      drawLabelAt(segments[i], x, STATUS_TEXT_Y);
+      x += segments[i]->tt.tex.w;
+      if (i == 3) break;
+      x += STATUS_GAP / 2;
+      drawLabelAt(&pipeLabel, x, STATUS_TEXT_Y);
+      x += pipeLabel.tt.tex.w + STATUS_GAP / 2;
+   }
+}
 
 // keeps the caret at least EDGE_MARGIN_COLS columns clear of either visible edge,
 // scrolling the whole viewport (every visible row) just enough to do so.
@@ -175,19 +226,6 @@ static int isCaretVisible(void)
    return ((sinceMove - CARET_SETTLE_US) / CARET_BLINK_US) % 2 == 0;
 }
 
-// thumb height shrinks with how much of the document one page covers; its travel
-// within the track is proportional to how far scrolled the document is. only
-// called once the document overflows one page (see draw()), so maxScroll > 0.
-static void computeScrollThumb(int *outY, int *outHeight)
-{
-   int height = (int)((int64_t)SCROLLBAR_H * EDITOR_PAGE_SIZE / state.lineCount);
-   if (height < SCROLLBAR_THUMB_MIN_H) height = SCROLLBAR_THUMB_MIN_H;
-
-   int maxScroll = state.lineCount - EDITOR_PAGE_SIZE;
-   *outY      = SCROLLBAR_Y + (SCROLLBAR_H - height) * state.scrollTop / maxScroll;
-   *outHeight = height;
-}
-
 static void freeDocument(void)
 {
    free(state.buffer);
@@ -206,15 +244,21 @@ static void addLine(char *start)
 
 // splits buffer in place on '\n' / '\r\n', NUL-terminating each line. a
 // trailing newline yields one extra empty final line, matching how most
-// editors count lines.
+// editors count lines. records the first line ending style seen into
+// state.lineEnding, for the status bar.
 static void splitDocumentLines(char *buffer)
 {
+   state.lineEnding = LINE_ENDING_NONE;
+
    char *lineStart = buffer;
    char *p = buffer;
    while (*p) {
       if (*p == '\n' || *p == '\r') {
          char *terminator = p;
-         if (*p == '\r' && p[1] == '\n') p++;   // CRLF: swallow both
+         LineEnding found = LINE_ENDING_LF;
+         if (*p == '\r' && p[1] == '\n') { found = LINE_ENDING_CRLF; p++; }   // CRLF: swallow both
+         else if (*p == '\r')              found = LINE_ENDING_CR;
+         if (state.lineEnding == LINE_ENDING_NONE) state.lineEnding = found;
          p++;
          *terminator = '\0';
          addLine(lineStart);
@@ -240,7 +284,8 @@ int openTextEditor(const char *path)
    }
 
    freeDocument();
-   state.buffer = buffer;
+   state.buffer   = buffer;
+   state.fileSize = fileStat.size;
    splitDocumentLines(state.buffer);
 
    state.cursorLine  = 0;
@@ -255,6 +300,12 @@ int openTextEditor(const char *path)
    setLabelText(&headerNameLabel, fileName);
    float nameWidth = measureFontText(&headerFont, HEADER_NAME_SIZE, fileName);
    moveLabel(&headerStarLabel, HEADER_NAME_X + (int)nameWidth + HEADER_STAR_GAP, HEADER_STAR_Y);
+
+   char sizeText[24];
+   formatSize(state.fileSize, sizeText);
+   setLabelText(&sizeLabel, sizeText);
+   setLabelText(&lineEndingLabel, lineEndingText(state.lineEnding));
+   setLabelText(&positionLabel, "Ln 1, Col 1");
 
    showOverlay(&textEditorOverlay);
    return 0;
@@ -292,6 +343,10 @@ static void rebuildRows(void)
       int startCol = state.scrollCol < lineLen ? state.scrollCol : lineLen;
       setLabelText(&bodyLabels[i], state.lines[idx] + startCol);
    }
+
+   char positionText[32];
+   snprintf(positionText, sizeof positionText, "Ln %d, Col %d", state.cursorLine + 1, state.cursorCol + 1);
+   setLabelText(&positionLabel, positionText);
 
    state.rowsStale = 0;
 }
@@ -390,14 +445,8 @@ static void draw(void)
       }
    }
 
-   if (state.lineCount > EDITOR_PAGE_SIZE) {
-      int thumbY, thumbHeight;
-      computeScrollThumb(&thumbY, &thumbHeight);
-      scrollThumb.x = SCROLLBAR_THUMB_X;
-      scrollThumb.y = thumbY;
-      scrollThumb.h = thumbHeight;
-      drawNineSlice(&scrollThumb);
-   }
+   drawScrollbar(&scrollbar, state.lineCount, EDITOR_PAGE_SIZE, state.scrollTop);
+   drawStatusBar();
 
    drawButton(&exitFooterButton);
 }
@@ -412,6 +461,11 @@ static void term(void)
    }
    freeLabel(&headerNameLabel);
    freeLabel(&headerStarLabel);
+   freeLabel(&sizeLabel);
+   freeLabel(&positionLabel);
+   freeLabel(&encodingLabel);
+   freeLabel(&lineEndingLabel);
+   freeLabel(&pipeLabel);
    freeButton(&exitFooterButton);
    closeFont(&monoFont);
    closeFont(&headerFont);
@@ -451,8 +505,8 @@ void initTextEditorOverlay(GfxTexture sprites)
    initLabel(&headerStarLabel, &headerFont, 0, 0, 20, AUTO, HEADER_NAME_SIZE, COLOR_RED, TEXT_NOWRAP, "*");
 
    initNineSlice(&panel, sprites, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
-   initNineSlice(&scrollThumb, sprites, SCROLLBAR_THUMB_X, SCROLLBAR_Y, SCROLLBAR_THUMB_W, SCROLLBAR_H,
-                 spriteRegions[SPRITE_VERTICAL_PILL], SCROLLBAR_THUMB_CAP, SCROLLBAR_THUMB_CAP);
+   initScrollbar(&scrollbar, sprites, SCROLLBAR_X, SCROLLBAR_Y, SCROLLBAR_W, SCROLLBAR_H,
+                 spriteRegions[SPRITE_VERTICAL_PILL], SCROLLBAR_THUMB_W, SCROLLBAR_THUMB_CAP, SCROLLBAR_THUMB_MIN_H);
 
    Image exitIcon;
    Label exitLabel;
@@ -466,4 +520,10 @@ void initTextEditorOverlay(GfxTexture sprites)
       initLabel(&activeNumberLabels[i], &monoFont, 0, 0, GUTTER_W,   AUTO, FONT_SIZE, COLOR_LINE_NUMBER_ACTIVE, TEXT_NOWRAP, "");
       initLabel(&bodyLabels[i],         &monoFont, 0, 0, BODY_WIDTH, AUTO, FONT_SIZE, COLOR_WHITE,              TEXT_NOWRAP_ELLIPSIS, "");
    }
+
+   initLabel(&sizeLabel,        &headerFont, 0, 0, AUTO, AUTO, STATUS_TEXT_SIZE, COLOR_WHITE,       TEXT_NOWRAP, "");
+   initLabel(&positionLabel,    &headerFont, 0, 0, AUTO, AUTO, STATUS_TEXT_SIZE, COLOR_WHITE,       TEXT_NOWRAP, "");
+   initLabel(&encodingLabel,    &headerFont, 0, 0, AUTO, AUTO, STATUS_TEXT_SIZE, COLOR_WHITE,       TEXT_NOWRAP, "UTF-8");
+   initLabel(&lineEndingLabel,  &headerFont, 0, 0, AUTO, AUTO, STATUS_TEXT_SIZE, COLOR_WHITE,       TEXT_NOWRAP, "");
+   initLabel(&pipeLabel,        &headerFont, 0, 0, AUTO, AUTO, STATUS_TEXT_SIZE, COLOR_LINE_NUMBER, TEXT_NOWRAP, "|");
 }

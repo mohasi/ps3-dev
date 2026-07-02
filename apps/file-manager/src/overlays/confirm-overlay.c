@@ -8,6 +8,7 @@
 #include "ui/label.h"
 #include "ui/image.h"
 #include "ui/slice.h"
+#include "ui/dialog-panel.h"
 #include "string-utilities.h"
 #include "sprite-regions.h"
 
@@ -16,21 +17,12 @@
 #define HIGHLIGHT_CAP  7    // highlight sprite (16x16) 9-slice corner cap
 #define TEXT_RIGHT_PAD 20
 
-// icons (dialog-relative)
+// icon + title/message (dialog-relative)
 #define WARNING_X      53
 #define WARNING_Y      50
 #define WARNING_W      75
 #define WARNING_H      70
 #define BUTTON_ICON    39   // native cross/square/circle glyph size
-
-// button row: glyphs sit on one line, each followed by its label. the whole set
-// is centered as a group (see draw), so only the row height and spacing are fixed.
-#define BUTTON_ROW_Y   192  // y of the glyph row
-#define ICON_LABEL_GAP 12   // space between a glyph and its own label
-#define BUTTON_GAP     60   // space between one button's label and the next glyph
-#define LABEL_DROP     10   // label y offset below the glyph top to center it
-
-// texts (dialog-relative)
 #define TITLE_X        168
 #define TITLE_Y        50
 #define TITLE_SIZE     24
@@ -39,13 +31,19 @@
 #define MESSAGE_SIZE   18
 #define BUTTON_SIZE    18
 
+// button row: glyphs sit on one line, each followed by its label. the whole set
+// is centered as a group (see draw), so only the row height and spacing are fixed.
+#define BUTTON_ROW_Y   192  // y of the glyph row
+#define ICON_LABEL_GAP 12   // space between a glyph and its own label
+#define BUTTON_GAP     60   // space between one button's label and the next glyph
+#define LABEL_DROP     10   // label y offset below the glyph top to center it
+
 // separator (dialog-relative)
 #define SEP_X          45
 #define SEP_Y          158
 #define SEP_W          550
 #define SEP_H          2
 
-#define COLOR_SCRIM     0xC8000000  // black at 200/255
 #define COLOR_DIALOG_BG 0xFF001636
 #define COLOR_SUBTITLE  0x80FFFFFF
 
@@ -56,7 +54,7 @@ static int             showSquare;  // 1 when the middle button is visible
 static int             showCircle;  // 1 when the circle button is visible (0 = single-OK alert)
 static int             armed;       // 0 on the frame we open so the opening press is ignored
 
-static NineSlice panel;
+static DialogPanel panel;
 static Slice     separator;
 static Image     warningIcon, crossIcon, squareIcon, circleIcon;
 static Label     titleLabel, messageLabel, yesLabel, squareLabel, noLabel;
@@ -66,7 +64,7 @@ void initConfirmOverlay(GfxTexture sprites, Audio *sfx)
    clickSfx = sfx;
    font     = openSystemFont(FONT_POP);
 
-   initNineSlice(&panel, sprites, 0, 0, DIALOG_W, DIALOG_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
+   initDialogPanel(&panel, sprites, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP);
    initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
 
    initImage(&warningIcon, sprites, 0, 0, WARNING_W,   WARNING_H,   spriteRegions[SPRITE_WARNING], GFX_FILTER_LINEAR);
@@ -119,17 +117,8 @@ static void update(void)
 
 static void draw(void)
 {
-   int sw = getGfxScreenWidth();
-   int sh = getGfxScreenHeight();
-   int dialogX = (sw - DIALOG_W) / 2;
-   int dialogY = (sh - DIALOG_H) / 2;
-
-   // dim the screen, then the dialog body and its rounded highlight border.
-   // the border is drawn white-tinted, so the body colour comes from the fill.
-   fillGfxRectangle(0, 0, sw, sh, COLOR_SCRIM);
-   fillGfxRectangle(dialogX, dialogY, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG);
-   moveNineSlice(&panel, dialogX, dialogY);
-   drawNineSlice(&panel);
+   drawDialogPanel(&panel);
+   int dialogX = panel.x, dialogY = panel.y;
 
    drawImageAt(&warningIcon,  dialogX + WARNING_X, dialogY + WARNING_Y);
    drawLabelAt(&titleLabel,   dialogX + TITLE_X,   dialogY + TITLE_Y);

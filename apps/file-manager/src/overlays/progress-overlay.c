@@ -10,6 +10,8 @@
 #include "ui/label.h"
 #include "ui/image.h"
 #include "ui/slice.h"
+#include "ui/dialog-panel.h"
+#include "ui/progress-bar.h"
 #include "string-utilities.h"
 #include "sprite-regions.h"
 
@@ -28,7 +30,7 @@
 
 // progress bar (dialog-relative). FRAME is the 8x8 9-slice border; the fill is
 // the 10x10 PROGRESS 9-slice, inset by BAR_PAD on every side so it never sits
-// flush against the frame edge.
+// flush against the frame edge. the percentage label sits PCT_GAP past the frame.
 #define FRAME_X        45
 #define FRAME_Y        150
 #define FRAME_W        487
@@ -36,11 +38,8 @@
 #define FRAME_CAP      3    // frame sprite is 8px; cap<4 leaves a stretchable middle
 #define BAR_PAD        5
 #define PROGRESS_CAP   4    // progress sprite is 10px
-#define BAR_MIN_W      (2 * PROGRESS_CAP)  // below this a 9-slice can't render cleanly
-
-// percentage label, to the right of the bar
-#define PCT_X          550
-#define PCT_W          (DIALOG_W - PCT_X - TEXT_RIGHT_PAD)
+#define PCT_GAP        18
+#define PCT_W          (DIALOG_W - FRAME_X - FRAME_W - PCT_GAP - TEXT_RIGHT_PAD)
 #define PCT_SIZE       20
 
 // separator (dialog-relative)
@@ -55,40 +54,35 @@
 #define CANCEL_GAP     10
 #define CANCEL_SIZE    18
 
-#define COLOR_SCRIM     0xC8000000  // black at 200/255
 #define COLOR_DIALOG_BG 0xFF001636
 #define COLOR_SUBTITLE  0x80FFFFFF
 
-static Font       font;
-static Audio     *clickSfx;
-static GfxTexture sprites;
+static Font font;
+static Audio *clickSfx;
 
-static NineSlice panel;
-static NineSlice frame;    // border around the bar
-static NineSlice barFill;  // the progress fill
+static DialogPanel panel;
+static ProgressBar bar;
 static Slice     separator;
 static Image     circleIcon;
-static Label     titleLabel, subtitleLabel, pctLabel, cancelLabel;
+static Label     titleLabel, subtitleLabel, cancelLabel;
 
 static ProgressDoneCallback onDoneCb;
 static int      cancelling;  // cancel requested, awaiting the worker to exit
 
-void initProgressOverlay(GfxTexture s, Audio *sfx)
+void initProgressOverlay(GfxTexture sprites, Audio *sfx)
 {
-   sprites  = s;
    clickSfx = sfx;
    font     = openSystemFont(FONT_POP);
 
-   initNineSlice(&panel,   sprites, 0, 0, DIALOG_W, DIALOG_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
-   initNineSlice(&frame,   sprites, 0, 0, FRAME_W, FRAME_H, spriteRegions[SPRITE_FRAME], FRAME_CAP, FRAME_CAP);
-   initNineSlice(&barFill, sprites, 0, 0, BAR_MIN_W, FRAME_H - 2 * BAR_PAD, spriteRegions[SPRITE_PROGRESS], PROGRESS_CAP, PROGRESS_CAP);
+   initDialogPanel(&panel, sprites, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP);
+   initProgressBar(&bar, sprites, &font, FRAME_W, FRAME_H, spriteRegions[SPRITE_FRAME], FRAME_CAP,
+                   spriteRegions[SPRITE_PROGRESS], PROGRESS_CAP, BAR_PAD, PCT_W, PCT_SIZE, COLOR_WHITE, PCT_GAP);
    initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
    initImage(&circleIcon, sprites, 0, 0, CANCEL_ICON, CANCEL_ICON, spriteRegions[SPRITE_CIRCLE], GFX_FILTER_LINEAR);
 
    initLabel(&titleLabel,    &font, 0, 0, DIALOG_W - TITLE_X - TEXT_RIGHT_PAD,    AUTO, TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
    initLabel(&subtitleLabel, &font, 0, 0, DIALOG_W - SUBTITLE_X - TEXT_RIGHT_PAD, AUTO, SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&pctLabel,      &font, 0, 0, PCT_W,  AUTO, PCT_SIZE,    COLOR_WHITE, TEXT_NOWRAP, "");
-   initLabel(&cancelLabel,   &font, 0, 0, 120,    AUTO, CANCEL_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Cancel");
+   initLabel(&cancelLabel,   &font, 0, 0, 120, AUTO, CANCEL_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Cancel");
 }
 
 void startProgress(const char *title, const char *subtitle, TaskBody run, ProgressDoneCallback onDone)
@@ -97,7 +91,6 @@ void startProgress(const char *title, const char *subtitle, TaskBody run, Progre
    cancelling = 0;
    setLabelText(&titleLabel,    strOrEmpty(title));
    setLabelText(&subtitleLabel, strOrEmpty(subtitle));
-   setLabelText(&pctLabel,      "0%");
 
    startTask(run);
    showOverlay(&progressOverlay);  // dialog shows from 0% while the task runs
@@ -129,47 +122,16 @@ static void update(void)
 
 static void draw(void)
 {
-   int sw = getGfxScreenWidth();
-   int sh = getGfxScreenHeight();
-   int dialogX = (sw - DIALOG_W) / 2;
-   int dialogY = (sh - DIALOG_H) / 2;
-
-   fillGfxRectangle(0, 0, sw, sh, COLOR_SCRIM);
-   fillGfxRectangle(dialogX, dialogY, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG);
-   moveNineSlice(&panel, dialogX, dialogY);
-   drawNineSlice(&panel);
+   drawDialogPanel(&panel);
+   int dialogX = panel.x, dialogY = panel.y;
 
    drawLabelAt(&titleLabel,    dialogX + TITLE_X,    dialogY + TITLE_Y);
    drawLabelAt(&subtitleLabel, dialogX + SUBTITLE_X, dialogY + SUBTITLE_Y);
 
-   // frame around the bar
-   moveNineSlice(&frame, dialogX + FRAME_X, dialogY + FRAME_Y);
-   drawNineSlice(&frame);
-
-   // fill, inset by BAR_PAD so it isn't flush with the frame
    uint64_t total = getTotalBytes();
    uint64_t done  = getProcessedBytes();
    int pct = total > 0 ? (int)((done * 100) / total) : 0;
-   if (pct < 0)   pct = 0;
-   if (pct > 100) pct = 100;
-
-   int barMaxW = FRAME_W - 2 * BAR_PAD;
-   int fillW   = barMaxW * pct / 100;
-   if (fillW > 0) {
-      if (fillW < BAR_MIN_W) fillW = BAR_MIN_W;  // keep the 9-slice legible
-      if (fillW > barMaxW)   fillW = barMaxW;
-      barFill.w = fillW;
-      moveNineSlice(&barFill, dialogX + FRAME_X + BAR_PAD, dialogY + FRAME_Y + BAR_PAD);
-      drawNineSlice(&barFill);
-   }
-
-   // percentage to the right of the bar, vertically centered to the frame
-   char pctStr[8];
-   int o = intToDec(pct, pctStr);
-   pctStr[o++] = '%';
-   pctStr[o]   = '\0';
-   setLabelText(&pctLabel, pctStr);
-   drawLabelAt(&pctLabel, dialogX + PCT_X, dialogY + FRAME_Y + (FRAME_H - PCT_SIZE) / 2);
+   drawProgressBarAt(&bar, dialogX + FRAME_X, dialogY + FRAME_Y, pct);
 
    moveSlice(&separator, dialogX + SEP_X, dialogY + SEP_Y);
    drawSlice(&separator);
@@ -186,7 +148,7 @@ static void term(void)
 {
    freeLabel(&titleLabel);
    freeLabel(&subtitleLabel);
-   freeLabel(&pctLabel);
+   freeProgressBar(&bar);
    freeLabel(&cancelLabel);
    closeFont(&font);
    progressOverlay.status = OVERLAY_TERMINATED;

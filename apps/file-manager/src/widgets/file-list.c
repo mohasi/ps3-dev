@@ -4,6 +4,7 @@
 #include "ui/image.h"
 #include "ui/slice.h"
 #include "ui/breadcrumb.h"
+#include "ui/checkbox.h"
 #include "widgets/footer-widget.h"
 #include "sprite-regions.h"
 #include "folder-sizer.h"
@@ -75,8 +76,7 @@ static int delTopmost;
 
 #define MARKED_ROW_ALPHA 0x80   // 50% opacity for rows pending a cut or copy
 
-static Image checkboxes[FILE_LIST_PAGE_SIZE];
-static Image checkedBoxes[FILE_LIST_PAGE_SIZE];
+static Checkbox checkboxes[FILE_LIST_PAGE_SIZE];
 static Image fileIcons[FILE_TYPE_COUNT];
 static Image usbIcon;   // badge composited onto USB device folders at root
 static Slice separators[FILE_LIST_PAGE_SIZE];
@@ -459,8 +459,7 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
       initLabel(&typeLabels[i], font, 1240, ry + 25, 140, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
       initLabel(&sizeLabels[i], font, 1430, ry + 25, 130, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
       initLabel(&modifiedLabels[i], font, 1635, ry + 25, 240, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-      initImage(&checkboxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX], GFX_FILTER_LINEAR);
-      initImage(&checkedBoxes[i], spritesheet, 71, cy, 25, 25, spriteRegions[SPRITE_CHECKBOX_CHECKED], GFX_FILTER_LINEAR);
+      initCheckbox(&checkboxes[i], spritesheet, 71, cy, 25, spriteRegions[SPRITE_CHECKBOX], spriteRegions[SPRITE_CHECKBOX_CHECKED]);
       initSlice(&separators[i], spritesheet, 47, ry - 1, 1884 - 47, 2, spriteRegions[SPRITE_SEPARATOR], 1);
    }
 
@@ -565,11 +564,7 @@ void drawFileList(void)
       // rows on the clipboard (cut or copy) render ghosted at 50% opacity
       int alpha = entryIsMarked(idx) ? MARKED_ROW_ALPHA : 0xFF;
 
-      // draw checkbox
-      if (entries[idx].checked)
-         drawImageAlpha(&checkedBoxes[i], alpha);
-      else
-         drawImageAlpha(&checkboxes[i], alpha);
+      drawCheckboxAlpha(&checkboxes[i], entries[idx].checked, alpha);
 
       // draw type icon (and a centred USB badge for removable devices at root)
       int iconY = listY + i * listRowHeight + (listRowHeight - 43) / 2;

@@ -47,6 +47,9 @@
    <ClCompile Include="src\ui\label.c" />
    <ClCompile Include="src\ui\breadcrumb.c" />
    <ClCompile Include="src\ui\stats.c" />
+   <ClCompile Include="src\ui\scrollbar.c" />
+   <ClCompile Include="src\ui\dialog-panel.c" />
+   <ClCompile Include="src\ui\progress-bar.c" />
    <ClCompile Include="src\timer.c" />
    <ClCompile Include="src\file-task.c" />
    <ClCompile Include="src\osk-input.c" />
@@ -73,6 +76,10 @@
    <ClInclude Include="include\ui\triangle.h" />
    <ClInclude Include="include\ui\line.h" />
    <ClInclude Include="include\ui\slice.h" />
+   <ClInclude Include="include\ui\scrollbar.h" />
+   <ClInclude Include="include\ui\dialog-panel.h" />
+   <ClInclude Include="include\ui\progress-bar.h" />
+   <ClInclude Include="include\ui\checkbox.h" />
    <ClInclude Include="include\timer.h" />
    <ClInclude Include="include\button-repeat.h" />
    <ClInclude Include="include\dynarray.h" />

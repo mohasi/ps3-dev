@@ -37,8 +37,8 @@ static void initDemo(void)
 
    makoto = loadGfxTexture("/dev_hdd0/game/APPSMP001/USRDIR/makoto.png");
 
-   sfxMakoto = loadSfx("/dev_hdd0/game/APPSMP001/USRDIR/makoto.wav", SFX_MEMORY);
-   bgm = loadSfx("/dev_hdd0/game/APPSMP001/USRDIR/price.ogg", SFX_STREAM);
+   sfxMakoto = loadAudio("/dev_hdd0/game/APPSMP001/USRDIR/makoto.wav", AUDIO_MEMORY);
+   bgm = loadAudio("/dev_hdd0/game/APPSMP001/USRDIR/price.ogg", AUDIO_STREAM);
 
    pop = openSystemFont(FONT_POP);
 
@@ -58,8 +58,8 @@ static void initDemo(void)
 
 static void resumeDemo(void)
 {
-   resumeSfx(&sfxMakoto);
-   resumeSfx(&bgm);
+   resumeAudio(&sfxMakoto);
+   resumeAudio(&bgm);
    resumeAnim(&anims);
 }
 
@@ -68,20 +68,20 @@ static void updateDemo(void)
    updateAnim(&anims);
 
    if (isPadButtonPressed(PAD_BTN_CROSS))
-      playSfx(&sfxMakoto, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, SFX_LOOP);
+      playAudio(&sfxMakoto, AUDIO_DEFAULT_VOLUME, AUDIO_DEFAULT_SPEED, AUDIO_NO_LOOP);
 
    if (isPadButtonPressed(PAD_BTN_START)) {
-      if (bgm.state == SFX_STATE_PLAYING)
-         stopSfx(&bgm);
+      if (bgm.state == AUDIO_STATE_PLAYING)
+         stopAudio(&bgm);
       else
-         playSfx(&bgm, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 1);
+         playAudio(&bgm, AUDIO_DEFAULT_VOLUME, AUDIO_DEFAULT_SPEED, 1);
    }
 
    if (isPadButtonPressed(PAD_BTN_UP))
-      raiseSfxMasterVolume(0.1f);
+      raiseAudioMasterVolume(0.1f);
 
    if (isPadButtonPressed(PAD_BTN_DOWN))
-      lowerSfxMasterVolume(0.1f);
+      lowerAudioMasterVolume(0.1f);
 
    if (isPadButtonPressed(PAD_BTN_RIGHT)) {
       pushScreen(&paletteScreen);
@@ -122,8 +122,8 @@ static void drawDemo(void)
 
 static void suspendDemo(void)
 {
-   pauseSfx(&sfxMakoto);
-   pauseSfx(&bgm);
+   pauseAudio(&sfxMakoto);
+   pauseAudio(&bgm);
    pauseAnim(&anims);
 }
 
@@ -142,8 +142,8 @@ static void termDemo(void)
    freeGfxTexture(&makoto);
 
    closeFont(&pop);
-   freeSfx(&sfxMakoto);
-   freeSfx(&bgm);
+   freeAudio(&sfxMakoto);
+   freeAudio(&bgm);
 }
 
 Screen demoScreen = { initDemo, resumeDemo, updateDemo, drawDemo, suspendDemo, termDemo, SCREEN_TERMINATED };

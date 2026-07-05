@@ -107,7 +107,7 @@ static struct {
 
    DirPlaylist playlist;   // sibling playable tracks in the folder, for L1/R1 navigation
 
-   // background decode: loadSfx runs on a worker so a big file doesn't freeze the UI
+   // background decode: loadAudio runs on a worker so a big file doesn't freeze the UI
    int          loading;         // 1 while the worker is decoding
    int          threadActive;    // 1 while decodeTid is still joinable
    volatile int decodeDone;      // worker sets this once pendingAudio is ready
@@ -140,7 +140,7 @@ static void update(void);
 static void draw(void);
 static void term(void);
 static void sampleWaveform(void);   // defined in the waveform section, called from update()
-static void decodeWorker(uint64_t arg);   // background loadSfx; defined below
+static void decodeWorker(uint64_t arg);   // background loadAudio; defined below
 static void startTrack(const char *audioPath);   // (re)loads one track into the open overlay
 static void stepTrack(int delta);                 // L1/R1: move to the prev/next sibling track
 
@@ -213,7 +213,7 @@ static void decodeWorker(uint64_t arg)
    (void)arg;
    // stream everything: a wav is read from disk on demand (never fully loaded), an ogg decodes from
    // its compressed bytes. Both open instantly and the lib tracks position/duration + a waveform.
-   state.pendingAudio = loadSfx(state.pendingPath, SFX_STREAM);
+   state.pendingAudio = loadAudio(state.pendingPath, AUDIO_STREAM);
    __sync_synchronize();
    state.decodeDone = 1;
    exitThread();
@@ -248,8 +248,8 @@ static void show(void) { audioPlayerOverlay.status = OVERLAY_VISIBLE; }
 static void releaseAudio(void)
 {
    joinDecode();
-   freeSfx(&state.pendingAudio);   // frees a decoded-but-never-adopted handle (no-op when zeroed)
-   if (state.loaded) { stopSfx(&state.audio); freeSfx(&state.audio); }
+   freeAudio(&state.pendingAudio);   // frees a decoded-but-never-adopted handle (no-op when zeroed)
+   if (state.loaded) { stopAudio(&state.audio); freeAudio(&state.audio); }
    memset(&state.audio, 0, sizeof state.audio);
    memset(&state.pendingAudio, 0, sizeof state.pendingAudio);
    state.loaded = 0; state.loading = 0; state.decodeDone = 0;
@@ -278,7 +278,7 @@ static void startTrack(const char *audioPath)
    state.threadActive = (spawnJoinableThread(&state.decodeTid, decodeWorker, 0,
                          THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_64KB, "audio-decode") == 0);
    if (!state.threadActive) {           // spawn failed: load synchronously so it still plays
-      state.pendingAudio = loadSfx(state.pendingPath, SFX_STREAM);
+      state.pendingAudio = loadAudio(state.pendingPath, AUDIO_STREAM);
       state.decodeDone   = 1;
    }
 }
@@ -322,10 +322,10 @@ static void term(void)
 static void togglePlayPause(void)
 {
    switch (state.audio.state) {
-      case SFX_STATE_PLAYING: pauseSfx(&state.audio);  break;
-      case SFX_STATE_PAUSED:  resumeSfx(&state.audio); break;
+      case AUDIO_STATE_PLAYING: pauseAudio(&state.audio);  break;
+      case AUDIO_STATE_PAUSED:  resumeAudio(&state.audio); break;
       default:  // ended/stopped: restart from the beginning
-         playSfx(&state.audio, (float)volumeLevel / VOLUME_PILLS, 1.0f, 0);
+         playAudio(&state.audio, (float)volumeLevel / VOLUME_PILLS, 1.0f, 0);
          break;
    }
 }
@@ -336,7 +336,7 @@ static void changeVolume(int delta)
    if (level < 0) level = 0;
    if (level > VOLUME_PILLS) level = VOLUME_PILLS;
    volumeLevel = level;
-   setSfxVolume(&state.audio, (float)level / VOLUME_PILLS);
+   setAudioVolume(&state.audio, (float)level / VOLUME_PILLS);
    state.volumeShownUs = sys_time_get_system_time();   // (re)show the meter
 }
 
@@ -344,14 +344,14 @@ static void changeVolume(int delta)
 // ramps the scrub rate up over time. dtUs is the time since the previous frame.
 static void handleSeek(int dir, uint64_t dtUs)
 {
-   float duration = getSfxDurationSeconds(&state.audio);
+   float duration = getAudioDurationSeconds(&state.audio);
 
    // on the first frame of a seek (direction just changed), anchor the target at the live position;
    // after that we advance our own target rather than re-reading the (decode-lagged) playback position.
    if (dir != state.seekDir) {
       state.seekDir = dir;
       state.seekHeldUs = 0;
-      state.seekTarget = getSfxPositionSeconds(&state.audio);
+      state.seekTarget = getAudioPositionSeconds(&state.audio);
    }
 
    PadButtonState buttonState = getPadButtonState(dir > 0 ? PAD_BTN_RIGHT : PAD_BTN_LEFT);
@@ -369,14 +369,14 @@ static void handleSeek(int dir, uint64_t dtUs)
    state.seekTarget += (dir > 0 ? delta : -delta);
    if (state.seekTarget < 0.0f) state.seekTarget = 0.0f;
    if (state.seekTarget > duration) state.seekTarget = duration;
-   seekSfx(&state.audio, state.seekTarget);
+   seekAudio(&state.audio, state.seekTarget);
 }
 
 // position to show in the UI: while actively seeking, show where we're scrubbing to (smooth, our own
 // target); otherwise show the real playback position.
 static float displayPosSeconds(void)
 {
-   return state.seekMuted ? state.seekTarget : getSfxPositionSeconds(&state.audio);
+   return state.seekMuted ? state.seekTarget : getAudioPositionSeconds(&state.audio);
 }
 
 static void update(void)
@@ -408,7 +408,7 @@ static void update(void)
       if (!state.loaded) { logError("[audio-player] decode failed: %s\n", state.pendingPath); return; }
       setLabelText(&subtitleLabel, state.audio.title);   // track title from tags (empty if none)
       state.lastUpdateUs = now;   // don't count the decode wait as a seek dt
-      playSfx(&state.audio, (float)volumeLevel / VOLUME_PILLS, 1.0f, 0);
+      playAudio(&state.audio, (float)volumeLevel / VOLUME_PILLS, 1.0f, 0);
       return;
    }
 
@@ -432,8 +432,8 @@ static void update(void)
 
    // silent scrub: mute while actively seeking so you don't hear the playback jumping around,
    // then restore the user's volume on release.
-   if (seeking && !state.seekMuted) { setSfxVolume(&state.audio, 0.0f); state.seekMuted = 1; }
-   else if (!seeking && state.seekMuted) { setSfxVolume(&state.audio, (float)volumeLevel / VOLUME_PILLS); state.seekMuted = 0; }
+   if (seeking && !state.seekMuted) { setAudioVolume(&state.audio, 0.0f); state.seekMuted = 1; }
+   else if (!seeking && state.seekMuted) { setAudioVolume(&state.audio, (float)volumeLevel / VOLUME_PILLS); state.seekMuted = 0; }
 
    sampleWaveform();   // pull the latest amplitude envelope from the mixer
 }
@@ -448,7 +448,7 @@ static void update(void)
 static void sampleWaveform(void)
 {
    float bins[WAVE_BARS] = {0};
-   int n = getSfxWaveform(&state.audio, bins, WAVE_BARS);
+   int n = getAudioWaveform(&state.audio, bins, WAVE_BARS);
    for (int i = 0; i < WAVE_BARS; i++) {
       float target = i < n ? bins[i] : 0.0f;
       state.waveBars[i] += (target - state.waveBars[i]) * 0.4f;
@@ -512,7 +512,7 @@ static void syncLabels(void)
    // total is rounded but elapsed is floored, and a finished stream sits a frame short of the full
    // length -- computing remain as total-elapsed then left it at +0:01 at the very end. Round the
    // remaining time off the real position so it lands on 0, and snap elapsed to total when done.
-   float duration = getSfxDurationSeconds(&state.audio);
+   float duration = getAudioDurationSeconds(&state.audio);
    float pos      = displayPosSeconds();
    if (pos > duration) pos = duration;
    int total   = (int)(duration + 0.5f);
@@ -551,7 +551,7 @@ static void syncLabels(void)
 
 static void drawSeekBar(void)
 {
-   float duration = getSfxDurationSeconds(&state.audio);
+   float duration = getAudioDurationSeconds(&state.audio);
    float pos      = displayPosSeconds();
    float progress = duration > 0.0f ? pos / duration : 0.0f;
    if (progress < 0.0f) progress = 0.0f;

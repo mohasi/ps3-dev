@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+   <ProjectGuid>{A1F2B3C4-5D6E-4F7A-8B9C-0D1E2F3A4B5C}</ProjectGuid>
+   <ProjectName>simple-lib-av</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
+   <ConfigurationType>StaticLibrary</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <TargetName>libsimple-lib-av</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+   </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+   <ClCompile Include="src\audio.c" />
+   <ClCompile Include="src\video-source.c" />
+   <ClCompile Include="src\ebml.c" />
+   <ClCompile Include="src\video-probe.c" />
+   <ClCompile Include="src\h264.c" />
+   <ClCompile Include="src\mp4.c" />
+   <ClCompile Include="src\demux.c" />
+   <ClCompile Include="src\demux-mkv.c" />
+   <ClCompile Include="src\demux-mp4.c" />
+   <ClCompile Include="src\decode-h264.c" />
+   <ClCompile Include="src\decode-aac.c" />
+   <ClCompile Include="src\video-player.c" />
+  </ItemGroup>
+  <ItemGroup>
+   <ClInclude Include="include\audio.h" />
+   <ClInclude Include="include\video-source.h" />
+   <ClInclude Include="include\ebml.h" />
+   <ClInclude Include="include\video-probe.h" />
+   <ClInclude Include="include\h264.h" />
+   <ClInclude Include="include\mp4.h" />
+   <ClInclude Include="include\demux-types.h" />
+   <ClInclude Include="include\demux.h" />
+   <ClInclude Include="include\demux-mkv.h" />
+   <ClInclude Include="include\demux-mp4.h" />
+   <ClInclude Include="include\decode-h264.h" />
+   <ClInclude Include="include\decode-aac.h" />
+   <ClInclude Include="include\video-player.h" />
+  </ItemGroup>
+  <ItemGroup>
+   <None Include="include\vorbis.h" />
+   <None Include="include\mp3.h" />
+   <None Include="include\flac.h" />
+   <None Include="include\wav.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)common\ps3.targets" />
+</Project>

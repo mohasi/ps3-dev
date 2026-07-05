@@ -1,0 +1,20 @@
+// fragment shader - converts a YUV 4:2:0 planar video frame (three single-channel textures) to RGB.
+// BT.709 limited-range: Y in [16,235], chroma centred on 128. The decoder skips its own colorspace
+// conversion when asked for YUV, so this runs on the RSX for free instead of costing decode SPU time.
+uniform sampler2D texY : TEXUNIT0;
+uniform sampler2D texU : TEXUNIT1;
+uniform sampler2D texV : TEXUNIT2;
+
+void main
+(
+    float4 color : COLOR,
+    float2 uv : TEXCOORD0,
+    out float4 oColor : COLOR
+)
+{
+   float y = (tex2D(texY, uv).x - 0.0625) * 1.1644;
+   float u = tex2D(texU, uv).x - 0.5;
+   float v = tex2D(texV, uv).x - 0.5;
+   float3 rgb = float3(y + 1.7928 * v, y - 0.2132 * u - 0.5329 * v, y + 2.1124 * u);
+   oColor = float4(rgb, 1.0) * color;
+}

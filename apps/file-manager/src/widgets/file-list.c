@@ -21,6 +21,7 @@
 #include "overlays/confirm-overlay.h"
 #include "overlays/image-viewer-overlay.h"
 #include "overlays/audio-player-overlay.h"
+#include "overlays/video-player-overlay.h"
 #include "overlays/text-editor-overlay.h"
 #include "image-loader.h"
 #include "pad.h"
@@ -336,7 +337,7 @@ static void enterSelectedDir(void)
    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
    if (entries[selectedIndex].type != FILE_TYPE_FOLDER) return;
 
-   playSfxOnce(clickSfx);
+   playAudioOnce(clickSfx);
    pushNavHistory();
    char next[MAX_PATH_LEN];
    joinPath(next, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
@@ -366,6 +367,14 @@ static int selectedIsTextFile(void)
    return entries[selectedIndex].type == FILE_TYPE_TEXT;
 }
 
+// whether the selected row is a video file. any video opens the player, which probes the file and
+// reports inside whether the PS3 can actually decode it (unlike image/audio, gated on decodability).
+static int selectedIsVideo(void)
+{
+   if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
+   return entries[selectedIndex].type == FILE_TYPE_VIDEO;
+}
+
 // cross handler: folders enter, supported images open in the viewer, playable audio opens in
 // the player, text files open in the editor. anything else has no default action (the button
 // is disabled for it, see syncFooterButtons), so this is a no-op in that case.
@@ -383,6 +392,7 @@ static void activateSelectedEntry(void)
 
    if (selectedIsViewableImage())      openImageViewer(full);
    else if (selectedIsPlayableAudio()) openAudioPlayer(full);
+   else if (selectedIsVideo())         openVideoPlayer(full);
    else if (selectedIsTextFile())      openTextEditor(full);
 }
 
@@ -390,7 +400,7 @@ static void goToParentDir(void)
 {
    if (strlen(currentPath) <= 1) return;
 
-   playSfxOnce(clickSfx);
+   playAudioOnce(clickSfx);
    toParentPath(currentPath);
    loadDir(currentPath);
    popNavHistory();
@@ -403,7 +413,8 @@ static void syncFooterButtons(void)
    int isAnyImage = hasSelection && entries[selectedIndex].type == FILE_TYPE_IMAGE;
    int isAnyAudio = hasSelection && entries[selectedIndex].type == FILE_TYPE_AUDIO;
    int isAnyText  = hasSelection && entries[selectedIndex].type == FILE_TYPE_TEXT;
-   int isOpenable = selectedIsViewableImage() || selectedIsPlayableAudio() || selectedIsTextFile();
+   int isAnyVideo = hasSelection && entries[selectedIndex].type == FILE_TYPE_VIDEO;
+   int isOpenable = selectedIsViewableImage() || selectedIsPlayableAudio() || selectedIsVideo() || selectedIsTextFile();
 
    // enabled for folders and openable media; any image/audio (even an unsupported codec)
    // still reads "Open", just greyed out when we can't decode it.
@@ -412,7 +423,7 @@ static void syncFooterButtons(void)
    // only retouch the label when the cross action actually changes, so we
    // don't re-rasterize the glyphs every frame.
    static int crossShowsOpen = -1;
-   int showsOpen = isAnyImage || isAnyAudio || isAnyText;
+   int showsOpen = isAnyImage || isAnyAudio || isAnyVideo || isAnyText;
    if (showsOpen != crossShowsOpen) {
       setFooterButtonText(PAD_BTN_CROSS, showsOpen ? "Open" : "Enter");
       crossShowsOpen = showsOpen;
@@ -498,14 +509,14 @@ static void handleCheckInput(int hasSelection)
       setAllChecked(!allEntriesChecked());
       labelsStale = 1;
       holdFired = 1;
-      playSfxOnce(checkSfx);
+      playAudioOnce(checkSfx);
       return;
    }
 
    if (isPadButtonReleased(PAD_BTN_SQUARE) && !holdFired && hasSelection) {
       entries[selectedIndex].checked = !entries[selectedIndex].checked;
       labelsStale = 1;
-      playSfxOnce(checkSfx);
+      playAudioOnce(checkSfx);
    }
 }
 
@@ -514,12 +525,12 @@ void updateFileList(void)
    if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_DOWN)) && entryCount > 0) {
       selectedIndex = (selectedIndex + 1) % entryCount;             // wraps bottom -> top
       scrollToSelected();
-      playSfxOnce(clickSfx);
+      playAudioOnce(clickSfx);
    }
    else if (isRepeatDue(&scrollRepeat, getPadButtonState(PAD_BTN_UP)) && entryCount > 0) {
       selectedIndex = (selectedIndex - 1 + entryCount) % entryCount;  // wraps top -> bottom
       scrollToSelected();
-      playSfxOnce(clickSfx);
+      playAudioOnce(clickSfx);
    }
 
    int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;

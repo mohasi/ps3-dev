@@ -102,7 +102,7 @@ static void resolve(ConfirmChoice choice)
 {
    ConfirmCallback cb = onResolve;
    onResolve = NULL;
-   playSfxOnce(clickSfx);
+   playAudioOnce(clickSfx);
    hideOverlay(&confirmOverlay);
    if (cb) cb(choice);
 }

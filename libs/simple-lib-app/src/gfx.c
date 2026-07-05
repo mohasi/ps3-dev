@@ -74,6 +74,7 @@ static int        batchOverflowWarned = 0;   // logs the full-batch warning once
 // shader state
 extern struct _CGprogram _binary_vpshader_vpo_start;
 extern struct _CGprogram _binary_fpshader_fpo_start;
+extern struct _CGprogram _binary_fpshader_yuv_fpo_start;
 
 static CGprogram shaderVp;
 static CGprogram shaderFp;
@@ -84,6 +85,11 @@ static uint32_t  shaderPosIdx;
 static uint32_t  shaderColIdx;
 static uint32_t  shaderUvIdx;
 static uint32_t  shaderTexUnit;
+
+// yuv video shader: converts YUV 4:2:0 planar frames to RGB on the RSX (see fpshader-yuv.cg)
+static CGprogram shaderFpYuv;
+static uint32_t  shaderFpYuvOffset;
+static uint32_t  shaderYuvTexUnit[3];   // texY, texU, texV
 
 // 1x1 white texture for color-only draws
 static uint32_t whiteTexOffset = 0;
@@ -359,6 +365,23 @@ int initGfx(GfxVsync vsync)
 
    CGparameter texParam = cellGcmCgGetNamedParameter(shaderFp, "tex");
    shaderTexUnit = cellGcmCgGetParameterResource(shaderFp, texParam) - CG_TEXUNIT0;
+
+   // yuv video shader
+   shaderFpYuv = (CGprogram)&_binary_fpshader_yuv_fpo_start;
+   cellGcmCgInitProgram(shaderFpYuv);
+   void *fpYuvUcode;
+   uint32_t fpYuvSize;
+   cellGcmCgGetUCode(shaderFpYuv, &fpYuvUcode, &fpYuvSize);
+   void *fpYuvVram = allocateVram(fpYuvSize, 64);
+   if (!fpYuvVram) return -1;
+   memcpy(fpYuvVram, fpYuvUcode, fpYuvSize);
+   cellGcmAddressToOffset(fpYuvVram, &shaderFpYuvOffset);
+
+   static const char *planeNames[3] = { "texY", "texU", "texV" };
+   for (int i = 0; i < 3; i++) {
+      CGparameter planeParam = cellGcmCgGetNamedParameter(shaderFpYuv, planeNames[i]);
+      shaderYuvTexUnit[i] = cellGcmCgGetParameterResource(shaderFpYuv, planeParam) - CG_TEXUNIT0;
+   }
 
    // 1x1 white texture (64-byte pitch minimum for RSX)
    uint32_t *whitePix = (uint32_t *)allocateVram(64, 64);
@@ -648,6 +671,97 @@ void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
    v[5] = (GfxVertex){ cx0, cy1, 0.0f, rgba, u0, v1 };
 
    batchVertCount += 6;
+}
+
+// ============================================================================
+// video frame path: YUV 4:2:0 planar frames decoded straight into RSX-visible
+// main memory, drawn zero-copy with the yuv shader doing the color conversion
+// ============================================================================
+
+void *allocGfxVideoBuffer(size_t size)
+{
+   size_t mappedSize = (size + 0xFFFFF) & ~(size_t)0xFFFFF;   // MapMainMemory works in 1MB units
+   void *buffer = memalign(1024 * 1024, mappedSize);
+   if (!buffer) return 0;
+   uint32_t ioOffset;
+   if (cellGcmMapMainMemory(buffer, mappedSize, &ioOffset) != CELL_OK) {
+      logError("[gfx] MapMainMemory %zu KB failed\n", mappedSize / 1024);
+      free(buffer);
+      return 0;
+   }
+   return buffer;
+}
+
+void freeGfxVideoBuffer(void *buffer)
+{
+   if (!buffer) return;
+   cellGcmUnmapEaIoAddress(buffer);
+   free(buffer);
+}
+
+// binds one Y/U/V plane as a single-channel linear texture the shader reads via .x
+static void setYuvPlaneTexture(uint32_t unit, uint32_t offset, int width, int height)
+{
+   CellGcmTexture tex;
+   memset(&tex, 0, sizeof(tex));
+   tex.format    = CELL_GCM_TEXTURE_B8 | CELL_GCM_TEXTURE_LN | CELL_GCM_TEXTURE_NR;
+   tex.mipmap    = 1;
+   tex.dimension = CELL_GCM_TEXTURE_DIMENSION_2;
+   tex.cubemap   = CELL_GCM_FALSE;
+   tex.remap     = CELL_GCM_REMAP_MODE(CELL_GCM_TEXTURE_REMAP_ORDER_XYXY, CELL_GCM_TEXTURE_REMAP_FROM_B, CELL_GCM_TEXTURE_REMAP_FROM_B, CELL_GCM_TEXTURE_REMAP_FROM_B, CELL_GCM_TEXTURE_REMAP_FROM_B, CELL_GCM_TEXTURE_REMAP_REMAP, CELL_GCM_TEXTURE_REMAP_REMAP, CELL_GCM_TEXTURE_REMAP_REMAP, CELL_GCM_TEXTURE_REMAP_REMAP);
+   tex.width     = width;
+   tex.height    = height;
+   tex.depth     = 1;
+   tex.pitch     = width;
+   tex.location  = CELL_GCM_LOCATION_MAIN;
+   tex.offset    = offset;
+   cellGcmSetTexture(CTX, unit, &tex);
+   cellGcmSetTextureControl(CTX, unit, CELL_GCM_TRUE, 0, 12 << 8, CELL_GCM_TEXTURE_MAX_ANISO_1);
+   cellGcmSetTextureAddress(CTX, unit, CELL_GCM_TEXTURE_CLAMP_TO_EDGE, CELL_GCM_TEXTURE_CLAMP_TO_EDGE, CELL_GCM_TEXTURE_CLAMP_TO_EDGE, CELL_GCM_TEXTURE_UNSIGNED_REMAP_NORMAL, CELL_GCM_TEXTURE_ZFUNC_LESS, 0);
+   cellGcmSetTextureFilter(CTX, unit, 0, CELL_GCM_TEXTURE_LINEAR, CELL_GCM_TEXTURE_LINEAR, CELL_GCM_TEXTURE_CONVOLUTION_QUINCUNX);
+}
+
+void drawGfxYuvFrame(int x, int y, int w, int h, const void *yuvPlanes, int frameW, int frameH)
+{
+   if (!initialized || !yuvPlanes || frameW <= 0 || frameH <= 0) return;
+
+   flushBatch();
+   if (batchWouldOverflow(6)) return;
+
+   uint32_t planeOffset;
+   if (cellGcmAddressToOffset((void *)yuvPlanes, &planeOffset) != CELL_OK) return;
+
+   // one opaque full-uv quad through the shared batch arrays
+   float x0 = toClipX(x), y0 = toClipY(y), x1 = toClipX(x + w), y1 = toClipY(y + h);
+   uint32_t white = 0xFFFFFFFFu;
+   GfxVertex *v = &batchVerts[backBuffer][batchVertCount];
+   v[0] = (GfxVertex){ x0, y0, 0.0f, white, 0.0f, 0.0f };
+   v[1] = (GfxVertex){ x1, y0, 0.0f, white, 1.0f, 0.0f };
+   v[2] = (GfxVertex){ x0, y1, 0.0f, white, 0.0f, 1.0f };
+   v[3] = (GfxVertex){ x1, y0, 0.0f, white, 1.0f, 0.0f };
+   v[4] = (GfxVertex){ x1, y1, 0.0f, white, 1.0f, 1.0f };
+   v[5] = (GfxVertex){ x0, y1, 0.0f, white, 0.0f, 1.0f };
+   batchVertCount += 6;
+
+   cellGcmSetVertexProgram(CTX, shaderVp, shaderVpUcode);
+   cellGcmSetFragmentProgram(CTX, shaderFpYuv, shaderFpYuvOffset);
+
+   uint32_t startByte = batchFlushStart * sizeof(GfxVertex);
+   cellGcmSetVertexDataArray(CTX, shaderPosIdx, 0, sizeof(GfxVertex), 3, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, batchOffset[backBuffer] + startByte);
+   cellGcmSetVertexDataArray(CTX, shaderColIdx, 0, sizeof(GfxVertex), 4, CELL_GCM_VERTEX_UB, CELL_GCM_LOCATION_LOCAL, batchColOffset[backBuffer] + startByte);
+   cellGcmSetVertexDataArray(CTX, shaderUvIdx, 0, sizeof(GfxVertex), 2, CELL_GCM_VERTEX_F, CELL_GCM_LOCATION_LOCAL, batchUvOffset[backBuffer] + startByte);
+
+   uint32_t lumaBytes = (uint32_t)(frameW * frameH);
+   setYuvPlaneTexture(shaderYuvTexUnit[0], planeOffset, frameW, frameH);
+   setYuvPlaneTexture(shaderYuvTexUnit[1], planeOffset + lumaBytes, frameW / 2, frameH / 2);
+   setYuvPlaneTexture(shaderYuvTexUnit[2], planeOffset + lumaBytes + lumaBytes / 4, frameW / 2, frameH / 2);
+
+   cellGcmSetInvalidateTextureCache(CTX, CELL_GCM_INVALIDATE_TEXTURE);
+   cellGcmSetCullFaceEnable(CTX, CELL_GCM_FALSE);
+   cellGcmSetBlendEnable(CTX, CELL_GCM_FALSE);
+   cellGcmSetDrawArrays(CTX, CELL_GCM_PRIMITIVE_TRIANGLES, 0, 6);
+
+   batchFlushStart = batchVertCount;
 }
 
 void endGfxFrame(void)

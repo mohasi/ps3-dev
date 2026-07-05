@@ -3,7 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "audio.h"     // lib mixer (loadSfxMem / playSfx / ...)
+#include "audio.h"     // lib mixer (loadAudioMem / playAudio / ...)
 #include "rpk.h"
 #include "config.h"
 #include "gamepath.h"  // getGameRpkPath()
@@ -31,7 +31,7 @@ void initSound(void)
    sfxCursor = 0;
    memset(&music, 0, sizeof music);
    memset(sfx, 0, sizeof sfx);
-   ready = (initSfx() == 0);
+   ready = (initAudio() == 0);
    if (!ready) logWarn("[rpp] audio init failed; running silent\n");
 }
 
@@ -93,12 +93,12 @@ static void playMusic(const char *file, float fadeIn)
    if (!ready) return;
    unsigned char *buf = NULL; long len = 0;
    if (!readAudioAsset(file, &buf, &len)) return;
-   if (musicOn) { stopSfx(&music); freeSfx(&music); musicOn = 0; }   // replace current track
-   music = loadSfxMem(buf, (uint32_t)len, SFX_STREAM);
+   if (musicOn) { stopAudio(&music); freeAudio(&music); musicOn = 0; }   // replace current track
+   music = loadAudioMem(buf, (uint32_t)len, AUDIO_STREAM);
    free(buf);
    if (music.vorbis || music.pcmData) {
-      if (fadeIn > 0.0f) { playSfx(&music, 0.0f, 1.0f, 1 /*loop*/); fadeSfx(&music, MUSIC_VOLUME, fadeIn); }
-      else                 playSfx(&music, MUSIC_VOLUME, 1.0f, 1 /*loop*/);
+      if (fadeIn > 0.0f) { playAudio(&music, 0.0f, 1.0f, 1 /*loop*/); fadeAudio(&music, MUSIC_VOLUME, fadeIn); }
+      else                 playAudio(&music, MUSIC_VOLUME, 1.0f, 1 /*loop*/);
       musicOn = 1;
    }
    else logWarn("[rpp] music '%s' decode failed\n", file);
@@ -107,8 +107,8 @@ static void playMusic(const char *file, float fadeIn)
 static void stopMusic(float fadeOut)
 {
    if (!musicOn) return;
-   if (fadeOut > 0.0f) fadeSfx(&music, 0.0f, fadeOut);   // mixer ramps to silence then stops;
-   else { stopSfx(&music); freeSfx(&music); musicOn = 0; } // the handle is reclaimed on the next
+   if (fadeOut > 0.0f) fadeAudio(&music, 0.0f, fadeOut);   // mixer ramps to silence then stops;
+   else { stopAudio(&music); freeAudio(&music); musicOn = 0; } // the handle is reclaimed on the next
                                              // play music / termSound.
 }
 
@@ -119,10 +119,10 @@ static void playSound(const char *file)
    if (!readAudioAsset(file, &buf, &len)) return;
    Audio *slot = &sfx[sfxCursor];                 // round-robin one-shot slots
    sfxCursor = (sfxCursor + 1) % SFX_POOL;
-   if (slot->pcmData || slot->vorbis) { stopSfx(slot); freeSfx(slot); }
-   *slot = loadSfxMem(buf, (uint32_t)len, SFX_MEMORY);
+   if (slot->pcmData || slot->vorbis) { stopAudio(slot); freeAudio(slot); }
+   *slot = loadAudioMem(buf, (uint32_t)len, AUDIO_MEMORY);
    free(buf);
-   if (slot->pcmData) playSfx(slot, SFX_VOLUME, 1.0f, 0 /*no loop*/);
+   if (slot->pcmData) playAudio(slot, SFX_VOLUME, 1.0f, 0 /*no loop*/);
 }
 
 // Reads the float after a keyword (e.g. "fadein 1.0" -> 1.0); 0 if the keyword is absent.
@@ -192,7 +192,7 @@ void termSound(void)
    if (!ready) return;
    stopMusic(0.0f);   // instant, and frees the music handle
    for (int i = 0; i < SFX_POOL; i++)
-      if (sfx[i].pcmData || sfx[i].vorbis) { stopSfx(&sfx[i]); freeSfx(&sfx[i]); }
-   termSfx();
+      if (sfx[i].pcmData || sfx[i].vorbis) { stopAudio(&sfx[i]); freeAudio(&sfx[i]); }
+   termAudio();
    ready = 0;
 }

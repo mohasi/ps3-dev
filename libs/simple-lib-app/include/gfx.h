@@ -80,6 +80,14 @@ GfxTexture loadGfxTextureMem(const void *data, uint32_t size);
 uint32_t   uploadGfxTexture(const void *rgba, int w, int h, int srcPitch);
 void       updateGfxTexture(uint32_t offset, const void *rgba, int w, int h, int srcPitch, int slotW, int slotH);
 
+// Video frame path (zero-copy). allocGfxVideoBuffer returns main memory mapped for RSX access —
+// decode YUV 4:2:0 planar frames (Y then U then V, packed) straight into it, then drawGfxYuvFrame
+// samples the planes in place and converts to RGB in a fragment shader. No per-frame copies.
+// frameW/frameH are the coded plane dimensions; x/y/w/h the on-screen rectangle.
+void *allocGfxVideoBuffer(size_t size);
+void  freeGfxVideoBuffer(void *buffer);
+void  drawGfxYuvFrame(int x, int y, int w, int h, const void *yuvPlanes, int frameW, int frameH);
+
 int getGfxScreenWidth(void);
 int getGfxScreenHeight(void);
 

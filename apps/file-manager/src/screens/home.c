@@ -15,6 +15,7 @@
 #include "overlays/progress-overlay.h"
 #include "overlays/image-viewer-overlay.h"
 #include "overlays/audio-player-overlay.h"
+#include "overlays/video-player-overlay.h"
 #include "overlays/text-editor-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
@@ -74,8 +75,8 @@ static void initHome(void)
    pop      = openSystemFont(FONT_POP);
    bg       = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/background.png");
    sprites  = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/sprites.png");
-   clickSfx = loadSfx("/dev_hdd0/game/FILEMGR01/USRDIR/click.wav", SFX_MEMORY);
-   checkSfx = loadSfx("/dev_hdd0/game/FILEMGR01/USRDIR/check.wav", SFX_MEMORY);
+   clickSfx = loadAudio("/dev_hdd0/game/FILEMGR01/USRDIR/click.wav", AUDIO_MEMORY);
+   checkSfx = loadAudio("/dev_hdd0/game/FILEMGR01/USRDIR/check.wav", AUDIO_MEMORY);
 
    initImage(&background, bg, 0, 0, AUTO, AUTO, SPRITE_FULL, GFX_FILTER_LINEAR);
    initBreadcrumb(&breadcrumb, &pop, 70, 130, COLOR_WHITE, sprites, spriteRegions[SPRITE_CHEVRON], 20);
@@ -87,6 +88,7 @@ static void initHome(void)
    initConfirmOverlay(sprites, &clickSfx);
    initProgressOverlay(sprites, &clickSfx);
    initAudioPlayerOverlay(sprites);
+   initVideoPlayerOverlay(sprites);
    initTextEditorOverlay(sprites);
    addFooterButton(PAD_BTN_TRIANGLE, spriteRegions[SPRITE_TRIANGLE], "Options", openSidepanel);
    addFooterButton(PAD_BTN_SELECT, spriteRegions[SPRITE_SELECT], "Start FTP Server", toggleFtpServer);
@@ -112,6 +114,7 @@ static inline int anyOverlayVisible(void)
       || isOverlayVisible(&progressOverlay)
       || isOverlayVisible(&imageViewerOverlay)
       || isOverlayVisible(&audioPlayerOverlay)
+      || isOverlayVisible(&videoPlayerOverlay)
       || isOverlayVisible(&textEditorOverlay);
 }
 
@@ -127,6 +130,7 @@ static void updateHome(void)
    updateOverlay(&progressOverlay);
    updateOverlay(&imageViewerOverlay);
    updateOverlay(&audioPlayerOverlay);
+   updateOverlay(&videoPlayerOverlay);
    updateOverlay(&textEditorOverlay);
 
    if (!overlayWasVisible) {
@@ -148,6 +152,7 @@ static void drawHome(void)
    drawFooterWidget();
    drawOverlay(&imageViewerOverlay);
    drawOverlay(&audioPlayerOverlay);
+   drawOverlay(&videoPlayerOverlay);
    drawOverlay(&textEditorOverlay);
    drawOverlay(&sidepanel);
    drawOverlay(&confirmOverlay);
@@ -160,6 +165,7 @@ static void termHome(void)
 {
    stopFtpServer();
    termOverlay(&textEditorOverlay);
+   termOverlay(&videoPlayerOverlay);
    termOverlay(&audioPlayerOverlay);
    termOverlay(&imageViewerOverlay);
    termOverlay(&progressOverlay);
@@ -177,8 +183,8 @@ static void termHome(void)
    freeGfxTexture(&bg);
    freeGfxTexture(&sprites);
 
-   freeSfx(&clickSfx);
-   freeSfx(&checkSfx);
+   freeAudio(&clickSfx);
+   freeAudio(&checkSfx);
    closeFont(&pop);
 }
 

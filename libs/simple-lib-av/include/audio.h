@@ -5,29 +5,29 @@
 #include <stdint.h>
 #include <cell/audio.h>
 
-#define SFX_DEFAULT_VOLUME  1.0f
-#define SFX_DEFAULT_SPEED   1.0f
-#define SFX_LOOP    0
+#define AUDIO_DEFAULT_VOLUME  1.0f
+#define AUDIO_DEFAULT_SPEED   1.0f
+#define AUDIO_NO_LOOP    0
 
 // rolling waveform envelope the mixer maintains per stream (newest sample at the end), so a
 // UI can show a live visualisation without owning the PCM -- works for streamed audio too.
-#define SFX_VIZ_BINS  96
+#define AUDIO_VIZ_BINS  96
 
 // max source frames a stream decodes per mixer block; also the size of the resample carry buffer.
-#define SFX_STREAM_FRAMES  512
+#define AUDIO_STREAM_FRAMES  512
 
 struct stb_vorbis;
 
 typedef enum {
-   SFX_MEMORY,
-   SFX_STREAM
-} SfxMode;
+   AUDIO_MEMORY,
+   AUDIO_STREAM
+} AudioMode;
 
 typedef enum {
-   SFX_STATE_STOPPED,
-   SFX_STATE_PLAYING,
-   SFX_STATE_PAUSED
-} SfxState;
+   AUDIO_STATE_STOPPED,
+   AUDIO_STATE_PLAYING,
+   AUDIO_STATE_PAUSED
+} AudioState;
 
 typedef struct {
    float volume;
@@ -39,8 +39,8 @@ typedef struct {
    float fadeTarget;
    float fadeStep;
 
-   SfxState state;
-   SfxMode mode;
+   AudioState state;
+   AudioMode mode;
    int sampleRate;
    int channels;
 
@@ -55,9 +55,9 @@ typedef struct {
    int isOgg;
 
    int   seekRequest;            // pending stream seek (sample index), applied by the mixer; -1 = none
-   float vizPeaks[SFX_VIZ_BINS]; // rolling recent-amplitude envelope, filled by the mixer
+   float vizPeaks[AUDIO_VIZ_BINS]; // rolling recent-amplitude envelope, filled by the mixer
 
-   // mp3 streaming (SFX_STREAM): decoded on the fly from the compressed bytes via dr_mp3, the same
+   // mp3 streaming (AUDIO_STREAM): decoded on the fly from the compressed bytes via dr_mp3, the same
    // way ogg is handled. mp3 is an opaque drmp3* (kept out of this header); mp3Data is the compressed
    // file buffer dr_mp3 reads from and must outlive it; mp3SeekPoints is the client-owned seek table
    // bound into the decoder so seeking is accurate (MP3 has no native sample-accurate seek).
@@ -65,12 +65,12 @@ typedef struct {
    uint8_t *mp3Data;
    void    *mp3SeekPoints;
 
-   // flac streaming (SFX_STREAM): same idea as mp3, via dr_flac. flac is an opaque drflac* (owned by
+   // flac streaming (AUDIO_STREAM): same idea as mp3, via dr_flac. flac is an opaque drflac* (owned by
    // dr_flac, closed with drflac_close); flacData is the compressed buffer it reads from.
    void    *flac;
    uint8_t *flacData;
 
-   // wav disk streaming (SFX_STREAM): dr_wav reading from an open file via callbacks, so an hour-long
+   // wav disk streaming (AUDIO_STREAM): dr_wav reading from an open file via callbacks, so an hour-long
    // wav plays without loading into memory. wav is an opaque drwav*; wavFile is the open VfsFile* it
    // reads from (heap-allocated so the pointer survives Audio being returned by value).
    void    *wav;
@@ -79,48 +79,61 @@ typedef struct {
    // streaming resample carry (ogg/mp3/flac): decoded-but-unconsumed source frames plus the
    // fractional read position, kept across mixer blocks so resampling stays phase-continuous
    // (no per-block discontinuity / crackle).
-   float    srcCarry[SFX_STREAM_FRAMES * 2];   // interleaved, up to 2 channels
+   float    srcCarry[AUDIO_STREAM_FRAMES * 2];   // interleaved, up to 2 channels
    int      srcCarryFrames;
    double   srcCarryPos;
 
    char     title[64];   // track title from tags (ID3 / Vorbis comment), empty if none
 } Audio;
 
-int   initSfx(void);
-void  termSfx(void);
-Audio loadSfx(const char *path, SfxMode mode);
+int   initAudio(void);
+void  termAudio(void);
+Audio loadAudio(const char *path, AudioMode mode);
 // Same, from an in-memory WAV/OGG blob (e.g. an asset already read from an archive).
 // Copies what it needs, so the caller may free `data` immediately.
-Audio loadSfxMem(const void *data, uint32_t size, SfxMode mode);
-void  freeSfx(Audio *a);
-void  playSfx(Audio *a, float volume, float speed, int loop);
+Audio loadAudioMem(const void *data, uint32_t size, AudioMode mode);
+void  freeAudio(Audio *a);
+void  playAudio(Audio *a, float volume, float speed, int loop);
 // one-shot at default volume/speed, no looping. safe on a NULL handle so
 // callers do not need to null-check optional ui sounds.
-static inline void playSfxOnce(Audio *a)
+static inline void playAudioOnce(Audio *a)
 {
-   if (a) playSfx(a, SFX_DEFAULT_VOLUME, SFX_DEFAULT_SPEED, 0);
+   if (a) playAudio(a, AUDIO_DEFAULT_VOLUME, AUDIO_DEFAULT_SPEED, 0);
 }
-void  stopSfx(Audio *a);
+void  stopAudio(Audio *a);
 // Ramps a stream's volume to `target` over `seconds` (0 = jump instantly). Fading to 0
 // stops the stream when it reaches silence. Runs on the mixer thread; cheap to call.
-void  fadeSfx(Audio *a, float target, float seconds);
+void  fadeAudio(Audio *a, float target, float seconds);
 // Jumps playback to `seconds` from the start, clamped to the clip length. Works for memory clips and
 // every stream type (stream seeks are handed to the mixer thread to avoid racing the decoder).
-void  seekSfx(Audio *a, float seconds);
+void  seekAudio(Audio *a, float seconds);
 // Copies up to `maxBins` of the rolling waveform envelope (0..1) into `out`, newest last. Returns
 // the number written. Valid for any playing stream regardless of mode.
-int   getSfxWaveform(const Audio *a, float *out, int maxBins);
+int   getAudioWaveform(const Audio *a, float *out, int maxBins);
 // Sets one stream's own volume (0..1), independent of the master volume. Takes effect on the
-// next mixer block. Unlike fadeSfx, reaching 0 leaves the stream playing (silently).
-void  setSfxVolume(Audio *a, float volume);
+// next mixer block. Unlike fadeAudio, reaching 0 leaves the stream playing (silently).
+void  setAudioVolume(Audio *a, float volume);
 // Elapsed and total play time in seconds (0 when unknown). Valid for memory clips and all streams.
-float getSfxPositionSeconds(const Audio *a);
-float getSfxDurationSeconds(const Audio *a);
+float getAudioPositionSeconds(const Audio *a);
+float getAudioDurationSeconds(const Audio *a);
 // True when the file extension is one the mixer can decode (wav, ogg, mp3 or flac). Usable as a
 // dir-playlist FileFilter for folder navigation.
 int   isPlayableAudioFile(const char *name);
-void  pauseSfx(Audio *a);
-void  resumeSfx(Audio *a);
-void  setSfxMasterVolume(float vol);
-void  raiseSfxMasterVolume(float amount);
-void  lowerSfxMasterVolume(float amount);
+void  pauseAudio(Audio *a);
+void  resumeAudio(Audio *a);
+void  setAudioMasterVolume(float vol);
+void  raiseAudioMasterVolume(float amount);
+void  lowerAudioMasterVolume(float amount);
+
+// External PCM feed (video playback): a ring the video player pushes decoded audio into; the mixer
+// drains it into each block alongside the normal streams, resampling to its own rate. Interleaved
+// stereo float32 at `sampleRate`. One feed at a time. The consumed-frames counter is the A/V clock:
+// it advances only as samples actually reach the speakers' buffer.
+int      openAudioPcmFeed(int sampleRate);                          // 0 ok, -1 if busy/OOM
+void     closeAudioPcmFeed(void);
+int      pushAudioPcm(const float *stereoFrames, int frameCount);   // frames accepted (< frameCount when the ring is full)
+int      getAudioPcmFeedSpace(void);                                // frames currently pushable
+uint64_t getAudioPcmFeedPlayedFrames(void);                         // source frames consumed since open/flush
+void     setAudioPcmFeedVolume(float volume);                       // 0..1, default 1
+void     pauseAudioPcmFeed(int paused);                             // paused: feed silent, clock frozen
+void     flushAudioPcmFeed(void);                                   // drops buffered frames and zeroes the consumed count (seek)

@@ -32,7 +32,7 @@ int main(int argc, char **argv)
    registerWithBridge("app", "file-manager");
 
    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
-   if (initSfx() != 0) return 1;
+   if (initAudio() != 0) return 1;
    if (initFont() != 0) return 1;
    initPad();
 
@@ -54,7 +54,7 @@ int main(int argc, char **argv)
 
    changeScreen(NULL);
    termStats();
-   termSfx();
+   termAudio();
    termFont();
    termGfx();
    shutdownVfs();

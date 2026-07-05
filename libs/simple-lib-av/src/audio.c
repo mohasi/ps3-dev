@@ -10,10 +10,10 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define SFX_MAX_STREAMS    8
-#define SFX_SAMPLE_RATE    48000
-#define SFX_BLOCK_SAMPLES  CELL_AUDIO_BLOCK_SAMPLES
-#define SFX_PORT_BLOCKS    8     // audio-port ring-buffer block count (cellAudioPortOpen nBlock)
+#define AUDIO_MAX_STREAMS    8
+#define AUDIO_SAMPLE_RATE    48000
+#define AUDIO_BLOCK_SAMPLES  CELL_AUDIO_BLOCK_SAMPLES
+#define AUDIO_PORT_BLOCKS    8     // audio-port ring-buffer block count (cellAudioPortOpen nBlock)
 
 // reads entire file into a malloc'd buffer. caller frees. NULL on failure.
 static uint8_t *readFileAlloc(const char *path, uint32_t *outSize)
@@ -65,7 +65,7 @@ static uint8_t *readFileAlloc(const char *path, uint32_t *outSize)
 // mixer state
 // ============================================================================
 
-static Audio *streams[SFX_MAX_STREAMS];
+static Audio *streams[AUDIO_MAX_STREAMS];
 static int streamCount = 0;
 static float masterVolume = 1.0f;
 static sys_ppu_thread_t audioThread;
@@ -73,9 +73,22 @@ static volatile int audioRunning = 0;
 static CellAudioPortConfig portConfig;
 static uint32_t portNum;
 
-// The stream the mixer thread is currently reading from (NULL between streams). stopSfx waits on
-// this before returning so a following freeSfx can't release a decoder mid-block. See stopSfx.
+// The stream the mixer thread is currently reading from (NULL between streams). stopAudio waits on
+// this before returning so a following freeAudio can't release a decoder mid-block. See stopAudio.
 static Audio * volatile mixingStream = NULL;
+
+// external PCM feed (video playback): lock-free single-producer ring drained by the mixer
+#define FEED_RING_FRAMES 32768   // stereo frames, power of two (~0.68 s at 48 kHz)
+static struct {
+   float   *ring;                 // interleaved stereo
+   volatile uint32_t head, tail;  // free-running frame counters (producer / mixer)
+   volatile uint64_t consumed;    // total source frames mixed out — the video player's A/V clock
+   double   readPos;              // fractional resample position past `tail`
+   int      sampleRate;
+   float    volume;
+   volatile int active, paused;
+   volatile int mixerInFeed;      // handshake so closeAudioPcmFeed never frees the ring mid-block
+} feed;
 
 // ============================================================================
 // ogg decode (full memory)
@@ -139,7 +152,7 @@ static float *resamplePcm(const float *src, int ch, int srcRate,
 
 static inline void mixSamples(const float *src, uint32_t srcLen, int srcCh,
                               float *mix, double *pos, double step, float vol) {
-   for (int i = 0; i < SFX_BLOCK_SAMPLES; i++) {
+   for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
       uint32_t p = (uint32_t)*pos;
       if (p + 1 >= srcLen) break;
       float fr = (float)(*pos - p);
@@ -171,9 +184,9 @@ static inline float blockPeak(const float *interleaved, int frames, int ch) {
 }
 
 // scrolls one new peak into the rolling waveform envelope (oldest drops off the front).
-static inline void appendSfxViz(Audio *a, float peak) {
-   memmove(a->vizPeaks, a->vizPeaks + 1, (SFX_VIZ_BINS - 1) * sizeof(float));
-   a->vizPeaks[SFX_VIZ_BINS - 1] = peak;
+static inline void appendAudioViz(Audio *a, float peak) {
+   memmove(a->vizPeaks, a->vizPeaks + 1, (AUDIO_VIZ_BINS - 1) * sizeof(float));
+   a->vizPeaks[AUDIO_VIZ_BINS - 1] = peak;
 }
 
 // ----- pull-decoder streaming (ogg/mp3/flac/wav) -----
@@ -217,8 +230,8 @@ static void mixStreamBlock(Audio *a, float *mix, double step, float vol) {
    applyStreamSeek(a);   // honor a pending user seek before decoding this block
 
    // top up the carry buffer so it covers this block's resample span (fractional pos + 256*step)
-   int need = (int)(a->srcCarryPos + SFX_BLOCK_SAMPLES * step) + 2;
-   if (need > SFX_STREAM_FRAMES) need = SFX_STREAM_FRAMES;
+   int need = (int)(a->srcCarryPos + AUDIO_BLOCK_SAMPLES * step) + 2;
+   if (need > AUDIO_STREAM_FRAMES) need = AUDIO_STREAM_FRAMES;
 
    int ended = 0, looped = 0;
    while (a->srcCarryFrames < need) {
@@ -236,7 +249,7 @@ static void mixStreamBlock(Audio *a, float *mix, double step, float vol) {
 
       int consumed = (int)pos;
       if (consumed > a->srcCarryFrames) consumed = a->srcCarryFrames;
-      appendSfxViz(a, blockPeak(a->srcCarry, consumed > 0 ? consumed : a->srcCarryFrames, ch));
+      appendAudioViz(a, blockPeak(a->srcCarry, consumed > 0 ? consumed : a->srcCarryFrames, ch));
 
       // keep the unconsumed tail + fractional position for the next block
       int remaining = a->srcCarryFrames - consumed;
@@ -251,12 +264,43 @@ static void mixStreamBlock(Audio *a, float *mix, double step, float vol) {
    // frame (it needs frame p+1), so ~1 frame always remains at end-of-stream. Requiring exactly 0
    // left the stream stuck PLAYING at the end forever, so X toggled pause instead of restarting.
    // Dropping that one inaudible frame lets the stream reach STOPPED so a finished track replays.
-   if (ended && !a->loop && a->srcCarryFrames <= 1) a->state = SFX_STATE_STOPPED;
+   if (ended && !a->loop && a->srcCarryFrames <= 1) a->state = AUDIO_STATE_STOPPED;
+}
+
+// mixes one block from the external PCM feed, resampling with linear interpolation. Underrun just
+// leaves silence for the rest of the block; the clock only advances by frames actually consumed.
+static void mixFeedBlock(float *mix) {
+   feed.mixerInFeed = 1;
+   __sync_synchronize();
+   if (!feed.active || feed.paused || !feed.ring) { feed.mixerInFeed = 0; return; }
+
+   double step = (double)feed.sampleRate / (double)AUDIO_SAMPLE_RATE;
+   float vol = feed.volume * masterVolume;
+   uint32_t available = feed.head - feed.tail;
+
+   double pos = feed.readPos;
+   for (int i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
+      uint32_t base = (uint32_t)pos;
+      if (base + 1 >= available) break;   // underrun: need a frame pair to interpolate
+      float fraction = (float)(pos - base);
+      uint32_t i0 = ((feed.tail + base)     & (FEED_RING_FRAMES - 1)) * 2;
+      uint32_t i1 = ((feed.tail + base + 1) & (FEED_RING_FRAMES - 1)) * 2;
+      mix[i * 2]     += vol * (feed.ring[i0]     + fraction * (feed.ring[i1]     - feed.ring[i0]));
+      mix[i * 2 + 1] += vol * (feed.ring[i0 + 1] + fraction * (feed.ring[i1 + 1] - feed.ring[i0 + 1]));
+      pos += step;
+   }
+
+   uint32_t consumedFrames = (uint32_t)pos;
+   feed.readPos = pos - consumedFrames;
+   feed.tail += consumedFrames;
+   feed.consumed += consumedFrames;
+   __sync_synchronize();
+   feed.mixerInFeed = 0;
 }
 
 static void audioMixerThread(uint64_t arg) {
    (void)arg;
-   float mix[SFX_BLOCK_SAMPLES * 2];
+   float mix[AUDIO_BLOCK_SAMPLES * 2];
    uint64_t lastBlock = 0;
 
    while (audioRunning) {
@@ -273,12 +317,12 @@ static void audioMixerThread(uint64_t arg) {
          Audio *a = streams[s];
          if (!a) continue;
 
-         // Claim the stream BEFORE re-reading its state. Paired with the fence in stopSfx this
-         // is a mutual-flag handshake: stopSfx either sees this claim and waits, or its STOPPED
+         // Claim the stream BEFORE re-reading its state. Paired with the fence in stopAudio this
+         // is a mutual-flag handshake: stopAudio either sees this claim and waits, or its STOPPED
          // store is visible just below and we bail -- so we never touch a decoder being freed.
          mixingStream = a;
          __sync_synchronize();
-         if (a->state != SFX_STATE_PLAYING) {
+         if (a->state != AUDIO_STATE_PLAYING) {
             applyStreamSeek(a);   // honor a seek made while paused/stopped (mixer owns decoder)
             mixingStream = NULL;
             continue;
@@ -291,45 +335,47 @@ static void audioMixerThread(uint64_t arg) {
                 (a->fadeStep < 0.0f && a->volume <= a->fadeTarget)) {
                a->volume = a->fadeTarget;
                a->fadeStep = 0.0f;
-               if (a->fadeTarget <= 0.0f) a->state = SFX_STATE_STOPPED;   // faded out
+               if (a->fadeTarget <= 0.0f) a->state = AUDIO_STATE_STOPPED;   // faded out
             }
          }
 
          float vol = a->volume * masterVolume;
-         double step = (double)a->sampleRate / (double)SFX_SAMPLE_RATE * a->speed;
+         double step = (double)a->sampleRate / (double)AUDIO_SAMPLE_RATE * a->speed;
 
-         if (a->mode == SFX_MEMORY && a->pcmData) {
+         if (a->mode == AUDIO_MEMORY && a->pcmData) {
             double startPos = a->playPos;
             double pos = a->playPos;
             mixSamples(a->pcmData, a->pcmSamples, a->channels, mix, &pos, step, vol);
 
             int frames = (int)(pos - startPos);
             if (frames > 0)
-               appendSfxViz(a, blockPeak(a->pcmData + (uint32_t)startPos * a->channels, frames, a->channels));
+               appendAudioViz(a, blockPeak(a->pcmData + (uint32_t)startPos * a->channels, frames, a->channels));
 
             if ((uint32_t)pos + 1 >= a->pcmSamples) {
                if (a->loop) { a->playPos = 0.0; }
-               else { a->state = SFX_STATE_STOPPED; }
+               else { a->state = AUDIO_STATE_STOPPED; }
             } else {
                a->playPos = pos;
             }
-         } else if (a->mode == SFX_STREAM && (a->vorbis || a->mp3 || a->flac || a->wav)) {
+         } else if (a->mode == AUDIO_STREAM && (a->vorbis || a->mp3 || a->flac || a->wav)) {
             mixStreamBlock(a, mix, step, vol);
          }
 
          __sync_synchronize();
-         mixingStream = NULL;   // released; safe for freeSfx to tear this stream down now
+         mixingStream = NULL;   // released; safe for freeAudio to tear this stream down now
       }
 
-      for (int i = 0; i < SFX_BLOCK_SAMPLES * 2; i++) {
+      mixFeedBlock(mix);
+
+      for (int i = 0; i < AUDIO_BLOCK_SAMPLES * 2; i++) {
          if (mix[i] > 1.0f) mix[i] = 1.0f;
          else if (mix[i] < -1.0f) mix[i] = -1.0f;
       }
 
-      uint32_t writeBlock = (curBlock + 1) % SFX_PORT_BLOCKS;
+      uint32_t writeBlock = (curBlock + 1) % AUDIO_PORT_BLOCKS;
       float *dst = (float *)(uintptr_t)(portConfig.portAddr +
-                   SFX_BLOCK_SAMPLES * 2 * sizeof(float) * writeBlock);
-      memcpy(dst, mix, SFX_BLOCK_SAMPLES * 2 * sizeof(float));
+                   AUDIO_BLOCK_SAMPLES * 2 * sizeof(float) * writeBlock);
+      memcpy(dst, mix, AUDIO_BLOCK_SAMPLES * 2 * sizeof(float));
    }
 
    sys_ppu_thread_exit(0);
@@ -339,13 +385,13 @@ static void audioMixerThread(uint64_t arg) {
 // init / term
 // ============================================================================
 
-int initSfx(void) {
+int initAudio(void) {
    cellSysmoduleLoadModule(CELL_SYSMODULE_AUDIO);
 
    CellAudioPortParam p;
    memset(&p, 0, sizeof(p));
    p.nChannel = 2;
-   p.nBlock = SFX_PORT_BLOCKS;
+   p.nBlock = AUDIO_PORT_BLOCKS;
    p.attr = CELL_AUDIO_PORTATTR_BGM;
    p.level = 1.0f;
 
@@ -365,7 +411,7 @@ int initSfx(void) {
    return 0;
 }
 
-void termSfx(void) {
+void termAudio(void) {
    audioRunning = 0;
    uint64_t ec;
    sys_ppu_thread_join(audioThread, &ec);
@@ -484,18 +530,18 @@ static void loadPcmToMemory(uint8_t *fd, uint32_t fsz, int isOgg, Audio *a) {
    free(fd);
    if (!pcm) return;
 
-   if (sr != SFX_SAMPLE_RATE) {
+   if (sr != AUDIO_SAMPLE_RATE) {
       uint32_t rn;
-      float *rp = resamplePcm(pcm, ch, sr, SFX_SAMPLE_RATE, nf, &rn);
+      float *rp = resamplePcm(pcm, ch, sr, AUDIO_SAMPLE_RATE, nf, &rn);
       free(pcm);
       if (!rp) return;
-      pcm = rp; nf = rn; sr = SFX_SAMPLE_RATE;
+      pcm = rp; nf = rn; sr = AUDIO_SAMPLE_RATE;
    }
    a->pcmData    = pcm;
    a->pcmSamples = nf;
    a->sampleRate = sr;
    a->channels   = ch;
-   a->mode       = SFX_MEMORY;
+   a->mode       = AUDIO_MEMORY;
 }
 
 // Counts PCM frames by decoding the whole stream, then rewinds. Last-resort fallback for the rare mp3
@@ -514,14 +560,14 @@ static uint32_t mp3FrameCountByScan(drmp3 *mp3) {
 
 // Builds an Audio from an owned byte buffer (the file contents). Takes ownership of `fd`: frees it
 // after decoding (memory mode) or keeps it for the stream's life (ogg/mp3/flac decode from it).
-// Shared by loadSfx (reads a file) and loadSfxMem (already-in-memory blob).
-static Audio loadSfxBuffer(uint8_t *fd, uint32_t fsz, SfxMode mode) {
+// Shared by loadAudio (reads a file) and loadAudioMem (already-in-memory blob).
+static Audio loadAudioBuffer(uint8_t *fd, uint32_t fsz, AudioMode mode) {
    Audio a;
    memset(&a, 0, sizeof(a));
-   a.volume = SFX_DEFAULT_VOLUME;
-   a.speed  = SFX_DEFAULT_SPEED;
-   a.loop   = SFX_LOOP;
-   a.state  = SFX_STATE_STOPPED;
+   a.volume = AUDIO_DEFAULT_VOLUME;
+   a.speed  = AUDIO_DEFAULT_SPEED;
+   a.loop   = AUDIO_NO_LOOP;
+   a.state  = AUDIO_STATE_STOPPED;
    a.mode   = mode;
    a.seekRequest = -1;
 
@@ -532,7 +578,7 @@ static Audio loadSfxBuffer(uint8_t *fd, uint32_t fsz, SfxMode mode) {
             (fd[0] == 0xFF && (fd[1] & 0xE0) == 0xE0);             // raw MPEG frame sync
    int isFlac = (fd[0] == 'f' && fd[1] == 'L' && fd[2] == 'a' && fd[3] == 'C');
 
-   if (mode == SFX_MEMORY) {
+   if (mode == AUDIO_MEMORY) {
       loadPcmToMemory(fd, fsz, a.isOgg, &a);
    } else if (isMp3) {
       // mp3 stream: dr_mp3 decodes from the compressed bytes (kept in mp3Data) on demand.
@@ -550,7 +596,7 @@ static Audio loadSfxBuffer(uint8_t *fd, uint32_t fsz, SfxMode mode) {
       if (rawCount > 0) {
          // Valid length. MP3 has no native sample-accurate seek, so build + bind a seek table for
          // fast, accurate seeks (the table is client memory that must outlive the decoder; freed in
-         // freeSfx). Without it dr_mp3 brute-force seeks, which is slow and jumpy.
+         // freeAudio). Without it dr_mp3 brute-force seeks, which is slow and jumpy.
          a.pcmSamples = rawCount;
          drmp3_uint32 seekPointCount = 512;
          drmp3_seek_point *seekPoints = (drmp3_seek_point *)malloc(seekPointCount * sizeof(drmp3_seek_point));
@@ -622,14 +668,14 @@ static drwav_bool32 wavTell(void *user, drwav_int64 *cursor) {
 
 // Opens a wav for disk streaming via dr_wav with VFS-backed callbacks: only the header is read
 // here, so even an hour-long file opens instantly and is never loaded into memory. Returns 0 on
-// success (a is a ready SFX_STREAM handle), -1 if the file isn't a wav dr_wav can open (fd closed).
+// success (a is a ready AUDIO_STREAM handle), -1 if the file isn't a wav dr_wav can open (fd closed).
 static int openWavStream(const char *path, Audio *a) {
    memset(a, 0, sizeof(*a));
-   a->volume = SFX_DEFAULT_VOLUME;
-   a->speed  = SFX_DEFAULT_SPEED;
-   a->loop   = SFX_LOOP;
-   a->state  = SFX_STATE_STOPPED;
-   a->mode   = SFX_STREAM;
+   a->volume = AUDIO_DEFAULT_VOLUME;
+   a->speed  = AUDIO_DEFAULT_SPEED;
+   a->loop   = AUDIO_NO_LOOP;
+   a->state  = AUDIO_STATE_STOPPED;
+   a->mode   = AUDIO_STREAM;
    a->seekRequest = -1;
 
    VfsFile *file = (VfsFile *)malloc(sizeof(VfsFile));
@@ -653,27 +699,27 @@ static int openWavStream(const char *path, Audio *a) {
    return 0;
 }
 
-Audio loadSfx(const char *path, SfxMode mode) {
+Audio loadAudio(const char *path, AudioMode mode) {
    // a streamed wav is read straight from disk via dr_wav (no full-file load); everything else falls
    // through to the in-memory path below, which holds the compressed bytes and decodes on demand.
-   if (mode == SFX_STREAM) {
+   if (mode == AUDIO_STREAM) {
       Audio a;
       if (openWavStream(path, &a) == 0) return a;
    }
    uint32_t fsz = 0;
    uint8_t *fd = readFileAlloc(path, &fsz);
-   return loadSfxBuffer(fd, fsz, mode);
+   return loadAudioBuffer(fd, fsz, mode);
 }
 
 // Loads from an in-memory WAV/OGG blob (copies what it needs; caller may free `data`).
-Audio loadSfxMem(const void *data, uint32_t size, SfxMode mode) {
+Audio loadAudioMem(const void *data, uint32_t size, AudioMode mode) {
    uint8_t *fd = NULL;
    if (data && size) { fd = (uint8_t *)malloc(size); if (fd) memcpy(fd, data, size); else size = 0; }
-   return loadSfxBuffer(fd, size, mode);
+   return loadAudioBuffer(fd, size, mode);
 }
 
-void freeSfx(Audio *a) {
-   stopSfx(a);
+void freeAudio(Audio *a) {
+   stopAudio(a);
    if (a->pcmData)        { free(a->pcmData);        a->pcmData = NULL; }
    if (a->vorbis)         { stb_vorbis_close(a->vorbis); a->vorbis = NULL; }
    if (a->vorbisFileData) { free(a->vorbisFileData);  a->vorbisFileData = NULL; }
@@ -690,7 +736,7 @@ void freeSfx(Audio *a) {
 // playback control
 // ============================================================================
 
-void playSfx(Audio *a, float volume, float speed, int loop) {
+void playAudio(Audio *a, float volume, float speed, int loop) {
    a->volume = volume;
    a->speed  = speed;
    a->loop   = loop;
@@ -708,7 +754,7 @@ void playSfx(Audio *a, float volume, float speed, int loop) {
    __sync_synchronize();
    while (mixingStream == a) sys_timer_usleep(100);
 
-   if (a->mode == SFX_STREAM) {
+   if (a->mode == AUDIO_STREAM) {
       if (a->vorbis) stb_vorbis_seek_start(a->vorbis);
       else           seekStream(a, 0);
    }
@@ -716,15 +762,15 @@ void playSfx(Audio *a, float volume, float speed, int loop) {
    int present = 0;
    for (int i = 0; i < streamCount; i++)
       if (streams[i] == a) { present = 1; break; }
-   if (!present && streamCount < SFX_MAX_STREAMS)
+   if (!present && streamCount < AUDIO_MAX_STREAMS)
       streams[streamCount++] = a;
 
    __sync_synchronize();
-   a->state = SFX_STATE_PLAYING;   // live only once the decoder is rewound and we are registered
+   a->state = AUDIO_STATE_PLAYING;   // live only once the decoder is rewound and we are registered
 }
 
-void stopSfx(Audio *a) {
-   a->state = SFX_STATE_STOPPED;
+void stopAudio(Audio *a) {
+   a->state = AUDIO_STATE_STOPPED;
    a->playPos = 0.0;
 
    for (int i = 0; i < streamCount; i++) {
@@ -737,35 +783,35 @@ void stopSfx(Audio *a) {
    }
 
    // The stream is out of the mix list now, but the mixer thread may be mid-block on it. Wait out
-   // that block so a following freeSfx can't free a decoder the mixer is still reading. Bounded:
+   // that block so a following freeAudio can't free a decoder the mixer is still reading. Bounded:
    // the mixer clears mixingStream after every stream, so this never spins beyond one block.
    __sync_synchronize();
    while (mixingStream == a) sys_timer_usleep(100);
 }
 
-void fadeSfx(Audio *a, float target, float seconds) {
+void fadeAudio(Audio *a, float target, float seconds) {
    if (!a) return;
    a->fadeTarget = target;
    if (seconds <= 0.0f) {                       // instant
       a->volume = target;
       a->fadeStep = 0.0f;
-      if (target <= 0.0f) a->state = SFX_STATE_STOPPED;
+      if (target <= 0.0f) a->state = AUDIO_STATE_STOPPED;
       return;
    }
-   float blocks = seconds * ((float)SFX_SAMPLE_RATE / (float)SFX_BLOCK_SAMPLES);
+   float blocks = seconds * ((float)AUDIO_SAMPLE_RATE / (float)AUDIO_BLOCK_SAMPLES);
    a->fadeStep = (target - a->volume) / (blocks > 1.0f ? blocks : 1.0f);
 }
 
-void seekSfx(Audio *a, float seconds) {
+void seekAudio(Audio *a, float seconds) {
    if (!a) return;
    if (seconds < 0.0f) seconds = 0.0f;
 
-   if (a->mode == SFX_MEMORY && a->pcmData && a->pcmSamples) {
+   if (a->mode == AUDIO_MEMORY && a->pcmData && a->pcmSamples) {
       // memory clip: the mixer only reads playPos, so writing it here is a benign single-field race.
       double pos = (double)seconds * (double)a->sampleRate;
       if (pos > (double)(a->pcmSamples - 1)) pos = (double)(a->pcmSamples - 1);
       a->playPos = pos;
-   } else if (a->mode == SFX_STREAM && (a->vorbis || a->mp3 || a->flac || a->wav)) {
+   } else if (a->mode == AUDIO_STREAM && (a->vorbis || a->mp3 || a->flac || a->wav)) {
       // stream: hand the target frame to the mixer thread, which owns the decoder / file reads.
       // Clamp in double -- pcmSamples is uint32, so a (long) cast can go negative on PS3 (32-bit
       // long) for very large counts and collapse every seek to 0.
@@ -776,14 +822,14 @@ void seekSfx(Audio *a, float seconds) {
    }
 }
 
-int getSfxWaveform(const Audio *a, float *out, int maxBins) {
+int getAudioWaveform(const Audio *a, float *out, int maxBins) {
    if (!a || !out || maxBins <= 0) return 0;
-   int n = maxBins < SFX_VIZ_BINS ? maxBins : SFX_VIZ_BINS;
+   int n = maxBins < AUDIO_VIZ_BINS ? maxBins : AUDIO_VIZ_BINS;
    for (int i = 0; i < n; i++) out[i] = a->vizPeaks[i];
    return n;
 }
 
-void setSfxVolume(Audio *a, float volume) {
+void setAudioVolume(Audio *a, float volume) {
    if (!a) return;
    if (volume < 0.0f) volume = 0.0f;
    if (volume > 1.0f) volume = 1.0f;
@@ -792,12 +838,12 @@ void setSfxVolume(Audio *a, float volume) {
    a->fadeStep   = 0.0f;
 }
 
-float getSfxPositionSeconds(const Audio *a) {
+float getAudioPositionSeconds(const Audio *a) {
    if (!a || a->sampleRate == 0) return 0.0f;
    return (float)(a->playPos / (double)a->sampleRate);
 }
 
-float getSfxDurationSeconds(const Audio *a) {
+float getAudioDurationSeconds(const Audio *a) {
    if (!a || a->sampleRate == 0) return 0.0f;
    return (float)a->pcmSamples / (float)a->sampleRate;
 }
@@ -809,26 +855,100 @@ int isPlayableAudioFile(const char *name) {
          strCmpICase(ext, "mp3") == 0 || strCmpICase(ext, "flac") == 0;
 }
 
-void pauseSfx(Audio *a) {
-   if (a->state == SFX_STATE_PLAYING)
-      a->state = SFX_STATE_PAUSED;
+void pauseAudio(Audio *a) {
+   if (a->state == AUDIO_STATE_PLAYING)
+      a->state = AUDIO_STATE_PAUSED;
 }
 
-void resumeSfx(Audio *a) {
-   if (a->state == SFX_STATE_PAUSED)
-      a->state = SFX_STATE_PLAYING;
+void resumeAudio(Audio *a) {
+   if (a->state == AUDIO_STATE_PAUSED)
+      a->state = AUDIO_STATE_PLAYING;
 }
 
-void setSfxMasterVolume(float vol) {
+void setAudioMasterVolume(float vol) {
    if (vol < 0.0f) vol = 0.0f;
    if (vol > 1.0f) vol = 1.0f;
    masterVolume = vol;
 }
 
-void raiseSfxMasterVolume(float amount) {
-   setSfxMasterVolume(masterVolume + amount);
+void raiseAudioMasterVolume(float amount) {
+   setAudioMasterVolume(masterVolume + amount);
 }
 
-void lowerSfxMasterVolume(float amount) {
-   setSfxMasterVolume(masterVolume - amount);
+void lowerAudioMasterVolume(float amount) {
+   setAudioMasterVolume(masterVolume - amount);
+}
+
+// ============================================================================
+// external PCM feed (video playback)
+// ============================================================================
+
+int openAudioPcmFeed(int sampleRate) {
+   if (feed.active || sampleRate <= 0) return -1;
+   feed.ring = (float *)calloc(FEED_RING_FRAMES * 2, sizeof(float));
+   if (!feed.ring) return -1;
+   feed.head = feed.tail = 0;
+   feed.consumed = 0;
+   feed.readPos = 0.0;
+   feed.sampleRate = sampleRate;
+   feed.volume = 1.0f;
+   feed.paused = 0;
+   __sync_synchronize();
+   feed.active = 1;
+   return 0;
+}
+
+void closeAudioPcmFeed(void) {
+   if (!feed.active) return;
+   feed.active = 0;
+   __sync_synchronize();
+   while (feed.mixerInFeed) sys_timer_usleep(200);   // let a mixer block in flight leave the ring
+   free(feed.ring);
+   feed.ring = NULL;
+}
+
+int pushAudioPcm(const float *stereoFrames, int frameCount) {
+   if (!feed.active || frameCount <= 0) return 0;
+   uint32_t space = FEED_RING_FRAMES - (feed.head - feed.tail);
+   if ((uint32_t)frameCount > space) frameCount = (int)space;
+   for (int i = 0; i < frameCount; i++) {
+      uint32_t slot = ((feed.head + i) & (FEED_RING_FRAMES - 1)) * 2;
+      feed.ring[slot]     = stereoFrames[i * 2];
+      feed.ring[slot + 1] = stereoFrames[i * 2 + 1];
+   }
+   __sync_synchronize();   // frames must be visible before the head moves
+   feed.head += frameCount;
+   return frameCount;
+}
+
+int getAudioPcmFeedSpace(void) {
+   if (!feed.active) return 0;
+   return (int)(FEED_RING_FRAMES - (feed.head - feed.tail));
+}
+
+uint64_t getAudioPcmFeedPlayedFrames(void) {
+   return feed.consumed;
+}
+
+void setAudioPcmFeedVolume(float volume) {
+   if (volume < 0.0f) volume = 0.0f;
+   if (volume > 1.0f) volume = 1.0f;
+   feed.volume = volume;
+}
+
+void pauseAudioPcmFeed(int paused) {
+   feed.paused = paused;
+}
+
+void flushAudioPcmFeed(void) {
+   if (!feed.active) return;
+   int wasPaused = feed.paused;
+   feed.paused = 1;
+   __sync_synchronize();
+   while (feed.mixerInFeed) sys_timer_usleep(200);   // let a mixer block in flight leave the ring
+   feed.tail = feed.head;
+   feed.readPos = 0.0;
+   feed.consumed = 0;   // the A/V clock re-anchors at the first frame pushed after the flush
+   __sync_synchronize();
+   feed.paused = wasPaused;
 }

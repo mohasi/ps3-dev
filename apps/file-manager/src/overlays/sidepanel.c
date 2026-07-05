@@ -147,11 +147,11 @@ static void handleInput(void)
    static ButtonRepeat repeat;
    if (isRepeatDue(&repeat, getPadButtonState(PAD_BTN_UP))) {
       selectedIndex = (selectedIndex - 1 + actionCount) % actionCount;
-      playSfxOnce(clickSfx);
+      playAudioOnce(clickSfx);
    }
    else if (isRepeatDue(&repeat, getPadButtonState(PAD_BTN_DOWN))) {
       selectedIndex = (selectedIndex + 1) % actionCount;
-      playSfxOnce(clickSfx);
+      playAudioOnce(clickSfx);
    }
    if (isPadButtonPressed(PAD_BTN_CROSS)) {
       SelectionAction picked = actions[selectedIndex];

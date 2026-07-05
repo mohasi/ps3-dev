@@ -1,0 +1,37 @@
+#pragma once
+
+// video-player - the playback engine. Owns the demuxer (MKV or MP4), the H.264 decoder and a
+// background thread that decodes ahead into a small ring of frames. The UI presents frames by
+// calling getVideoFrame each render frame; the engine hands back the frame whose presentation time
+// is due (skipping ahead if the UI fell behind, holding if it's early), so playback runs at the
+// file's real frame rate. The AAC audio track drives the clock while it plays; wall-time otherwise.
+
+#include <stdint.h>
+
+typedef struct VideoPlayer VideoPlayer;
+
+// frame-buffer allocator hooks. The UI supplies these so frames land in RSX-visible memory and are
+// drawn zero-copy (gfx's allocGfxVideoBuffer/freeGfxVideoBuffer); pass NULL for plain heap buffers.
+typedef void *(*VideoFrameAllocFn)(size_t size);
+typedef void  (*VideoFrameFreeFn)(void *buffer);
+
+// opens `path`, brings up the decoder, and starts decoding. Returns NULL if the file can't be
+// demuxed / decoded (caller should have probed first for a user-facing reason).
+VideoPlayer *createVideoPlayer(const char *path, VideoFrameAllocFn allocFrame, VideoFrameFreeFn freeFrame);
+void         destroyVideoPlayer(VideoPlayer *player);
+
+// returns the YUV 4:2:0 planar frame (Y then U then V, width*height*3/2 bytes) that should be shown
+// now (paced against the clock), or NULL if none is ready yet. The pointer stays valid until the
+// SECOND-next getVideoFrame call (the previous frame is retired one call late so the GPU is never
+// reading a buffer the decoder is refilling). Fills *width/*height with the coded plane dimensions.
+const uint8_t *getVideoFrame(VideoPlayer *player, int *width, int *height);
+
+void  setVideoPaused(VideoPlayer *player, int paused);
+int   isVideoPaused(const VideoPlayer *player);
+// asynchronous seek: decode restarts from the nearest cued keyframe at or before `seconds` (both
+// pipelines flush; the current frame stays on screen until the new position's frames arrive).
+// Seeking after the end restarts playback.
+void  seekVideoPlayer(VideoPlayer *player, float seconds);
+int   isVideoEnded(const VideoPlayer *player);       // decode reached end of stream and the ring drained
+float getVideoPositionSeconds(const VideoPlayer *player);
+float getVideoDurationSeconds(const VideoPlayer *player);

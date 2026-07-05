@@ -113,7 +113,7 @@ static void update(void)
    }
 
    if (!cancelling && isPadButtonPressed(PAD_BTN_CIRCLE)) {
-      playSfxOnce(clickSfx);
+      playAudioOnce(clickSfx);
       cancelling = 1;
       cancelTask();
       setLabelText(&subtitleLabel, "Cancelling...");

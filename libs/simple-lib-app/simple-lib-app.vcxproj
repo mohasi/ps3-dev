@@ -40,6 +40,7 @@
    <ClCompile Include="src\image-encoder.c" />
    <ClCompile Include="src\font.c" />
    <ClCompile Include="src\pad.c" />
+   <ClCompile Include="src\screenshot.c" />
    <ClCompile Include="src\screen-manager.c" />
    <ClCompile Include="src\anim.c" />
    <ClCompile Include="src\ui\button.c" />
@@ -49,6 +50,11 @@
    <ClCompile Include="src\ui\scrollbar.c" />
    <ClCompile Include="src\ui\dialog-panel.c" />
    <ClCompile Include="src\ui\progress-bar.c" />
+   <ClCompile Include="src\ui\key-grid.c" />
+   <ClCompile Include="src\ui\keyboard.c" />
+   <ClCompile Include="src\ui\hex-pad.c" />
+   <ClCompile Include="src\ui\button-hints.c" />
+   <ClCompile Include="src\console-glyphs.c" />
    <ClCompile Include="src\timer.c" />
    <ClCompile Include="src\file-task.c" />
    <ClCompile Include="src\osk-input.c" />
@@ -58,6 +64,7 @@
    <ClInclude Include="include\image-loader.h" />
    <ClInclude Include="include\font.h" />
    <ClInclude Include="include\pad.h" />
+   <ClInclude Include="include\screenshot.h" />
    <ClInclude Include="include\screen.h" />
    <ClInclude Include="include\screen-manager.h" />
    <ClInclude Include="include\overlay.h" />
@@ -78,6 +85,11 @@
    <ClInclude Include="include\ui\dialog-panel.h" />
    <ClInclude Include="include\ui\progress-bar.h" />
    <ClInclude Include="include\ui\checkbox.h" />
+   <ClInclude Include="include\ui\key-grid.h" />
+   <ClInclude Include="include\ui\keyboard.h" />
+   <ClInclude Include="include\ui\hex-pad.h" />
+   <ClInclude Include="include\ui\button-hints.h" />
+   <ClInclude Include="include\ui\console-glyphs.h" />
    <ClInclude Include="include\timer.h" />
    <ClInclude Include="include\button-repeat.h" />
    <ClInclude Include="include\dynarray.h" />

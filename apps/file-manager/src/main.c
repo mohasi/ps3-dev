@@ -11,6 +11,7 @@
 #include "screen-manager.h"
 #include "screens/home.h"
 #include "ui/stats.h"
+#include "ui/console-glyphs.h"
 #include "bridge-client.h"
 
 #define PROCESS_PRIORITY_DEFAULT 1001
@@ -35,6 +36,7 @@ int main(int argc, char **argv)
    if (initAudio() != 0) return 1;
    if (initFont() != 0) return 1;
    initPad();
+   loadConsoleGlyphs();   // decode the console's own button glyphs for footer/keyboard hints
 
    initStats(5, 5, 14, COLOR_AMBER_300);
 
@@ -54,6 +56,7 @@ int main(int argc, char **argv)
 
    changeScreen(NULL);
    termStats();
+   freeConsoleGlyphs();
    termAudio();
    termFont();
    termGfx();

@@ -1,10 +1,15 @@
-// text-editor-overlay - full-screen text viewer with line numbers.
-// Slice 1: read-only. Loads the whole file into memory, splits it in place on
-// '\n' / '\r\n' into a pointer-per-line array, and shows a scrollable,
-// line-numbered view in a fixed-position panel below a filename header, with
-// its own Exit footer row. D-pad moves the caret between characters and lines,
+// text-editor-overlay - full-screen text editor with line numbers. Keeps the
+// whole file in a growable in-memory buffer (raw bytes, not NUL-split) plus a
+// line-offset index rebuilt after every edit. Shows a scrollable, line-numbered
+// view in a fixed-position panel below a filename header, with its own
+// Edit/Save/Exit footer row. D-pad moves the caret between characters and lines,
 // scrolling (vertically and, since lines aren't wrapped, horizontally) just
-// enough to keep it in view. Circle closes. No editing or search yet.
+// enough to keep it in view. Edit (Cross) opens the on-screen keyboard, whose
+// committed keys insert/backspace/tab/newline at the caret; Edit is disabled
+// while the keyboard is already open, and Exit is disabled too - Circle
+// closes the keyboard instead of the editor while it's open. Save (Start)
+// writes the buffer to disk and is only enabled while there are unsaved
+// edits; saving clears the dirty flag and itself disables again. No search yet.
 #include "overlays/text-editor-overlay.h"
 #include "gfx.h"
 #include "pad.h"
@@ -15,6 +20,8 @@
 #include "ui/button.h"
 #include "ui/slice.h"
 #include "ui/scrollbar.h"
+#include "ui/keyboard.h"
+#include "ui/console-glyphs.h"
 #include "sprite-regions.h"
 #include "button-repeat.h"
 #include "dynarray.h"
@@ -27,6 +34,11 @@
 #include <sys/sys_time.h>
 
 #define FONT_PATH "/dev_hdd0/game/FILEMGR01/USRDIR/JetBrainsMono-Regular.ttf"
+
+// rescanLines() re-walks the whole buffer after every keystroke, so a much larger file would
+// make typing feel unresponsive; this also keeps fileStat.size (uint64_t) well within openTextEditor's
+// int capacity/bytesRead math, so it can never wrap to a small value and silently truncate a huge file.
+#define MAX_EDITABLE_FILE_SIZE (32u * 1024u * 1024u)
 
 // header chrome (file icon + name), drawn above the panel at fixed screen coordinates
 #define HEADER_ICON_X     39
@@ -68,11 +80,12 @@
 
 #define EDITOR_PAGE_SIZE (((SEPARATOR_Y - PANEL_Y) - PANEL_PAD) / ROW_HEIGHT)
 
-// own footer row (Exit only for now - no edit handler yet), independent of the
-// file list's shared footer widget
-#define FOOTER_X         51
-#define FOOTER_Y        998
-#define FOOTER_TEXT_SIZE 20
+// own footer row (Edit + Save + Exit), independent of the file list's shared footer widget
+#define FOOTER_X          51
+#define FOOTER_Y         998
+#define FOOTER_TEXT_SIZE  20
+#define FOOTER_BUTTON_GAP 40
+#define FOOTER_ICON_H     32   // console button glyphs are scaled to this height, aspect preserved
 
 // scrollbar: a pill-shaped thumb (SPRITE_VERTICAL_PILL, 10x31 native - a 5px-radius
 // capsule) in a taller, wider track. thumb height shrinks as the document grows
@@ -120,10 +133,13 @@
 typedef enum { LINE_ENDING_NONE, LINE_ENDING_LF, LINE_ENDING_CRLF, LINE_ENDING_CR } LineEnding;
 
 static struct {
-   char  *buffer;        // whole file content, NUL-terminated; '\n'/'\r' replaced with '\0' in place
-   char **lines;         // pointers into buffer, one per line
-   int    lineCount;
-   int    lineCapacity;
+   char *buffer;          // raw file bytes + edits (not NUL-split; bufferLength is authoritative)
+   int   bufferLength;    // bytes currently in use
+   int   bufferCapacity;  // allocated size
+
+   int *lineOffsets;      // byte offset of each line's first character
+   int  lineCount;
+   int  lineOffsetCapacity;
 
    int cursorLine;   // highlighted line (0-based)
    int cursorCol;    // caret's character column within that line (0..line length)
@@ -131,10 +147,12 @@ static struct {
    int scrollTop;    // first visible line (0-based)
    int scrollCol;    // first visible character column, shared by every visible row
    int rowsStale;    // visible row labels need rebuilding
+   int dirty;        // any edits since open (shows the header's unsaved-changes asterisk, enables Save)
 
    uint64_t   lastMoveUs;    // when the cursor last moved; the caret holds solid for a bit after
-   uint64_t   fileSize;      // for the status bar's size segment
    LineEnding lineEnding;    // the first line ending style seen in the file
+
+   char path[MAX_PATH_LEN];   // the open file's path, for Save
 } state;
 
 static Font  monoFont;     // body text + line numbers
@@ -145,6 +163,8 @@ static Label headerStarLabel;
 static NineSlice panel;
 static Scrollbar scrollbar;
 static Button exitFooterButton;
+static Button editFooterButton;
+static Button saveFooterButton;
 static int   charWidth;    // monospace glyph advance in px, so column <-> pixel is exact
 static int   visibleCols;  // how many character columns BODY_WIDTH holds
 static int   caretHeight;  // the font's line-box height - fixed, not per-line tex.h (0 on a blank line)
@@ -158,13 +178,14 @@ static Label activeNumberLabels[EDITOR_PAGE_SIZE];
 static Label bodyLabels[EDITOR_PAGE_SIZE];
 static int   numberOffsetX[EDITOR_PAGE_SIZE];
 
-// status bar segments: size and line ending are set once per file open; position
-// is refreshed every cursor move; encoding is a fixed label (no detection yet).
+// status bar segments: size and line ending are refreshed on open and on every
+// edit; position is refreshed every cursor move; encoding is a fixed label (no
+// detection yet).
 static Label sizeLabel, positionLabel, encodingLabel, lineEndingLabel, pipeLabel;
 
 static ButtonRepeat scrollUpRepeat, scrollDownRepeat, scrollLeftRepeat, scrollRightRepeat;
 
-static const char *lineEndingText(LineEnding le)
+static const char *getLineEndingText(LineEnding le)
 {
    switch (le) {
       case LINE_ENDING_CRLF: return "CRLF";
@@ -207,16 +228,6 @@ static void ensureCursorVisibleHorizontally(void)
    if (state.scrollCol < 0) state.scrollCol = 0;
 }
 
-// centres a label's actual rendered glyph height within a ROW_HEIGHT row -
-// the font's line-box height isn't FONT_SIZE, so this reads the real
-// rendered texture height rather than assuming one. the +3 is a manual
-// correction against the mockup (the glyph ink doesn't sit dead-centre in
-// its line box).
-static int centerInRow(const Label *l, int rowY)
-{
-   return rowY + (ROW_HEIGHT - l->tt.tex.h) / 2 + 3;
-}
-
 // solid for CARET_SETTLE_US after the cursor last moved (so scrolling doesn't read as
 // a glitchy blink), then blinks on a fresh phase once it's settled on a row.
 static int isCaretVisible(void)
@@ -229,64 +240,136 @@ static int isCaretVisible(void)
 static void freeDocument(void)
 {
    free(state.buffer);
-   free(state.lines);
-   state.buffer       = NULL;
-   state.lines        = NULL;
-   state.lineCount    = 0;
-   state.lineCapacity = 0;
+   free(state.lineOffsets);
+   state.buffer             = NULL;
+   state.bufferLength       = 0;
+   state.bufferCapacity     = 0;
+   state.lineOffsets        = NULL;
+   state.lineCount          = 0;
+   state.lineOffsetCapacity = 0;
 }
 
-static void addLine(char *start)
+static void addLineOffset(int offset)
 {
-   if (!growArray(state.lines, &state.lineCapacity, state.lineCount + 1)) return;
-   state.lines[state.lineCount++] = start;
+   if (!growArray(state.lineOffsets, &state.lineOffsetCapacity, state.lineCount + 1)) return;
+   state.lineOffsets[state.lineCount++] = offset;
 }
 
-// splits buffer in place on '\n' / '\r\n', NUL-terminating each line. a
-// trailing newline yields one extra empty final line, matching how most
-// editors count lines. records the first line ending style seen into
-// state.lineEnding, for the status bar.
-static void splitDocumentLines(char *buffer)
+// rebuilds the line-offset index from the current buffer contents, and records
+// the first line ending style seen (for the status bar). called after every
+// edit as well as on open - a full rescan is cheap enough at the file sizes
+// this editor targets. bare '\r'-only (classic Mac) line endings aren't split
+// on here, unlike the original read-only pass - a rare enough format to accept
+// as regular line content for now.
+static void rescanLines(void)
 {
-   state.lineEnding = LINE_ENDING_NONE;
+   state.lineCount   = 0;
+   state.lineEnding  = LINE_ENDING_NONE;
+   addLineOffset(0);
 
-   char *lineStart = buffer;
-   char *p = buffer;
-   while (*p) {
-      if (*p == '\n' || *p == '\r') {
-         char *terminator = p;
-         LineEnding found = LINE_ENDING_LF;
-         if (*p == '\r' && p[1] == '\n') { found = LINE_ENDING_CRLF; p++; }   // CRLF: swallow both
-         else if (*p == '\r')              found = LINE_ENDING_CR;
-         if (state.lineEnding == LINE_ENDING_NONE) state.lineEnding = found;
-         p++;
-         *terminator = '\0';
-         addLine(lineStart);
-         lineStart = p;
-      } else {
-         p++;
-      }
+   for (int i = 0; i < state.bufferLength; i++) {
+      if (state.buffer[i] != '\n') continue;
+      LineEnding found = (i > 0 && state.buffer[i - 1] == '\r') ? LINE_ENDING_CRLF : LINE_ENDING_LF;
+      if (state.lineEnding == LINE_ENDING_NONE) state.lineEnding = found;
+      addLineOffset(i + 1);
    }
-   addLine(lineStart);
+}
+
+// content length of line index, excluding whatever line terminator it ends with.
+static int getLineLength(int index)
+{
+   int start = state.lineOffsets[index];
+   int end   = (index + 1 < state.lineCount) ? state.lineOffsets[index + 1] : state.bufferLength;
+   int len   = end - start;
+   if (index + 1 < state.lineCount) {
+      len--;   // the '\n' itself
+      if (len > 0 && state.buffer[start + len - 1] == '\r') len--;
+   }
+   return len;
+}
+
+static const char *getLineStart(int index) { return state.buffer + state.lineOffsets[index]; }
+
+// grows the buffer geometrically to hold at least `needed` bytes.
+static int ensureBufferCapacity(int needed)
+{
+   if (needed <= state.bufferCapacity) return 1;
+   int grownCapacity = state.bufferCapacity > 0 ? state.bufferCapacity : 256;
+   while (grownCapacity < needed) grownCapacity *= 2;
+   char *grown = (char *)realloc(state.buffer, grownCapacity);
+   if (!grown) return 0;
+   state.buffer         = grown;
+   state.bufferCapacity = grownCapacity;
+   return 1;
+}
+
+// inserts one byte at offset, shifting everything after it right by one.
+static int insertByte(int offset, char c)
+{
+   if (!ensureBufferCapacity(state.bufferLength + 1)) return 0;
+   memmove(state.buffer + offset + 1, state.buffer + offset, state.bufferLength - offset);
+   state.buffer[offset] = c;
+   state.bufferLength++;
+   return 1;
+}
+
+// deletes count bytes starting at offset, shifting the tail left.
+static void deleteBytes(int offset, int count)
+{
+   memmove(state.buffer + offset, state.buffer + offset + count, state.bufferLength - offset - count);
+   state.bufferLength -= count;
+}
+
+static int getCursorOffset(void) { return state.lineOffsets[state.cursorLine] + state.cursorCol; }
+
+static void refreshSizeLabel(void)
+{
+   char sizeText[24];
+   formatSize((uint64_t)state.bufferLength, sizeText);
+   setLabelText(&sizeLabel, sizeText);
+}
+
+// re-derives line offsets after a mutation, keeps the cursor's row in view,
+// and refreshes the labels that reflect document size/content. shared by
+// insertCommittedChar and backspaceAtCursor.
+static void afterEdit(void)
+{
+   rescanLines();
+   state.dirty      = 1;
+   state.lastMoveUs = sys_time_get_system_time();
+   ensureCursorVisibleHorizontally();
+
+   if (state.cursorLine < state.scrollTop)
+      state.scrollTop = state.cursorLine;
+   else if (state.cursorLine >= state.scrollTop + EDITOR_PAGE_SIZE)
+      state.scrollTop = state.cursorLine - EDITOR_PAGE_SIZE + 1;
+
+   refreshSizeLabel();
+   setLabelText(&lineEndingLabel, getLineEndingText(state.lineEnding));
+   state.rowsStale = 1;
 }
 
 int openTextEditor(const char *path)
 {
    VfsStat fileStat;
    if (statPath(path, &fileStat) != 0) return -1;
+   if (fileStat.size > MAX_EDITABLE_FILE_SIZE) return -1;   // see MAX_EDITABLE_FILE_SIZE: also keeps the cast below in range
 
-   char *buffer = (char *)malloc((size_t)fileStat.size + 1);
+   int capacity = (int)fileStat.size + 1;
+   char *buffer = (char *)malloc((size_t)capacity);
    if (!buffer) return -1;
 
-   if (readFile(path, buffer, (int)fileStat.size + 1) < 0) {
+   int bytesRead = readFile(path, buffer, capacity);
+   if (bytesRead < 0) {
       free(buffer);
       return -1;
    }
 
    freeDocument();
-   state.buffer   = buffer;
-   state.fileSize = fileStat.size;
-   splitDocumentLines(state.buffer);
+   state.buffer         = buffer;
+   state.bufferLength   = bytesRead;
+   state.bufferCapacity = capacity;
+   rescanLines();
 
    state.cursorLine  = 0;
    state.cursorCol   = 0;
@@ -294,17 +377,20 @@ int openTextEditor(const char *path)
    state.scrollTop   = 0;
    state.scrollCol   = 0;
    state.rowsStale   = 1;
+   state.dirty       = 0;
    state.lastMoveUs  = sys_time_get_system_time();
+
+   strCopy(state.path, sizeof state.path, path);
 
    const char *fileName = getBaseName(path);
    setLabelText(&headerNameLabel, fileName);
-   float nameWidth = measureFontText(&headerFont, HEADER_NAME_SIZE, fileName);
-   moveLabel(&headerStarLabel, HEADER_NAME_X + (int)nameWidth + HEADER_STAR_GAP, HEADER_STAR_Y);
+   // headerNameLabel.tt.tex.w is the label's ACTUAL rendered width - already ellipsis-truncated
+   // if fileName is too long for HEADER_NAME_WIDTH - so the star lands right after what's really
+   // on screen, unlike re-measuring the untruncated fileName would.
+   moveLabel(&headerStarLabel, HEADER_NAME_X + headerNameLabel.tt.tex.w + HEADER_STAR_GAP, HEADER_STAR_Y);
 
-   char sizeText[24];
-   formatSize(state.fileSize, sizeText);
-   setLabelText(&sizeLabel, sizeText);
-   setLabelText(&lineEndingLabel, lineEndingText(state.lineEnding));
+   refreshSizeLabel();
+   setLabelText(&lineEndingLabel, getLineEndingText(state.lineEnding));
    setLabelText(&positionLabel, "Ln 1, Col 1");
 
    showOverlay(&textEditorOverlay);
@@ -322,6 +408,7 @@ static void hide(void)
 static void rebuildRows(void)
 {
    char numberText[12];
+   char lineScratch[LABEL_MAX_TEXT];   // NUL-terminated copy of the visible slice of a line
 
    for (int i = 0; i < EDITOR_PAGE_SIZE; i++) {
       int idx = state.scrollTop + i;
@@ -339,9 +426,13 @@ static void rebuildRows(void)
 
       // the whole viewport scrolls horizontally together: every row starts at the
       // same character column, clamped to its own (possibly shorter) length.
-      int lineLen  = (int)strlen(state.lines[idx]);
-      int startCol = state.scrollCol < lineLen ? state.scrollCol : lineLen;
-      setLabelText(&bodyLabels[i], state.lines[idx] + startCol);
+      int lineLen    = getLineLength(idx);
+      int startCol   = state.scrollCol < lineLen ? state.scrollCol : lineLen;
+      int visibleLen = lineLen - startCol;
+      if (visibleLen > (int)sizeof(lineScratch) - 1) visibleLen = (int)sizeof(lineScratch) - 1;
+      memcpy(lineScratch, getLineStart(idx) + startCol, visibleLen);
+      lineScratch[visibleLen] = '\0';
+      setLabelText(&bodyLabels[i], lineScratch);
    }
 
    char positionText[32];
@@ -366,8 +457,8 @@ static void moveCursor(int delta)
    state.cursorLine = newLine;
    state.lastMoveUs = sys_time_get_system_time();
 
-   int lineLen = (int)strlen(state.lines[state.cursorLine]);
-   state.cursorCol = state.desiredCol < lineLen ? state.desiredCol : lineLen;
+   int len = getLineLength(state.cursorLine);
+   state.cursorCol = state.desiredCol < len ? state.desiredCol : len;
 
    if (state.cursorLine < state.scrollTop)
       state.scrollTop = state.cursorLine;
@@ -384,10 +475,10 @@ static void moveCursorHorizontal(int delta)
 {
    if (state.lineCount == 0) return;
 
-   int lineLen = (int)strlen(state.lines[state.cursorLine]);
-   int newCol  = state.cursorCol + delta;
+   int len    = getLineLength(state.cursorLine);
+   int newCol = state.cursorCol + delta;
    if (newCol < 0) newCol = 0;
-   if (newCol > lineLen) newCol = lineLen;
+   if (newCol > len) newCol = len;
    if (newCol == state.cursorCol) return;
 
    state.cursorCol  = newCol;
@@ -398,17 +489,102 @@ static void moveCursorHorizontal(int delta)
    state.rowsStale = 1;
 }
 
+// inserts the committed character at the caret and steps the caret past it.
+static void insertCommittedChar(char c)
+{
+   if (!insertByte(getCursorOffset(), c)) return;   // out of memory: drop the keystroke
+   state.cursorCol++;
+   state.desiredCol = state.cursorCol;
+   afterEdit();
+}
+
+// deletes the character before the caret, merging into the previous line
+// (removing its terminator) when the caret sits at column 0.
+static void backspaceAtCursor(void)
+{
+   if (state.cursorCol > 0) {
+      deleteBytes(getCursorOffset() - 1, 1);
+      state.cursorCol--;
+   } else if (state.cursorLine > 0) {
+      int terminatorEnd = state.lineOffsets[state.cursorLine] - 1;   // index just past the terminator
+      int terminatorLen = 1;                                         // the '\n'
+      if (terminatorEnd > 0 && state.buffer[terminatorEnd - 1] == '\r') { terminatorEnd--; terminatorLen = 2; }
+      int mergedCol = getLineLength(state.cursorLine - 1);
+      deleteBytes(terminatorEnd, terminatorLen);
+      state.cursorLine--;
+      state.cursorCol = mergedCol;
+   } else {
+      return;   // start of document: nothing to delete
+   }
+   state.desiredCol = state.cursorCol;
+   afterEdit();
+}
+
+// inserts a newline at the caret and moves onto the new line it creates,
+// rather than stepping past it on the old line like insertCommittedChar does.
+static void insertNewlineAtCursor(void)
+{
+   if (!insertByte(getCursorOffset(), '\n')) return;
+   state.cursorLine++;
+   state.cursorCol  = 0;
+   state.desiredCol = 0;
+   afterEdit();
+}
+
+static void onKeyboardKey(char key)
+{
+   if (key == '\b')      backspaceAtCursor();
+   else if (key == '\n') insertNewlineAtCursor();
+   else                  insertCommittedChar(key);
+}
+
+// writes the whole buffer to disk and clears the dirty flag. no-op if there's
+// nothing to save (also guards against Save firing while visually disabled).
+static void saveDocument(void)
+{
+   if (!state.dirty) return;
+   if (writeFile(state.path, state.buffer, (uint64_t)state.bufferLength) != 0) {
+      logError("[text-editor] failed to save %s\n", state.path);
+      return;
+   }
+   state.dirty = 0;
+}
+
+// d-pad caret movement - shared by normal input and by the keyboard-open/L2-held
+// path, where the document temporarily takes the d-pad back from the keyboard.
+static void handleDpadNavigation(void)
+{
+   if (isRepeatDue(&scrollDownRepeat, getPadButtonState(PAD_BTN_DOWN))) moveCursor(1);
+   else if (isRepeatDue(&scrollUpRepeat, getPadButtonState(PAD_BTN_UP))) moveCursor(-1);
+   else if (isRepeatDue(&scrollRightRepeat, getPadButtonState(PAD_BTN_RIGHT))) moveCursorHorizontal(1);
+   else if (isRepeatDue(&scrollLeftRepeat, getPadButtonState(PAD_BTN_LEFT))) moveCursorHorizontal(-1);
+}
+
 static void update(void)
 {
+   // Save works regardless of the keyboard's state, so it doesn't need to close
+   // (or even be unfocused from) the keyboard first.
+   if (isPadButtonPressed(PAD_BTN_START)) { saveDocument(); return; }
+
+   if (isKeyboardOpen()) {
+      // keyboard has exclusive input while open (it closes itself on Circle), but
+      // edits committed through it still need their rows re-rendered live, or the
+      // caret appears to advance over unchanged text until the keyboard closes.
+      // holding L2 hands the d-pad back to the document so the caret can be
+      // repositioned without closing the keyboard.
+      if (isBackgroundFocused()) handleDpadNavigation();
+      if (state.rowsStale) rebuildRows();
+      return;
+   }
+
+   if (isPadButtonPressed(PAD_BTN_CROSS)) { openKeyboard(onKeyboardKey); return; }
+
    if (isPadButtonPressed(PAD_BTN_CIRCLE)) {
       hideOverlay(&textEditorOverlay);
       return;
    }
 
-   if (isRepeatDue(&scrollDownRepeat, getPadButtonState(PAD_BTN_DOWN))) moveCursor(1);
-   else if (isRepeatDue(&scrollUpRepeat, getPadButtonState(PAD_BTN_UP))) moveCursor(-1);
-   else if (isRepeatDue(&scrollRightRepeat, getPadButtonState(PAD_BTN_RIGHT))) moveCursorHorizontal(1);
-   else if (isRepeatDue(&scrollLeftRepeat, getPadButtonState(PAD_BTN_LEFT))) moveCursorHorizontal(-1);
+   handleDpadNavigation();
 
    if (state.rowsStale) rebuildRows();
 }
@@ -419,7 +595,7 @@ static void draw(void)
 
    drawImage(&headerIcon);
    drawLabel(&headerNameLabel);
-   drawLabel(&headerStarLabel);
+   if (state.dirty) drawLabel(&headerStarLabel);
 
    fillGfxRectangle(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, COLOR_PANEL_BG);
    drawNineSlice(&panel);
@@ -435,8 +611,8 @@ static void draw(void)
       if (isCurrent) fillGfxRectangle(GUTTER_BG_X, rowY, GUTTER_BG_W, ROW_HEIGHT, COLOR_GUTTER_BG_ACTIVE);
 
       Label *numberLabel = isCurrent ? &activeNumberLabels[i] : &numberLabels[i];
-      drawLabelAt(numberLabel, PANEL_X + numberOffsetX[i], centerInRow(numberLabel, rowY));
-      drawLabelAt(&bodyLabels[i], PANEL_X + TEXT_OFFSET_X, centerInRow(&bodyLabels[i], rowY));
+      drawLabelAt(numberLabel, PANEL_X + numberOffsetX[i], getCenteredLabelY(numberLabel, rowY, ROW_HEIGHT));
+      drawLabelAt(&bodyLabels[i], PANEL_X + TEXT_OFFSET_X, getCenteredLabelY(&bodyLabels[i], rowY, ROW_HEIGHT));
 
       if (isCurrent && isCaretVisible()) {
          int caretY = rowY + (ROW_HEIGHT - caretHeight) / 2 + 3;
@@ -448,6 +624,11 @@ static void draw(void)
    drawScrollbar(&scrollbar, state.lineCount, EDITOR_PAGE_SIZE, state.scrollTop);
    drawStatusBar();
 
+   setButtonState(&editFooterButton, isKeyboardOpen() ? BUTTON_DISABLED : BUTTON_ENABLED);
+   setButtonState(&saveFooterButton, state.dirty ? BUTTON_ENABLED : BUTTON_DISABLED);
+   setButtonState(&exitFooterButton, isKeyboardOpen() ? BUTTON_DISABLED : BUTTON_ENABLED);   // Circle closes the keyboard, not the editor, while it's open
+   drawButton(&editFooterButton);
+   drawButton(&saveFooterButton);
    drawButton(&exitFooterButton);
 }
 
@@ -467,6 +648,8 @@ static void term(void)
    freeLabel(&lineEndingLabel);
    freeLabel(&pipeLabel);
    freeButton(&exitFooterButton);
+   freeButton(&editFooterButton);
+   freeButton(&saveFooterButton);
    closeFont(&monoFont);
    closeFont(&headerFont);
    textEditorOverlay.status = OVERLAY_TERMINATED;
@@ -500,25 +683,40 @@ void initTextEditorOverlay(GfxTexture sprites)
 
    initImage(&headerIcon, sprites, HEADER_ICON_X, HEADER_ICON_Y, HEADER_ICON_W, HEADER_ICON_H,
              spriteRegions[SPRITE_TEXT], GFX_FILTER_LINEAR);
-   initLabel(&headerNameLabel, &headerFont, HEADER_NAME_X, HEADER_NAME_Y, HEADER_NAME_WIDTH, AUTO,
-             HEADER_NAME_SIZE, COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabelRaw(&headerNameLabel, &headerFont, HEADER_NAME_X, HEADER_NAME_Y, HEADER_NAME_WIDTH, AUTO,
+                HEADER_NAME_SIZE, COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
    initLabel(&headerStarLabel, &headerFont, 0, 0, 20, AUTO, HEADER_NAME_SIZE, COLOR_RED, TEXT_NOWRAP, "*");
 
    initNineSlice(&panel, sprites, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
    initScrollbar(&scrollbar, sprites, SCROLLBAR_X, SCROLLBAR_Y, SCROLLBAR_W, SCROLLBAR_H,
                  spriteRegions[SPRITE_VERTICAL_PILL], SCROLLBAR_THUMB_W, SCROLLBAR_THUMB_CAP, SCROLLBAR_THUMB_MIN_H);
 
+   Image editIcon;
+   Label editLabel;
+   initGlyphIcon(&editIcon, GLYPH_CROSS, FOOTER_ICON_H);
+   initLabel(&editLabel, &headerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Edit");
+   initButton(&editFooterButton, editIcon, editLabel, BUTTON_ENABLED);   // opening the keyboard is handled directly in update()
+   moveButton(&editFooterButton, FOOTER_X, FOOTER_Y);
+
+   Image saveIcon;
+   Label saveLabel;
+   initGlyphIcon(&saveIcon, GLYPH_START, FOOTER_ICON_H);
+   initLabel(&saveLabel, &headerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Save");
+   initButton(&saveFooterButton, saveIcon, saveLabel, BUTTON_DISABLED);   // saving is handled directly in update()
+   moveButton(&saveFooterButton, FOOTER_X + getButtonWidth(&editFooterButton) + FOOTER_BUTTON_GAP, FOOTER_Y);
+
    Image exitIcon;
    Label exitLabel;
-   initImage(&exitIcon, sprites, 0, 0, AUTO, AUTO, spriteRegions[SPRITE_CIRCLE], GFX_FILTER_LINEAR);
+   initGlyphIcon(&exitIcon, GLYPH_CIRCLE, FOOTER_ICON_H);
    initLabel(&exitLabel, &headerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Exit");
    initButton(&exitFooterButton, exitIcon, exitLabel, BUTTON_ENABLED);   // closing is handled directly in update()
-   moveButton(&exitFooterButton, FOOTER_X, FOOTER_Y);
+   moveButton(&exitFooterButton, FOOTER_X + getButtonWidth(&editFooterButton) + FOOTER_BUTTON_GAP
+                                          + getButtonWidth(&saveFooterButton) + FOOTER_BUTTON_GAP, FOOTER_Y);
 
    for (int i = 0; i < EDITOR_PAGE_SIZE; i++) {
       initLabel(&numberLabels[i],       &monoFont, 0, 0, GUTTER_W,   AUTO, FONT_SIZE, COLOR_LINE_NUMBER,        TEXT_NOWRAP, "");
       initLabel(&activeNumberLabels[i], &monoFont, 0, 0, GUTTER_W,   AUTO, FONT_SIZE, COLOR_LINE_NUMBER_ACTIVE, TEXT_NOWRAP, "");
-      initLabel(&bodyLabels[i],         &monoFont, 0, 0, BODY_WIDTH, AUTO, FONT_SIZE, COLOR_WHITE,              TEXT_NOWRAP_ELLIPSIS, "");
+      initLabelRaw(&bodyLabels[i],      &monoFont, 0, 0, BODY_WIDTH, AUTO, FONT_SIZE, COLOR_WHITE,              TEXT_NOWRAP_ELLIPSIS, "");
    }
 
    initLabel(&sizeLabel,        &headerFont, 0, 0, AUTO, AUTO, STATUS_TEXT_SIZE, COLOR_WHITE,       TEXT_NOWRAP, "");

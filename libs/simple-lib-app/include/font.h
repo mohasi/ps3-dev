@@ -86,6 +86,11 @@ typedef struct {
 // automatically. pass NULL or empty text to clear the texture.
 void renderFont(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap);
 
+// As renderFont, but every byte is literal content - no {i}/{b}/{color=}/[[ style-tag parsing.
+// Use this for text that comes from outside the app (file contents, filenames, ...), where a
+// stray '{' or '[' must never be swallowed as (or mistaken for) markup.
+void renderFontRaw(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap);
+
 // where the laid-out text ENDS, reported by renderFontEx -- for placing inline
 // decorations (carets, click-to-continue icons) right after the final glyph.
 // All values are texture-relative pixels.

@@ -4,7 +4,8 @@
 #include "string-utilities.h"
 #include <string.h>
 
-void initLabel(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color, TextWrap wrap, const char *text)
+static void initLabelCommon(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color,
+                             TextWrap wrap, int raw, const char *text)
 {
    memset(l, 0, sizeof(*l));
    l->font = font;
@@ -15,8 +16,19 @@ void initLabel(Label *l, Font *font, int x, int y, int width, int height, int si
    l->size = size;
    l->color = color;
    l->wrap = wrap;
+   l->raw = raw;
    l->text[0] = '\0';
    if (text) setLabelText(l, text);
+}
+
+void initLabel(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color, TextWrap wrap, const char *text)
+{
+   initLabelCommon(l, font, x, y, width, height, size, color, wrap, 0, text);
+}
+
+void initLabelRaw(Label *l, Font *font, int x, int y, int width, int height, int size, uint32_t color, TextWrap wrap, const char *text)
+{
+   initLabelCommon(l, font, x, y, width, height, size, color, wrap, 1, text);
 }
 
 void setLabelText(Label *l, const char *text)
@@ -25,7 +37,8 @@ void setLabelText(Label *l, const char *text)
 
    strCopy(l->text, LABEL_MAX_TEXT, text);
 
-   renderFont(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
+   if (l->raw) renderFontRaw(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
+   else        renderFont(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
 }
 
 void freeLabel(Label *l)

@@ -23,6 +23,7 @@
 #include "overlays/audio-player-overlay.h"
 #include "overlays/video-player-overlay.h"
 #include "overlays/text-editor-overlay.h"
+#include "overlays/hex-viewer-overlay.h"
 #include "image-loader.h"
 #include "pad.h"
 #include <stdio.h>
@@ -376,8 +377,9 @@ static int selectedIsVideo(void)
 }
 
 // cross handler: folders enter, supported images open in the viewer, playable audio opens in
-// the player, text files open in the editor. anything else has no default action (the button
-// is disabled for it, see syncFooterButtons), so this is a no-op in that case.
+// the player, text files open in the editor. anything else - and any image/audio/video the
+// specific viewer can't decode - falls back to the hex viewer, so every non-folder row opens
+// something.
 static void activateSelectedEntry(void)
 {
    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
@@ -394,6 +396,7 @@ static void activateSelectedEntry(void)
    else if (selectedIsPlayableAudio()) openAudioPlayer(full);
    else if (selectedIsVideo())         openVideoPlayer(full);
    else if (selectedIsTextFile())      openTextEditor(full);
+   else                                openHexViewer(full);
 }
 
 static void goToParentDir(void)
@@ -409,21 +412,16 @@ static void goToParentDir(void)
 static void syncFooterButtons(void)
 {
    int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
-   int isFolder   = hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER;
-   int isAnyImage = hasSelection && entries[selectedIndex].type == FILE_TYPE_IMAGE;
-   int isAnyAudio = hasSelection && entries[selectedIndex].type == FILE_TYPE_AUDIO;
-   int isAnyText  = hasSelection && entries[selectedIndex].type == FILE_TYPE_TEXT;
-   int isAnyVideo = hasSelection && entries[selectedIndex].type == FILE_TYPE_VIDEO;
-   int isOpenable = selectedIsViewableImage() || selectedIsPlayableAudio() || selectedIsVideo() || selectedIsTextFile();
+   int isFolder      = hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER;
 
-   // enabled for folders and openable media; any image/audio (even an unsupported codec)
-   // still reads "Open", just greyed out when we can't decode it.
-   setFooterButtonEnabled(PAD_BTN_CROSS, isFolder || isOpenable);
+   // every non-folder row opens something now (the hex viewer is the universal
+   // fallback), so Cross is enabled whenever there's a selection at all.
+   setFooterButtonEnabled(PAD_BTN_CROSS, hasSelection);
 
    // only retouch the label when the cross action actually changes, so we
    // don't re-rasterize the glyphs every frame.
    static int crossShowsOpen = -1;
-   int showsOpen = isAnyImage || isAnyAudio || isAnyVideo || isAnyText;
+   int showsOpen = hasSelection && !isFolder;
    if (showsOpen != crossShowsOpen) {
       setFooterButtonText(PAD_BTN_CROSS, showsOpen ? "Open" : "Enter");
       crossShowsOpen = showsOpen;

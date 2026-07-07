@@ -293,7 +293,7 @@ float measureFontChar(Font *f, int size, uint32_t code)
    return fsize;
 }
 
-// ---- inline style tags: {i} {b} {color=#rrggbb} (+ {{ and [[ escapes) ----
+// inline style tags: {i} {b} {color=#rrggbb} (+ {{ and [[ escapes)
 // Lightweight inline markup for styled runs inside one string. Text is pre-parsed into
 // styled glyph items so tag handling stays separate from the (already fiddly)
 // wrapping/layout logic, which then just walks the item array.
@@ -301,7 +301,9 @@ typedef struct { uint32_t code; uint8_t italic; uint8_t bold; uint32_t color; } 
 
 // Parses text into items[] (<= maxItems). baseColor is the default colour. Nested {i}/{b}
 // are counted; {color} uses a small stack. Unknown tags ({w},{p},{size=..},...) are skipped.
-static int parseStyledText(const char *text, uint32_t baseColor, GlyphItem *items, int maxItems)
+// rawMode disables all of the above - every byte (including '{'/'[') is literal content, for
+// text that comes from outside the app (file contents, filenames, ...) rather than authored UI copy.
+static int parseStyledText(const char *text, uint32_t baseColor, GlyphItem *items, int maxItems, int rawMode)
 {
    int italic = 0, bold = 0;
    uint32_t colorStack[8];
@@ -311,13 +313,13 @@ static int parseStyledText(const char *text, uint32_t baseColor, GlyphItem *item
    int n = 0;
    const uint8_t *p = (const uint8_t *)text;
    while (*p && n < maxItems) {
-      if (p[0] == '{' && p[1] == '{') {           // literal brace
+      if (!rawMode && p[0] == '{' && p[1] == '{') {   // literal brace
          items[n].code = '{'; items[n].italic = (uint8_t)(italic>0); items[n].bold = (uint8_t)(bold>0); items[n].color = colorStack[colorTop]; n++; p += 2; continue;
       }
-      if (p[0] == '[' && p[1] == '[') {           // literal bracket
+      if (!rawMode && p[0] == '[' && p[1] == '[') {   // literal bracket
          items[n].code = '['; items[n].italic = (uint8_t)(italic>0); items[n].bold = (uint8_t)(bold>0); items[n].color = colorStack[colorTop]; n++; p += 2; continue;
       }
-      if (p[0] == '{') {                          // a tag
+      if (!rawMode && p[0] == '{') {                  // a tag
          const uint8_t *q = p + 1;
          while (*q && *q != '}') q++;
          int len = (int)(q - (p + 1));
@@ -345,7 +347,7 @@ static int parseStyledText(const char *text, uint32_t baseColor, GlyphItem *item
    return n;
 }
 
-static float glyphAdvance(Font *f, uint32_t code, float fsize)
+static float getGlyphAdvance(Font *f, uint32_t code, float fsize)
 {
    CellFontGlyphMetrics m;
    if (cellFontGetCharGlyphMetrics(&f->font, code, &m) == CELL_OK) return quantAdvance(f, m.Horizontal.advance);
@@ -415,12 +417,12 @@ static void blitGlyph(const CellFontImageTransInfo *ti, uint8_t *surfBase, int s
 // width of the word starting at items[j0] (up to the next space/newline), including
 // kerning inside the word and for the (prevCode -> first glyph) pair. Used by the wrap
 // decision: a line breaks when "line + space + word" would exceed the target width.
-static float wordWidth(Font *f, const GlyphItem *items, int nItems, int j0, uint32_t prevCode, float fsize)
+static float getWordWidth(Font *f, const GlyphItem *items, int nItems, int j0, uint32_t prevCode, float fsize)
 {
    float w = 0.0f;
    uint32_t prev = prevCode;
    for (int j = j0; j < nItems && items[j].code != ' ' && items[j].code != '\n'; j++) {
-      w += glyphAdvance(f, items[j].code, fsize) + fontKern(f, prev, items[j].code);
+      w += getGlyphAdvance(f, items[j].code, fsize) + fontKern(f, prev, items[j].code);
       prev = items[j].code;
    }
    return w;
@@ -436,7 +438,7 @@ static void recordRevealItem(TextReveal *reveal, int index, float penX, int line
 // The x offset of a laid-out line within the text block for a given alignment: 0 for LEFT,
 // (blockW - lineW)/2 for CENTER, (blockW - lineW) for RIGHT. blockW = the longest line, so
 // the longest line gets offset 0 and the block crops to it.
-static float lineStartOffset(int align, const float *lineW, float maxLineW, int lineCount, int li)
+static float getLineStartOffset(int align, const float *lineW, float maxLineW, int lineCount, int li)
 {
    if (!lineW || align == TEXT_ALIGN_LEFT || li < 0 || li >= lineCount) return 0.0f;
    float d = maxLineW - lineW[li]; if (d < 0.0f) d = 0.0f;
@@ -448,7 +450,8 @@ static float lineStartOffset(int align, const float *lineW, float maxLineW, int 
 // caller must free the returned buffer. `end` (optional) receives where the
 // final glyph landed (texture coords). `align` aligns each line within the block.
 static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap,
-                          const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align, int *outW, int *outH, int *outSurfW)
+                          const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align, int rawMode,
+                          int *outW, int *outH, int *outSurfW)
 {
    *outW = *outH = *outSurfW = 0;
 
@@ -466,7 +469,7 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
    int cap = (int)strlen(text) + 1;
    GlyphItem *items = (GlyphItem *)malloc(sizeof(GlyphItem) * cap);
    if (!items) return NULL;
-   int nItems = parseStyledText(text, color, items, cap);
+   int nItems = parseStyledText(text, color, items, cap, rawMode);
 
    // Baseline + line pitch the way Ren'Py does it (renpy/text/ftfont.pyx): from the FreeType (hhea)
    // ascender/descender -- ascent = ceil(ascender*size/upm), descent = floor(descender*size/upm),
@@ -499,9 +502,9 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
       for (int i = 0; i < nItems; i++) {
          uint32_t code = items[i].code;
          if (code == '\n') { lineCount++; px = 0.0f; prev = 0; continue; }
-         float adv = glyphAdvance(f, code, fsize) + fontKern(f, prev, code);
+         float adv = getGlyphAdvance(f, code, fsize) + fontKern(f, prev, code);
          if (code == ' ') {
-            float wordW = wordWidth(f, items, nItems, i + 1, ' ', fsize);
+            float wordW = getWordWidth(f, items, nItems, i + 1, ' ', fsize);
             if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineCount++; px = 0.0f; prev = 0; continue; }
          }
          px += adv;
@@ -512,7 +515,7 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
    if (reveal) { reveal->lineHeight = (int)(lineH + 0.5f); reveal->count = 0; }
 
    // For CENTER/RIGHT alignment, measure each line's width (mirroring the wrap logic above
-   // and the render pass exactly -- glyphAdvance == the rendered pen step) so each line can be
+   // and the render pass exactly -- getGlyphAdvance == the rendered pen step) so each line can be
    // offset within the block at draw time. The wrap DECISIONS still use the line-relative pen,
    // so breaks are identical; only the draw x is shifted.
    float *lineW = NULL; float maxLineW = 0.0f;
@@ -523,9 +526,9 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
          for (int i = 0; i < nItems && li < lineCount; i++) {
             uint32_t code = items[i].code;
             if (code == '\n') { lineW[li++] = px; px = 0.0f; prev = 0; continue; }
-            float adv = glyphAdvance(f, code, fsize) + fontKern(f, prev, code);
+            float adv = getGlyphAdvance(f, code, fsize) + fontKern(f, prev, code);
             if (code == ' ') {
-               float wordW = wordWidth(f, items, nItems, i + 1, ' ', fsize);
+               float wordW = getWordWidth(f, items, nItems, i + 1, ' ', fsize);
                if (px + adv + wordW > (float)maxWidth && px > 0.0f) { lineW[li++] = px; px = 0.0f; prev = 0; continue; }
             }
             px += adv; prev = code;
@@ -577,7 +580,7 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
       int curItalic = 0;
       int lineIndex = 0;   // which wrapped line the pen is on (for the reveal map)
       float penX = 0.0f;   // line-relative pen (wrap/kern/advance all use this; offset added at draw)
-      float lineOffX = lineStartOffset(align, lineW, maxLineW, lineCount, 0);   // this line's draw offset
+      float lineOffX = getLineStartOffset(align, lineW, maxLineW, lineCount, 0);   // this line's draw offset
       float penY = baseY;
       uint32_t prev = 0;   // previous glyph on this line (kerning context; resets per line)
 
@@ -585,21 +588,21 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
          uint32_t code = items[i].code;
 
          if (code == '\n') {
-            if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; prev = 0; lineIndex++; lineOffX = lineStartOffset(align, lineW, maxLineW, lineCount, lineIndex); if (penY + lineH > (float)surfH) break; }
+            if (wrap == TEXT_WRAP) { penX = 0.0f; penY += lineH; prev = 0; lineIndex++; lineOffX = getLineStartOffset(align, lineW, maxLineW, lineCount, lineIndex); if (penY + lineH > (float)surfH) break; }
             if (!shadowPass && reveal) recordRevealItem(reveal, i, penX, lineIndex);
             continue;
          }
 
          float kern = fontKern(f, prev, code);
-         float advance = glyphAdvance(f, code, fsize) + kern;
+         float advance = getGlyphAdvance(f, code, fsize) + kern;
 
          if (maxWidth > 0) {
             if (wrap == TEXT_WRAP) {
                if (code == ' ') {
-                  float wordW = wordWidth(f, items, nItems, i + 1, ' ', fsize);
+                  float wordW = getWordWidth(f, items, nItems, i + 1, ' ', fsize);
                   if (penX + advance + wordW > (float)maxWidth && penX > 0.0f) {
                      penX = 0.0f; penY += lineH; prev = 0; lineIndex++;   // the space wraps to the next line
-                     lineOffX = lineStartOffset(align, lineW, maxLineW, lineCount, lineIndex);
+                     lineOffX = getLineStartOffset(align, lineW, maxLineW, lineCount, lineIndex);
                      if (!shadowPass && reveal) recordRevealItem(reveal, i, penX, lineIndex);
                      if (penY + lineH > (float)surfH) break;
                      continue;
@@ -715,7 +718,7 @@ void freeTextTexture(TextTexture *tt)
    tt->slotH = 0;
 }
 
-static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align);
+static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align, int rawMode);
 
 void renderFont(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap)
 {
@@ -729,15 +732,20 @@ void renderFontEx(TextTexture *tt, Font *f, int size, const char *text, uint32_t
 
 void renderFontAligned(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextAlign align)
 {
-   renderImpl(tt, f, size, text, color, maxWidth, wrap, shadow, end, NULL, align);
+   renderImpl(tt, f, size, text, color, maxWidth, wrap, shadow, end, NULL, align, 0);
 }
 
 void renderFontTyped(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal)
 {
-   renderImpl(tt, f, size, text, color, maxWidth, wrap, shadow, end, reveal, TEXT_ALIGN_LEFT);
+   renderImpl(tt, f, size, text, color, maxWidth, wrap, shadow, end, reveal, TEXT_ALIGN_LEFT, 0);
 }
 
-static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align)
+void renderFontRaw(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap)
+{
+   renderImpl(tt, f, size, text, color, maxWidth, wrap, NULL, NULL, NULL, TEXT_ALIGN_LEFT, 1);
+}
+
+static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align, int rawMode)
 {
    if (end) memset(end, 0, sizeof *end);
    if (reveal) reveal->count = 0;
@@ -753,7 +761,7 @@ static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uin
    }
 
    int drawW, drawH, surfW;
-   uint8_t *buf = rasterize(f, size, text, color, maxWidth, wrap, shadow, end, reveal, align, &drawW, &drawH, &surfW);
+   uint8_t *buf = rasterize(f, size, text, color, maxWidth, wrap, shadow, end, reveal, align, rawMode, &drawW, &drawH, &surfW);
    if (!buf) {
       // nothing rasterized (e.g. all-whitespace after wrapping): keep any
       // existing slot but show nothing.

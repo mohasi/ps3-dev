@@ -6,6 +6,8 @@
 #include "ftp.h"
 #include "ui/image.h"
 #include "ui/breadcrumb.h"
+#include "ui/keyboard.h"
+#include "ui/hex-pad.h"
 #include "widgets/clock-widget.h"
 #include "widgets/footer-widget.h"
 #include "widgets/free-space-widget.h"
@@ -17,6 +19,7 @@
 #include "overlays/audio-player-overlay.h"
 #include "overlays/video-player-overlay.h"
 #include "overlays/text-editor-overlay.h"
+#include "overlays/hex-viewer-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
 #include "string-utilities.h"
@@ -90,6 +93,9 @@ static void initHome(void)
    initAudioPlayerOverlay(sprites);
    initVideoPlayerOverlay(sprites);
    initTextEditorOverlay(sprites);
+   initHexViewerOverlay(sprites);
+   initKeyboard(sprites, spriteRegions[SPRITE_HIGHLIGHT], 7);   // 7 = highlight sprite's 9-slice corner cap
+   initHexPad(sprites, spriteRegions[SPRITE_HIGHLIGHT], 7);
    addFooterButton(PAD_BTN_TRIANGLE, spriteRegions[SPRITE_TRIANGLE], "Options", openSidepanel);
    addFooterButton(PAD_BTN_SELECT, spriteRegions[SPRITE_SELECT], "Start FTP Server", toggleFtpServer);
 
@@ -115,7 +121,8 @@ static inline int anyOverlayVisible(void)
       || isOverlayVisible(&imageViewerOverlay)
       || isOverlayVisible(&audioPlayerOverlay)
       || isOverlayVisible(&videoPlayerOverlay)
-      || isOverlayVisible(&textEditorOverlay);
+      || isOverlayVisible(&textEditorOverlay)
+      || isOverlayVisible(&hexViewerOverlay);
 }
 
 static void updateHome(void)
@@ -132,6 +139,9 @@ static void updateHome(void)
    updateOverlay(&audioPlayerOverlay);
    updateOverlay(&videoPlayerOverlay);
    updateOverlay(&textEditorOverlay);
+   updateOverlay(&hexViewerOverlay);
+   updateKeyboard();
+   updateHexPad();
 
    if (!overlayWasVisible) {
       updateFooterWidget();
@@ -154,6 +164,9 @@ static void drawHome(void)
    drawOverlay(&audioPlayerOverlay);
    drawOverlay(&videoPlayerOverlay);
    drawOverlay(&textEditorOverlay);
+   drawOverlay(&hexViewerOverlay);
+   drawKeyboard();
+   drawHexPad();
    drawOverlay(&sidepanel);
    drawOverlay(&confirmOverlay);
    drawOverlay(&progressOverlay);
@@ -164,6 +177,9 @@ static void suspendHome(void) {}
 static void termHome(void)
 {
    stopFtpServer();
+   termKeyboard();
+   termHexPad();
+   termOverlay(&hexViewerOverlay);
    termOverlay(&textEditorOverlay);
    termOverlay(&videoPlayerOverlay);
    termOverlay(&audioPlayerOverlay);

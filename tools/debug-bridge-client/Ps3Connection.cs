@@ -15,6 +15,7 @@ namespace DebugBridgeClient
    public class Ps3Connection
    {
       public const string DefaultHost = "10.0.0.2";
+      public const string DefaultFallbackHost = "192.168.2.35";  // wifi address, tried if the primary is unreachable
       public const int Port = 8785;
       public const int ReconnectDelayMs = 3000;
 
@@ -29,18 +30,28 @@ namespace DebugBridgeClient
 
       private volatile bool running;
       private volatile bool connected;
-      private string host;
+      private readonly string[] hosts;   // connect candidates, tried in order
+      private string host;               // the one currently connected/attempted
       private TcpClient    tcp;
       private NetworkStream stream;
       private Thread readerThread;
 
-      public string Host { get { return host; } }
+      public string Host { get { return host; } }                       // the host currently connected/attempted
+      public string Hosts { get { return string.Join(", ", hosts); } }  // all candidates, in try order
       public bool IsConnected { get { return connected; } }
 
       public Ps3Connection()
       {
-         string configured = ConfigurationManager.AppSettings["Ps3IpAddress"];
-         host = string.IsNullOrEmpty(configured) ? DefaultHost : configured;
+         string primary  = ConfigurationManager.AppSettings["Ps3IpAddress"];
+         string fallback = ConfigurationManager.AppSettings["Ps3IpAddressFallback"];
+         if (string.IsNullOrEmpty(primary))  primary  = DefaultHost;
+         if (string.IsNullOrEmpty(fallback)) fallback = DefaultFallbackHost;
+
+         // primary first, then any distinct fallback; TryConnect walks these in order.
+         hosts = string.Equals(primary, fallback, StringComparison.OrdinalIgnoreCase)
+            ? new[] { primary }
+            : new[] { primary, fallback };
+         host = hosts[0];
       }
 
       public void StartAutoConnect()
@@ -177,29 +188,36 @@ namespace DebugBridgeClient
          }
       }
 
+      // walk the candidate hosts in order; the first that answers within the
+      // timeout wins and becomes the active host. returns false only if none did.
       private bool TryConnect()
       {
-         try
+         foreach (string candidate in hosts)
          {
-            var t = new TcpClient();
-            IAsyncResult ar = t.BeginConnect(host, Port, null, null);
-            if (!ar.AsyncWaitHandle.WaitOne(3000, false))
+            try
             {
-               t.Close();
-               return false;
-            }
-            t.EndConnect(ar);
-            t.NoDelay = true;
-            t.ReceiveTimeout = 0; // reader blocks until LOG frames arrive
-            t.SendTimeout    = 60000;
-            tcp    = t;
-            stream = t.GetStream();
+               var t = new TcpClient();
+               IAsyncResult ar = t.BeginConnect(candidate, Port, null, null);
+               if (!ar.AsyncWaitHandle.WaitOne(3000, false))
+               {
+                  t.Close();
+                  continue;   // unreachable, try the next host
+               }
+               t.EndConnect(ar);
+               t.NoDelay = true;
+               t.ReceiveTimeout = 0; // reader blocks until LOG frames arrive
+               t.SendTimeout    = 60000;
+               tcp    = t;
+               stream = t.GetStream();
+               host   = candidate;   // remember which host answered
 
-            readerThread = new Thread(ReaderLoop) { IsBackground = true };
-            readerThread.Start();
-            return true;
+               readerThread = new Thread(ReaderLoop) { IsBackground = true };
+               readerThread.Start();
+               return true;
+            }
+            catch { /* try the next host */ }
          }
-         catch { return false; }
+         return false;
       }
 
       private void AutoConnectLoop()

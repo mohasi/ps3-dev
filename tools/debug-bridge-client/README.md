@@ -50,8 +50,10 @@ Examples: `/ping`, `/restart-xmb`, `/restart-ps3`, `/shutdown`.
 
 ## configuration
 
-PS3 IP is read from `App.config` key `Ps3IpAddress`. Falls back to
-`Ps3Connection.DefaultHost` (`10.0.0.2`) if unset.
+PS3 IP is read from `App.config` key `Ps3IpAddress` (default `10.0.0.2` if unset).
+If that host is unreachable, the client then tries `Ps3IpAddressFallback` (default
+`192.168.2.35`, the wifi address). The first host to answer becomes the active
+connection; both are re-tried on every reconnect.
 
 ## layout
 

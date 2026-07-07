@@ -32,7 +32,7 @@
      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
    </ClCompile>
    <Link>
-     <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;-lvdec_stub;-ladec_stub;%(AdditionalDependencies)</AdditionalDependencies>
+     <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-lpngenc_stub;-ljpgdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;-lvdec_stub;-ladec_stub;%(AdditionalDependencies)</AdditionalDependencies>
      <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-av\bin\$(Configuration)" -lsimple-lib-av -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core -Wl,--strip-unused-data</AdditionalOptions>
      <GccOutputFormat>ELFFile</GccOutputFormat>
    </Link>

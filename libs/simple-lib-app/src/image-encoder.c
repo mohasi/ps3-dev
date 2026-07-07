@@ -22,7 +22,12 @@ static int pngEncModuleLoaded = 0;   // CELL_SYSMODULE_PNGENC loaded? (loaded la
 // success. Synchronous (blocks on the codec); call off the render path (e.g. at save time).
 int savePngArgb(const char *path, const void *argb, int w, int h)
 {
-   if (!path || !argb || w <= 0 || h <= 0) return -1;
+   return savePngArgbPitch(path, argb, w, h, w * 4);   // tightly packed source
+}
+
+int savePngArgbPitch(const char *path, const void *argb, int w, int h, int srcPitch)
+{
+   if (!path || !argb || w <= 0 || h <= 0 || srcPitch < w * 4) return -1;
 
    // The PNGENC PRX must be loaded before any cellPngEnc call (the decoder loads PNGDEC the same
    // way in gfx.c); without it cellPngEncOpen returns CELL_PNGENC_ERROR_ARG. Lazy + once.
@@ -33,13 +38,20 @@ int savePngArgb(const char *path, const void *argb, int w, int h)
       pngEncModuleLoaded = 1;
    }
 
-   // Work on an opaque copy: a screenshot must not come out partly transparent if the scene's
-   // render left non-255 alpha in the framebuffer. (A,R,G,B -> byte 0 of each pixel is alpha.)
-   size_t bytes = (size_t)w * (size_t)h * 4u;
-   unsigned char *opaque = (unsigned char *)malloc(bytes);
+   // Repack into a tightly-packed opaque copy: the codec wants packed rows (pitchWidth = w*4), and a
+   // screenshot must not come out partly transparent if the render left non-255 alpha in the
+   // framebuffer. Copying row-by-row also strips any source pitch padding for free. (A,R,G,B -> byte
+   // 0 of each pixel is alpha.)
+   int rowBytes = w * 4;
+   unsigned char *opaque = (unsigned char *)malloc((size_t)rowBytes * (size_t)h);
    if (!opaque) return -1;
-   memcpy(opaque, argb, bytes);
-   for (size_t i = 0; i < bytes; i += 4) opaque[i] = 0xff;
+   for (int y = 0; y < h; y++)
+   {
+      const unsigned char *srcRow = (const unsigned char *)argb + (size_t)y * (size_t)srcPitch;
+      unsigned char *dstRow = opaque + (size_t)y * (size_t)rowBytes;
+      memcpy(dstRow, srcRow, (size_t)rowBytes);
+      for (int i = 0; i < rowBytes; i += 4) dstRow[i] = 0xff;
+   }
 
    CellPngEncConfig   config;
    CellPngEncAttr     attr;

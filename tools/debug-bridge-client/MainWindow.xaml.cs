@@ -59,7 +59,7 @@ namespace DebugBridgeClient
          httpBridge.Start();
          modulesView.Attach(ps3);
          traceView.Attach(ps3);
-         AppendLog("connecting to " + ps3.Host + "...");
+         AppendLog("connecting to " + ps3.Hosts + "...");
          ps3.StartAutoConnect();
       }
 
@@ -110,7 +110,7 @@ namespace DebugBridgeClient
                  ? Color.FromRgb(0x22, 0xbb, 0x22)
                  : Color.FromRgb(0xdd, 0x22, 0x22));
              statusText.Text = connected ? "Connected" : "Disconnected";
-             AppendLog(connected ? "connected" : "disconnected");
+             AppendLog(connected ? ("connected to " + ps3.Host) : "disconnected");
          }));
       }
 
@@ -118,32 +118,59 @@ namespace DebugBridgeClient
       private void OnRestartPs3(object sender, RoutedEventArgs e) { RunCommand("restart-ps3"); }
       private void OnShutdown(object sender, RoutedEventArgs e) { RunCommand("shutdown"); }
 
-      // capture pipeline test harness. wired to Commands -> Screenshot.
-      // routed through the http bridge (just like an external caller)
-      // so there is exactly one capture path: /capture -> CaptureReceived
-      // event -> DrawCapture. samples a 320x180 patch at screen centre;
-      // plugin clips to display bounds so this is safe at 720p too.
+      // wired to Commands -> Screenshot. captures the whole screen (display-info
+      // gives the current 720p/1080p size), draws it on the canvas, then prompts
+      // to save it as a PNG. drawing happens before the dialog so Cancel still
+      // leaves the shot on the canvas.
       private void OnScreenshot(object sender, RoutedEventArgs e)
       {
          if (!ps3.IsConnected) { AppendLog("not connected"); return; }
          System.Threading.ThreadPool.QueueUserWorkItem(delegate
          {
-             try
+             int w, h;
+             if (!TryParseDisplayInfo(SendText("display-info"), out w, out h))
              {
-                 using (var wc = new System.Net.WebClient())
-                     wc.DownloadData("http://localhost:" + HttpBridge.Port + "/capture?x=800&y=450&w=320&h=180");
+                 AppendLog("screenshot failed: no display info");
+                 return;
              }
-             catch (Exception ex) { AppendLog("screenshot failed: " + ex.Message); }
+             Ps3Reply r = ps3.SendCommand("capture 0 0 " + w + " " + h);
+             if (!r.Ok || r.Payload.Length != w * h * 4)
+             {
+                 AppendLog("screenshot failed: " + (r.Ok ? "short capture" : r.AsText().TrimEnd('\n')));
+                 return;
+             }
+             byte[] argb = r.Payload;
+             Dispatcher.BeginInvoke(new Action(delegate
+             {
+                 DrawCapture(0, 0, w, h, argb);
+                 SaveScreenshot(w, h, argb);
+             }));
          });
+      }
+
+      // prompt for a PNG destination, default name a timestamp. Cancel = discard
+      // (the shot is already on the canvas). encodes the shared BGRA bitmap.
+      private void SaveScreenshot(int w, int h, byte[] argb)
+      {
+         SaveFileDialog dlg = new SaveFileDialog();
+         dlg.Title    = "Save screenshot";
+         dlg.FileName = "screenshot-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png";
+         dlg.Filter   = "PNG image (*.png)|*.png|All files (*.*)|*.*";
+         if (dlg.ShowDialog(this) != true) return;
+         try
+         {
+             var encoder = new PngBitmapEncoder();
+             encoder.Frames.Add(BitmapFrame.Create(CaptureToBitmap(w, h, argb)));
+             using (var file = File.Create(dlg.FileName)) encoder.Save(file);
+             AppendLog("saved screenshot to " + dlg.FileName);
+         }
+         catch (Exception ex) { AppendLog("save failed: " + ex.Message); }
       }
 
       // vram byte order is A,R,G,B per pixel (big-endian ARGB word). wpf's
       // Bgra32 expects B,G,R,A, so swap. forced opaque alpha because vram
-      // alpha is unreliable. partial captures get a thin lime border so
-      // they're visible against the dark canvas; full-screen captures get
-      // none (they cover everything). thickness is in canvas units, so the
-      // Viewbox scales it with the rest of the tile.
-      private void DrawCapture(int x, int y, int w, int h, byte[] argb)
+      // alpha is unreliable.
+      private static BitmapSource CaptureToBitmap(int w, int h, byte[] argb)
       {
          byte[] bgra = new byte[argb.Length];
          for (int i = 0; i < argb.Length; i += 4)
@@ -153,7 +180,15 @@ namespace DebugBridgeClient
             bgra[i + 2] = argb[i + 1];
             bgra[i + 3] = 0xFF;
          }
-         var bmp = BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, bgra, w * 4);
+         return BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, bgra, w * 4);
+      }
+
+      // partial captures get a thin lime border so they're visible against the
+      // dark canvas; full-screen captures get none (they cover everything).
+      // thickness is in canvas units, so the Viewbox scales it with the tile.
+      private void DrawCapture(int x, int y, int w, int h, byte[] argb)
+      {
+         var bmp = CaptureToBitmap(w, h, argb);
          var img = new Image { Source = bmp, Width = w, Height = h, Stretch = Stretch.Fill };
          UIElement tile = img;
          bool fullScreen = x == 0 && y == 0 && w >= screenCanvas.Width && h >= screenCanvas.Height;

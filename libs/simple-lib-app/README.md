@@ -12,7 +12,8 @@ Reusable static library for PS3 homebrew apps. Sony official SDK 4.75.
   ARGB8888 buffer, main thread uploads to VRAM. Prevents UI freezes on large images. Codec
   downscaling for oversized JPEGs, size validation to prevent RSX hangs. Includes directory listing
   of supported images (sorted case-insensitive)
-- **image-encoder** - ARGB-to-PNG encode for screenshots/thumbnails
+- **image-encoder** - ARGB-to-PNG encode for screenshots/thumbnails (`savePngArgb` / `savePngArgbPitch`)
+- **screenshot** - opt-in full-screen capture: `enableScreenshot()` + `handleScreenshot()` save the front buffer to `/dev_hdd0/tmp/screenshots/<timestamp>.png` on L3+R3 (needs `-lpngenc_stub`)
 - **font** - system font rendering via libfont/FreeType: word wrap, ellipsis, text measurement, bake-to-texture
 - **pad / button-repeat** - controller polling with press/release/held state tracking and hold-to-repeat helpers
 - **screen / screen-manager / overlay / app** - screen lifecycle stack, persistent UI layers, and the top-level application loop tying them to input and rendering

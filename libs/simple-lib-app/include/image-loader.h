@@ -54,3 +54,7 @@ GfxTexture uploadImageBuffer(const ImageBuffer *buf);
 // file via the SDK codec (cellPngEnc); alpha is forced opaque. Returns 0 on success. Synchronous.
 // NOTE: linking an app that calls this requires -lpngenc_stub.
 int savePngArgb(const char *path, const void *argb, int w, int h);
+
+// As savePngArgb, but the source may have padded rows (srcPitch bytes per row, >= w*4). Lets a
+// caller pass a framebuffer straight through without first repacking away the pitch padding.
+int savePngArgbPitch(const char *path, const void *argb, int w, int h, int srcPitch);

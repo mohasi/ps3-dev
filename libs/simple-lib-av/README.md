@@ -22,8 +22,9 @@ lives here: the audio mixer (moved out of `simple-lib-app`) and the H.264/AAC vi
   back to lazily scanning cluster headers when a file has no Cues), video blocks to Annex-B access
   units, audio blocks unlaced (Xiph/EBML/fixed) into a lock-free queue
 - **demux-mp4** - MP4 (ISOBMFF) demuxer: flattens the moov sample tables into in-memory per-track
-  sample arrays (offset, size, pts, keyframe), so reads and keyframe seeks are array walks.
-  Fragmented MP4 (moof) is not supported
+  sample arrays (offset, size, pts, keyframe), so reads and keyframe seeks are array walks. Also
+  handles fragmented MP4 (moof/traf/trun), streamed fragment-by-fragment - the adaptive format
+  yo-player pulls from YouTube
 - **decode-h264** - cellVdec wrapper (4 SPUs): non-blocking feed, YUV 4:2:0 planar output straight
   into RSX-mapped buffers, seek flush per the SDK EndSeq/SEQDONE/StartSeq protocol
 - **decode-aac** - cellAdec M4AAC wrapper (1 SPU): raw MKV AAC frames get an ADTS header, output is
@@ -31,7 +32,8 @@ lives here: the audio mixer (moved out of `simple-lib-app`) and the H.264/AAC vi
 - **h264** - avcC parsing, AVCC-to-Annex-B conversion, and the SPS `max_num_ref_frames` bit-patch
   that lets 5-ref 1080p encodes fit the hardware's 4-frame DPB cap
 - **ebml / mp4 / video-source** - shared EBML reader, shared ISOBMFF box reader, and a buffered
-  seekable file reader under everything
+  seekable source under everything that reads from either a local file or an `http(s)://` URL
+  (via `simple-lib-core`'s http streaming), so the demuxers are agnostic to where the media lives
 
 ## Usage
 

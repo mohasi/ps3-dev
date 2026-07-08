@@ -76,7 +76,7 @@ static void parseMkvTrackEntry(VideoSource *source, uint64_t start, uint64_t end
       if (seekVideoSource(source, pos) != 0) return;
       uint32_t id; uint64_t size; int unknown = 0;
       if (readEbmlElement(source, &id, &size, &unknown) != 0 || unknown) return;
-      uint64_t dataStart = tellVideoSource(source);
+      uint64_t dataStart = getVideoSourcePosition(source);
 
       if (id == EBML_ID_TRACKTYPE) {
          uint8_t b = 0; readVideoSource(source, &b, 1); trackType = b;
@@ -94,7 +94,7 @@ static void parseMkvTrackEntry(VideoSource *source, uint64_t start, uint64_t end
             if (seekVideoSource(source, vpos) != 0) break;
             uint32_t vid; uint64_t vsize; int vunknown = 0;
             if (readEbmlElement(source, &vid, &vsize, &vunknown) != 0 || vunknown) break;
-            uint64_t vdata = tellVideoSource(source);
+            uint64_t vdata = getVideoSourcePosition(source);
             if (vid == EBML_ID_PIXELWIDTH || vid == EBML_ID_PIXELHEIGHT) {
                uint64_t v = 0;
                for (uint64_t i = 0; i < vsize && i < 8; i++) { uint8_t c = 0; readVideoSource(source, &c, 1); v = (v << 8) | c; }
@@ -126,7 +126,7 @@ static void parseMkvTracks(VideoSource *source, uint64_t start, uint64_t end, Vi
       if (seekVideoSource(source, pos) != 0) return;
       uint32_t id; uint64_t size; int unknown = 0;
       if (readEbmlElement(source, &id, &size, &unknown) != 0 || unknown) return;
-      uint64_t dataStart = tellVideoSource(source);
+      uint64_t dataStart = getVideoSourcePosition(source);
       if (id == EBML_ID_TRACKENTRY) parseMkvTrackEntry(source, dataStart, dataStart + size, out);
       pos = dataStart + size;
    }
@@ -139,12 +139,12 @@ static int probeMkv(VideoSource *source, VideoPlayability *out)
    if (seekVideoSource(source, 0) != 0) return -1;
    uint32_t id; uint64_t size; int unknown = 0;
    if (readEbmlElement(source, &id, &size, &unknown) != 0 || id != EBML_ID_HEADER) return -1;
-   uint64_t segScan = tellVideoSource(source) + size;   // skip the header body
+   uint64_t segScan = getVideoSourcePosition(source) + size;   // skip the header body
 
    // Segment
    if (seekVideoSource(source, segScan) != 0) return -1;
    if (readEbmlElement(source, &id, &size, &unknown) != 0 || id != EBML_ID_SEGMENT) return -1;
-   uint64_t segStart = tellVideoSource(source);
+   uint64_t segStart = getVideoSourcePosition(source);
    uint64_t segEnd   = unknown ? segStart + MKV_SCAN_CAP : segStart + size;
 
    // walk the segment's children until Tracks is found (it precedes the clusters)
@@ -153,7 +153,7 @@ static int probeMkv(VideoSource *source, VideoPlayability *out)
    while (pos < segEnd && guard++ < 256) {
       if (seekVideoSource(source, pos) != 0) break;
       if (readEbmlElement(source, &id, &size, &unknown) != 0) break;
-      uint64_t dataStart = tellVideoSource(source);
+      uint64_t dataStart = getVideoSourcePosition(source);
       if (id == EBML_ID_TRACKS) { parseMkvTracks(source, dataStart, dataStart + size, out); return 0; }
       if (id == EBML_ID_CLUSTER) break;   // media started; no Tracks up front
       if (unknown) break;
@@ -252,7 +252,7 @@ static int probeMp4(VideoSource *source, VideoPlayability *out)
    if (readMp4Box(source, 0, &type, &size, &headerLen) != 0 || type != FOURCC('f','t','y','p')) return -1;
 
    // scan top-level boxes for moov (seeking past mdat handles moov-at-end files)
-   uint64_t fileEnd = sizeVideoSource(source);
+   uint64_t fileEnd = getVideoSourceSize(source);
    uint64_t pos = 0;
    int guard = 0;
    while (pos + 8 <= fileEnd && guard++ < 256) {

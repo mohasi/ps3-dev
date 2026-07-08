@@ -37,7 +37,7 @@
   <param key="TITLE">Yo! Player</param>
 
   <!-- 9-char title id: ABCD12345 -->
-  <param key="TITLE_ID">YTPLAYER1</param>
+  <param key="TITLE_ID">YOPLAYER1</param>
 
   <!-- package revision, format XX.YY -->
   <param key="VERSION">01.00</param>

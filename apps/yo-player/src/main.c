@@ -9,7 +9,7 @@
 
 #include "app.h"
 #include "vfs.h"
-#include "http-fs.h"
+#include "http.h"
 #include "gfx.h"
 #include "colors.h"
 #include "pad.h"
@@ -23,8 +23,6 @@
 #include "ui/stats.h"
 #include "bridge-client.h"
 #include "dbg.h"
-
-#include <cell/sysmodule.h>
 
 #define PROCESS_PRIORITY_DEFAULT 1001
 #define PROCESS_STACK_SIZE_64KB  0x10000
@@ -41,8 +39,7 @@ int main(int argc, char **argv)
    initVfs();                    // file i/o routing (the temp download lands via openFs)
 
    int netRc = initNet();
-   int httpsRc = cellSysmoduleLoadModule(CELL_SYSMODULE_HTTPS);   // libhttp+libssl for extractors + http-fs
-   initHttpFs();                                                  // openFs/readFs a url -> streams over http
+   initModernHttp();   // bind the modern (BearSSL) http transport; all requests + media streams go through it
    registerWithBridge("app", "yo-player");
 
    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
@@ -55,7 +52,7 @@ int main(int argc, char **argv)
    initStorage();          // prefs (last category) + watch history, under /dev_hdd0/tmp/yo-player/
    loadConsoleGlyphs();    // decode the console's own button glyphs for the on-screen hints
 
-   logInfo("[yt] net rc=%d, https module rc=0x%x\n", netRc, httpsRc);
+   logInfo("[yt] net rc=%d\n", netRc);
    openHome();       // boot into the home screen (trending categories)
 
    while (!appExitRequested) {
@@ -76,6 +73,7 @@ int main(int argc, char **argv)
    termAudio();
    termFont();
    termGfx();
+   shutdownHttp();
    shutdownVfs();
    return 0;
 }

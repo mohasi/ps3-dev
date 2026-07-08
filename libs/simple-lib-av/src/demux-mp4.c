@@ -416,7 +416,7 @@ int openMp4Demuxer(Mp4Demuxer *demuxer, VideoSource *source, int audioOnly)
    // fileEnd is the Content-Length; some googlevideo variants send none (fileEnd == 0 = unknown). the
    // body still streams fine, so treat unknown size as "scan until a read hits EOF" rather than as empty
    // - readMp4Box returns -1 past the true end (http-fs yields 0 bytes there), which breaks the loop.
-   uint64_t fileEnd = sizeVideoSource(&demuxer->source);
+   uint64_t fileEnd = getVideoSourceSize(&demuxer->source);
    uint64_t moovStart = 0, moovEnd = 0, firstMoofPos = 0, sidxPos = 0, sidxSize = 0, pos = 0;
    int fragmented = 0;
    int guard = 0;

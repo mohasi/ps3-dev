@@ -16,15 +16,13 @@ Works on real hardware. Browse feeds, search, open a channel, and play in up to 
 
 ## Planned
 
-- Seek within a video.
-- SponsorBlock support.
 - Add subscriptions from the UI (right now they live in a text file — see below).
 - Download a video.
 - Watch later / favourites.
 
 ## Install
 
-Built as an NPDRM `.pkg`. Install it with any PS3 package installer; it appears under **Video**. `TITLE_ID` is `YTPLAYER1`.
+Built as an NPDRM `.pkg`. Install it with any PS3 package installer; it appears under **Video**. `TITLE_ID` is `YOPLAYER1`.
 
 ## Screens & controls
 
@@ -33,6 +31,10 @@ The app boots into the **home** screen on the **Subscriptions** feed. Searching 
 the bottom use the console's own controller glyphs.
 
 - **D-pad** — move the highlight; **X** — play the selected result.
+- **In the player**: **Left / Right** — seek back/forward (a seek bar with current/total time shows while
+  scrubbing and auto-hides); **X** — pause / resume (restarts the video if it had ended). Community
+  **SponsorBlock** segments (sponsors, intros, self-promo, …) are skipped automatically and marked on the
+  seek bar in their category colours.
 - **Start** — open the keyboard to search.
 - **Triangle** — open the highlighted video's **channel** (that channel's videos only).
 - **L1 / R1** — (home) switch category (Subscriptions, Gaming, Live, Sports, Podcasts).

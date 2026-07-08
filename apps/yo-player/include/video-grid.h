@@ -15,7 +15,7 @@
 #include <stdint.h>
 
 #define GRID_COLS     4
-#define GRID_THREADS  8         // parallel thumbnail fetch threads
+#define GRID_THREADS  4         // parallel thumbnail fetch threads
 
 typedef enum { GRID_RUNNING, GRID_READY, GRID_EMPTY } GridStage;
 

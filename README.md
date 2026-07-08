@@ -11,14 +11,17 @@ ps3-dev/
 │   ├── npdrm.targets           shared NPDRM packaging post-build for apps
 │   └── prx.targets             shared PRX signing post-build for plugins
 ├── libs/
-│   ├── simple-lib-core/        cross-context primitives (printf, dbg, file, VFS + exFAT, ftp, thread, wire, log-backlog, bridge-client)
-│   ├── simple-lib-app/         static library for apps (gfx, font, audio, pad, screen, anim, ui)
+│   ├── simple-lib-core/        cross-context primitives (printf, dbg, file, VFS + exFAT/NTFS, http, ftp, thread, wire, log-backlog, bridge-client)
+│   ├── simple-lib-app/         static library for apps (gfx, font, pad, screen, anim, ui)
+│   ├── simple-lib-av/          audio + H.264/AAC video playback (mixer, demux, decode, streaming source)
+│   ├── simple-lib-https/       modern TLS (BearSSL) — the HTTPS transport the firmware can't do
 │   ├── simple-lib-plugin/     header-only PRX-only extras (syscall, vsh)
 │   ├── libvshtask_export_stub.a
 │   └── libvshmain_export_stub.a
 ├── apps/
 │   ├── app-sample/             demo app showcasing engine features
-│   └── file-manager/           PS3 file browser with sprite-based UI
+│   ├── file-manager/           PS3 file browser with sprite-based UI
+│   └── yo-player/              native YouTube client (streams video + audio directly)
 ├── plugins/
 │   ├── simple-debug-bridge/  remote debug/control over TCP (port 8785)
 │   ├── simple-disc-mount/    mounts ISOs from an XMB submenu
@@ -70,22 +73,37 @@ bridge plugin reachable.
 ### simple-lib-core
 Cross-context primitives shared by both PRX plugins and apps: drop-in
 `printf`, leveled timestamped logging (`dbg`), a `/`-rooted **VFS** (`vfs`)
-with a built-in hand-written **exFAT** reader/writer backend for removable USB
-(`exfat` + the shared `usb-storage` device layer) that the file helpers (`file`)
-route through, the shared anonymous **FTP** server (`ftp`), PPU thread spawn
-(`thread`), string utilities, framed TCP protocol (`wire`), pre-connect log ring
-(`log-backlog`), and the producer-side bridge client (`bridge-client`). Built
-with `-fno-builtin-printf
+with built-in hand-written **exFAT** and **NTFS** reader/writer backends for
+removable USB (`exfat` / `ntfs` + the shared `usb-storage` device layer) that the
+file helpers (`file`) route through, a transport-agnostic **HTTP(S)** client
+(`http`, with opt-in firmware-cellHttp or BearSSL backends), the shared anonymous
+**FTP** server (`ftp`), PPU thread spawn (`thread`), string utilities, framed TCP
+protocol (`wire`), pre-connect log ring (`log-backlog`), and the producer-side
+bridge client (`bridge-client`). Built with `-fno-builtin-printf
 -nodefaultlibs` so it links safely into `vsh.self`. Must appear
 **before** SDK stubs in the link order or the PRX silently fails to
 load.
 
 ### simple-lib-app
-Reusable static library for apps. Provides 2D rendering, font, audio,
+Reusable static library for apps. Provides 2D rendering, font,
 input, screen lifecycle, animation, color palette, and UI components
 (label, breadcrumb, image, slice, checkbox, circle, line, rectangle,
 triangle). Apps link `libsimple-lib-app.a` and include headers from
 `libs/simple-lib-app/include/`. Built on top of `simple-lib-core`.
+
+### simple-lib-av
+Audio + video playback for apps: a multi-stream audio mixer (WAV / OGG / MP3 /
+FLAC) and the H.264/AAC video stack (cellVdec/cellAdec wrappers, MKV + MP4
+demuxers including fragmented MP4, a header probe, and a seekable source that
+reads from a local file or an `http(s)://` URL). Built on `simple-lib-core`; apps
+that draw video also need `simple-lib-app`. See `libs/simple-lib-av/README.md`.
+
+### simple-lib-https
+Self-contained modern TLS (BearSSL over raw sockets) that reaches hosts the
+firmware's RSA-only TLS can't (ECDSA certs, e.g. Cloudflare). It plugs in as the
+**modern transport** behind `simple-lib-core`'s http module: an app calls
+`initModernHttp()` and every `fetchHttp` / `openHttpStream` runs over BearSSL. Adds
+~80 KB, so it is opt-in and apps-only. See `libs/simple-lib-https/README.md`.
 
 ### simple-lib-plugin
 Header-only library for the PRX-only extras: LV2 syscall trampolines
@@ -121,6 +139,13 @@ icons, checkboxes, breadcrumb navigation, hold-to-scroll, image/audio viewers,
 read/write access to **exFAT and NTFS USB drives** (via the shared VFS, with hotplug), and
 a sprite atlas generated at build time via `sprite-packer`. See
 `apps/file-manager/README.md` for details.
+
+### yo-player
+Native YouTube client — browse feeds, search, open channels, and play up to 1080p
+with sound, streamed as it plays (no PSN, no ads). Talks to YouTube directly, streams
+adaptive H.264/AAC over the http module (BearSSL transport), and skips community
+**SponsorBlock** segments. Built on `simple-lib-av` + `simple-lib-app`. See
+`apps/yo-player/README.md` for details.
 
 ## Tools
 

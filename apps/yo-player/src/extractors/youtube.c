@@ -10,7 +10,7 @@
 // is a multi-client fallback chain (VR -> ANDROID itag 18 -> ...) layered here.
 
 #include "extractor.h"
-#include "http-fetch.h"
+#include "http.h"               // fetchHttp
 #include "string-utilities.h"   // strCopy
 #include "dbg.h"                // logInfo (resolve diagnostics)
 #include "vfs.h"                // readFile/writeFile/deleteFile (persist the visitor session)
@@ -18,8 +18,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
-#include <cell/http.h>
 
 #define PLAYER_URL "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
 #define SEARCH_URL "https://www.youtube.com/youtubei/v1/search?prettyPrint=false"
@@ -255,7 +253,7 @@ static int ensureVisitorData(void)
    if (visitorData[0]) return 0;
    if (loadVisitorData()) { visitorFromDisk = 1; return 0; }   // reuse the persisted session
 
-   CellHttpHeader headers[] = {
+   HttpHeader headers[] = {
       { "Content-Type", "application/json" },
       { "User-Agent", WEB_UA },
       { "X-YouTube-Client-Name", "1" },
@@ -265,7 +263,7 @@ static int ensureVisitorData(void)
    if (!resp) return -1;
 
    int respLen = 0, status = 0;
-   int rc = httpFetch(CELL_HTTP_METHOD_POST, VISITOR_URL, headers, 4, VISITOR_BODY, (int)strlen(VISITOR_BODY), resp, RESP_CAP, &respLen, &status);
+   int rc = fetchHttp("POST", VISITOR_URL, headers, 4, VISITOR_BODY, (int)strlen(VISITOR_BODY), resp, RESP_CAP, &respLen, &status);
    int ok = (rc == 0 && status == 200 && jsonString(resp, resp + respLen, "visitorData", visitorData, sizeof visitorData));
    free(resp);
 
@@ -287,7 +285,7 @@ static int extract(const char *input, StreamInfo *out)
    char body[1024];
    int bodyLen = snprintf(body, sizeof body, PLAYER_BODY_FMT, visitorData, videoId);
 
-   CellHttpHeader headers[] = {
+   HttpHeader headers[] = {
       { "Content-Type", "application/json" },
       { "User-Agent", VR_UA },
       { "X-YouTube-Client-Name", "28" },
@@ -301,7 +299,7 @@ static int extract(const char *input, StreamInfo *out)
    if (!resp) return -1;
 
    int respLen = 0, status = 0;
-   int rc = httpFetch(CELL_HTTP_METHOD_POST, PLAYER_URL, headers, 7, body, bodyLen, resp, RESP_CAP, &respLen, &status);
+   int rc = fetchHttp("POST", PLAYER_URL, headers, 7, body, bodyLen, resp, RESP_CAP, &respLen, &status);
    if (rc < 0)        { logError("[yt] player POST failed rc=%d\n", rc); free(resp); return rc; }
    if (status != 200) { logError("[yt] player POST status=%d respLen=%d\n", status, respLen); free(resp); return -status; }
    const char *end = resp + respLen;
@@ -493,7 +491,7 @@ static int postAndParse(const char *url, const char *body, int bodyLen, SearchRe
    char *resp = malloc(RESP_CAP);
    if (!resp) return -1;
 
-   CellHttpHeader headers[] = {   // WEB_UA is a pointer, so these can't be a file-scope const array
+   HttpHeader headers[] = {   // WEB_UA is a pointer, so these can't be a file-scope const array
       { "Content-Type", "application/json" },
       { "User-Agent", WEB_UA },
       { "X-YouTube-Client-Name", "1" },
@@ -504,7 +502,7 @@ static int postAndParse(const char *url, const char *body, int bodyLen, SearchRe
    int headerCount = sizeof headers / sizeof headers[0];
 
    int respLen = 0, status = 0;
-   int rc = httpFetch(CELL_HTTP_METHOD_POST, url, headers, headerCount, body, bodyLen, resp, RESP_CAP, &respLen, &status);
+   int rc = fetchHttp("POST", url, headers, headerCount, body, bodyLen, resp, RESP_CAP, &respLen, &status);
    if (rc < 0)        { free(resp); return rc; }
    if (status != 200) { free(resp); return -status; }
 

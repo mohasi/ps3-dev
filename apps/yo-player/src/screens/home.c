@@ -196,7 +196,7 @@ static void updateHome(void)
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) { cacheCurrent(); openChannelFor(selected); return; }
    if (isPadButtonPressed(PAD_BTN_CROSS)) {
       markWatched(selected->videoId);
-      stopVideoGrid(&home.grid);   // no per-call http fetch may overlap the http-fs stream during playback
+      stopVideoGrid(&home.grid);   // no per-call http fetch may overlap the http media stream during playback
       playVideo(selected->videoId);
    }
 }

@@ -83,6 +83,17 @@ to link into `vsh.self` PRXs; apps link it the same way.
 - **network** — `getLocalIpv4()` resolves the console's primary IPv4 address
   (the FTP listener binds to all interfaces, so the address is resolved here on
   demand rather than owned by the server).
+- **http** — a transport-agnostic HTTP(S) client. One API — `fetchHttp` / `getHttp`
+  for a one-shot request/response, `openHttpStream` / `readHttpStream` / `seekHttpStream`
+  for seekable, never-fully-downloaded media streaming — over a pluggable transport bound
+  once at startup. `initSystemHttp()` uses the console's firmware TLS (cellHttp: free weight,
+  reaches RSA hosts; `transport-cellhttp.c` + firmware bringup in `cellhttp-stack.c`);
+  `initModernHttp()` (in **simple-lib-https**) uses BearSSL and *overrides* it to also reach
+  ECDSA-only hosts. Both backends pool and reuse keep-alive connections; `shutdownHttp()` drops
+  the idle pool at exit. The light half (transport binding + one-shot, `http.c`) is malloc-free;
+  the streaming engine (4 MB ring + prefetch thread, `http-stream.c`) is a separate TU pulled
+  only by a caller that references `openHttpStream`, so a plugin that only calls `isHttpUrl` /
+  `fetchHttp` never drags the heap into a VSH PRX.
 - **string-utilities** — bounded copy / uppercase, length, case-
   insensitive compare, URL encode/decode, XML escaping, byte search,
   integer formatting.
@@ -119,7 +130,11 @@ simple-lib-core/
 │   ├── string-utilities.h
 │   ├── wire.h
 │   ├── log-backlog.h
-│   └── bridge-client.h
+│   ├── bridge-client.h
+│   ├── http.h           # transport-agnostic HTTP(S) client (public API)
+│   ├── http-transport.h # the pluggable transport vtable
+│   ├── http-internal.h  # glue shared by http.c / http-stream.c (not public)
+│   └── cellhttp-stack.h # firmware http/ssl/https bringup (cellHttp backend)
 └── src/
    ├── ftp.c             # shared FTP server implementation
    ├── vfs.c             # path-scheme router + mount registry (names no backend)
@@ -127,6 +142,10 @@ simple-lib-core/
    ├── cellfs.c          # default cellFs + synthetic-root backend
    ├── exfat.c           # hand-written exFAT reader/writer backend
    ├── ntfs.c            # hand-written NTFS reader/writer backend
+   ├── http.c            # transport binding + one-shot request/response (malloc-free)
+   ├── http-stream.c     # the ring-buffer streaming engine (malloc + prefetch thread)
+   ├── transport-cellhttp.c # cellHttp (firmware TLS) transport backend
+   ├── cellhttp-stack.c  # one-time firmware http/ssl/https bringup
    ├── printf.c
    └── file.c            # cancellable tree ops (measure/copy/delete/merge/count)
 ```
@@ -149,9 +168,13 @@ simple-lib-core/
 Most utilities (`dbg.h`, `thread.h`, `string-utilities.h`, `wire.h`,
 `log-backlog.h`, `bridge-client.h`, `usb-storage.h`, and the lighter half of
 `file.h`) are `static inline`. The compiled units are `printf.c`, `file.c`,
-`ftp.c`, `vfs.c`, `vfs-init.c`, `cellfs.c`, `exfat.c`, and `ntfs.c` (`vfs.c` is
-the filesystem router + mount registry + recursive tree operations, naming no
-backend; `vfs-init.c` brings the VFS up — registers exFAT/NTFS and runs the USB
-hotplug thread; `cellfs.c` the default HDD/FAT32 backend; `exfat.c` / `ntfs.c`
-the removable-media backends; `ftp.c` the shared FTP server). The library has no dependencies on
-`simple-lib-plugin` or `simple-lib-app` — those depend on it, not the other way around.
+`ftp.c`, `vfs.c`, `vfs-init.c`, `cellfs.c`, `exfat.c`, `ntfs.c`, and the http
+module (`http.c`, `http-stream.c`, `transport-cellhttp.c`, `cellhttp-stack.c`)
+(`vfs.c` is the filesystem router + mount registry + recursive tree operations,
+naming no backend; `vfs-init.c` brings the VFS up — registers exFAT/NTFS and runs
+the USB hotplug thread; `cellfs.c` the default HDD/FAT32 backend; `exfat.c` /
+`ntfs.c` the removable-media backends; `ftp.c` the shared FTP server; `http.c` the
+transport-agnostic client, split from the `http-stream.c` streaming engine so a
+PRX that only does one-shot fetches stays malloc-free). The library has no
+dependencies on `simple-lib-plugin` or `simple-lib-app` — those depend on it, not
+the other way around.

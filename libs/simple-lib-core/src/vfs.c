@@ -45,22 +45,6 @@ typedef struct {
 static MountEntry mounts[VFS_MAX_MOUNTS];
 static int        mountCount;
 
-// optional url backend (http-fs), registered by the app that wants it. NULL when
-// no consumer linked it, so plugins that never touch urls don't pull libhttp.
-static const VfsOps *urlBackend;
-void setUrlVfsBackend(const VfsOps *ops) { urlBackend = ops; }
-
-static int hasPrefix(const char *text, const char *prefix)
-{
-   while (*prefix) if (*text++ != *prefix++) return 0;
-   return 1;
-}
-
-static int isUrl(const char *path)
-{
-   return hasPrefix(path, "http://") || hasPrefix(path, "https://");
-}
-
 // Serializes the mount registry. The hotplug poll thread (vfs-init.c) mutates mounts[] via
 // addVfsMount/removeVfsMount on a different thread than the readers (findMount/resolvePath/
 // listMounts), so every touch of mounts[]/mountCount takes this lock. Lock order is always
@@ -139,9 +123,6 @@ int getNextRootMount(int *cursor, char *nameOut, int nameCapacity)
 // reads the mount registry under mountsLock so a concurrent hotplug can't tear mount->native.
 static const VfsOps *resolvePath(const char *path, char *buffer, int capacity, const char **native)
 {
-   // urls route to the http backend verbatim (no segment rewrite), when one is registered
-   if (urlBackend && isUrl(path)) { *native = path; return urlBackend; }
-
    char segment[32];
    const char *rest = splitFirstSegment(path, segment, sizeof segment);
 

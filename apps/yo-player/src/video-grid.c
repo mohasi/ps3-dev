@@ -4,14 +4,14 @@
 // jpegs are kept and only the on-screen band of tiles is "materialised" (thumbnail decoded to a texture +
 // labels rasterised), freed again on scroll-away and re-decoded from the kept jpeg on the way back, so VRAM
 // stays flat no matter how many results are loaded. The worker is stopped before playback so no per-call
-// http fetch overlaps the streaming http-fs client (they share libhttp's pools).
+// http fetch overlaps the streaming http client.
 
 #include "video-grid.h"
 
 #include "gfx.h"
 #include "colors.h"
 #include "pad.h"
-#include "http-fetch.h"
+#include "http.h"
 #include "string-utilities.h"   // strCopy
 #include <string.h>
 #include <stdio.h>
@@ -42,7 +42,7 @@ static void thumbFetchThread(uint64_t arg)
    VideoGrid *grid = (VideoGrid *)(uintptr_t)arg;
    uint8_t *buffer = (uint8_t *)malloc(THUMB_CAP);
    if (buffer) {
-      CellHttpHeader headers[] = { { "User-Agent", THUMB_UA }, { "Accept-Encoding", "identity" } };
+      HttpHeader headers[] = { { "User-Agent", THUMB_UA }, { "Accept-Encoding", "identity" } };
       for (;;) {
          int i = __sync_fetch_and_add(&grid->thumbNext, 1);
          if (i >= grid->thumbEnd || grid->stopWorker) break;
@@ -50,7 +50,7 @@ static void thumbFetchThread(uint64_t arg)
          char url[128];
          snprintf(url, sizeof url, "https://i.ytimg.com/vi/%s/mqdefault.jpg", grid->results.items[i].videoId);
          int length = 0, status = 0;
-         int rc = httpFetch(CELL_HTTP_METHOD_GET, url, headers, 2, NULL, 0, (char *)buffer, THUMB_CAP, &length, &status);
+         int rc = fetchHttp("GET", url, headers, 2, NULL, 0, (char *)buffer, THUMB_CAP, &length, &status);
          if (rc == 0 && status == 200 && length > 0) {
             uint8_t *copy = (uint8_t *)malloc(length);
             if (copy) {

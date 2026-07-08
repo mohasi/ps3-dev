@@ -31,7 +31,7 @@ static int readElementAt(MkvDemuxer *demuxer, uint64_t pos, uint32_t *id, uint64
    if (seekVideoSource(&demuxer->source, pos) != 0) return -1;
    int unknown = 0;
    if (readEbmlElement(&demuxer->source, id, size, &unknown) != 0 || unknown) return -1;
-   *dataStart = tellVideoSource(&demuxer->source);
+   *dataStart = getVideoSourcePosition(&demuxer->source);
    return 0;
 }
 
@@ -194,7 +194,7 @@ static void parseMetadata(MkvDemuxer *demuxer, uint64_t segStart, uint64_t segEn
       if (seekVideoSource(&demuxer->source, pos) != 0) return;
       uint32_t id; uint64_t size; int unknown = 0;
       if (readEbmlElement(&demuxer->source, &id, &size, &unknown) != 0) return;
-      uint64_t dataStart = tellVideoSource(&demuxer->source);
+      uint64_t dataStart = getVideoSourcePosition(&demuxer->source);
 
       if (id == EBML_ID_CLUSTER) return;   // media started; metadata is complete
       if (id == EBML_ID_SEEKHEAD) {
@@ -242,9 +242,9 @@ int openMkvDemuxer(MkvDemuxer *demuxer, VideoSource *source)
    if (seekVideoSource(&demuxer->source, dataStart + size) != 0) goto fail;
    if (readEbmlElement(&demuxer->source, &id, &size, &unknown) != 0 || id != EBML_ID_SEGMENT) goto fail;
 
-   uint64_t segStart = tellVideoSource(&demuxer->source);
+   uint64_t segStart = getVideoSourcePosition(&demuxer->source);
    demuxer->segmentStart = segStart;
-   demuxer->segmentEnd   = unknown ? sizeVideoSource(&demuxer->source) : segStart + size;
+   demuxer->segmentEnd   = unknown ? getVideoSourceSize(&demuxer->source) : segStart + size;
 
    parseMetadata(demuxer, segStart, demuxer->segmentEnd);
    if (demuxer->videoTrack == 0 || !demuxer->h264.valid) goto fail;   // no decodable AVC track
@@ -379,7 +379,7 @@ static int parseBlock(MkvDemuxer *demuxer, uint64_t start, uint64_t end, VideoAu
    if (readVideoSource(&demuxer->source, &flags, 1) != 1) return -1;
    int16_t relativeTimecode = (int16_t)((timecodeBytes[0] << 8) | timecodeBytes[1]);
 
-   uint64_t frameStart = tellVideoSource(&demuxer->source);
+   uint64_t frameStart = getVideoSourcePosition(&demuxer->source);
    if (demuxer->audioTrack && (int)trackNumber == demuxer->audioTrack) {
       enqueueAudioBlock(demuxer, frameStart, end, flags, relativeTimecode);
       return 0;
@@ -412,7 +412,7 @@ int readMkvVideoAu(MkvDemuxer *demuxer, VideoAu *au)
       if (seekVideoSource(&demuxer->source, demuxer->pos) != 0) return -1;
       uint32_t id; uint64_t size; int unknown = 0;
       if (readEbmlElement(&demuxer->source, &id, &size, &unknown) != 0) return 0;
-      uint64_t dataStart = tellVideoSource(&demuxer->source);
+      uint64_t dataStart = getVideoSourcePosition(&demuxer->source);
 
       if (id == EBML_ID_CLUSTER) {           // enter the cluster; its children follow
          demuxer->clusterTimecode = 0;

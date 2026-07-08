@@ -42,7 +42,10 @@
    <ClCompile Include="src\cellfs.c" />
    <ClCompile Include="src\exfat.c" />
    <ClCompile Include="src\ntfs.c" />
-   <ClCompile Include="src\http-fs.c" />
+   <ClCompile Include="src\http.c" />
+   <ClCompile Include="src\http-stream.c" />
+   <ClCompile Include="src\cellhttp-stack.c" />
+   <ClCompile Include="src\transport-cellhttp.c" />
    <ClCompile Include="src\zip.c" />
   </ItemGroup>
   <ItemGroup>
@@ -57,7 +60,10 @@
    <ClInclude Include="include\cellfs.h" />
    <ClInclude Include="include\exfat.h" />
    <ClInclude Include="include\ntfs.h" />
-   <ClInclude Include="include\http-fs.h" />
+   <ClInclude Include="include\http.h" />
+   <ClInclude Include="include\http-transport.h" />
+   <ClInclude Include="include\http-internal.h" />
+   <ClInclude Include="include\cellhttp-stack.h" />
    <ClInclude Include="include\syscall.h" />
    <ClInclude Include="include\thread.h" />
    <ClInclude Include="include\string-utilities.h" />

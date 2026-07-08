@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PARAM.SFO source for yo-player.
+  well-known keys don't need type= or maxlength= — the tool fills them in.
+  see https://www.psdevwiki.com/ps3/PARAM.SFO for full reference.
+-->
+<paramsfo>
+  <!-- format: XX.YY, e.g. 01.00 for initial release -->
+  <param key="APP_VER">01.00</param>
+
+  <!-- bitfield flags, 0 = defaults. common: 0x08 = xmb forced, 0x20 = bg music -->
+  <param key="ATTRIBUTE">0</param>
+
+  <!-- 1 = bootable, 0 = not bootable -->
+  <param key="BOOTABLE">1</param>
+
+  <!-- AT = video/tv service (Video column, where the YouTube app lived);
+       HG = hdd game (Games column). AT keeps this out of Games. -->
+  <param key="CATEGORY">AT</param>
+
+  <!-- license text shown under "about" -->
+  <param key="LICENSE">Homebrew. Not affiliated with Sony Computer Entertainment Inc. or YouTube / Google.</param>
+
+  <!-- parental control 0-11, 0 = disabled -->
+  <param key="PARENTAL_LEVEL">0</param>
+
+  <!-- minimum firmware required, format XX.YYYY -->
+  <param key="PS3_SYSTEM_VER">04.7500</param>
+
+  <!-- video mode bitfield: 1=480, 2=576, 4=720p, 8=1080, 16=480w, 32=576w, 63=all -->
+  <param key="RESOLUTION">63</param>
+
+  <!-- audio bitfield: 1=lpcm2.0, 4=lpcm5.1, 16=lpcm7.1, 256=dolby, 512=dts, 279=all -->
+  <param key="SOUND_FORMAT">279</param>
+
+  <!-- title shown on xmb, up to 128 bytes utf8 -->
+  <param key="TITLE">Yo! Player</param>
+
+  <!-- 9-char title id: ABCD12345 -->
+  <param key="TITLE_ID">YTPLAYER1</param>
+
+  <!-- package revision, format XX.YY -->
+  <param key="VERSION">01.00</param>
+</paramsfo>

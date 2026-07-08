@@ -1,11 +1,13 @@
 #pragma once
 
 // demux-mp4 - pulls H.264 video access units and AAC audio frames out of an MP4 (ISOBMFF) container.
-// MP4 carries a complete sample index up front (the moov box's stbl tables), so the whole file
-// layout is known at open: each track's tables are flattened into an in-memory sample array
-// (offset, size, pts, keyframe). Reads walk the video array in decode order while queueing the
-// audio samples that fall due, and seeking is a keyframe lookup in the array. Fragmented MP4
-// (moof) is not supported.
+// Two layouts are handled:
+//  - plain MP4: a complete sample index up front (the moov box's stbl tables), flattened into an
+//    in-memory sample array (offset, size, pts, keyframe). Reads walk the array in decode order.
+//  - fragmented MP4 (moof), as used by adaptive/DASH streams: moov carries only the codec config
+//    plus mvex defaults; the per-sample info lives in moof/traf/trun boxes scattered through the
+//    file. Indexing it all up front would mean reading the whole file, so instead one fragment is
+//    parsed at a time and refilled as playback advances (streams linearly, no big seeks).
 
 #include "video-source.h"
 #include "demux-types.h"
@@ -25,16 +27,33 @@ typedef struct {
    int        width, height;
 
    int      hasAudio;           // an AAC (mp4a) track was found (other codecs: video plays silent)
-   int      audioRate;          // sampling frequency in Hz
+   int      audioRate;          // output sampling frequency in Hz (post-SBR for HE-AAC)
+   int      audioAdtsRate;      // rate to write in the ADTS header: the core rate (= audioRate/2 for HE-AAC/SBR)
    int      audioChannels;
 
    uint64_t frameDurationNs;    // nanoseconds per video frame (first stts delta; 0 if unknown)
    uint64_t durationNs;         // total stream duration in nanoseconds (0 if unknown)
 
-   Mp4Sample *videoSamples;     // flattened sample tables, in decode order
+   Mp4Sample *videoSamples;     // plain: full table in decode order. fragmented: the current fragment's samples.
    int        videoSampleCount, videoCursor;
    Mp4Sample *audioSamples;
    int        audioSampleCount, audioCursor;
+
+   // audio-only mode: the file has a single mp4a track and no video (a DASH audio-only stream, e.g.
+   // YouTube itag 140). The audio track becomes the primary; readMp4AudioAu serves it directly and
+   // its fragments load into audioSamples. In this mode the trex*/nextMoofPos state describes the
+   // audio track, and there is no H.264 decoder / video pipeline.
+   int      audioOnly;
+
+   // fragmented (moof) streaming state
+   int      fragmented;
+   uint64_t fileEnd;              // total size, cached for the fragment walk
+   uint64_t firstMoofPos;         // first fragment, for restart-on-seek
+   uint64_t nextMoofPos;          // where the next fragment begins (end of the current mdat)
+   uint64_t sidxPos, sidxSize;    // segment index box (DASH/googlevideo): maps time -> fragment offset for seeks (0 = none)
+   uint64_t videoTimescale;       // video track timescale (fragmented converts pts at read time)
+   uint64_t audioTimescale;       // audio track timescale (audio-only fragmented converts pts at read time)
+   uint32_t trexDuration, trexSize, trexFlags;   // mvex/trex per-sample defaults (of the primary track)
 
    AudioAuQueue audioQueue;
    int          oversizeAudioWarned;
@@ -46,8 +65,12 @@ typedef struct {
    int      sampleCapacity;
 } Mp4Demuxer;
 
-int  openMp4Demuxer(Mp4Demuxer *demuxer, const char *path);   // 0 on success (video track found), -1 otherwise
+// adopts an already-open `source` (the caller opens it and sniffs the container, so http streams
+// aren't opened twice). audioOnly=0 opens a video file (audio, if any, is queued alongside);
+// audioOnly=1 opens a standalone mp4a track (no video), read with readMp4AudioAu. 0 / -1.
+int  openMp4Demuxer(Mp4Demuxer *demuxer, VideoSource *source, int audioOnly);
 int  readMp4VideoAu(Mp4Demuxer *demuxer, VideoAu *au);        // 1 = got AU, 0 = end of stream, -1 = error
+int  readMp4AudioAu(Mp4Demuxer *demuxer, AudioAu *au);        // audio-only: 1 = got AU, 0 = end of stream
 void closeMp4Demuxer(Mp4Demuxer *demuxer);
 
 // jumps to the last keyframe presenting at or before targetNs and clears the audio queue (only call

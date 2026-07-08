@@ -228,12 +228,13 @@ static void parseMetadata(MkvDemuxer *demuxer, uint64_t segStart, uint64_t segEn
    }
 }
 
-int openMkvDemuxer(MkvDemuxer *demuxer, const char *path)
+int openMkvDemuxer(MkvDemuxer *demuxer, VideoSource *source)
 {
    memset(demuxer, 0, sizeof *demuxer);
    demuxer->timecodeScale = 1000000;   // Matroska default: 1 ms per tick
 
-   if (openVideoSource(&demuxer->source, path) != 0) return -1;
+   demuxer->source = *source;            // adopt the already-open source (caller opened + sniffed it)
+   memset(source, 0, sizeof *source);    // ownership moved here; caller must not close it
 
    // EBML header, then Segment (whose size may legitimately be unknown)
    uint32_t id; uint64_t size, dataStart; int unknown = 0;
@@ -398,7 +399,7 @@ static int parseBlock(MkvDemuxer *demuxer, uint64_t start, uint64_t end, VideoAu
    if (timecode < 0) timecode = 0;
 
    uint8_t *auBuffer = demuxer->auBuffers[demuxer->auIndex];   // alternate so the previous AU stays valid in the decoder
-   if (!buildVideoAu(&demuxer->h264, demuxer->blockBuffer, frameSize, auBuffer, demuxer->auCapacity,
+   if (!buildVideoAu(&demuxer->h264, demuxer->blockBuffer, frameSize, 0, auBuffer, demuxer->auCapacity,
                      (uint64_t)timecode * demuxer->timecodeScale, au)) return 0;
    demuxer->auIndex = (demuxer->auIndex + 1) % AU_BUFFER_COUNT;
    return 1;

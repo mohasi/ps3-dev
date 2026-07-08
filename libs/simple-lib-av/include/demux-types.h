@@ -83,6 +83,7 @@ static inline int takeQueuedAudioAu(AudioAuQueue *queue, AudioAu *au)   // 1 = g
    return 1;
 }
 
-// converts one length-prefixed (AVCC) sample into an Annex-B access unit in auBuffer, prepending the
-// SPS/PPS header when the sample is an IDR. fills `au`; returns 1, or 0 when malformed / doesn't fit.
-int buildVideoAu(const H264Config *h264, const uint8_t *sample, int sampleSize, uint8_t *auBuffer, int auCapacity, uint64_t pts, VideoAu *au);
+// converts one length-prefixed (AVCC) sample into an Annex-B access unit in auBuffer, prepending the SPS/PPS
+// header when the sample is a random-access point (IDR, or a container-marked sync sample). fills `au`;
+// returns 1, or 0 when malformed / doesn't fit.
+int buildVideoAu(const H264Config *h264, const uint8_t *sample, int sampleSize, int isSyncSample, uint8_t *auBuffer, int auCapacity, uint64_t pts, VideoAu *au);

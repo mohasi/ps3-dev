@@ -19,4 +19,8 @@ void lockMounts(void);         // no-op until ensureMountsLock has run (bootstra
 void unlockMounts(void);
 void clearMounts(void);        // drop every mount (mountCount = 0) under the lock
 
+// registers the optional http(s):// backend (http-fs). requires vfs.h included
+// first for VfsOps. NULL unregisters. only the app that links http-fs calls this.
+void setUrlVfsBackend(const VfsOps *ops);
+
 #endif

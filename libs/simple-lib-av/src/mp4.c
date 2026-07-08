@@ -18,7 +18,10 @@ int readMp4Box(VideoSource *source, uint64_t off, uint32_t *type, uint64_t *boxS
       size = readU64BE(head + 8);
       *headerLen = 16;
    } else {
-      if (size == 0) size = sizeVideoSource(source) - off;   // extends to EOF
+      // size 0 = "box extends to EOF" - only resolvable when the total size is known. on an unknown-size
+      // stream (size()==0) leave it 0 so the `size < *headerLen` check below fails the box and callers
+      // treat it as end-of-boxes, instead of underflowing 0-off into a bogus huge size.
+      if (size == 0) { uint64_t total = sizeVideoSource(source); size = total > off ? total - off : 0; }
       *headerLen = 8;
    }
    if (size < *headerLen) return -1;

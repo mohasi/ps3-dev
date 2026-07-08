@@ -53,7 +53,7 @@ typedef struct {
    int      blockCapacity;
 } MkvDemuxer;
 
-int  openMkvDemuxer(MkvDemuxer *demuxer, const char *path);   // 0 on success (video track found), -1 otherwise
+int  openMkvDemuxer(MkvDemuxer *demuxer, VideoSource *source);   // adopts an already-open source; 0 on success (video track found), -1 otherwise
 int  readMkvVideoAu(MkvDemuxer *demuxer, VideoAu *au);        // 1 = got AU, 0 = end of stream, -1 = error
 void closeMkvDemuxer(MkvDemuxer *demuxer);
 

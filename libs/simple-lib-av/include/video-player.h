@@ -18,6 +18,11 @@ typedef void  (*VideoFrameFreeFn)(void *buffer);
 // opens `path`, brings up the decoder, and starts decoding. Returns NULL if the file can't be
 // demuxed / decoded (caller should have probed first for a user-facing reason).
 VideoPlayer *createVideoPlayer(const char *path, VideoFrameAllocFn allocFrame, VideoFrameFreeFn freeFrame);
+
+// like createVideoPlayer, but the audio comes from a SEPARATE source (adaptive/DASH: a video-only
+// url plus an audio-only url). audioPath NULL means the audio is muxed into videoPath. A/V stay in
+// sync because both share one presentation timeline and the audio drives the clock.
+VideoPlayer *createVideoPlayerSplit(const char *videoPath, const char *audioPath, VideoFrameAllocFn allocFrame, VideoFrameFreeFn freeFrame);
 void         destroyVideoPlayer(VideoPlayer *player);
 
 // returns the YUV 4:2:0 planar frame (Y then U then V, width*height*3/2 bytes) that should be shown
@@ -35,3 +40,4 @@ void  seekVideoPlayer(VideoPlayer *player, float seconds);
 int   isVideoEnded(const VideoPlayer *player);       // decode reached end of stream and the ring drained
 float getVideoPositionSeconds(const VideoPlayer *player);
 float getVideoDurationSeconds(const VideoPlayer *player);
+void  getAudioTrackInfo(const VideoPlayer *player, int *rate, int *channels);   // 0/0 if no audio track

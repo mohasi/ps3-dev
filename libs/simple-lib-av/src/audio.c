@@ -78,7 +78,8 @@ static uint32_t portNum;
 static Audio * volatile mixingStream = NULL;
 
 // external PCM feed (video playback): lock-free single-producer ring drained by the mixer
-#define FEED_RING_FRAMES 32768   // stereo frames, power of two (~0.68 s at 48 kHz)
+#define FEED_RING_FRAMES  32768   // stereo frames, power of two (~0.68 s at 48 kHz)
+#define FEED_PRIME_FRAMES 16384   // backlog required before the mixer starts draining (~0.35 s)
 static struct {
    float   *ring;                 // interleaved stereo
    volatile uint32_t head, tail;  // free-running frame counters (producer / mixer)
@@ -87,6 +88,7 @@ static struct {
    int      sampleRate;
    float    volume;
    volatile int active, paused;
+   volatile int priming;          // hold consumption until a backlog exists (start / post-flush)
    volatile int mixerInFeed;      // handshake so closeAudioPcmFeed never frees the ring mid-block
 } feed;
 
@@ -273,6 +275,13 @@ static void mixFeedBlock(float *mix) {
    feed.mixerInFeed = 1;
    __sync_synchronize();
    if (!feed.active || feed.paused || !feed.ring) { feed.mixerInFeed = 0; return; }
+
+   // hold consumption until the producer has built a backlog: draining from the very first pushed
+   // frame underruns in bursts at startup, and each underrun freezes the A/V clock (video stutter)
+   if (feed.priming) {
+      if (feed.head - feed.tail < FEED_PRIME_FRAMES) { feed.mixerInFeed = 0; return; }
+      feed.priming = 0;
+   }
 
    double step = (double)feed.sampleRate / (double)AUDIO_SAMPLE_RATE;
    float vol = feed.volume * masterVolume;
@@ -893,6 +902,7 @@ int openAudioPcmFeed(int sampleRate) {
    feed.sampleRate = sampleRate;
    feed.volume = 1.0f;
    feed.paused = 0;
+   feed.priming = 1;
    __sync_synchronize();
    feed.active = 1;
    return 0;
@@ -949,6 +959,7 @@ void flushAudioPcmFeed(void) {
    feed.tail = feed.head;
    feed.readPos = 0.0;
    feed.consumed = 0;   // the A/V clock re-anchors at the first frame pushed after the flush
+   feed.priming = 1;    // rebuild the backlog before draining resumes (same as at open)
    __sync_synchronize();
    feed.paused = wasPaused;
 }

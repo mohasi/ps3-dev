@@ -84,9 +84,9 @@ static inline int dbgFormatTimestamp(char *out)
 //         where LVL is INFO / WARN / ERR  (5-char fixed width incl. space).
 //
 // Thread-safety: builds the timestamp + level + message into one stack
-// buffer and issues a SINGLE cellFsWrite. With O_APPEND the kernel
-// positions and writes atomically per call, so concurrent loggers from
-// different threads/PRX's cannot interleave halves on the same line.
+// buffer and issues a SINGLE writeFs. With O_APPEND the kernel positions
+// and writes atomically per call, so concurrent loggers from different
+// threads/PRX's cannot interleave halves on the same line.
 //
 // Buffer is 1 KB for the message (any extra is silently dropped) plus 22
 // bytes for the timestamp and 7 for the level tag.

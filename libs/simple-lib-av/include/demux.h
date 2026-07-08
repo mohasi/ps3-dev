@@ -17,17 +17,24 @@ typedef struct {
    int        level;            // AVC level, passed to cellVdec as profileLevel
    int        width, height;
    int        hasAudio;         // an AAC track was found (anything else plays silent)
-   int        audioRate;        // sampling frequency in Hz
+   int        audioRate;        // output sampling frequency in Hz
+   int        audioAdtsRate;    // rate to write in the ADTS header (core rate; = audioRate except HE-AAC)
    int        audioChannels;
    uint64_t   frameDurationNs;  // nanoseconds per video frame (0 if the file doesn't say)
    uint64_t   durationNs;       // total stream duration in nanoseconds (0 if unknown)
 } VideoDemuxer;
 
 int openVideoDemuxer(VideoDemuxer *demuxer, const char *path);   // 0 on success (decodable video track found), -1 otherwise
+int openAudioDemuxer(VideoDemuxer *demuxer, const char *path);   // 0 on success (mp4a audio-only track found), -1 otherwise
 
 static inline int readVideoAu(VideoDemuxer *demuxer, VideoAu *au)   // 1 = got AU, 0 = end of stream, -1 = error
 {
    return demuxer->isMp4 ? readMp4VideoAu(&demuxer->container.mp4, au) : readMkvVideoAu(&demuxer->container.mkv, au);
+}
+
+static inline int readAudioAu(VideoDemuxer *demuxer, AudioAu *au)   // audio-only demuxer: 1 = got AU, 0 = end of stream
+{
+   return demuxer->isMp4 ? readMp4AudioAu(&demuxer->container.mp4, au) : 0;
 }
 
 static inline int takeAudioAu(VideoDemuxer *demuxer, AudioAu *au)   // pops a queued audio AU: 1 = got one, 0 = queue empty

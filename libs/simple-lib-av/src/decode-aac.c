@@ -30,6 +30,7 @@ struct AacDecoder {
    volatile int   pcmPending;      // decoded frames reported but not yet retrieved
    volatile int   seqDone;         // EndSeq finished (set by the callback, cleared by reset)
    volatile int   errored;
+   int            discardedCount;  // concealed/invalid frames dropped (each one skips audible content)
 };
 
 static int32_t adecCallback(CellAdecHandle handle, CellAdecMsgType type, int32_t data, void *arg)
@@ -38,7 +39,9 @@ static int32_t adecCallback(CellAdecHandle handle, CellAdecMsgType type, int32_t
    AacDecoder *decoder = (AacDecoder *)arg;
    switch (type) {
       case CELL_ADEC_MSG_TYPE_AUDONE:  decoder->auDoneCount++; break;
-      case CELL_ADEC_MSG_TYPE_PCMOUT:  decoder->pcmPending++;  break;   // data may carry a decode error; GetPcm still required
+      // atomic: the audio thread decrements concurrently, and a lost update strands a frame inside the
+      // decoder forever (it stays BUSY, audio goes silent). data may carry a decode error; GetPcm still required.
+      case CELL_ADEC_MSG_TYPE_PCMOUT:  (void)__sync_add_and_fetch(&decoder->pcmPending, 1); break;
       case CELL_ADEC_MSG_TYPE_SEQDONE: decoder->seqDone = 1;   break;
       case CELL_ADEC_MSG_TYPE_ERROR:
          decoder->errored = 1;
@@ -146,14 +149,18 @@ int getPcmAac(AacDecoder *decoder, float *stereoOut, int *outFrames, int *outRat
 
    const CellAdecPcmItem *item;
    if (cellAdecGetPcmItem(decoder->handle, &item) != CELL_OK) return 0;   // counter ran ahead: nothing queued yet
-   decoder->pcmPending--;
+   (void)__sync_sub_and_fetch(&decoder->pcmPending, 1);
 
    const CellAdecM4AacInfo *info = (const CellAdecM4AacInfo *)item->pcmAttr.bsiInfo;
    int samplesPerFrame = info->enableSBR ? 1024 * (int)info->SBRUpsamplingFactor : 1024;
    int slots = samplesPerFrame > 0 ? (int)(item->size / (uint32_t)(samplesPerFrame * sizeof(float))) : 0;
 
-   // concealed/invalid frames still occupy an internal slot: release and discard
+   // concealed/invalid frames still occupy an internal slot: release and discard. Each discard skips
+   // one frame of audible content, so repeated discards accumulate A/V desync - log so drift is traceable.
    if (item->status != 0 || item->size == 0 || slots < 1 || (int)item->size > PCM_SCRATCH_BYTES) {
+      decoder->discardedCount++;
+      if (decoder->discardedCount == 1 || decoder->discardedCount % 256 == 0)
+         logWarn("[decode-aac] discarded frame #%d (status 0x%x size %d)\n", decoder->discardedCount, item->status, (int)item->size);
       cellAdecGetPcm(decoder->handle, 0);
       return 0;
    }
@@ -178,7 +185,7 @@ int getPcmAac(AacDecoder *decoder, float *stereoOut, int *outFrames, int *outRat
 // releases decoded frames the callback has reported, one GetPcm(NULL discard) per PCMOUT
 static void discardReportedPcm(AacDecoder *decoder)
 {
-   while (decoder->pcmPending > 0) { decoder->pcmPending--; cellAdecGetPcm(decoder->handle, 0); }
+   while (decoder->pcmPending > 0) { (void)__sync_sub_and_fetch(&decoder->pcmPending, 1); cellAdecGetPcm(decoder->handle, 0); }
 }
 
 int resetAacDecoder(AacDecoder *decoder)

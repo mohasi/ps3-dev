@@ -110,6 +110,7 @@ namespace DebugBridgeClient
                  ? Color.FromRgb(0x22, 0xbb, 0x22)
                  : Color.FromRgb(0xdd, 0x22, 0x22));
              statusText.Text = connected ? "Connected" : "Disconnected";
+             commandsMenu.IsEnabled = connected;   // every Commands entry needs the ps3
              AppendLog(connected ? ("connected to " + ps3.Host) : "disconnected");
          }));
       }

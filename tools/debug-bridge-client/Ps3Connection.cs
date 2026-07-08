@@ -1,5 +1,5 @@
 using System;
-using System.Configuration;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
@@ -14,10 +14,12 @@ namespace DebugBridgeClient
    //   - LOG frames (raised on LogReceived for the UI).
    public class Ps3Connection
    {
-      public const string DefaultHost = "10.0.0.2";
-      public const string DefaultFallbackHost = "192.168.2.35";  // wifi address, tried if the primary is unreachable
+      // ps3 ips to try; all are dialed in parallel, first to answer wins. add more here.
+      public static readonly string[] DefaultHosts = { "10.0.0.2", "192.168.2.35" };
       public const int Port = 8785;
-      public const int ReconnectDelayMs = 3000;
+      public const int ConnectTimeoutMs = 2000;  // per attempt; all candidates race in parallel
+      public const int RetryDelayMs     = 1000;  // how often to retry while disconnected
+      public const int PingIntervalMs   = 3000;  // liveness ping cadence while connected
 
       public event EventHandler Connected;
       public event EventHandler Disconnected;
@@ -42,15 +44,7 @@ namespace DebugBridgeClient
 
       public Ps3Connection()
       {
-         string primary  = ConfigurationManager.AppSettings["Ps3IpAddress"];
-         string fallback = ConfigurationManager.AppSettings["Ps3IpAddressFallback"];
-         if (string.IsNullOrEmpty(primary))  primary  = DefaultHost;
-         if (string.IsNullOrEmpty(fallback)) fallback = DefaultFallbackHost;
-
-         // primary first, then any distinct fallback; TryConnect walks these in order.
-         hosts = string.Equals(primary, fallback, StringComparison.OrdinalIgnoreCase)
-            ? new[] { primary }
-            : new[] { primary, fallback };
+         hosts = DefaultHosts;
          host = hosts[0];
       }
 
@@ -188,36 +182,69 @@ namespace DebugBridgeClient
          }
       }
 
-      // walk the candidate hosts in order; the first that answers within the
-      // timeout wins and becomes the active host. returns false only if none did.
+      // race all candidate hosts at once; the first to answer within the
+      // timeout wins and becomes the active host. connecting in parallel keeps
+      // detection near-instant no matter how many candidates or how many are
+      // dead. returns false only if none answered.
       private bool TryConnect()
       {
+         var attemptHosts = new List<string>();
+         var attempts     = new List<TcpClient>();
+         var results      = new List<IAsyncResult>();
          foreach (string candidate in hosts)
          {
             try
             {
                var t = new TcpClient();
-               IAsyncResult ar = t.BeginConnect(candidate, Port, null, null);
-               if (!ar.AsyncWaitHandle.WaitOne(3000, false))
-               {
-                  t.Close();
-                  continue;   // unreachable, try the next host
-               }
-               t.EndConnect(ar);
-               t.NoDelay = true;
-               t.ReceiveTimeout = 0; // reader blocks until LOG frames arrive
-               t.SendTimeout    = 60000;
-               tcp    = t;
-               stream = t.GetStream();
-               host   = candidate;   // remember which host answered
+               results.Add(t.BeginConnect(candidate, Port, null, null));
+               attempts.Add(t);
+               attemptHosts.Add(candidate);
+            }
+            catch { /* skip a host we can't even start dialing */ }
+         }
 
-               readerThread = new Thread(ReaderLoop) { IsBackground = true };
-               readerThread.Start();
+         // wait for the first successful connect, dropping any that fail early.
+         int deadline = Environment.TickCount + ConnectTimeoutMs;
+         while (attempts.Count > 0)
+         {
+            int remaining = deadline - Environment.TickCount;
+            if (remaining <= 0) break;
+
+            var handles = new WaitHandle[results.Count];
+            for (int i = 0; i < results.Count; i++) handles[i] = results[i].AsyncWaitHandle;
+            int idx = WaitHandle.WaitAny(handles, remaining, false);
+            if (idx == WaitHandle.WaitTimeout) break;
+
+            try
+            {
+               attempts[idx].EndConnect(results[idx]);
+               AdoptConnection(attempts[idx], attemptHosts[idx]);
+               for (int i = 0; i < attempts.Count; i++)   // close the losing dials
+                  if (i != idx) try { attempts[i].Close(); } catch { }
                return true;
             }
-            catch { /* try the next host */ }
+            catch   // this candidate refused/failed; keep racing the rest
+            {
+               try { attempts[idx].Close(); } catch { }
+               attempts.RemoveAt(idx); results.RemoveAt(idx); attemptHosts.RemoveAt(idx);
+            }
          }
+
+         foreach (TcpClient t in attempts) try { t.Close(); } catch { }
          return false;
+      }
+
+      private void AdoptConnection(TcpClient t, string candidate)
+      {
+         t.NoDelay = true;
+         t.ReceiveTimeout = 0; // reader blocks until LOG frames arrive
+         t.SendTimeout    = 60000;
+         tcp    = t;
+         stream = t.GetStream();
+         host   = candidate;   // remember which host answered
+
+         readerThread = new Thread(ReaderLoop) { IsBackground = true };
+         readerThread.Start();
       }
 
       private void AutoConnectLoop()
@@ -241,13 +268,14 @@ namespace DebugBridgeClient
                      DropSocket();
                   }
                }
+               Thread.Sleep(RetryDelayMs);   // poll often so we catch the ps3 booting quickly
             }
             else
             {
                // periodic liveness check; SendCommand drops on failure.
                SendCommand("ping");
+               Thread.Sleep(PingIntervalMs);
             }
-            Thread.Sleep(ReconnectDelayMs);
          }
       }
    }

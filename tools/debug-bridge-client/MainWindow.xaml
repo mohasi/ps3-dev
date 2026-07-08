@@ -101,7 +101,7 @@
      <Menu Grid.Row="0"
          Background="{StaticResource BgSurface}"
          Foreground="{StaticResource FgText}">
-       <MenuItem Header="Commands">
+       <MenuItem x:Name="commandsMenu" Header="Commands" IsEnabled="False">
          <MenuItem Header="Screenshot" Click="OnScreenshot" />
          <MenuItem Header="Stat Tree..." Click="OnStatTree" />
          <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />

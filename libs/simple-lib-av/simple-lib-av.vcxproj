@@ -40,6 +40,7 @@
    <ClCompile Include="src\demux.c" />
    <ClCompile Include="src\demux-mkv.c" />
    <ClCompile Include="src\demux-mp4.c" />
+   <ClCompile Include="src\mux-mkv.c" />
    <ClCompile Include="src\decode-h264.c" />
    <ClCompile Include="src\decode-aac.c" />
    <ClCompile Include="src\video-player.c" />
@@ -55,6 +56,7 @@
    <ClInclude Include="include\demux.h" />
    <ClInclude Include="include\demux-mkv.h" />
    <ClInclude Include="include\demux-mp4.h" />
+   <ClInclude Include="include\mux-mkv.h" />
    <ClInclude Include="include\decode-h264.h" />
    <ClInclude Include="include\decode-aac.h" />
    <ClInclude Include="include\video-player.h" />

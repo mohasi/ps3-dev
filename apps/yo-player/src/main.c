@@ -19,6 +19,7 @@
 #include "screen-manager.h"
 #include "screens/home.h"
 #include "storage.h"
+#include "downloads.h"
 #include "ui/console-glyphs.h"
 #include "ui/stats.h"
 #include "bridge-client.h"
@@ -51,6 +52,7 @@ int main(int argc, char **argv)
    initStats(5, 5, 14, COLOR_AMBER_300);
    initStorage();          // prefs (last category) + watch history, under /dev_hdd0/tmp/yo-player/
    loadConsoleGlyphs();    // decode the console's own button glyphs for the on-screen hints
+   initDownloads();        // background download queue + its progress overlay
 
    logInfo("[yt] net rc=%d\n", netRc);
    openHome();       // boot into the home screen (trending categories)
@@ -68,6 +70,7 @@ int main(int argc, char **argv)
    }
 
    changeScreen(NULL);
+   shutdownDownloads();   // cancel + join any in-flight download before the http/vfs layers go away
    freeConsoleGlyphs();
    termStats();
    termAudio();

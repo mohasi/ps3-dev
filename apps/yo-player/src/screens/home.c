@@ -5,6 +5,7 @@
 #include "screens/play.h"
 #include "video-grid.h"
 #include "storage.h"
+#include "downloads.h"
 #include "ui/button-hints.h"
 #include "ui/console-glyphs.h"
 
@@ -173,6 +174,7 @@ static void initHome(void)
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS),    "Play");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE),   "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "Channel");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_R3),       "Download");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_START),    "Search");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_L1),       "");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_R1),       "Category");
@@ -189,6 +191,7 @@ static void initHome(void)
 
 static void updateHome(void)
 {
+   updateDownloadOverlay();
    if (oskInputActive()) return;
 
    if (isPadButtonPressed(PAD_BTN_START)) oskInputBegin("Search YouTube", "Dirt League", onQueryEntered);
@@ -209,6 +212,7 @@ static void updateHome(void)
       if (home.category == HOME_WATCHLATER) loadCategory();   // reflect the add/remove immediately
       return;
    }
+   if (isPadButtonPressed(PAD_BTN_R3)) { enqueueDownload(selected); return; }
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) { cacheCurrent(); openChannelFor(selected); return; }
    if (isPadButtonPressed(PAD_BTN_CROSS)) {
       markWatched(selected->videoId);
@@ -228,6 +232,7 @@ static void drawHome(void)
       drawLabel(&statusLabel);
    }
    drawButtonHints(&hints, home.screenW);
+   drawDownloadOverlay(home.screenW);
 }
 
 static void suspendHome(void) { stopVideoGrid(&home.grid); }   // free the http pools for the pushed screen

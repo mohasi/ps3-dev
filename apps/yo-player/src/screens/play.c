@@ -11,6 +11,7 @@
 
 #include "screens/play.h"
 #include "extractor.h"
+#include "stream-select.h"   // pickBestVideo / pickBestAudio (shared with download)
 
 #include "gfx.h"
 #include "colors.h"
@@ -97,47 +98,6 @@ static void fail(const char *reason)
    state.stage = STAGE_FAILED;
 }
 
-// what the PS3 H.264 decoder can keep up with: 1080p at <=30 fps, or 720p at <=60 fps (fewer pixels/sec
-// than 1080p30, so it stays within throughput). 1080p60 (itag 298/299) exceeds it and is skipped - such
-// a video falls to 720p60 rather than dropping all the way to a 30 fps 480p variant.
-static int decodableVideo(const StreamFormat *f)
-{
-   if (f->height <= 1080 && f->fps <= 30) return 1;
-   if (f->height <= 720  && f->fps <= 60) return 1;
-   return 0;
-}
-
-// pick the best decodable H.264/mp4 stream: highest resolution, and at a given resolution the higher
-// frame rate. Favours the adaptive (video-only) streams over the 360p muxed one; audio is a separate
-// track (pickAudio).
-static const StreamFormat *pickVideo(const StreamInfo *info)
-{
-   const StreamFormat *best = NULL;
-   for (int i = 0; i < info->formatCount; i++) {
-      const StreamFormat *format = &info->formats[i];
-      if (!format->hasVideo || format->needsCipher || !format->url[0]) continue;
-      if (strcmp(format->container, "mp4") != 0) continue;   // mp4 == avc1 for these itags
-      if (!decodableVideo(format)) continue;
-      if (!best || format->height > best->height || (format->height == best->height && format->fps > best->fps))
-         best = format;
-   }
-   return best;
-}
-
-// pick the AAC/mp4 audio-only stream to pair with a video-only pick, preferring itag 140
-// (128k AAC-LC). skips opus/webm, which the AAC decoder can't play.
-static const StreamFormat *pickAudio(const StreamInfo *info)
-{
-   const StreamFormat *best = NULL;
-   for (int i = 0; i < info->formatCount; i++) {
-      const StreamFormat *format = &info->formats[i];
-      if (!format->hasAudio || format->hasVideo || format->needsCipher || !format->url[0]) continue;
-      if (strcmp(format->container, "mp4") != 0) continue;
-      if (!best || format->itag == 140) best = format;
-   }
-   return best;
-}
-
 static void worker(uint64_t arg)
 {
    (void)arg;
@@ -151,10 +111,10 @@ static void worker(uint64_t arg)
    if (extractor->extract(requestedInput, info) != 0 || info->formatCount == 0) { fail("resolve failed"); goto done; }
    logInfo("[yt] diag resolve took %llums\n", (unsigned long long)((sys_time_get_system_time() - tPlayStart) / 1000));   // TEMP
 
-   const StreamFormat *video = pickVideo(info);
+   const StreamFormat *video = pickBestVideo(info);
    if (!video) { fail("no playable mp4 video"); goto done; }
    // a muxed pick (itag 18) already carries audio; a video-only pick needs a separate audio track
-   const StreamFormat *audio = video->hasAudio ? NULL : pickAudio(info);
+   const StreamFormat *audio = video->hasAudio ? NULL : pickBestAudio(info);
    logInfo("[yt] play video itag %d %dx%d %s, audio itag %d\n", video->itag, video->width, video->height,
            video->hasAudio ? "muxed" : "video-only", audio ? audio->itag : (video->hasAudio ? video->itag : 0));
 

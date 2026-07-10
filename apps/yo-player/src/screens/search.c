@@ -6,6 +6,7 @@
 #include "screens/play.h"
 #include "video-grid.h"
 #include "storage.h"
+#include "downloads.h"
 #include "ui/button-hints.h"
 #include "ui/console-glyphs.h"
 
@@ -143,6 +144,7 @@ static void initSearch(void)
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE),   "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "Channel");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT),   "Sort");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_R3),       "Download");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_START),    "Search");
 
    initVideoGrid(&search.grid, &font, MARGIN_X, GRID_TOP, search.screenW - 2 * MARGIN_X, search.screenH - GRID_TOP);
@@ -153,6 +155,7 @@ static void initSearch(void)
 
 static void updateSearch(void)
 {
+   updateDownloadOverlay();
    if (oskInputActive()) return;
 
    if (isPadButtonPressed(PAD_BTN_START)) { oskInputBegin("Search YouTube", search.query[0] ? search.query : "Dirt League", onQueryEntered); }
@@ -175,6 +178,7 @@ static void updateSearch(void)
    const SearchResult *selected = gridSelected(&search.grid);
    if (!selected) return;
    if (isPadButtonPressed(PAD_BTN_SQUARE)) { toggleWatchLater(selected); return; }
+   if (isPadButtonPressed(PAD_BTN_R3)) { enqueueDownload(selected); return; }
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) {
       if (search.channelId[0]) { setSubscribed(search.channelId, !isSubscribed(search.channelId)); updateTriangleHint(); }
       else enterChannel(selected);
@@ -202,6 +206,7 @@ static void drawSearch(void)
    }
 
    drawButtonHints(&hints, search.screenW);
+   drawDownloadOverlay(search.screenW);
 }
 
 static void termSearch(void)

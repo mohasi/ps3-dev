@@ -48,6 +48,8 @@
    <ClCompile Include="src\screens\search.c" />
    <ClCompile Include="src\video-grid.c" />
    <ClCompile Include="src\storage.c" />
+   <ClCompile Include="src\stream-select.c" />
+   <ClCompile Include="src\downloads.c" />
    <ClCompile Include="src\extractor.c" />
    <ClCompile Include="src\extractors\youtube.c" />
    <ClCompile Include="src\sponsorblock.c" />
@@ -58,6 +60,8 @@
    <ClInclude Include="include\screens\search.h" />
    <ClInclude Include="include\video-grid.h" />
    <ClInclude Include="include\storage.h" />
+   <ClInclude Include="include\stream-select.h" />
+   <ClInclude Include="include\downloads.h" />
    <ClInclude Include="include\extractor.h" />
    <ClInclude Include="include\sponsorblock.h" />
   </ItemGroup>

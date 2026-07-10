@@ -27,7 +27,7 @@
 #define HINTS_BOTTOM  42
 #define HINT_GLYPH_H  22
 #define HINT_TEXT     18
-#define TRIANGLE_HINT 2         // Triangle's slot in the hint row (see initSearch): retitled per mode
+#define TRIANGLE_HINT 3         // Triangle's slot in the hint row (see initSearch): retitled per mode
 
 static const char *SortNames[SORT_COUNT]                = { "Relevance", "Views" };
 static const char *ChannelSortNames[CHANNEL_SORT_COUNT] = { "Latest", "Popular", "Oldest" };
@@ -140,9 +140,9 @@ static void initSearch(void)
    initButtonHints(&hints, &font, search.screenH - HINTS_BOTTOM, HINT_GLYPH_H, HINT_TEXT, COLOR_SLATE_300);
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS),    "Play");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CIRCLE),   "Back");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE),   "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "Channel");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT),   "Sort");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_R3),       "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_START),    "Search");
 
    initVideoGrid(&search.grid, &font, MARGIN_X, GRID_TOP, search.screenW - 2 * MARGIN_X, search.screenH - GRID_TOP);
@@ -174,7 +174,7 @@ static void updateSearch(void)
 
    const SearchResult *selected = gridSelected(&search.grid);
    if (!selected) return;
-   if (isPadButtonPressed(PAD_BTN_R3)) { toggleWatchLater(selected); return; }
+   if (isPadButtonPressed(PAD_BTN_SQUARE)) { toggleWatchLater(selected); return; }
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) {
       if (search.channelId[0]) { setSubscribed(search.channelId, !isSubscribed(search.channelId)); updateTriangleHint(); }
       else enterChannel(selected);

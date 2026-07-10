@@ -171,8 +171,8 @@ static void initHome(void)
 
    initButtonHints(&hints, &font, home.screenH - HINTS_BOTTOM, HINT_GLYPH_H, HINT_TEXT, COLOR_SLATE_300);
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS),    "Play");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE),   "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "Channel");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_R3),       "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_START),    "Search");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_L1),       "");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_R1),       "Category");
@@ -202,7 +202,7 @@ static void updateHome(void)
 
    const SearchResult *selected = gridSelected(&home.grid);
    if (!selected) return;
-   if (isPadButtonPressed(PAD_BTN_R3)) {
+   if (isPadButtonPressed(PAD_BTN_SQUARE)) {
       toggleWatchLater(selected);
       watchLaterRevisionSeen = getWatchLaterRevision();
       categoryCached[HOME_WATCHLATER] = 0;

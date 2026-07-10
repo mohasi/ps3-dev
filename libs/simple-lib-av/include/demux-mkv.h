@@ -59,5 +59,6 @@ void closeMkvDemuxer(MkvDemuxer *demuxer);
 
 // jumps the cluster walk to the last cued keyframe at or before targetNs (files without Cues fall
 // back to a lazily-built index of cluster start times) and clears the audio queue (only call with
-// the audio consumer parked). Returns the time actually landed on.
-uint64_t seekMkvDemuxer(MkvDemuxer *demuxer, uint64_t targetNs);
+// the audio consumer parked). Returns the time actually landed on. landAfter is accepted for a uniform
+// seek signature but ignored (MKV always lands at/before; the next-keyframe skip is an mp4/DASH concern).
+uint64_t seekMkvDemuxer(MkvDemuxer *demuxer, uint64_t targetNs, int landAfter);

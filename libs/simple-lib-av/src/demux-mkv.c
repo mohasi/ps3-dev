@@ -491,8 +491,9 @@ static void growClusterIndex(MkvDemuxer *demuxer, uint64_t targetNs)
    }
 }
 
-uint64_t seekMkvDemuxer(MkvDemuxer *demuxer, uint64_t targetNs)
+uint64_t seekMkvDemuxer(MkvDemuxer *demuxer, uint64_t targetNs, int landAfter)
 {
+   (void)landAfter;   // MKV always lands at/before; next-keyframe skip is an mp4/DASH concern
    clearAudioAuQueue(&demuxer->audioQueue);   // consumer is parked: discard queued audio
 
    // prefer the file's cue index; without one, use the lazily-grown index of cluster start times

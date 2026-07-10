@@ -37,6 +37,9 @@ int   isVideoPaused(const VideoPlayer *player);
 // pipelines flush; the current frame stays on screen until the new position's frames arrive).
 // Seeking after the end restarts playback.
 void  seekVideoPlayer(VideoPlayer *player, float seconds);
+// like seekVideoPlayer but lands on the next keyframe at or AFTER `seconds`, so a skip clears the whole
+// span (e.g. a sponsor segment) instead of resuming on the keyframe before it and replaying the tail.
+void  seekVideoPlayerPast(VideoPlayer *player, float seconds);
 int   isVideoEnded(const VideoPlayer *player);       // decode reached end of stream and the ring drained
 float getVideoPositionSeconds(const VideoPlayer *player);
 float getVideoDurationSeconds(const VideoPlayer *player);

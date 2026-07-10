@@ -140,6 +140,7 @@ static void runOneDownload(const QueueItem *item)
    const StreamFormat *video = pickBestVideo(info);
    const StreamFormat *audio = (video && !video->hasAudio) ? pickBestAudio(info) : NULL;
    if (!video) { logError("[dl] no downloadable video for %s\n", item->videoId); free(info); return; }
+   if (video->isLiveSegmented) { logInfo("[dl] %s is a live stream, not downloadable\n", item->videoId); free(info); return; }
 
    char finalPath[MAX_PATH_LEN], partPath[MAX_PATH_LEN];
    buildDownloadPath(finalPath, sizeof finalPath, item->title, item->videoId);

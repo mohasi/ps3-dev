@@ -18,11 +18,15 @@ typedef struct {
    int  needsCipher;       // 1 = url is signature-ciphered, not yet playable
    char container[8];      // "mp4"
    char url[MAX_STREAM_URL];
+   int  isLiveSegmented;   // url is a DASH segment base: fetch "<url>sq/<n>/..." instead of opening it directly
+   long liveStartSq;       // earliest segment number available (DVR window start)
+   long liveEdgeSq;        // most recent segment number available (live edge)
 } StreamFormat;
 
 typedef struct {
    char title[256];
    int  durationSeconds;
+   int  isLive;            // currently broadcasting: streams need live segment-sequence fetching, not a static moov
    int  formatCount;
    StreamFormat formats[MAX_STREAM_FORMATS];
 } StreamInfo;
@@ -57,11 +61,9 @@ typedef struct {
 } SearchResults;
 
 // trending categories (YouTube retired the single aggregated feed; these are the surviving per-category
-// channel-tab feeds). the UI cycles them; keep TrendingNames in the search screen in sync with this order.
+// channel-tab feeds). the UI cycles them; keep TrendingNames (home.c) and TRENDING_FEEDS (youtube.c) in sync.
 typedef enum {
    TREND_GAMING,
-   // TREND_MUSIC,   // music feed disabled - keep this row and its TrendingNames/TRENDING_FEEDS entries in sync
-   TREND_LIVE,
    TREND_SPORTS,
    TREND_PODCASTS,
    TREND_COUNT

@@ -42,15 +42,22 @@ static inline int takeAudioAu(VideoDemuxer *demuxer, AudioAu *au)   // pops a qu
    return takeQueuedAudioAu(demuxer->isMp4 ? &demuxer->container.mp4.audioQueue : &demuxer->container.mkv.audioQueue, au);
 }
 
-// jumps to the last keyframe at or before targetNs and clears the audio queue (only call with the
-// audio consumer parked). Returns the time actually landed on.
-static inline uint64_t seekVideoDemuxer(VideoDemuxer *demuxer, uint64_t targetNs)
+// jumps to a keyframe and clears the audio queue (only call with the audio consumer parked). landAfter=0
+// lands on the keyframe at/before targetNs; landAfter=1 lands on the next keyframe at/after it (skip past a
+// segment, mp4/DASH only). Returns the time actually landed on.
+static inline uint64_t seekVideoDemuxer(VideoDemuxer *demuxer, uint64_t targetNs, int landAfter)
 {
-   return demuxer->isMp4 ? seekMp4Demuxer(&demuxer->container.mp4, targetNs) : seekMkvDemuxer(&demuxer->container.mkv, targetNs);
+   return demuxer->isMp4 ? seekMp4Demuxer(&demuxer->container.mp4, targetNs, landAfter) : seekMkvDemuxer(&demuxer->container.mkv, targetNs, landAfter);
 }
 
 static inline void closeVideoDemuxer(VideoDemuxer *demuxer)
 {
    if (demuxer->isMp4) closeMp4Demuxer(&demuxer->container.mp4);
    else closeMkvDemuxer(&demuxer->container.mkv);
+}
+
+// unblock a live segment source waiting on the edge, so teardown's thread join can't hang (live is mp4).
+static inline void cancelVideoDemuxer(VideoDemuxer *demuxer)
+{
+   if (demuxer->isMp4) cancelVideoSource(&demuxer->container.mp4.source);
 }

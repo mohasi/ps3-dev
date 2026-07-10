@@ -8,14 +8,17 @@
 #include <stdint.h>
 #include "vfs.h"
 #include "http.h"   // HttpStream, openHttpStream/... for url sources
+#include "live-source.h"   // LiveSource for DASH live segment streams
 
 // container parsing reads in tiny pieces (EBML/box headers a byte or a few at a time), so a
 // read-ahead buffer turns thousands of one-byte reads into occasional block reads.
 typedef struct {
    int         isOpen;
    int         isHttp;       // source kind: streamed url (http) vs local file (VfsFile)
-   VfsFile     file;         // valid when !isHttp
+   int         isLive;       // source kind: DASH live segment stream (LiveSource)
+   VfsFile     file;         // valid when !isHttp && !isLive
    HttpStream *http;         // valid when isHttp
+   LiveSource *live;         // valid when isLive
    uint64_t    size;         // total size in bytes
    uint64_t    pos;          // logical read position the caller sees
    uint64_t    filePos;      // actual backend position
@@ -29,6 +32,7 @@ int64_t  readVideoSource(VideoSource *source, void *buffer, uint64_t length); //
 int      seekVideoSource(VideoSource *source, uint64_t offset);              // absolute seek; 0 / -1
 uint64_t getVideoSourcePosition(const VideoSource *source);
 uint64_t getVideoSourceSize(const VideoSource *source);
+void     cancelVideoSource(VideoSource *source);   // unblock a live read waiting on the edge (before teardown)
 void     closeVideoSource(VideoSource *source);
 
 // read exactly `length` bytes at absolute `offset` (seek + full read). returns 0 on success,

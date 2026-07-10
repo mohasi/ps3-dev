@@ -178,7 +178,7 @@ static void updateSearch(void)
    const SearchResult *selected = gridSelected(&search.grid);
    if (!selected) return;
    if (isPadButtonPressed(PAD_BTN_SQUARE)) { toggleWatchLater(selected); return; }
-   if (isPadButtonPressed(PAD_BTN_R3)) { enqueueDownload(selected); return; }
+   if (isPadButtonPressed(PAD_BTN_R3)) { if (!selected->isLive) enqueueDownload(selected); return; }   // live can't be downloaded
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) {
       if (search.channelId[0]) { setSubscribed(search.channelId, !isSubscribed(search.channelId)); updateTriangleHint(); }
       else enterChannel(selected);

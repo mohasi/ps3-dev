@@ -70,6 +70,7 @@ struct VideoPlayer {
    // seek: the UI posts a target; the decode thread performs it (parking the audio thread while both
    // pipelines flush), then decode restarts from the nearest earlier cued keyframe
    volatile int64_t seekRequestNs;      // pending target in ns, -1 = none
+   int              seekLandAfter;      // 1 = land on the next keyframe at/after the target (sponsor skip), not before
    volatile int     audioFlushRequest;  // decode thread -> audio thread: flush and park
    volatile int     audioFlushDone;     // audio thread -> decode thread: flushed, parked
    volatile uint64_t diagSeekUs;        // TEMP: wall time (us) a seek started, to measure time-to-audio-up
@@ -85,6 +86,10 @@ struct VideoPlayer {
    int      displayIndex;         // slot being displayed, or -1
    uint64_t audioWaitStartUs;     // when pre-roll first started waiting on the audio clock (0 = not yet)
 };
+
+// defined below the decode thread but used by performSeek's audio-revive path
+static VideoDemuxer *getAudioSource(VideoPlayer *player);
+static void audioDecodeThread(uint64_t arg);
 
 // ============================================================================
 // decode thread
@@ -166,9 +171,10 @@ static void performSeek(VideoPlayer *player)
    }
    player->hasPendingAu = 0;
    uint64_t tDecoderReset = sys_time_get_system_time();
-   uint64_t landedNs = seekVideoDemuxer(&player->demuxer, targetNs);
+   // land on the fragment keyframe covering the target - or, for a sponsor skip, the next keyframe at/after it
+   uint64_t landedNs = seekVideoDemuxer(&player->demuxer, targetNs, player->seekLandAfter);
    uint64_t tVideoSeek = sys_time_get_system_time();
-   if (player->hasAudioDemuxer) seekVideoDemuxer(&player->audioDemuxer, landedNs);   // its thread is parked
+   if (player->hasAudioDemuxer) seekVideoDemuxer(&player->audioDemuxer, landedNs, 0);   // audio follows the video keyframe
    uint64_t tAudioSeek = sys_time_get_system_time();
    logInfo("[video-player] seek to %ds landed at %ds\n", (int)(targetNs / 1000000000ull), (int)(landedNs / 1000000000ull));
    logInfo("[video-player] diag seek phases: park=%llums decoderReset=%llums videoSeek=%llums audioSeek=%llums\n",   // TEMP
@@ -183,7 +189,28 @@ static void performSeek(VideoPlayer *player)
    player->currentPts = landedNs;
    player->basePts    = landedNs;
    player->audioClockValid = 0;
+   player->audioWaitStartUs = 0;         // fresh pre-roll: each seek gets the full window to wait for audio,
+                                         // else a stale timer trips instantly and video starts on the wall clock
    unlock(&player->lock);
+
+   // hold the audio feed until the first post-seek frame actually presents (getVideoFrame releases it), so
+   // audio can't drain ahead and then race the video to catch up (the "speedup")
+   if (player->audioFeedOpen) pauseAudioPcmFeed(1);
+
+   // the audio thread self-exits at end-of-stream (audioAlive=0, but its decoder/feed/buffers stay intact). a
+   // seek repositions the audio demuxer, so respawn the thread to consume the new position - otherwise once
+   // the audio stream has ended once, playback stays silent for the rest of the video no matter how you seek.
+   if (!player->audioAlive && player->audioThreadActive && player->aacDecoder && getAudioSource(player)->hasAudio) {
+      joinThread(player->audioThread);        // reap the exited thread before reusing its handle
+      resetAacDecoder(player->aacDecoder);
+      flushAudioPcmFeed();                    // clean feed for the new position (stays paused from above)
+      player->audioAlive = 1;                 // set before spawn, mirroring startAudioPipeline's ordering
+      __sync_synchronize();
+      player->audioThreadActive = (spawnJoinableThread(&player->audioThread, audioDecodeThread,
+                                   (uint64_t)(uintptr_t)player, THREAD_PRIORITY_DEFAULT,
+                                   THREAD_STACK_SIZE_64KB, "video-audio") == 0);
+      if (!player->audioThreadActive) player->audioAlive = 0;
+   }
 
    if (player->seekRequestNs == (int64_t)targetNs) player->seekRequestNs = -1;   // keep a newer request live
    player->diagAwaitFrame = 1;           // TEMP: time until the first frame decodes after the seek
@@ -428,6 +455,8 @@ void destroyVideoPlayer(VideoPlayer *player)
 {
    if (!player) return;
    player->running = 0;
+   cancelVideoDemuxer(&player->demuxer);                                  // unblock a live read waiting on the edge
+   if (player->hasAudioDemuxer) cancelVideoDemuxer(&player->audioDemuxer);
    if (player->threadActive) joinThread(player->thread);
    releaseAudioPipeline(player);
    destroyH264Decoder(player->decoder);
@@ -546,7 +575,9 @@ void setVideoPaused(VideoPlayer *player, int paused)
 
 int isVideoPaused(const VideoPlayer *player) { return player->paused; }
 
-void seekVideoPlayer(VideoPlayer *player, float seconds)
+// post a seek target for the decode thread. landAfter=1 rounds up to the next keyframe at/after `seconds`
+// (used to skip fully past a sponsor segment); landAfter=0 lands on the keyframe covering it (normal scrub).
+static void postSeek(VideoPlayer *player, float seconds, int landAfter)
 {
    if (seconds < 0.0f) seconds = 0.0f;
    float duration = getVideoDurationSeconds(player);
@@ -555,8 +586,13 @@ void seekVideoPlayer(VideoPlayer *player, float seconds)
    lock(&player->lock);
    player->currentPts = (uint64_t)targetNs;   // position reads as the target until the seek lands
    unlock(&player->lock);
+   player->seekLandAfter = landAfter;
+   __sync_synchronize();                       // publish the land direction before the decode thread sees the request
    player->seekRequestNs = targetNs;
 }
+
+void seekVideoPlayer(VideoPlayer *player, float seconds)     { postSeek(player, seconds, 0); }
+void seekVideoPlayerPast(VideoPlayer *player, float seconds) { postSeek(player, seconds, 1); }
 
 int isVideoEnded(const VideoPlayer *player)
 {

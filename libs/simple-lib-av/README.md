@@ -25,6 +25,10 @@ lives here: the audio mixer (moved out of `simple-lib-app`) and the H.264/AAC vi
   sample arrays (offset, size, pts, keyframe), so reads and keyframe seeks are array walks. Also
   handles fragmented MP4 (moof/traf/trun), streamed fragment-by-fragment - the adaptive format
   yo-player pulls from YouTube
+- **mux-mkv** - a streaming Matroska writer, the reverse of demux-mkv: takes the demuxers' Annex-B
+  H.264 access units + raw AAC frames and writes one `.mkv` without ever seeking back over the file
+  (builds the avcC from the SPS/PPS, converts each AU to length-prefixed NALs, AAC config from the
+  sample rate + channels). yo-player uses it to remux a downloaded video + audio into a single file
 - **decode-h264** - cellVdec wrapper (4 SPUs): non-blocking feed, YUV 4:2:0 planar output straight
   into RSX-mapped buffers, seek flush per the SDK EndSeq/SEQDONE/StartSeq protocol
 - **decode-aac** - cellAdec M4AAC wrapper (1 SPU): raw MKV AAC frames get an ADTS header, output is
@@ -32,8 +36,14 @@ lives here: the audio mixer (moved out of `simple-lib-app`) and the H.264/AAC vi
 - **h264** - avcC parsing, AVCC-to-Annex-B conversion, and the SPS `max_num_ref_frames` bit-patch
   that lets 5-ref 1080p encodes fit the hardware's 4-frame DPB cap
 - **ebml / mp4 / video-source** - shared EBML reader, shared ISOBMFF box reader, and a buffered
-  seekable source under everything that reads from either a local file or an `http(s)://` URL
-  (via `simple-lib-core`'s http streaming), so the demuxers are agnostic to where the media lives
+  seekable source under everything that reads from a local file, an `http(s)://` URL (via
+  `simple-lib-core`'s http streaming), or a live segment stream (below), so the demuxers are agnostic
+  to where the media lives
+- **live-source** - a forward-only byte stream over a DASH live `sq/<n>` segment sequence (as YouTube
+  live serves): a background thread prefetches segments ahead into a rolling window, strips the
+  repeated ftyp/moov init from every segment after the first, and concatenates the fragments into one
+  continuous fragmented-mp4 stream the MP4 demuxer reads exactly as it reads a file. Follows the live
+  edge; total size unknown. Addressed through video-source as `dashseg|<startSq>|<edgeSq>|<baseUrl>`
 
 ## Usage
 

@@ -33,6 +33,7 @@
   <ItemGroup>
    <ClCompile Include="src\audio.c" />
    <ClCompile Include="src\video-source.c" />
+   <ClCompile Include="src\live-source.c" />
    <ClCompile Include="src\ebml.c" />
    <ClCompile Include="src\video-probe.c" />
    <ClCompile Include="src\h264.c" />
@@ -48,6 +49,7 @@
   <ItemGroup>
    <ClInclude Include="include\audio.h" />
    <ClInclude Include="include\video-source.h" />
+   <ClInclude Include="include\live-source.h" />
    <ClInclude Include="include\ebml.h" />
    <ClInclude Include="include\video-probe.h" />
    <ClInclude Include="include\h264.h" />

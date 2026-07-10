@@ -38,7 +38,7 @@
 
 // seek controls (bar + time) show on activity / pause, then auto-hide. left/right scrub the target
 // instantly; the engine seek (a decoder flush + fragment reload each time) fires once input goes quiet.
-#define SEEK_STEP_SECONDS   10.0f
+#define SEEK_STEP_SECONDS   5.0f
 #define SEEK_APPLY_IDLE_US  400000ULL
 #define CONTROLS_VISIBLE_US 3000000ULL
 #define SKIP_NOTICE_US      2000000ULL   // how long the "Skipped ..." toast stays up
@@ -61,6 +61,7 @@ static struct {
    int              firstFrameSeen;   // a real frame has been presented (loading status ends, save is safe)
    int              showStats;        // SELECT toggles a debug overlay
    int              vidItag, vidW, vidH, vidFps, audItag;   // picked formats (worker sets, UI reads)
+   int              isLive;           // a live stream: no duration, no resume/save, no seek
    const uint8_t   *lastFrame;        // fps measure: a changed pointer means a newly presented frame
    int              framesThisSecond, measuredFps;
    uint64_t         fpsTickUs;
@@ -120,6 +121,7 @@ static void worker(uint64_t arg)
 
    state.vidItag = video->itag; state.vidW = video->width; state.vidH = video->height; state.vidFps = video->fps;
    state.audItag = audio ? audio->itag : (video->hasAudio ? video->itag : 0);
+   state.isLive = video->isLiveSegmented;
 
    // open the decoder: both streams ride the http module by range request. an audio open
    // failure inside the player just means silent playback. NULL if it can't be demuxed/decoded.
@@ -135,7 +137,7 @@ static void worker(uint64_t arg)
    // presented, so that reload is covered rather than showing a black screen. storage returns 0 for a
    // typed url (never a history key), so this no-ops for anything but a bare videoId.
    {
-      int resumeAt = getWatchedPosition(requestedInput);
+      int resumeAt = state.isLive ? 0 : getWatchedPosition(requestedInput);
       float duration = getVideoDurationSeconds(state.pendingPlayer);
       if (resumeAt > 3 && (duration <= 0 || resumeAt < duration - 10)) seekVideoPlayer(state.pendingPlayer, (float)resumeAt);
    }
@@ -218,6 +220,8 @@ static void handlePlaybackInput(void)
       showControls();
    }
 
+   if (state.isLive) return;   // a live stream has no seek index; scrubbing would break the segment stream
+
    static ButtonRepeat seekRepeat;
    if (isRepeatDue(&seekRepeat, getPadButtonState(PAD_BTN_RIGHT)))     nudgeSeek(+SEEK_STEP_SECONDS, nowUs);
    else if (isRepeatDue(&seekRepeat, getPadButtonState(PAD_BTN_LEFT))) nudgeSeek(-SEEK_STEP_SECONDS, nowUs);
@@ -237,7 +241,7 @@ static void autoSkipSponsor(void)
       SponsorSegment *segment = &state.sb.segments[i];
       if (segment->skipped || pos < segment->start || pos >= segment->end - 0.2f) continue;
       segment->skipped = 1;
-      seekVideoPlayer(state.player, segment->end);
+      seekVideoPlayerPast(state.player, segment->end);   // land on the next keyframe after the segment, not before it
       char notice[64];
       snprintf(notice, sizeof notice, "Skipped %s", getSponsorCategoryName(segment->category));
       setLabelText(&skipNoticeLabel, notice);
@@ -417,7 +421,7 @@ static void drawPlay(void)
       }
       measureFps(frame);
       if (state.showStats && frame) { updateStatLabels(); drawStatsOverlay(); }
-      if (state.stage == STAGE_PLAYING && controlsVisible()) drawSeekBar();
+      if (state.stage == STAGE_PLAYING && !state.isLive && controlsVisible()) drawSeekBar();   // live has no timeline
       if (state.stage == STAGE_PLAYING) drawSkipNotice();
    }
 
@@ -434,7 +438,7 @@ static void termPlay(void)
    // save the resume position on the way out; a finished video is saved as 0 so it restarts next time.
    // only once a frame has actually played: a failed open or a resume seek that never landed must not
    // clobber a good saved position with 0. storage ignores non-id keys, so typed urls no-op.
-   if (state.player && state.firstFrameSeen)
+   if (state.player && state.firstFrameSeen && !state.isLive)
       setWatchedPosition(requestedInput, isVideoEnded(state.player) ? 0 : (int)getVideoPositionSeconds(state.player));
    if (state.player || state.pendingPlayer) finishGfx();   // RSX may still be sampling a frame buffer
    if (state.player) { destroyVideoPlayer(state.player); state.player = NULL; }

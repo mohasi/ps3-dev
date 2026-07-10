@@ -73,6 +73,7 @@ int  readMp4VideoAu(Mp4Demuxer *demuxer, VideoAu *au);        // 1 = got AU, 0 =
 int  readMp4AudioAu(Mp4Demuxer *demuxer, AudioAu *au);        // audio-only: 1 = got AU, 0 = end of stream
 void closeMp4Demuxer(Mp4Demuxer *demuxer);
 
-// jumps to the last keyframe presenting at or before targetNs and clears the audio queue (only call
-// with the audio consumer parked). Returns the time actually landed on.
-uint64_t seekMp4Demuxer(Mp4Demuxer *demuxer, uint64_t targetNs);
+// jumps to a keyframe and clears the audio queue (only call with the audio consumer parked). landAfter=0
+// lands on the keyframe at/before targetNs; landAfter=1 lands on the next keyframe at/after it (skip past a
+// segment). Returns the time actually landed on.
+uint64_t seekMp4Demuxer(Mp4Demuxer *demuxer, uint64_t targetNs, int landAfter);

@@ -274,6 +274,87 @@ static int ensureVisitorData(void)
    return 0;
 }
 
+// XML text nodes escape '&' as "&amp;"; the BaseURL query string needs it back to fetch.
+static void unescapeAmp(char *text)
+{
+   char *write = text;
+   for (char *read = text; *read; ) {
+      if (strncmp(read, "&amp;", 5) == 0) { *write++ = '&'; read += 5; }
+      else *write++ = *read++;
+   }
+   *write = 0;
+}
+
+// copy the first `attr="..."` (or `<tag>...` with close="<") value found at/after text into out; empty if absent.
+static void extractBetween(const char *text, const char *open, const char *close, char *out, int cap)
+{
+   out[0] = 0;
+   const char *start = strstr(text, open);
+   if (!start) return;
+   start += strlen(open);
+   const char *stop = strstr(start, close);
+   if (!stop) return;
+   int length = (int)(stop - start);
+   if (length >= cap) length = cap - 1;
+   memcpy(out, start, length);
+   out[length] = 0;
+}
+
+// a live stream's itag urls are a rolling DVR window whose byte-0 init rolls off, so play by DASH segments
+// instead: parse the manifest and, for each adaptiveFormat, replace its url with that Representation's
+// segment base ("<base>sq/<n>/...") and record the available sq range (window start .. live edge).
+static void parseLiveManifest(const char *resp, const char *end, StreamInfo *out)
+{
+   char manifestUrl[1400];
+   if (!jsonString(resp, end, "dashManifestUrl", manifestUrl, sizeof manifestUrl)) return;
+
+   int cap = 4 * 1024 * 1024;   // live DVR manifests enumerate every segment and can pass 1 MB
+   char *mpd = (char *)malloc(cap);
+   if (!mpd) return;
+   HttpHeader headers[] = { { "User-Agent", VR_UA }, { "Accept-Encoding", "identity" } };
+   int length = 0, status = 0;
+   if (fetchHttp("GET", manifestUrl, headers, 2, NULL, 0, mpd, cap, &length, &status) != 0 || status != 200) {
+      logError("[yt] live manifest fetch status=%d len=%d\n", status, length);
+      free(mpd);
+      return;
+   }
+   if (length >= cap - 1) logWarn("[yt] live manifest truncated at %d bytes\n", length);
+
+   for (int i = 0; i < out->formatCount; i++) {
+      StreamFormat *format = &out->formats[i];
+      char idTag[24];
+      snprintf(idTag, sizeof idTag, "id=\"%d\"", format->itag);
+      const char *rep = strstr(mpd, idTag);
+      if (!rep) continue;
+      const char *repEnd = strstr(rep, "</Representation>");
+      if (!repEnd) repEnd = mpd + length;
+
+      char base[MAX_STREAM_URL];
+      extractBetween(rep, "<BaseURL>", "</BaseURL>", base, sizeof base);
+      if (!base[0] || strstr(rep, "<BaseURL>") > repEnd) continue;   // this rep has no own BaseURL
+      unescapeAmp(base);
+
+      // first + last media="sq/<n>/..." within this representation = the window start and the live edge
+      long startSq = -1, edgeSq = -1;
+      for (const char *media = rep; (media = strstr(media, "media=\"sq/")) != NULL && media < repEnd; media++) {
+         long number = 0;
+         for (const char *digit = media + 10; *digit >= '0' && *digit <= '9'; digit++) number = number * 10 + (*digit - '0');
+         if (startSq < 0) startSq = number;
+         edgeSq = number;
+      }
+      if (edgeSq < 0) continue;
+
+      format->isLiveSegmented = 1;
+      format->liveStartSq = startSq;
+      format->liveEdgeSq = edgeSq;
+      // the player opens this through the live segment source (see video-source / live-source)
+      snprintf(format->url, sizeof format->url, "dashseg|%ld|%ld|%s", startSq, edgeSq, base);
+      logInfo("[yt] live itag %d: sq %ld..%ld baseTail=%s\n", format->itag, startSq, edgeSq,
+              (int)strlen(base) > 40 ? base + strlen(base) - 40 : base);
+   }
+   free(mpd);
+}
+
 static int extract(const char *input, StreamInfo *out)
 {
    memset(out, 0, sizeof *out);
@@ -313,6 +394,18 @@ static int extract(const char *input, StreamInfo *out)
 
    parseFormats(resp, end, out);
 
+   // a currently-live stream (isLive:true) is a rolling DVR window, so the init/moov at byte 0 may have
+   // rolled off - it needs the DASH manifest's explicit init + segment template rather than a static open.
+   {
+      int liveNow      = strstr(resp, "\"isLive\":true") != NULL;
+      const char *dash = strstr(resp, "\"dashManifestUrl\"");
+      out->isLive = liveNow;
+      if (liveNow) {
+         logInfo("[yt] live stream (dash=%d formats=%d dur=%d)\n", dash ? 1 : 0, out->formatCount, out->durationSeconds);
+         parseLiveManifest(resp, end, out);
+      }
+   }
+
    if (out->formatCount == 0) {
       char statusText[32] = "";
       const char *play = strstr(resp, "\"playabilityStatus\"");
@@ -350,7 +443,7 @@ static void readField(const char *block, const char *end, const char *container,
 }
 
 // the next feed item at or after `from`. search uses "videoRenderer", trending shelves "gridVideoRenderer",
-// and the music channel the newer "lockupViewModel". returns the nearest of the three (NULL if none).
+// and channel pages the newer "lockupViewModel". returns the nearest of the three (NULL if none).
 static const char *nextItemBlock(const char *from)
 {
    static const char *keys[] = { "\"videoRenderer\"", "\"gridVideoRenderer\"", "\"lockupViewModel\"" };
@@ -414,8 +507,8 @@ static int parseRendererItem(const char *block, const char *end, SearchResult *i
    return item->title[0] != 0;
 }
 
-// fill one result from a lockupViewModel VIDEO block (youtube's newer feed-item format, used by the music
-// channel). 1 if it's a playable video with a title; albums/playlists (other contentTypes) are skipped.
+// fill one result from a lockupViewModel VIDEO block (youtube's newer feed-item format, seen on channel
+// pages and other surfaces). 1 if it's a playable video with a title; albums/playlists (other contentTypes) are skipped.
 static int parseLockupItem(const char *block, const char *end, SearchResult *item)
 {
    const char *videoType = strstr(block, "\"contentType\":\"LOCKUP_CONTENT_TYPE_VIDEO\"");
@@ -435,8 +528,8 @@ static int parseLockupItem(const char *block, const char *end, SearchResult *ite
    return item->title[0] != 0;
 }
 
-// scan a WEB innertube response for feed items (search, trending shelves and the music channel each use a
-// different renderer, dispatched per block) and fill out->items. dedupes by videoId - youtube repeats a
+// scan a WEB innertube response for feed items (search, trending shelves and channel pages use different
+// renderers, dispatched per block) and fill out->items. dedupes by videoId - youtube repeats a
 // video across shelves.
 static void parseVideoResults(const char *resp, int respLen, SearchResults *out)
 {
@@ -528,8 +621,6 @@ static int search(const char *query, SortOrder sort, const char *continuation, S
 // the surviving per-category channel-tab feeds, each a real feed logged-out. order matches TrendingCategory.
 static const struct { const char *browseId, *params; } TRENDING_FEEDS[TREND_COUNT] = {
    { "UCOpNcN46UbXVtpKMrmU4Abg", "Egh0cmVuZGluZw%3D%3D" },              // TREND_GAMING
-// { "UCq-Fj5jknLsUf-MWSy4_brA", "Egh0cmVuZGluZw%3D%3D" },              // TREND_MUSIC (auto-generated Music channel) - disabled
-   { "UC4R8DWoMoI7CAwX8_LjQHig", "EgdsaXZldGFikgEDCKEK" },              // TREND_LIVE
    { "UCEgdi0XIXXZ-qJOFPf4JSKw", "EglzcG9ydHN0YWK4AQCSAwDyBgQKAjIA" },  // TREND_SPORTS
    { "FEpodcasts_destination",   "qgcCCAM%3D" },                        // TREND_PODCASTS
 };

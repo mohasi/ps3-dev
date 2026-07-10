@@ -188,8 +188,9 @@ static void prefetchThread(uint64_t arg)
          } else {
             stream->error = 1;
          }
-      } else {
-         stream->atEof = 1;   // got == 0: clean end of stream
+      } else if (!stream->needReconnect) {
+         stream->atEof = 1;   // got == 0: clean end of stream. ignore it when a seek has already asked for a
+                              // reconnect - the zero was the pre-seek connection's end, not the new position's.
       }
       unlock(&stream->stateLock);
    }
@@ -237,8 +238,9 @@ int64_t readHttpStream(HttpStream *stream, void *buffer, uint64_t length)
       lock(&stream->stateLock);
       if (!stream->inUse) { unlock(&stream->stateLock); return -1; }
 
-      // reader moved off the buffered window (backward past the history): ask the prefetch to reopen
-      if (stream->position < stream->ringStart) stream->needReconnect = 1;
+      // reader moved off the buffered window (backward past the history): ask the prefetch to reopen. clear
+      // atEof too - it described the old position; the reconnect re-establishes end-of-stream at the new one.
+      if (stream->position < stream->ringStart) { stream->needReconnect = 1; stream->atEof = 0; }
 
       // serve whatever the ring already holds for this position (callers loop on short reads)
       uint64_t available = 0;
@@ -264,9 +266,12 @@ int seekHttpStream(HttpStream *stream, uint64_t offset)
    if (!stream->inUse) { unlock(&stream->stateLock); return -1; }
    stream->position = offset;
    // a seek to data not already in the ring: reconnect at the target (a forward seek just past the window
-   // would otherwise be mistaken for sequential drift and coast up at the server's throttled bitrate)
-   if (stream->position < stream->ringStart || stream->position > stream->ringEnd)
+   // would otherwise be mistaken for sequential drift and coast up at the server's throttled bitrate). clear
+   // atEof with it: a stale end flag would make the next read return a spurious 0 before the reconnect lands.
+   if (stream->position < stream->ringStart || stream->position > stream->ringEnd) {
       stream->needReconnect = 1;
+      stream->atEof = 0;
+   }
    unlock(&stream->stateLock);
    return 0;
 }

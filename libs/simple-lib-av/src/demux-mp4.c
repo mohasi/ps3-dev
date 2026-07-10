@@ -591,7 +591,7 @@ int readMp4AudioAu(Mp4Demuxer *demuxer, AudioAu *au)
 // offset comes from one small read + an in-memory scan - no per-fragment network I/O. sets nextMoofPos to
 // that fragment's start and returns its start time. returns 0 (restart from the first fragment) when there
 // is no usable index, so a seek never falls back to reading the whole stream.
-static uint64_t seekViaSidx(Mp4Demuxer *demuxer, uint64_t targetNs)
+static uint64_t seekViaSidx(Mp4Demuxer *demuxer, uint64_t targetNs, int landAfter)
 {
    demuxer->nextMoofPos = demuxer->firstMoofPos;
    if (demuxer->sidxSize < 32 || demuxer->sidxSize > MAX_SIDX_BYTES) {
@@ -601,7 +601,11 @@ static uint64_t seekViaSidx(Mp4Demuxer *demuxer, uint64_t targetNs)
 
    uint8_t *sidx = (uint8_t *)malloc((size_t)demuxer->sidxSize);
    if (!sidx) return 0;
-   if (readVideoSourceAt(&demuxer->source, demuxer->sidxPos, sidx, demuxer->sidxSize) != 0) { free(sidx); return 0; }
+   if (readVideoSourceAt(&demuxer->source, demuxer->sidxPos, sidx, demuxer->sidxSize) != 0) {
+      free(sidx);
+      logWarn("[demux-mp4] seek: sidx read failed, restarting from the first fragment\n");
+      return 0;
+   }
 
    // sidx layout: box header (8) + FullBox version/flags (4) + reference_ID (4) + timescale (4), then
    // earliest_presentation_time + first_offset (4 or 8 bytes each by version), reserved (2), reference_count (2)
@@ -617,16 +621,24 @@ static uint64_t seekViaSidx(Mp4Demuxer *demuxer, uint64_t targetNs)
    cursor += 4;
 
    // each reference entry (12 bytes): [reference_type:1][referenced_size:31], subsegment_duration, SAP info.
-   // accumulate byte offset + time until the entry whose start passes the target; land on the previous one.
+   // accumulate byte offset + time across the entries. normal seek lands on the subsegment covering the target
+   // (the last one starting at/before it); landAfter lands on the first subsegment starting at/after the target
+   // (used to skip fully past a segment - the video resumes just after it instead of replaying its tail).
    uint64_t offset = demuxer->sidxPos + demuxer->sidxSize + firstOffset;   // first subsegment (moof) start
    uint64_t timeTicks = 0, landOffset = offset, landTicks = 0;
    for (uint32_t i = 0; i < referenceCount && cursor + 12 <= demuxer->sidxSize; i++, cursor += 12) {
       uint32_t sizeField = readU32BE(sidx + cursor);
       uint32_t duration  = readU32BE(sidx + cursor + 4);
       uint64_t startNs = ticksToNs(timeTicks, timescale);
-      if (startNs > targetNs) break;   // this subsegment begins past the target: the previous one covers it
-      landOffset = offset;
-      landTicks  = timeTicks;
+      if (landAfter) {
+         landOffset = offset;
+         landTicks  = timeTicks;
+         if (startNs >= targetNs) break;   // first subsegment at/after the target
+      } else {
+         if (startNs > targetNs) break;    // this subsegment begins past the target: the previous one covers it
+         landOffset = offset;
+         landTicks  = timeTicks;
+      }
       offset    += sizeField & 0x7FFFFFFF;   // referenced_size (mask off the reference_type bit)
       timeTicks += duration;
    }
@@ -651,13 +663,13 @@ static uint64_t seekAudioToTarget(Mp4Demuxer *demuxer, uint64_t targetNs, uint64
    return demuxer->audioCursor < demuxer->audioSampleCount ? demuxer->audioSamples[demuxer->audioCursor].ptsNs : fallbackNs;
 }
 
-uint64_t seekMp4Demuxer(Mp4Demuxer *demuxer, uint64_t targetNs)
+uint64_t seekMp4Demuxer(Mp4Demuxer *demuxer, uint64_t targetNs, int landAfter)
 {
    clearAudioAuQueue(&demuxer->audioQueue);   // consumer is parked: discard queued audio
 
    // fragmented: no sample table, so use the sidx index to jump straight to the covering fragment.
    if (demuxer->fragmented) {
-      uint64_t landedNs = seekViaSidx(demuxer, targetNs);
+      uint64_t landedNs = seekViaSidx(demuxer, targetNs, landAfter);
       loadNextFragment(demuxer);
       if (demuxer->audioOnly) return seekAudioToTarget(demuxer, targetNs, landedNs);
       // video: decoding must begin on the fragment's first sample (its keyframe), so report that time

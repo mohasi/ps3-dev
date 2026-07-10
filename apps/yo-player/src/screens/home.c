@@ -29,7 +29,7 @@
 #define HINT_GLYPH_H  22
 #define HINT_TEXT     18
 
-static const char *TrendingNames[TREND_COUNT] = { "Gaming", /* "Music", */ "Live", "Sports", "Podcasts" };
+static const char *TrendingNames[TREND_COUNT] = { "Gaming", "Sports", "Podcasts" };
 
 // home categories = the trending feeds plus a Subscriptions feed and the Watch Later queue.
 #define HOME_SUBS        TREND_COUNT
@@ -212,7 +212,7 @@ static void updateHome(void)
       if (home.category == HOME_WATCHLATER) loadCategory();   // reflect the add/remove immediately
       return;
    }
-   if (isPadButtonPressed(PAD_BTN_R3)) { enqueueDownload(selected); return; }
+   if (isPadButtonPressed(PAD_BTN_R3)) { if (!selected->isLive) enqueueDownload(selected); return; }   // live can't be downloaded
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) { cacheCurrent(); openChannelFor(selected); return; }
    if (isPadButtonPressed(PAD_BTN_CROSS)) {
       markWatched(selected->videoId);

@@ -142,10 +142,12 @@ static void initSearch(void)
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CIRCLE),   "Back");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "Channel");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT),   "Sort");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_R3),       "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_START),    "Search");
 
    initVideoGrid(&search.grid, &font, MARGIN_X, GRID_TOP, search.screenW - 2 * MARGIN_X, search.screenH - GRID_TOP);
    setGridWatchedPredicate(&search.grid, isWatched);
+   setGridWatchLaterPredicate(&search.grid, isWatchLater);
    reload();
 }
 
@@ -172,6 +174,7 @@ static void updateSearch(void)
 
    const SearchResult *selected = gridSelected(&search.grid);
    if (!selected) return;
+   if (isPadButtonPressed(PAD_BTN_R3)) { toggleWatchLater(selected); return; }
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) {
       if (search.channelId[0]) { setSubscribed(search.channelId, !isSubscribed(search.channelId)); updateTriangleHint(); }
       else enterChannel(selected);

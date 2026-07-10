@@ -22,6 +22,7 @@
 #define ROW_TITLE   21
 #define META_SIZE   15
 #define DUR_SIZE    19
+#define WATCHLATER_BADGE_SIZE DUR_SIZE
 #define MARGIN_ROWS 2           // rows kept materialised above and below the visible band
 #define THUMB_LOOKAHEAD_ROWS 3  // rows below the visible band to fetch thumbnails for ahead of scrolling
 #define DECODES_PER_FRAME 3
@@ -279,11 +280,9 @@ static void decodeWindowThumbnails(VideoGrid *grid)
       }
 }
 
+// left/right step one tile and wrap onto the previous/next row when they exist; up/down step a whole row.
 static void moveSelection(VideoGrid *grid, int delta)
 {
-   int col = grid->selected % GRID_COLS;
-   if (delta == 1  && col == GRID_COLS - 1) return;
-   if (delta == -1 && col == 0)             return;
    int target = grid->selected + delta;
    if (target >= 0 && target < grid->results.count) grid->selected = target;
 }
@@ -307,6 +306,7 @@ void initVideoGrid(VideoGrid *grid, Font *font, int x, int y, int width, int hei
       initLabel(&grid->metas[i],     font, 0, 0, grid->tileW, AUTO, META_SIZE, COLOR_SLATE_400, TEXT_NOWRAP_ELLIPSIS, "");
       initLabel(&grid->durations[i], font, 0, 0, AUTO,        AUTO, DUR_SIZE,  COLOR_SLATE_100, TEXT_NOWRAP,          "");
    }
+   initLabel(&grid->watchLaterBadge, font, 0, 0, AUTO, AUTO, WATCHLATER_BADGE_SIZE, COLOR_SLATE_100, TEXT_NOWRAP, "Watch Later");
 }
 
 void termVideoGrid(VideoGrid *grid)
@@ -314,9 +314,11 @@ void termVideoGrid(VideoGrid *grid)
    stopVideoGrid(grid);
    freeThumbnails(grid);
    for (int i = 0; i < MAX_SEARCH_RESULTS; i++) { freeLabel(&grid->rows[i]); freeLabel(&grid->metas[i]); freeLabel(&grid->durations[i]); }
+   freeLabel(&grid->watchLaterBadge);
 }
 
 void setGridWatchedPredicate(VideoGrid *grid, int (*isWatched)(const char *videoId)) { grid->isWatched = isWatched; }
+void setGridWatchLaterPredicate(VideoGrid *grid, int (*isWatchLater)(const char *videoId)) { grid->isWatchLater = isWatchLater; }
 
 // both source-changes are non-blocking: if a load is in flight, ask it to stop and defer the swap until the
 // reap in updateVideoGrid, so mode / category switches never freeze the frame on an in-flight fetch.
@@ -393,6 +395,13 @@ static void drawTile(VideoGrid *grid, int i)
       int badgeX = tx + grid->tileW - badgeW - 6, badgeY = ty + grid->thumbH - badgeH - 6;
       fillGfxRectangle(badgeX, badgeY, badgeW, badgeH, item->isLive ? BADGE_LIVE : BADGE_BG);
       drawLabelAt(&grid->durations[i], badgeX + 6, badgeY + 4);
+   }
+
+   if (grid->isWatchLater && grid->isWatchLater(item->videoId)) {
+      int badgeW = grid->watchLaterBadge.tt.tex.w + 12, badgeH = WATCHLATER_BADGE_SIZE + 8;
+      int badgeX = tx + grid->tileW - badgeW - 6, badgeY = ty + 6;
+      fillGfxRectangle(badgeX, badgeY, badgeW, badgeH, BADGE_BG);
+      drawLabelAt(&grid->watchLaterBadge, badgeX + 6, badgeY + 4);
    }
 
    int textY = ty + grid->thumbH + 6, alpha = watched ? WATCHED_ALPHA : 255;

@@ -30,15 +30,17 @@
 
 static const char *TrendingNames[TREND_COUNT] = { "Gaming", /* "Music", */ "Live", "Sports", "Podcasts" };
 
-// home categories = the trending feeds plus a Subscriptions feed (latest videos from saved channels).
+// home categories = the trending feeds plus a Subscriptions feed and the Watch Later queue.
 #define HOME_SUBS        TREND_COUNT
-#define HOME_CAT_COUNT   (TREND_COUNT + 1)
+#define HOME_WATCHLATER  (TREND_COUNT + 1)
+#define HOME_CAT_COUNT   (TREND_COUNT + 2)
 #define SUBS_PER_CHANNEL 8      // latest videos pulled from each subscribed channel
 
 // each category's fully-loaded results, so returning to a tab skips the feed fetch (thumbnails still refetch).
 static SearchResults categoryCache[HOME_CAT_COUNT];
 static int           categoryCached[HOME_CAT_COUNT];
-static int           subsRevisionSeen;   // subscriptions revision the cached HOME_SUBS feed was built at
+static int           subsRevisionSeen;         // subscriptions revision the cached HOME_SUBS feed was built at
+static int           watchLaterRevisionSeen;   // watch-later revision the cached HOME_WATCHLATER feed was built at
 
 static struct {
    VideoGrid grid;
@@ -113,15 +115,17 @@ static int fetchSubscriptions(SearchResults *out)
 static int homeFetch(const char *token, SearchResults *out, void *user)
 {
    (void)user;
-   if (home.category == HOME_SUBS) return fetchSubscriptions(out);
+   if (home.category == HOME_SUBS)       return fetchSubscriptions(out);
+   if (home.category == HOME_WATCHLATER) return getWatchLater(out) > 0 ? 0 : -1;
    return getTrending(home.category, token, out);
 }
 
 static void setHeading(void)
 {
    char heading[128];
-   if (home.category == HOME_SUBS) snprintf(heading, sizeof heading, "Subscriptions");
-   else                            snprintf(heading, sizeof heading, "Trending \xe2\x80\xa2 %s", TrendingNames[home.category]);
+   if      (home.category == HOME_SUBS)       snprintf(heading, sizeof heading, "Subscriptions");
+   else if (home.category == HOME_WATCHLATER) snprintf(heading, sizeof heading, "Watch Later");
+   else                                       snprintf(heading, sizeof heading, "Trending \xe2\x80\xa2 %s", TrendingNames[home.category]);
    setLabelText(&titleLabel, heading);
 }
 
@@ -168,14 +172,17 @@ static void initHome(void)
    initButtonHints(&hints, &font, home.screenH - HINTS_BOTTOM, HINT_GLYPH_H, HINT_TEXT, COLOR_SLATE_300);
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS),    "Play");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "Channel");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_R3),       "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_START),    "Search");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_L1),       "");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_R1),       "Category");
 
    initVideoGrid(&home.grid, &font, MARGIN_X, GRID_TOP, home.screenW - 2 * MARGIN_X, home.screenH - GRID_TOP);
    setGridWatchedPredicate(&home.grid, isWatched);
+   setGridWatchLaterPredicate(&home.grid, isWatchLater);
 
    subsRevisionSeen = getSubscriptionsRevision();
+   watchLaterRevisionSeen = getWatchLaterRevision();
    home.category = HOME_SUBS;   // always start on Subscriptions
    loadCategory();
 }
@@ -195,6 +202,13 @@ static void updateHome(void)
 
    const SearchResult *selected = gridSelected(&home.grid);
    if (!selected) return;
+   if (isPadButtonPressed(PAD_BTN_R3)) {
+      toggleWatchLater(selected);
+      watchLaterRevisionSeen = getWatchLaterRevision();
+      categoryCached[HOME_WATCHLATER] = 0;
+      if (home.category == HOME_WATCHLATER) loadCategory();   // reflect the add/remove immediately
+      return;
+   }
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) { cacheCurrent(); openChannelFor(selected); return; }
    if (isPadButtonPressed(PAD_BTN_CROSS)) {
       markWatched(selected->videoId);
@@ -228,6 +242,11 @@ static void resumeHome(void)
       subsRevisionSeen = getSubscriptionsRevision();
       categoryCached[HOME_SUBS] = 0;
       if (home.category == HOME_SUBS) { loadCategory(); return; }
+   }
+   if (getWatchLaterRevision() != watchLaterRevisionSeen) {
+      watchLaterRevisionSeen = getWatchLaterRevision();
+      categoryCached[HOME_WATCHLATER] = 0;
+      if (home.category == HOME_WATCHLATER) { loadCategory(); return; }
    }
    if (gridStage(&home.grid) != GRID_READY) loadCategory();
 }

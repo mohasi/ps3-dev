@@ -46,6 +46,7 @@ typedef struct {
    Label            rows[MAX_SEARCH_RESULTS];              // per-tile title
    Label            metas[MAX_SEARCH_RESULTS];             // per-tile "author - views - age"
    Label            durations[MAX_SEARCH_RESULTS];         // per-tile duration / LIVE badge
+   Label            watchLaterBadge;                       // shared "Watch Later" tag drawn on queued tiles
 
    int              selected, scrollRow, winStart, winEnd;
    ButtonRepeat     horizontalRepeat, verticalRepeat;
@@ -63,12 +64,14 @@ typedef struct {
    void            *fetchUser;
    const SearchResults *pendingCached;                     // set = next (re)load restores these instantly
    int              (*isWatched)(const char *videoId);     // fade predicate (NULL = no fade)
+   int              (*isWatchLater)(const char *videoId);  // watch-later badge predicate (NULL = no badge)
 } VideoGrid;
 
 void initVideoGrid(VideoGrid *grid, Font *font, int x, int y, int width, int height);
 void termVideoGrid(VideoGrid *grid);
 
 void setGridWatchedPredicate(VideoGrid *grid, int (*isWatched)(const char *videoId));
+void setGridWatchLaterPredicate(VideoGrid *grid, int (*isWatchLater)(const char *videoId));
 
 // load a fresh feed from page 1. non-blocking: if a load is already running it's swapped once that finishes,
 // so mode/sort switches never freeze the frame.

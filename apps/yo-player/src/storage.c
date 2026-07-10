@@ -7,9 +7,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define DATA_DIR     "/dev_hdd0/tmp/yo-player"
-#define HISTORY_PATH DATA_DIR "/history.txt"
-#define SUBS_PATH    DATA_DIR "/subscriptions.txt"
+#define DATA_DIR        "/dev_hdd0/tmp/yo-player"
+#define HISTORY_PATH    DATA_DIR "/history.txt"
+#define SUBS_PATH       DATA_DIR "/subscriptions.txt"
+#define WATCHLATER_PATH DATA_DIR "/watchlater.txt"
+
+#define MAX_WATCHLATER          200
+#define WATCHLATER_LINE_MAX     480     // one serialized SearchResult (8 tab-separated fields + newline)
+#define WATCHLATER_BUFFER_BYTES (MAX_WATCHLATER * WATCHLATER_LINE_MAX + 16)
 
 #define HISTORY_CAP    1000     // watched videos kept (oldest dropped past this)
 #define VIDEO_ID_LEN   12       // 11 chars + NUL
@@ -77,11 +82,102 @@ static void seedSubscriptions(void)
    if (!fileExists(SUBS_PATH)) writeFile(SUBS_PATH, DEFAULT_SUBS, strlen(DEFAULT_SUBS));
 }
 
+// ---- watch-later queue (full entries so the category renders offline) ----
+
+static SearchResult watchLater[MAX_WATCHLATER];
+static int          watchLaterCount;
+static int          watchLaterRevision;
+
+// split "videoId\tchannelId\ttitle\tduration\tauthor\tviews\tpublished\tisLive" into item. 1 ok, 0 malformed.
+static int parseWatchLater(char *line, SearchResult *item)
+{
+   char *field[8];
+   int count = 0;
+   field[count++] = line;
+   for (char *cursor = line; *cursor && count < 8; cursor++)
+      if (*cursor == '\t') { *cursor = 0; field[count++] = cursor + 1; }
+   if (count < 8) return 0;
+
+   memset(item, 0, sizeof *item);
+   strCopy(item->videoId,   sizeof item->videoId,   field[0]);
+   strCopy(item->channelId, sizeof item->channelId, field[1]);
+   strCopy(item->title,     sizeof item->title,     field[2]);
+   strCopy(item->duration,  sizeof item->duration,  field[3]);
+   strCopy(item->author,    sizeof item->author,    field[4]);
+   strCopy(item->views,     sizeof item->views,     field[5]);
+   strCopy(item->published, sizeof item->published, field[6]);
+   item->isLive = atoi(field[7]);
+   return item->videoId[0] != 0;
+}
+
+static void loadWatchLater(void)
+{
+   char *buffer = malloc(WATCHLATER_BUFFER_BYTES);
+   if (!buffer) return;
+   int length = readFile(WATCHLATER_PATH, buffer, WATCHLATER_BUFFER_BYTES - 1);
+   if (length > 0) {
+      buffer[length] = 0;
+      for (char *line = strtok(buffer, "\r\n"); line && watchLaterCount < MAX_WATCHLATER; line = strtok(NULL, "\r\n"))
+         if (parseWatchLater(line, &watchLater[watchLaterCount])) watchLaterCount++;
+   }
+   free(buffer);
+}
+
+static void saveWatchLater(void)
+{
+   char *buffer = malloc(WATCHLATER_BUFFER_BYTES);
+   if (!buffer) return;
+   int length = 0;
+   for (int i = 0; i < watchLaterCount; i++) {
+      const SearchResult *item = &watchLater[i];
+      length += snprintf(buffer + length, WATCHLATER_LINE_MAX + 1, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\n",
+                         item->videoId, item->channelId, item->title, item->duration,
+                         item->author, item->views, item->published, item->isLive);
+   }
+   writeFile(WATCHLATER_PATH, buffer, length);
+   free(buffer);
+}
+
+int getWatchLaterRevision(void) { return watchLaterRevision; }
+
+int isWatchLater(const char *videoId)
+{
+   for (int i = 0; i < watchLaterCount; i++)
+      if (strcmp(watchLater[i].videoId, videoId) == 0) return 1;
+   return 0;
+}
+
+void toggleWatchLater(const SearchResult *item)
+{
+   for (int i = 0; i < watchLaterCount; i++)
+      if (strcmp(watchLater[i].videoId, item->videoId) == 0) {   // already queued: remove it
+         for (int j = i; j < watchLaterCount - 1; j++) watchLater[j] = watchLater[j + 1];
+         watchLaterCount--;
+         saveWatchLater();
+         watchLaterRevision++;
+         return;
+      }
+   if (watchLaterCount >= MAX_WATCHLATER) return;
+   watchLater[watchLaterCount++] = *item;   // add newest at the end
+   saveWatchLater();
+   watchLaterRevision++;
+}
+
+// fill out with the queued videos, newest first. returns the count.
+int getWatchLater(SearchResults *out)
+{
+   memset(out, 0, sizeof *out);
+   for (int i = watchLaterCount - 1; i >= 0 && out->count < MAX_SEARCH_RESULTS; i--)
+      out->items[out->count++] = watchLater[i];
+   return out->count;
+}
+
 void initStorage(void)
 {
    makeDir(DATA_DIR);
    loadHistory();
    seedSubscriptions();
+   loadWatchLater();
 }
 
 int getSubscriptions(char ids[][CHANNEL_ID_LEN], int max)

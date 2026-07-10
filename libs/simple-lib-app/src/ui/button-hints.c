@@ -29,6 +29,15 @@ void addButtonHint(ButtonHints *bar, GfxTexture glyph, const char *caption)
    hint->width = hint->drawWidth + (hint->pairNext ? 0 : ICON_GAP + hint->caption.tt.tex.w);
 }
 
+void setButtonHintCaption(ButtonHints *bar, int index, const char *caption)
+{
+   if (index < 0 || index >= bar->count) return;
+   ButtonHint *hint = &bar->hints[index];
+   setLabelText(&hint->caption, caption);
+   hint->pairNext = (caption == NULL || caption[0] == 0);
+   hint->width = hint->drawWidth + (hint->pairNext ? 0 : ICON_GAP + hint->caption.tt.tex.w);
+}
+
 static int drawHint(ButtonHints *bar, ButtonHint *hint, int x)
 {
    int rowMid = bar->y + bar->glyphHeight / 2;

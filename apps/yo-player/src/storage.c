@@ -97,6 +97,50 @@ int getSubscriptions(char ids[][CHANNEL_ID_LEN], int max)
    return count;
 }
 
+// rewrite subscriptions.txt from an id array (one channel id per line).
+static void saveSubscriptions(char ids[][CHANNEL_ID_LEN], int count)
+{
+   char buffer[MAX_SUBSCRIPTIONS * CHANNEL_ID_LEN + 16];
+   int length = 0;
+   for (int i = 0; i < count; i++)
+      length += snprintf(buffer + length, CHANNEL_ID_LEN + 2, "%s\n", ids[i]);
+   writeFile(SUBS_PATH, buffer, length);
+}
+
+static int subsRevision;   // bumped on every real subscribe/unsubscribe so cached feeds know to refetch
+int getSubscriptionsRevision(void) { return subsRevision; }
+
+int isSubscribed(const char *channelId)
+{
+   char ids[MAX_SUBSCRIPTIONS][CHANNEL_ID_LEN];
+   int count = getSubscriptions(ids, MAX_SUBSCRIPTIONS);
+   for (int i = 0; i < count; i++)
+      if (strcmp(ids[i], channelId) == 0) return 1;
+   return 0;
+}
+
+void setSubscribed(const char *channelId, int subscribed)
+{
+   if (channelId[0] != 'U' || channelId[1] != 'C') return;   // only real UC ids
+   char ids[MAX_SUBSCRIPTIONS][CHANNEL_ID_LEN];
+   int count = getSubscriptions(ids, MAX_SUBSCRIPTIONS);
+   int found = -1;
+   for (int i = 0; i < count; i++)
+      if (strcmp(ids[i], channelId) == 0) { found = i; break; }
+
+   if (subscribed && found < 0) {
+      if (count >= MAX_SUBSCRIPTIONS) return;
+      strCopy(ids[count++], CHANNEL_ID_LEN, channelId);
+   } else if (!subscribed && found >= 0) {
+      for (int i = found; i < count - 1; i++) strCopy(ids[i], CHANNEL_ID_LEN, ids[i + 1]);
+      count--;
+   } else {
+      return;   // already in the desired state
+   }
+   saveSubscriptions(ids, count);
+   subsRevision++;
+}
+
 int isWatched(const char *videoId) { return findWatched(videoId) != NULL; }
 
 int getWatchedPosition(const char *videoId)

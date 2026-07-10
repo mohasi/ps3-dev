@@ -16,8 +16,16 @@ int  getWatchedPosition(const char *videoId);
 void setWatchedPosition(const char *videoId, int seconds);
 
 #define CHANNEL_ID_LEN    32
-#define MAX_SUBSCRIPTIONS 64
+#define MAX_SUBSCRIPTIONS 128
 
-// subscribed channel ids, seeded to subscriptions.txt on first run (edit the file to change them; a proper
-// subscribe UI comes later). fills ids[0..count-1], returns the count.
+// subscribed channel ids, seeded to subscriptions.txt on first run. fills ids[0..count-1], returns the count.
 int  getSubscriptions(char ids[][CHANNEL_ID_LEN], int max);
+
+// subscribe toggle: isSubscribed reports the current state; setSubscribed adds or removes the channel and
+// rewrites subscriptions.txt immediately. Only real "UC..." ids are stored; duplicates never occur.
+int  isSubscribed(const char *channelId);
+void setSubscribed(const char *channelId, int subscribed);
+
+// bumped whenever setSubscribed actually changes the set. Screens that cache the subscriptions feed compare
+// this against the value they last loaded at, and refetch when it moved.
+int  getSubscriptionsRevision(void);

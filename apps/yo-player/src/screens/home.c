@@ -38,6 +38,7 @@ static const char *TrendingNames[TREND_COUNT] = { "Gaming", /* "Music", */ "Live
 // each category's fully-loaded results, so returning to a tab skips the feed fetch (thumbnails still refetch).
 static SearchResults categoryCache[HOME_CAT_COUNT];
 static int           categoryCached[HOME_CAT_COUNT];
+static int           subsRevisionSeen;   // subscriptions revision the cached HOME_SUBS feed was built at
 
 static struct {
    VideoGrid grid;
@@ -174,6 +175,7 @@ static void initHome(void)
    initVideoGrid(&home.grid, &font, MARGIN_X, GRID_TOP, home.screenW - 2 * MARGIN_X, home.screenH - GRID_TOP);
    setGridWatchedPredicate(&home.grid, isWatched);
 
+   subsRevisionSeen = getSubscriptionsRevision();
    home.category = HOME_SUBS;   // always start on Subscriptions
    loadCategory();
 }
@@ -218,7 +220,17 @@ static void suspendHome(void) { stopVideoGrid(&home.grid); }   // free the http 
 
 // returning from search/play: if the load was interrupted mid-flight (worker stopped), restart it; an
 // already-loaded grid is kept as-is (instant, thumbnails intact).
-static void resumeHome(void) { if (gridStage(&home.grid) != GRID_READY) loadCategory(); }
+static void resumeHome(void)
+{
+   // a subscribe/unsubscribe while we were away makes the cached Subscriptions feed stale - drop it and,
+   // if it's the current tab, refetch now.
+   if (getSubscriptionsRevision() != subsRevisionSeen) {
+      subsRevisionSeen = getSubscriptionsRevision();
+      categoryCached[HOME_SUBS] = 0;
+      if (home.category == HOME_SUBS) { loadCategory(); return; }
+   }
+   if (gridStage(&home.grid) != GRID_READY) loadCategory();
+}
 
 static void termHome(void)
 {

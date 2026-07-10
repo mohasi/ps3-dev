@@ -27,6 +27,7 @@
 #define HINTS_BOTTOM  42
 #define HINT_GLYPH_H  22
 #define HINT_TEXT     18
+#define TRIANGLE_HINT 2         // Triangle's slot in the hint row (see initSearch): retitled per mode
 
 static const char *SortNames[SORT_COUNT]                = { "Relevance", "Views" };
 static const char *ChannelSortNames[CHANNEL_SORT_COUNT] = { "Latest", "Popular", "Oldest" };
@@ -61,6 +62,14 @@ static int searchFetch(const char *token, SearchResults *out, void *user)
    return searchVideos(search.query, search.sort, token, out);
 }
 
+// in channel mode Triangle toggles the subscription (you're already in the channel); elsewhere it drills in.
+static void updateTriangleHint(void)
+{
+   const char *caption = "Channel";
+   if (search.channelId[0]) caption = isSubscribed(search.channelId) ? "Unsubscribe" : "Subscribe";
+   setButtonHintCaption(&hints, TRIANGLE_HINT, caption);
+}
+
 // title (left) shows the mode; sortLabel (right) shows the current ordering.
 static void setHeading(void)
 {
@@ -68,6 +77,7 @@ static void setHeading(void)
    if (search.channelId[0]) { snprintf(heading, sizeof heading, "%s", search.channelName); setLabelText(&sortLabel, ChannelSortNames[search.channelSort]); }
    else                     { snprintf(heading, sizeof heading, "Search: %s", search.query); setLabelText(&sortLabel, SortNames[search.sort]); }
    setLabelText(&titleLabel, heading);
+   updateTriangleHint();
 }
 
 static void reload(void)
@@ -162,7 +172,11 @@ static void updateSearch(void)
 
    const SearchResult *selected = gridSelected(&search.grid);
    if (!selected) return;
-   if (isPadButtonPressed(PAD_BTN_TRIANGLE)) { enterChannel(selected); return; }
+   if (isPadButtonPressed(PAD_BTN_TRIANGLE)) {
+      if (search.channelId[0]) { setSubscribed(search.channelId, !isSubscribed(search.channelId)); updateTriangleHint(); }
+      else enterChannel(selected);
+      return;
+   }
    if (isPadButtonPressed(PAD_BTN_CROSS)) {
       markWatched(selected->videoId);
       stopVideoGrid(&search.grid);

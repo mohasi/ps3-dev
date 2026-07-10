@@ -158,7 +158,7 @@ static void updateSearch(void)
    updateDownloadOverlay();
    if (oskInputActive()) return;
 
-   if (isPadButtonPressed(PAD_BTN_START)) { oskInputBegin("Search YouTube", search.query[0] ? search.query : "Dirt League", onQueryEntered); }
+   if (isPadButtonPressed(PAD_BTN_START)) { oskInputBegin("Search YouTube", search.query[0] ? search.query : "", onQueryEntered); }
 
    // Circle: channel-with-underlying-search -> back to results; otherwise pop to home
    if (isPadButtonPressed(PAD_BTN_CIRCLE)) {

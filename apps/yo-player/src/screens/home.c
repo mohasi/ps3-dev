@@ -194,7 +194,7 @@ static void updateHome(void)
    updateDownloadOverlay();
    if (oskInputActive()) return;
 
-   if (isPadButtonPressed(PAD_BTN_START)) oskInputBegin("Search YouTube", "Dirt League", onQueryEntered);
+   if (isPadButtonPressed(PAD_BTN_START)) oskInputBegin("Search YouTube", "", onQueryEntered);
 
    // L1/R1 stay responsive even mid-load (the source swap is non-blocking)
    if      (isPadButtonPressed(PAD_BTN_R1)) { switchCategory(1);  return; }

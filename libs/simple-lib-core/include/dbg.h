@@ -35,7 +35,7 @@ typedef struct {
    char data[LOG_LINE_MAX];
 } BacklogLine;
 
-// Format "[YYYY-MM-DD HH:MM:SS] " into out (22 chars, no NUL). Returns the
+// Format "[HH:MM:SS.mmm] " into out (15 chars, no NUL). Returns the
 // byte count, or 0 if the RTC query fails — caller just skips the prefix
 // rather than dropping the log line.
 static inline int dbgFormatTimestamp(char *out)
@@ -43,26 +43,13 @@ static inline int dbgFormatTimestamp(char *out)
    CellRtcDateTime d;
    if (cellRtcGetCurrentClockLocalTime(&d) != 0) return 0;
 
-   int y  = (int)d.year;   if (y  < 0 || y  > 9999) y  = 0;
-   int mo = (int)d.month;  if (mo < 1 || mo > 12)   mo = 0;
-   int da = (int)d.day;    if (da < 1 || da > 31)   da = 0;
    int hh = (int)d.hour;   if (hh < 0 || hh > 23)   hh = 0;
    int mi = (int)d.minute; if (mi < 0 || mi > 59)   mi = 0;
    int se = (int)d.second; if (se < 0 || se > 59)   se = 0;
+   int ms = (int)(d.microsecond / 1000); if (ms < 0 || ms > 999) ms = 0;
 
    int o = 0;
    out[o++] = '[';
-   out[o++] = (char)('0' + (y  / 1000) % 10);
-   out[o++] = (char)('0' + (y  /  100) % 10);
-   out[o++] = (char)('0' + (y  /   10) % 10);
-   out[o++] = (char)('0' +  y          % 10);
-   out[o++] = '-';
-   out[o++] = (char)('0' + (mo / 10) % 10);
-   out[o++] = (char)('0' +  mo        % 10);
-   out[o++] = '-';
-   out[o++] = (char)('0' + (da / 10) % 10);
-   out[o++] = (char)('0' +  da        % 10);
-   out[o++] = ' ';
    out[o++] = (char)('0' + (hh / 10) % 10);
    out[o++] = (char)('0' +  hh        % 10);
    out[o++] = ':';
@@ -71,16 +58,20 @@ static inline int dbgFormatTimestamp(char *out)
    out[o++] = ':';
    out[o++] = (char)('0' + (se / 10) % 10);
    out[o++] = (char)('0' +  se        % 10);
+   out[o++] = '.';
+   out[o++] = (char)('0' + (ms / 100) % 10);
+   out[o++] = (char)('0' + (ms /  10) % 10);
+   out[o++] = (char)('0' +  ms        % 10);
    out[o++] = ']';
    out[o++] = ' ';
-   return o;  // == 22
+   return o;  // == 15
 }
 
 // Append one timestamped, level-prefixed line to /dev_hdd0/tmp/dbg.txt.
 // Variadic: plain string ("hello\n") or printf-style ("rc=0x%x\n", rc).
 // Full C99 printf minus floats (see common/printf.h).
 //
-// Format: "[YYYY-MM-DD HH:MM:SS] [LVL ] <message>"
+// Format: "[HH:MM:SS.mmm] [LVL ] <message>"
 //         where LVL is INFO / WARN / ERR  (5-char fixed width incl. space).
 //
 // Thread-safety: builds the timestamp + level + message into one stack
@@ -88,13 +79,13 @@ static inline int dbgFormatTimestamp(char *out)
 // and writes atomically per call, so concurrent loggers from different
 // threads/PRX's cannot interleave halves on the same line.
 //
-// Buffer is 1 KB for the message (any extra is silently dropped) plus 22
+// Buffer is 1 KB for the message (any extra is silently dropped) plus 15
 // bytes for the timestamp and 7 for the level tag.
 static inline void logEmit(const char *level, const char *fmt, va_list ap)
 {
    char line[1024 + 32];
 
-   int o = dbgFormatTimestamp(line);  // up to 22 bytes, no NUL
+   int o = dbgFormatTimestamp(line);  // up to 15 bytes, no NUL
 
    // "[LVL ] " — 7 bytes, fixed width so log columns align.
    line[o++] = '[';

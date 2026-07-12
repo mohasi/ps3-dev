@@ -21,6 +21,48 @@
    <SolidColorBrush x:Key="BrAccent" Color="{StaticResource ColorAccent}" />
    <SolidColorBrush x:Key="BgHighlight" Color="{StaticResource ColorHighlight}" />
 
+   <Style x:Key="FlatButton" TargetType="Button">
+     <Setter Property="Background" Value="{StaticResource BgSurface}" />
+     <Setter Property="Foreground" Value="{StaticResource FgText}" />
+     <Setter Property="BorderBrush" Value="{StaticResource BrBorder}" />
+     <Setter Property="BorderThickness" Value="1" />
+     <Setter Property="Padding" Value="10,3" />
+     <Setter Property="Template">
+       <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource BgHover}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource BgHoverBright}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.5" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+       </Setter.Value>
+     </Setter>
+   </Style>
+
+   <Style x:Key="DarkTextBox" TargetType="TextBox">
+     <Setter Property="Background" Value="{StaticResource BgSurface}" />
+     <Setter Property="Foreground" Value="{StaticResource FgText}" />
+     <Setter Property="BorderBrush" Value="{StaticResource BrBorder}" />
+     <Setter Property="BorderThickness" Value="1" />
+     <Setter Property="Padding" Value="4,2" />
+     <Setter Property="VerticalContentAlignment" Value="Center" />
+   </Style>
+
    <!-- minimal dark scrollbar (applies app-wide; no key) -->
    <Style x:Key="ScrollThumb" TargetType="Thumb">
      <Setter Property="Template">

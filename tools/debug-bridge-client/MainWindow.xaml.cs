@@ -17,12 +17,15 @@ namespace DebugBridgeClient
       private HttpBridge httpBridge;
 
       // batched log pipeline: producers (any thread) enqueue lines, a
-      // single dispatcher timer drains both queues per tick into one
-      // AppendText + one ScrollToEnd per box. one dispatcher post per
-      // line freezes WPF; one post per tick handles thousands/sec.
-      private readonly Queue<string> activityQueue = new Queue<string>();
-      private readonly Queue<string> logsQueue     = new Queue<string>();
-      private readonly object        queueLock     = new object();
+      // single dispatcher timer drains the queue per tick.
+      private readonly Queue<string> logsQueue = new Queue<string>();
+      private readonly object        queueLock = new object();
+
+      // full logs history (ui thread only) so the filter box can re-show
+      // lines that were hidden while a filter was active. capped at the
+      // same char budget as the visible box.
+      private readonly List<string> logsHistory      = new List<string>();
+      private int                   logsHistoryChars = 0;
       private DispatcherTimer logFlushTimer;
       private const int LogMaxChars  = 512 * 1024;
       private const int LogTrimChunk =  64 * 1024;
@@ -320,7 +323,10 @@ namespace DebugBridgeClient
       private void OnDeleteFile(object sender, RoutedEventArgs e)
       {
          if (!ps3.IsConnected) { AppendLog("not connected"); return; }
-         string path = PromptInput("Delete file", "PS3 path:");
+         MenuItem mi = sender as MenuItem;
+         string path = mi != null ? mi.Tag as string : null;
+         if (string.IsNullOrEmpty(path))
+            path = PromptInput("Delete file", "PS3 path:");
          if (string.IsNullOrEmpty(path)) return;
          RunCommand("delete-file \"" + path + "\"");
       }
@@ -341,13 +347,13 @@ namespace DebugBridgeClient
          RunCommand("push-file \"" + ps3Path + "\" " + payload.Length, payload);
       }
 
-      // wipe both log views and the screen pane so the next session starts
+      // wipe the logs view and its kept history so the next session starts
       // from a clean slate — useful when reproducing a specific sequence.
-      private void OnClear(object sender, RoutedEventArgs e)
+      private void OnClearLogs(object sender, RoutedEventArgs e)
       {
-         activityBox.Clear();
          logsBox.Clear();
-         screenCanvas.Children.Clear();
+         logsHistory.Clear();
+         logsHistoryChars = 0;
       }
 
       // minimal input prompt - avoids a separate xaml file for one textbox.
@@ -411,34 +417,80 @@ namespace DebugBridgeClient
          return prefix + " " + r.AsText().TrimEnd('\n');
       }
 
+      // host-side chatter (command/response, connect, disconnect) goes into
+      // the same logs box as ps3 lines, marked "---" so it stands apart.
+      // no host timestamp — ps3 lines carry their own dbg.h stamp.
       private void AppendLog(string msg)
       {
-         string stamped = DateTime.Now.ToString("HH:mm:ss") + "  " + msg;
-         lock (queueLock) activityQueue.Enqueue(stamped);
+         lock (queueLock) logsQueue.Enqueue("--- " + msg);
       }
 
       // every line that came in over the dbg.h LOG pipeline (from any
-      // ps3-side plugin including sdb itself) belongs in the plugin tab.
-      // the bridge tab is reserved for host-side command/response chatter.
+      // ps3-side plugin including sdb itself).
       private void OnPs3Log(string line)
       {
-         string stamped = DateTime.Now.ToString("HH:mm:ss") + "  " + line.TrimEnd('\r', '\n');
-         lock (queueLock) logsQueue.Enqueue(stamped);
+         lock (queueLock) logsQueue.Enqueue(line.TrimEnd('\r', '\n'));
       }
 
-      // drain both queues into one AppendText + ScrollToEnd per box per
-      // tick. Cap each box at LogMaxChars by chopping LogTrimChunk off
-      // the front when we cross the limit — keeps TextBox layout cheap
-      // under sustained traffic (~1000 lines/s is comfortable).
+      // drain the queue into one AppendText + ScrollToEnd per tick — one
+      // dispatcher post per line freezes WPF; one per tick handles
+      // thousands/sec.
       private void FlushLogs()
       {
-         string[] activityLines, logLines;
-         lock (queueLock) {
-            activityLines = DrainQueue(activityQueue);
-            logLines      = DrainQueue(logsQueue);
+         string[] lines;
+         lock (queueLock) lines = DrainQueue(logsQueue);
+         AppendLogsBatch(lines);
+      }
+
+      // remember every line in the history (for re-filtering), but only
+      // append lines matching the current filter to the box.
+      private void AppendLogsBatch(string[] lines)
+      {
+         if (lines == null || lines.Length == 0) return;
+
+         // grow the history, then chop whole lines off the front once we
+         // cross the same char budget the visible box uses
+         foreach (string line in lines) { logsHistory.Add(line); logsHistoryChars += line.Length + 1; }
+         int drop = 0;
+         while (logsHistoryChars > LogMaxChars) { logsHistoryChars -= logsHistory[drop].Length + 1; drop++; }
+         if (drop > 0) logsHistory.RemoveRange(0, drop);
+
+         // append matching lines in one AppendText, then cap the box at
+         // LogMaxChars by chopping LogTrimChunk off the front — keeps
+         // TextBox layout cheap under sustained traffic
+         string[] visible = Array.FindAll(lines, MatchesLogsFilter);
+         if (visible.Length == 0) return;
+         StringBuilder sb = new StringBuilder(visible.Length * 64);
+         foreach (string line in visible) sb.Append(line).Append('\n');
+         logsBox.AppendText(sb.ToString());
+         if (logsBox.Text.Length > LogMaxChars) {
+            int cut = logsBox.Text.Length - (LogMaxChars - LogTrimChunk);
+            logsBox.Text = logsBox.Text.Substring(cut);
+            logsBox.CaretIndex = logsBox.Text.Length;
          }
-         AppendBatch(activityBox, activityLines);
-         AppendBatch(logsBox,     logLines);
+         logsBox.ScrollToEnd();
+      }
+
+      private bool MatchesLogsFilter(string line)
+      {
+         string filter = logsFilterBox.Text;
+         return filter.Length == 0 || line.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
+      }
+
+      // re-show the whole history through the new filter
+      private void OnLogsFilterChanged(object sender, TextChangedEventArgs e)
+      {
+         logsFilterPlaceholder.Visibility = logsFilterBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+         StringBuilder sb = new StringBuilder();
+         foreach (string line in logsHistory)
+            if (MatchesLogsFilter(line)) sb.Append(line).Append('\n');
+         logsBox.Text = sb.ToString();
+         logsBox.ScrollToEnd();
+      }
+
+      private void OnCopyLogs(object sender, RoutedEventArgs e)
+      {
+         try { Clipboard.SetText(logsBox.Text); } catch (Exception) { }  // clipboard can be busy; ignore
       }
 
       private static string[] DrainQueue(Queue<string> q)
@@ -447,20 +499,6 @@ namespace DebugBridgeClient
          string[] a = q.ToArray();
          q.Clear();
          return a;
-      }
-
-      private void AppendBatch(TextBox box, string[] lines)
-      {
-         if (lines == null || lines.Length == 0) return;
-         StringBuilder sb = new StringBuilder(lines.Length * 64);
-         foreach (string s in lines) sb.Append(s).Append('\n');
-         box.AppendText(sb.ToString());
-         if (box.Text.Length > LogMaxChars) {
-            int cut = box.Text.Length - (LogMaxChars - LogTrimChunk);
-            box.Text = box.Text.Substring(cut);
-            box.CaretIndex = box.Text.Length;
-         }
-         box.ScrollToEnd();
       }
    }
 }

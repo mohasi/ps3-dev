@@ -7,15 +7,15 @@ WPF companion app for the `simple-debug-bridge` PS3 plugin.
 - persistent duplex TCP socket to the PS3 plugin (port 8785); background
   auto-reconnect on drop
 - **Commands** menu — Screenshot, Stat Tree, Restart XMB, Restart PS3, Shutdown
-- **Files** menu — Pull / Push / Delete file on the PS3 (Pull has presets
-  for `stat-tree.txt`, `dbg.txt`, `trace-capture.bin` plus a Custom... prompt;
-  pulled files are written to disk via Save dialog)
+- **Files** menu — Pull / Push / Delete file on the PS3 (Pull and Delete have
+  presets for `dbg.txt`, `stat-tree.txt`, `trace-capture.bin` plus a Custom...
+  prompt; pulled files are written to disk via Save dialog)
 - **Packages** menu — Install package (`.pkg` upload + extract)
 - **Plugins** menu — Install / Uninstall VSH plugin (`.sprx` upload)
-- **View** menu — Clear (wipes Activity, Logs, and Screen for a clean test run)
-- **Activity** tab — host-side events: connection state, sent commands, framed replies
 - **Logs** tab — live PS3-side log lines forwarded by the bridge (LOG frames from
-  every registered producer plugin/app — `[sdb]`, `[sdm]`, `[ftp]`, ...)
+  every registered producer plugin/app — `[sdb]`, `[sdm]`, `[ftp]`, ...) interleaved
+  with host-side events (connection state, sent commands, framed replies) marked
+  with a `---` prefix; toolbar has a live filter box plus copy / clear buttons
 - **Screen** tab — renders captures live as they come back from the bridge
 - **Modules** tab — process-first tree over `process-list` → `process-info` →
   `module-info`. Top-level nodes are processes the bridge can see (always

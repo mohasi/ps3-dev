@@ -4,7 +4,7 @@
       xmlns:local="clr-namespace:DebugBridgeClient"
       Title="PS3 Debug Bridge"
       Width="762"
-      Height="540"
+      Height="800"
       WindowStartupLocation="CenterScreen"
       Background="{StaticResource BgBase}">
 
@@ -113,7 +113,12 @@
               <MenuItem Header="Custom..." Click="OnPullFile" />
             </MenuItem>
             <MenuItem Header="Push File..." Click="OnPushFile" />
-            <MenuItem Header="Delete File..." Click="OnDeleteFile" />
+            <MenuItem Header="Delete File">
+              <MenuItem Header="/dev_hdd0/tmp/dbg.txt"          Click="OnDeleteFile" Tag="/dev_hdd0/tmp/dbg.txt" />
+              <MenuItem Header="/dev_hdd0/tmp/stat-tree.txt"    Click="OnDeleteFile" Tag="/dev_hdd0/tmp/stat-tree.txt" />
+              <MenuItem Header="/dev_hdd0/tmp/trace-capture.bin" Click="OnDeleteFile" Tag="/dev_hdd0/tmp/trace-capture.bin" />
+              <MenuItem Header="Custom..." Click="OnDeleteFile" />
+            </MenuItem>
          </MenuItem>
          <MenuItem Header="Packages">
             <MenuItem Header="Install..." Click="OnPackageInstall" />
@@ -128,9 +133,6 @@
          <MenuItem Header="Restart PS3" Click="OnRestartPs3" />
          <MenuItem Header="Shutdown" Click="OnShutdown" />
        </MenuItem>
-       <MenuItem Header="View">
-         <MenuItem Header="Clear" Click="OnClear" />
-       </MenuItem>
      </Menu>
 
      <!-- main content with tabs -->
@@ -139,32 +141,61 @@
               BorderBrush="{StaticResource BrBorder}"
               BorderThickness="3">
 
-       <!-- bridge logs: host-side status + ps3 [sdb] lines forwarded from
-           simple-debug-bridge itself. -->
-       <TabItem Header="Activity">
-         <TextBox x:Name="activityBox"
-                Background="{StaticResource BgBase}"
-                Foreground="{StaticResource FgText}"
-                BorderThickness="0"
-                FontFamily="Consolas"
-                FontSize="12"
-                IsReadOnly="True"
-                VerticalScrollBarVisibility="Auto"
-                TextWrapping="NoWrap" />
-       </TabItem>
-
-       <!-- app / plugin logs: ps3 LOG frames forwarded from registered
-           producers (anything that isn't [sdb] - [sdm], [ftp], etc.). -->
+       <!-- one merged log view: ps3 LOG frames from registered producers,
+           interleaved with host-side chatter (command/response, connect,
+           disconnect) which is marked with a dash prefix. -->
       <TabItem Header="Logs">
-         <TextBox x:Name="logsBox"
-                  Background="{StaticResource BgBase}"
-                  Foreground="{StaticResource FgText}"
-                  BorderThickness="0"
-                  FontFamily="Consolas"
-                  FontSize="12"
-                  IsReadOnly="True"
-                  VerticalScrollBarVisibility="Auto"
-                  TextWrapping="NoWrap" />
+         <Grid>
+            <Grid.RowDefinitions>
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- filter + copy toolbar. typing filters the box to matching
+                 lines; the copy button puts the visible (filtered) text on
+                 the clipboard. -->
+            <DockPanel Grid.Row="0" Margin="6,6,6,4">
+               <Button DockPanel.Dock="Right"
+                       Style="{StaticResource FlatButton}"
+                       FontFamily="Segoe MDL2 Assets"
+                       Content="&#xE894;"
+                       ToolTip="Clear logs"
+                       Margin="4,0,0,0"
+                       Click="OnClearLogs" />
+               <Button DockPanel.Dock="Right"
+                       Style="{StaticResource FlatButton}"
+                       FontFamily="Segoe MDL2 Assets"
+                       Content="&#xE8C8;"
+                       ToolTip="Copy visible lines"
+                       Margin="4,0,0,0"
+                       Click="OnCopyLogs" />
+               <Grid>
+                  <TextBox x:Name="logsFilterBox"
+                           Style="{StaticResource DarkTextBox}"
+                           TextChanged="OnLogsFilterChanged" />
+                  <TextBlock x:Name="logsFilterPlaceholder"
+                             Text="filter"
+                             IsHitTestVisible="False"
+                             Foreground="{StaticResource FgTextDim}"
+                             Margin="6,0,10,0"
+                             VerticalAlignment="Center" />
+               </Grid>
+            </DockPanel>
+
+            <!-- left padding lines the text up with the filter box border;
+                 top padding gives a small gap below the toolbar. -->
+            <TextBox x:Name="logsBox"
+                     Grid.Row="1"
+                     Background="{StaticResource BgBase}"
+                     Foreground="{StaticResource FgText}"
+                     BorderThickness="0"
+                     Padding="4,4,0,0"
+                     FontFamily="Consolas"
+                     FontSize="12"
+                     IsReadOnly="True"
+                     VerticalScrollBarVisibility="Auto"
+                     TextWrapping="NoWrap" />
+         </Grid>
       </TabItem>
 
       <!-- module browser: one IModuleSource per process. Refresh

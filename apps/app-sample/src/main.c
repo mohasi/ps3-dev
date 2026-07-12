@@ -20,6 +20,8 @@ int main(int argc, char **argv)
    (void)argc;
    (void)argv;
 
+   initRtc();
+
    appRegisterExitCallback();
 
    if (initGfx(GFX_VSYNC_OFF) != 0) return 1;

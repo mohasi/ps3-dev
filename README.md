@@ -23,6 +23,7 @@ ps3-dev/
 │   ├── file-manager/           PS3 file browser with sprite-based UI
 │   └── yo-player/              native YouTube client (streams video + audio directly)
 ├── plugins/
+│   ├── simple-cheat-menu/    in-game cheat overlay, synced with the shared cheat repo
 │   ├── simple-debug-bridge/  remote debug/control over TCP (port 8785)
 │   ├── simple-disc-mount/    mounts ISOs from an XMB submenu
 │   └── simple-ftp/           anonymous, binary-only FTP server on port 21
@@ -112,6 +113,14 @@ just add its `include/` path. All non-PRX-specific helpers live in
 `simple-lib-core`.
 
 ## Plugins
+
+### simple-cheat-menu
+In-game cheat overlay. A short PS press over a running game opens a panel listing that title's
+cheats; toggling one patches the game's memory live (cobra syscall-8) and verifies the write
+landed. Cheats are downloaded per title from the shared
+[game-cheats](https://github.com/mohasi/game-cheats) repo, and players can mark a cheat working or
+failed — those votes become a crowd score plus a per-build "will this work on your copy" verdict.
+See `plugins/simple-cheat-menu/README.md` for details.
 
 ### simple-disc-mount
 Adds a "Mount Disc Image" submenu below "Package Manager" in the XMB Games

@@ -23,6 +23,7 @@
 #include "sha1.h"
 #include "dbg.h"
 #include "string-utilities.h"
+#include "sfo.h"
 
 #define PKG_STAGE_DIR     "/dev_hdd0/packages"
 #define PKG_GAME_DIR      "/dev_hdd0/game"
@@ -65,14 +66,6 @@ static inline uint32_t readBE32(const uint8_t *p)
 static inline uint64_t readBE64(const uint8_t *p)
 {
    return ((uint64_t)readBE32(p) << 32) | (uint64_t)readBE32(p + 4);
-}
-static inline uint32_t readLE32(const uint8_t *p)
-{
-   return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
-}
-static inline uint16_t readLE16(const uint8_t *p)
-{
-   return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
 static void parsePkgHeader(const uint8_t *raw, PkgHeader *h)
@@ -268,35 +261,11 @@ static int writePkgDecryptedToFile(VfsFile *f, const PkgHeader *h, uint64_t data
    return 0;
 }
 
-// minimal PARAM.SFO TITLE_ID reader. format: psdevwiki.com/ps3/PARAM.SFO.
-// header is little-endian after the 4-byte magic.
+// the pkg's TITLE_ID, read from its PARAM.SFO via the shared reader (sfo.h). the
+// out buffer must hold PKG_TITLE_LEN + 1. 0 on success, -1 if absent/malformed.
 static int readSfoTitleId(const uint8_t *sfo, uint64_t len, char *outTitleId)
 {
-   if (len < 0x14) return -1;
-   if (readBE32(sfo) != 0x00505346u) return -1;        // "\0PSF"
-   uint32_t keyTable  = readLE32(sfo + 0x08);
-   uint32_t dataTable = readLE32(sfo + 0x0c);
-   uint32_t entries   = readLE32(sfo + 0x10);
-
-   for (uint32_t i = 0; i < entries; i++) {
-      uint64_t entOff = 0x14 + (uint64_t)i * 0x10;
-      if (entOff + 0x10 > len) return -1;
-      uint16_t keyOff  = readLE16(sfo + entOff + 0x00);
-      uint32_t dataLen = readLE32(sfo + entOff + 0x04);
-      uint32_t dataOff = readLE32(sfo + entOff + 0x0c);
-      // 64-bit offset math so a near-4G table offset can't wrap the bound check
-      // (harmless on the 32-bit target where the pointer wraps in step, but
-      // correct on any target and clearer intent).
-      if ((uint64_t)keyTable + keyOff >= len) return -1;
-      const char *key = (const char *)(sfo + keyTable + keyOff);
-      if (!strEq(key, "TITLE_ID")) continue;
-      if ((uint64_t)dataTable + dataOff + dataLen > len) return -1;
-      uint32_t n = dataLen < PKG_TITLE_LEN ? dataLen : PKG_TITLE_LEN;
-      memCopy(outTitleId, sfo + dataTable + dataOff, n);
-      outTitleId[PKG_TITLE_LEN] = '\0';
-      return 0;
-   }
-   return -1;
+   return getSfoValue(sfo, len, "TITLE_ID", outTitleId, PKG_TITLE_LEN + 1) > 0 ? 0 : -1;
 }
 
 // Reject an entry name that could escape destDir. Names legitimately contain '/'

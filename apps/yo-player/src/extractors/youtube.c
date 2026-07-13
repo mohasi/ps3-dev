@@ -388,6 +388,7 @@ static int extract(const char *input, StreamInfo *out)
    // metadata
    const char *details = strstr(resp, "\"videoDetails\"");
    jsonString(details ? details : resp, end, "title", out->title, sizeof out->title);
+   jsonString(details ? details : resp, end, "shortDescription", out->description, sizeof out->description);
    char lenText[16];
    if (jsonString(details ? details : resp, end, "lengthSeconds", lenText, sizeof lenText))
       out->durationSeconds = atoi(lenText);

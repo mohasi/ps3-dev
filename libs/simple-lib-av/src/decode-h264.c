@@ -44,7 +44,12 @@ static uint32_t vdecCallback(CellVdecHandle handle, CellVdecMsgType type, int32_
    H264Decoder *decoder = (H264Decoder *)arg;
    lock(&decoder->lock);
    switch (type) {
-      case CELL_VDEC_MSG_TYPE_AUDONE: decoder->auDoneCount++; break;
+      // a rejected access unit is reported here, NOT as MSG_TYPE_ERROR (which is fatal-only): the
+      // decoder still emits a picture for it, so without this line a broken stream looks healthy
+      case CELL_VDEC_MSG_TYPE_AUDONE:
+         decoder->auDoneCount++;
+         if (data != CELL_OK) logWarn("[decode-h264] decoder rejected an access unit, rc=0x%x\n", data);
+         break;
       case CELL_VDEC_MSG_TYPE_PICOUT: decoder->picPending++;  break;
       case CELL_VDEC_MSG_TYPE_SEQDONE: decoder->seqDone = 1;  break;
       case CELL_VDEC_MSG_TYPE_ERROR:
@@ -210,6 +215,8 @@ int getFrameH264(H264Decoder *decoder, void *yuvOut, int *outWidth, int *outHeig
    const CellVdecPicItem *picItem;
    if (cellVdecGetPicItem(decoder->handle, &picItem) != CELL_OK) return 0;   // counter ran ahead: nothing queued yet
    lock(&decoder->lock); decoder->picPending--; unlock(&decoder->lock);
+
+   if (picItem->status != CELL_OK) logWarn("[decode-h264] picture came out incomplete, status=0x%x\n", picItem->status);
 
    const CellVdecAvcInfo *info = (const CellVdecAvcInfo *)picItem->picInfo;
    int frameW = info->horizontalSize;

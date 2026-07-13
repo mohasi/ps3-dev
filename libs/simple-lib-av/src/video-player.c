@@ -7,6 +7,7 @@
 // thread only ever claims EMPTY slots, so a frame the GPU can see is never overwritten under it.
 #include "video-player.h"
 #include "demux.h"
+#include "h264.h"
 #include "decode-h264.h"
 #include "decode-aac.h"
 #include "audio.h"
@@ -414,8 +415,18 @@ VideoPlayer *createVideoPlayerSplit(const char *videoPath, const char *audioPath
    else if (audioPath && audioPath[0])
       logWarn("[video-player] separate audio stream failed to open, playing silent\n");
 
-   player->allocW = roundUp16(player->demuxer.width);
-   player->allocH = roundUp16(player->demuxer.height);
+   // the decoder must be built for the stream's CODED size, which the SPS alone knows: the container
+   // reports the DISPLAY size, and encoders pad beyond it (Intel QuickSync codes 720 as 736 and crops
+   // it back). Get it wrong and cellVdec either decodes nothing at all or locks the console, so read
+   // it from the SPS the demuxer already extracted, and only guess if there isn't one.
+   H264StreamInfo streamInfo;
+   if (readH264StreamInfo(player->demuxer.h264.header, player->demuxer.h264.headerSize, &streamInfo) == 0) {
+      player->allocW = streamInfo.codedWidth;
+      player->allocH = streamInfo.codedHeight;
+   } else {
+      player->allocW = roundUp16(player->demuxer.width);
+      player->allocH = roundUp16(player->demuxer.height);
+   }
    player->decoder = createH264Decoder(player->allocW, player->allocH, player->demuxer.level, player->demuxer.h264.maxRefFrames);
    if (!player->decoder) goto fail;
 

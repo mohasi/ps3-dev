@@ -25,6 +25,7 @@ typedef struct {
 
 typedef struct {
    char title[256];
+   char description[2048];   // video description, truncated; newlines are real '\n'
    int  durationSeconds;
    int  isLive;            // currently broadcasting: streams need live segment-sequence fetching, not a static moov
    int  formatCount;

@@ -37,8 +37,9 @@
      <GccOutputFormat>ELFFile</GccOutputFormat>
    </Link>
    <PreBuildEvent>
-     <Message>Generating PARAM.SFO from XML</Message>
-     <Command>"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
+     <Message>Packing sprites and generating PARAM.SFO</Message>
+     <Command>"$(SolutionDir)tools\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
+   "$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -64,6 +65,7 @@
    <ClInclude Include="include\downloads.h" />
    <ClInclude Include="include\extractor.h" />
    <ClInclude Include="include\sponsorblock.h" />
+   <ClInclude Include="include\sprite-regions.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="yo-player.conf" />
@@ -71,6 +73,8 @@
    <None Include="PARAM.SFO.xml" />
    <None Include="README.md" />
    <None Include="ICON0.PNG" />
+   <None Include="res\sprites.png" />
+   <None Include="sprites\**" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\npdrm.targets" />

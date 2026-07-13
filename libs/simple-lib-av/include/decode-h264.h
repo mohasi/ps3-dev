@@ -9,6 +9,13 @@
 
 typedef struct H264Decoder H264Decoder;
 
+// IMPORTANT: width/height must be the stream's CODED size (what the SPS actually codes), not its
+// display size. H.264 codes whole 16x16 blocks and hardware encoders pad further - Intel QuickSync
+// codes 1280x720 as 1280x736 and crops it back for display. Get this wrong in either direction and
+// cellVdec fails hard: told a size SMALLER than the stream it decodes nothing at all and hands the
+// picture buffer back untouched (no error, black screen); told a size LARGER it locks the console.
+// Callers must read the coded size from the stream (demuxers do; a network sender must transmit it).
+//
 // brings up a decoder for a stream of the given coded size and AVC level (AVCLevelIndication).
 // maxRefFrames is the SPS reference-frame count; the decoder asks cellVdec for that many decoded-frame
 // buffers (+1) so high-reference streams don't overflow the level's default pool. NULL on failure.
@@ -24,8 +31,8 @@ int decodeAuH264(H264Decoder *decoder, const uint8_t *data, int size, uint64_t p
 // new AU while the backlog is below N.
 int getAuBacklogH264(const H264Decoder *decoder);
 
-// retrieves a decoded frame as YUV 4:2:0 planar into `yuvOut` (must hold width*height*3/2 bytes,
-// 128-byte aligned, size a multiple of 128). frames come out in presentation order. returns 1 and
+// retrieves a decoded frame as YUV 4:2:0 planar into `yuvOut` (must hold codedWidth*codedHeight*3/2
+// bytes, 128-byte aligned, size a multiple of 128). frames come out in presentation order. returns 1 and
 // sets *outWidth/*outHeight/*outPts (the pts passed in for that frame's AU) when a frame was ready,
 // 0 if none pending, -1 on error.
 int getFrameH264(H264Decoder *decoder, void *yuvOut, int *outWidth, int *outHeight, uint64_t *outPts);

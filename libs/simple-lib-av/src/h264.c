@@ -59,6 +59,9 @@ typedef struct {
    int refFrames;      // max_num_ref_frames
    int refFramesBit;   // rbsp bit position where its Exp-Golomb code starts
    int frameMbs;       // coded frame size in macroblocks
+   int codedWidth;     // coded pixels - NOT the display size; encoders pad and crop back (see h264.h)
+   int codedHeight;
+   int level;          // level_idc
 } SpsFields;
 
 // walks the stripped SPS rbsp up to the frame dimensions, filling `fields`. returns 0 / -1.
@@ -67,7 +70,7 @@ static int walkSps(const uint8_t *rbsp, int rbspSize, SpsFields *fields)
    BitReader reader = { rbsp, rbspSize, 0 };
    int profile = readBits(&reader, 8);
    readBits(&reader, 8);                 // constraint flags + reserved
-   readBits(&reader, 8);                 // level_idc
+   fields->level = (int)readBits(&reader, 8);
    readUe(&reader);                      // seq_parameter_set_id
 
    int isHighProfile = profile == 100 || profile == 110 || profile == 122 || profile == 244 ||
@@ -110,6 +113,8 @@ static int walkSps(const uint8_t *rbsp, int rbspSize, SpsFields *fields)
    int heightUnits = (int)readUe(&reader) + 1;  // pic_height_in_map_units_minus1
    int frameMbsOnly = readBit(&reader);
    fields->frameMbs = widthMbs * heightUnits * (frameMbsOnly ? 1 : 2);
+   fields->codedWidth  = widthMbs * 16;
+   fields->codedHeight = heightUnits * 16 * (frameMbsOnly ? 1 : 2);
    return reader.bitPos <= rbspSize * 8 ? 0 : -1;
 }
 
@@ -167,6 +172,29 @@ static int parseSpsMaxRefFrames(const uint8_t *sps, int size)
    int rbspSize = stripEmulation(sps + 1, size - 1, rbsp, 0, sizeof rbsp);   // skip the NAL header byte
    SpsFields fields;
    return walkSps(rbsp, rbspSize, &fields) == 0 ? fields.refFrames : 0;
+}
+
+int readH264StreamInfo(const uint8_t *annexB, int size, H264StreamInfo *info)
+{
+   // find the SPS (NAL type 7) and read the stream's own description out of it
+   for (int i = 0; i + 4 < size; i++) {
+      if (annexB[i] || annexB[i + 1] || annexB[i + 2] != 1) continue;
+      const uint8_t *nal = annexB + i + 3;
+      if ((nal[0] & 0x1F) != 7) continue;
+
+      int nalSize = size - (i + 3);
+      uint8_t rbsp[96];
+      int rbspSize = stripEmulation(nal + 1, nalSize - 1, rbsp, 0, sizeof rbsp);   // skip the NAL header byte
+      SpsFields fields;
+      if (walkSps(rbsp, rbspSize, &fields) != 0) return -1;
+
+      info->codedWidth   = fields.codedWidth;
+      info->codedHeight  = fields.codedHeight;
+      info->level        = fields.level;
+      info->maxRefFrames = fields.refFrames;
+      return 0;
+   }
+   return -1;
 }
 
 // appends a start code + `len` bytes of `nal` into config->header, bounds-checked. 0 / -1.

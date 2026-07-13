@@ -35,6 +35,7 @@
    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+   <ClCompile Include="src\app.c" />
    <ClCompile Include="src\gfx.c" />
    <ClCompile Include="src\image-loader.c" />
    <ClCompile Include="src\image-encoder.c" />

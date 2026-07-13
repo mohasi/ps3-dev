@@ -5,6 +5,7 @@
 #include "font.h"
 #include "ftp.h"
 #include "ui/image.h"
+#include "ui/console-glyphs.h"
 #include "ui/breadcrumb.h"
 #include "ui/keyboard.h"
 #include "ui/hex-pad.h"
@@ -85,7 +86,7 @@ static void initHome(void)
    initBreadcrumb(&breadcrumb, &pop, 70, 130, COLOR_WHITE, sprites, spriteRegions[SPRITE_CHEVRON], 20);
    initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
    initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
-   initFooterWidget(&pop, sprites);
+   initFooterWidget(&pop);
    initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 1024, 74, 24, COLOR_WHITE, &breadcrumb);
    initSidepanel(sprites, &clickSfx, dispatchAction);
    initConfirmOverlay(sprites, &clickSfx);
@@ -96,8 +97,10 @@ static void initHome(void)
    initHexViewerOverlay(sprites);
    initKeyboard(sprites, spriteRegions[SPRITE_HIGHLIGHT], 7);   // 7 = highlight sprite's 9-slice corner cap
    initHexPad(sprites, spriteRegions[SPRITE_HIGHLIGHT], 7);
-   addFooterButton(PAD_BTN_TRIANGLE, spriteRegions[SPRITE_TRIANGLE], "Options", openSidepanel);
-   addFooterButton(PAD_BTN_SELECT, spriteRegions[SPRITE_SELECT], "Start FTP Server", toggleFtpServer);
+   addFooterButton(PAD_BTN_TRIANGLE, GLYPH_TRIANGLE, "Options", openSidepanel);
+   addFooterButton(PAD_BTN_START, GLYPH_START, "Search", NULL);   // hint only - search isn't implemented yet
+   setFooterButtonEnabled(PAD_BTN_START, 0);
+   addFooterButton(PAD_BTN_SELECT, GLYPH_SELECT, "Start FTP Server", toggleFtpServer);
 
    if (!isNetworkAvailable()) {
       // No usable network: there is nothing to serve, so disable the toggle.

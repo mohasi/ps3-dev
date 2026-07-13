@@ -17,6 +17,7 @@ PS3 homebrew file browser with a sprite-based UI. Sony official SDK 4.75, target
 - **Image viewer** — full-screen viewer for PNG and JPEG images. Opens when X is pressed on a supported image file. Features L1/R1 navigation through sibling images in the directory, L2/R2 zoom (center-pinned, 10%–500%), D-pad pan, and Circle to close. Images decode asynchronously on a background worker (no UI freeze), with a single-image VRAM footprint (the previous image is freed before each load). Oversized images are rejected with a persistent error caption; VRAM upload failures show "(out of VRAM)".
 - **Audio player** — full-screen player for WAV, OGG, MP3 and FLAC. Opens when X is pressed on a supported audio file (loaded on a background worker so the overlay appears instantly with a "Loading…" note). Shows the file icon, filename, and track title (from ID3 / Vorbis comment) as a subtitle, a live waveform, a seek bar with elapsed/total/remaining times, and a left-edge volume meter. X toggles play/pause, D-pad left/right seeks (single tap ≈ 1s, hold ramps up; audio mutes while scrubbing), up/down adjusts volume, Circle closes.
 - **Sprite atlas** — all UI sprites packed into a single texture, generated at build time
+- **Native button glyphs** — the footer and dialog button hints render the PS3's own XMB button art, decoded at runtime from the system imagefont via app-lib's `console-glyphs`, so no button sprites are shipped
 
 ## File operations & conflict resolution
 

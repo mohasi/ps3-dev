@@ -7,9 +7,10 @@
 
 #define FOOTER_MAX_BUTTONS      8
 #define FOOTER_X               51
-#define FOOTER_Y             1015
+#define FOOTER_Y             1018
+#define FOOTER_GLYPH_HEIGHT    32
 #define FOOTER_TEXT_SIZE       20
-#define FOOTER_GROUP_GAP       80
+#define FOOTER_GROUP_GAP       50
 
 typedef struct {
    PadButton           padButton;
@@ -21,7 +22,6 @@ typedef struct {
 static FooterEntry entries[FOOTER_MAX_BUTTONS];
 static int         entryCount;
 static Font       *footerFont;
-static GfxTexture  footerSpritesheet;
 
 static FooterEntry *findFooterEntry(PadButton padButton)
 {
@@ -30,14 +30,13 @@ static FooterEntry *findFooterEntry(PadButton padButton)
    return NULL;
 }
 
-void initFooterWidget(Font *font, GfxTexture spritesheet)
+void initFooterWidget(Font *font)
 {
-   footerFont        = font;
-   footerSpritesheet = spritesheet;
-   entryCount        = 0;
+   footerFont = font;
+   entryCount = 0;
 }
 
-void addFooterButton(PadButton padButton, SpriteRegion iconRegion, const char *text, FooterButtonHandler onPress)
+void addFooterButton(PadButton padButton, ConsoleGlyph glyph, const char *text, FooterButtonHandler onPress)
 {
    FooterEntry *entry = findFooterEntry(padButton);
    if (entry) {
@@ -49,7 +48,7 @@ void addFooterButton(PadButton padButton, SpriteRegion iconRegion, const char *t
 
    Image icon;
    Label label;
-   initImage(&icon, footerSpritesheet, 0, 0, AUTO, AUTO, iconRegion, GFX_FILTER_LINEAR);
+   initGlyphIcon(&icon, glyph, FOOTER_GLYPH_HEIGHT);
    initLabel(&label, footerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, text);
 
    entry->padButton = padButton;

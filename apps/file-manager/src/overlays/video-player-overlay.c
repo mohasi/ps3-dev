@@ -12,7 +12,6 @@
 #include "colors.h"
 #include "ui/label.h"
 #include "ui/image.h"
-#include "ui/slice.h"
 #include "thread.h"             // spawnJoinableThread, joinThread
 #include "vfs.h"               // getBaseName, MAX_PATH_LEN
 #include "string-utilities.h"   // strCopy
@@ -50,11 +49,15 @@
 #define CAPTION_PAD_X   12
 #define CAPTION_PAD_Y   6
 
-// seek bar geometry (mirrors the audio player, sat lower on the screen)
-#define BAR_H           10
-#define BAR_CAP         5
-#define THUMB_DIA       28
+// seek bar geometry (mirrors the audio player, sat lower on the screen; yo-player style flat bar)
+#define BAR_H           8
+#define HANDLE_W        6
+#define HANDLE_H        22
 #define SIDE_TIME_GAP   24
+#define COLOR_SEEK_TRACK  0x66FFFFFFu   // translucent white track
+#define COLOR_SEEK_FILL   COLOR_BLUE_500
+#define COLOR_SEEK_HANDLE 0xFFFFFFFFu
+#define COLOR_PILL_EMPTY  0x33FFFFFFu   // unfilled volume pill
 
 // volume meter (mirrors the audio player: a pill column that auto-hides)
 #define VOLUME_PILLS       15
@@ -110,8 +113,7 @@ static GfxTexture sprites;
 static Font  font;
 static int   ready;
 static Label messageLabel, statusLabel, nameLabel, timeLeftLabel, timeRightLabel, volNumLabel;
-static Image thumbImg, speakerImg, pillBlue, pillGrey;
-static Slice trackSlice, fillSlice;
+static Image speakerImg;
 static int   lastElapsed = -1, lastRemain = -1, lastVolNum = -1;
 
 static void show(void);
@@ -136,12 +138,7 @@ void initVideoPlayerOverlay(GfxTexture spritesheet)
 
    initLabel(&volNumLabel, &font, 0, 0, 80, AUTO, VOL_NUM_SIZE, COLOR_MESSAGE, TEXT_NOWRAP, "");
 
-   initImage(&thumbImg,   sprites, 0, 0, THUMB_DIA, THUMB_DIA, spriteRegions[SPRITE_BLUE_CIRCLE], GFX_FILTER_LINEAR);
    initImage(&speakerImg, sprites, 0, 0, VOL_SPEAKER_W, VOL_SPEAKER_H, spriteRegions[SPRITE_SPEAKER], GFX_FILTER_LINEAR);
-   initImage(&pillBlue,   sprites, 0, 0, VOL_PILL_W, VOL_PILL_H, spriteRegions[SPRITE_PILL],      GFX_FILTER_LINEAR);
-   initImage(&pillGrey,   sprites, 0, 0, VOL_PILL_W, VOL_PILL_H, spriteRegions[SPRITE_PILL_GREY], GFX_FILTER_LINEAR);
-   initSlice(&trackSlice, sprites, 0, 0, 100, BAR_H, spriteRegions[SPRITE_PILL_GREY], BAR_CAP);
-   initSlice(&fillSlice,  sprites, 0, 0, 100, BAR_H, spriteRegions[SPRITE_PILL],      BAR_CAP);
    ready = 1;
 }
 
@@ -384,10 +381,10 @@ static void drawSeekBar(void)
    int barTopY = state.barY - BAR_H / 2;
    int filledW = (int)(progress * span);
 
-   trackSlice.x = state.barLeft; trackSlice.y = barTopY; trackSlice.w = span;
-   drawSlice(&trackSlice);
-   if (filledW >= BAR_CAP * 2) { fillSlice.x = state.barLeft; fillSlice.y = barTopY; fillSlice.w = filledW; drawSlice(&fillSlice); }
-   drawImageAt(&thumbImg, state.barLeft + filledW - THUMB_DIA / 2, state.barY - THUMB_DIA / 2);
+   // flat track, blue played portion, slim white scrubber handle (yo-player style)
+   fillGfxRectangle(state.barLeft, barTopY, span, BAR_H, COLOR_SEEK_TRACK);
+   fillGfxRectangle(state.barLeft, barTopY, filledW, BAR_H, COLOR_SEEK_FILL);
+   fillGfxRectangle(state.barLeft + filledW - HANDLE_W / 2, state.barY - HANDLE_H / 2, HANDLE_W, HANDLE_H, COLOR_SEEK_HANDLE);
 
    syncTimeLabels();
    drawLabelAt(&timeLeftLabel,  state.barLeft - SIDE_TIME_GAP - timeLeftLabel.tt.tex.w, state.barY - timeLeftLabel.tt.tex.h / 2);
@@ -406,10 +403,10 @@ static void drawVolumeMeter(void)
       lastVolNum = volumeLevel;
    }
 
-   // pills bottom-up: the lowest `volumeLevel` are blue (filled), the rest grey
+   // pills bottom-up: the lowest `volumeLevel` are filled seek-bar blue, the rest dim
    for (int i = 0; i < VOLUME_PILLS; i++) {
       int y = state.volBottomY - i * VOL_PILL_PITCH;
-      drawImageAt(i < volumeLevel ? &pillBlue : &pillGrey, state.volPillX, y);
+      fillGfxRectangle(state.volPillX, y, VOL_PILL_W, VOL_PILL_H, i < volumeLevel ? COLOR_SEEK_FILL : COLOR_PILL_EMPTY);
    }
 
    int colCenterX = state.volPillX + VOL_PILL_W / 2;

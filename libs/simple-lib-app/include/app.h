@@ -7,23 +7,14 @@
 #include <netex/net.h>
 #include <stddef.h>
 
-static volatile int appExitRequested = 0;
+// set once the system asks the app to quit (XMB exit) or requestAppExit() is called; the main
+// loop runs until it's set. Lives in app.c so every file sees the same flag - as a header
+// variable each file silently got its own private copy.
+extern volatile int appExitRequested;
 
-static void appExitCallback(uint64_t status, uint64_t param, void *userdata)
-{
-   (void)param; (void)userdata;
-   if (status == CELL_SYSUTIL_REQUEST_EXITGAME) appExitRequested = 1;
-}
-
-static inline void appRegisterExitCallback(void)
-{
-   cellSysutilRegisterCallback(0, appExitCallback, NULL);
-}
-
-static inline void appPoll(void)
-{
-   cellSysutilCheckCallback();
-}
+void appRegisterExitCallback(void);
+void appPoll(void);
+void requestAppExit(void);   // exit from app code (e.g. a quit menu), same path as a system exit
 
 // load the NET sysmodule and bring up the socket stack. apps run as cold
 // NPDRM processes so the network APIs are not live until this runs; VSH

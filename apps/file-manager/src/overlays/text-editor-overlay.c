@@ -4,7 +4,7 @@
 // view in a fixed-position panel below a filename header, with its own
 // Edit/Save/Exit footer row. D-pad moves the caret between characters and lines,
 // scrolling (vertically and, since lines aren't wrapped, horizontally) just
-// enough to keep it in view. Edit (Cross) opens the on-screen keyboard, whose
+// enough to keep it in view; L2/R2 page up/down while the keyboard is closed. Edit (Cross) opens the on-screen keyboard, whose
 // committed keys insert/backspace/tab/newline at the caret; Edit is disabled
 // while the keyboard is already open, and Exit is disabled too - Circle
 // closes the keyboard instead of the editor while it's open. Save (Start)
@@ -56,7 +56,7 @@
 #define PANEL_X       37
 #define PANEL_Y       102
 #define PANEL_W       1846
-#define PANEL_H       863
+#define PANEL_H       883
 #define HIGHLIGHT_CAP 7   // highlight sprite (16x16) 9-slice corner cap
 
 #define FONT_SIZE  22
@@ -75,16 +75,16 @@
 // separator above the (future) bottom status row
 #define SEPARATOR_X1 42
 #define SEPARATOR_X2 1878
-#define SEPARATOR_Y  893
+#define SEPARATOR_Y  913
 #define SEPARATOR_H  1
 
 #define EDITOR_PAGE_SIZE (((SEPARATOR_Y - PANEL_Y) - PANEL_PAD) / ROW_HEIGHT)
 
 // own footer row (Edit + Save + Exit), independent of the file list's shared footer widget
 #define FOOTER_X          51
-#define FOOTER_Y         998
+#define FOOTER_Y         1018
 #define FOOTER_TEXT_SIZE  20
-#define FOOTER_BUTTON_GAP 40
+#define FOOTER_BUTTON_GAP 50
 #define FOOTER_ICON_H     32   // console button glyphs are scaled to this height, aspect preserved
 
 // scrollbar: a pill-shaped thumb (SPRITE_VERTICAL_PILL, 10x31 native - a 5px-radius
@@ -93,7 +93,7 @@
 #define SCROLLBAR_X           1847
 #define SCROLLBAR_Y            129
 #define SCROLLBAR_W             14
-#define SCROLLBAR_H            742
+#define SCROLLBAR_H            762
 #define SCROLLBAR_THUMB_W       10
 #define SCROLLBAR_THUMB_CAP      5   // the pill's rounded-end radius (half its native width)
 #define SCROLLBAR_THUMB_MIN_H   40
@@ -123,7 +123,7 @@
 // separator. right-aligned within its block, so it stays flush with the panel's
 // right edge regardless of how wide the segments are.
 #define STATUS_X         1330
-#define STATUS_Y          917
+#define STATUS_Y          937
 #define STATUS_W          522
 #define STATUS_H           27
 #define STATUS_TEXT_SIZE   20
@@ -183,7 +183,7 @@ static int   numberOffsetX[EDITOR_PAGE_SIZE];
 // detection yet).
 static Label sizeLabel, positionLabel, encodingLabel, lineEndingLabel, pipeLabel;
 
-static ButtonRepeat scrollUpRepeat, scrollDownRepeat, scrollLeftRepeat, scrollRightRepeat;
+static ButtonRepeat scrollUpRepeat, scrollDownRepeat, scrollLeftRepeat, scrollRightRepeat, pageUpRepeat, pageDownRepeat;
 
 static const char *getLineEndingText(LineEnding le)
 {
@@ -585,6 +585,11 @@ static void update(void)
    }
 
    handleDpadNavigation();
+
+   // page up/down, repeating while held. only reachable while the keyboard is fully closed (the
+   // early return above), so this never fights L2's shift-focus role while the keyboard is up.
+   if (isRepeatDue(&pageDownRepeat, getPadButtonState(PAD_BTN_R2)))    moveCursor(EDITOR_PAGE_SIZE);
+   else if (isRepeatDue(&pageUpRepeat, getPadButtonState(PAD_BTN_L2))) moveCursor(-EDITOR_PAGE_SIZE);
 
    if (state.rowsStale) rebuildRows();
 }

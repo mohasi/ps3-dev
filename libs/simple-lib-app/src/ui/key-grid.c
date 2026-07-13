@@ -6,7 +6,7 @@
 #define SCREEN_MARGIN 16   // clear of the screen's right/bottom edges
 
 #define COLOR_PANEL_BG      0xFF01142Bu
-#define COLOR_KEY_HIGHLIGHT 0xFF031B38u
+#define COLOR_KEY_HIGHLIGHT 0xFF1E5AA8u   // clearly brighter than the panel so the selected key pops
 
 void initKeyGrid(KeyGridPicker *kg, GfxTexture sprites, SpriteRegion panelSprite, int panelCap,
                   int rows, int cols, int cellW, int cellH, int baseFontSize, const char *grid,

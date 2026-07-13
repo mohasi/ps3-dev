@@ -2,7 +2,8 @@
 // header, an address gutter, and a byte cursor mirrored between the hex and
 // ASCII columns. Streams the visible page straight from the file on every
 // scroll (via vfs seek/read) instead of loading it whole, so it stays safe on
-// huge files. Edit (Cross) opens a dedicated hex pad (0-9/A-F, Square is
+// huge files. L1/L2 and R1/R2 page up/down (L2/R2 only while the pad is
+// closed). Edit (Cross) opens a dedicated hex pad (0-9/A-F, Square is
 // backspace): hex digits overwrite the byte under the cursor two nibbles at a
 // time, previewing after the first nibble rather than waiting for the second;
 // Edit is disabled while the pad is already open, and Exit is disabled too -
@@ -56,7 +57,7 @@
 #define PANEL_X       37
 #define PANEL_Y       102
 #define PANEL_W       1846
-#define PANEL_H       863
+#define PANEL_H       883
 #define HIGHLIGHT_CAP 7
 
 #define FONT_SIZE  22
@@ -66,7 +67,7 @@
 // separator above the footer row
 #define SEPARATOR_X1 42
 #define SEPARATOR_X2 1878
-#define SEPARATOR_Y  893
+#define SEPARATOR_Y  913
 #define SEPARATOR_H  1
 
 // byte grid: 16 bytes/row, each cell "XX " (2 hex digits + a gap), then a
@@ -82,15 +83,15 @@
 #define HEX_PAGE_SIZE (((SEPARATOR_Y - PANEL_Y) - PANEL_PAD) / ROW_HEIGHT - 1)
 
 #define FOOTER_X          51
-#define FOOTER_Y         998
+#define FOOTER_Y         1018
 #define FOOTER_TEXT_SIZE  20
-#define FOOTER_BUTTON_GAP 40
+#define FOOTER_BUTTON_GAP 50
 #define FOOTER_ICON_H     32   // console button glyphs are scaled to this height, aspect preserved
 
 #define SCROLLBAR_X           1847
 #define SCROLLBAR_Y            129
 #define SCROLLBAR_W             14
-#define SCROLLBAR_H            742
+#define SCROLLBAR_H            762
 #define SCROLLBAR_THUMB_W       10
 #define SCROLLBAR_THUMB_CAP      5
 #define SCROLLBAR_THUMB_MIN_H   40
@@ -162,7 +163,7 @@ static int hexAreaX;        // right of the address column + a gap
 static int asciiAreaX;      // right of the hex columns + a gap
 static int addressBgWidth;  // width of the active-row background over the address column
 
-static ButtonRepeat scrollUpRepeat, scrollDownRepeat, scrollLeftRepeat, scrollRightRepeat;
+static ButtonRepeat scrollUpRepeat, scrollDownRepeat, scrollLeftRepeat, scrollRightRepeat, pageUpRepeat, pageDownRepeat;
 
 static uint64_t getTotalRowCount(void)
 {
@@ -521,6 +522,11 @@ static void update(void)
    }
 
    handleDpadNavigation();
+
+   // page up/down, repeating while held. only reachable while the hex pad is fully closed (the
+   // early return above), so this never fights L2's shift-focus role while the pad is up.
+   if (isRepeatDue(&pageDownRepeat, getPadButtonState(PAD_BTN_R2)))    moveCursorRows(HEX_PAGE_SIZE);
+   else if (isRepeatDue(&pageUpRepeat, getPadButtonState(PAD_BTN_L2))) moveCursorRows(-HEX_PAGE_SIZE);
 
    if (state.rowsStale) rebuildRows();
 }

@@ -7,6 +7,7 @@
 #include "colors.h"
 #include "ui/label.h"
 #include "ui/image.h"
+#include "ui/console-glyphs.h"
 #include "ui/slice.h"
 #include "ui/dialog-panel.h"
 #include "string-utilities.h"
@@ -22,7 +23,7 @@
 #define WARNING_Y      50
 #define WARNING_W      75
 #define WARNING_H      70
-#define BUTTON_ICON    39   // native cross/square/circle glyph size
+#define BUTTON_ICON    32   // rendered height of the XMB button glyphs (width follows aspect)
 #define TITLE_X        168
 #define TITLE_Y        50
 #define TITLE_SIZE     24
@@ -33,10 +34,10 @@
 
 // button row: glyphs sit on one line, each followed by its label. the whole set
 // is centered as a group (see draw), so only the row height and spacing are fixed.
-#define BUTTON_ROW_Y   192  // y of the glyph row
+#define BUTTON_ROW_Y   196  // y of the glyph row
 #define ICON_LABEL_GAP 12   // space between a glyph and its own label
 #define BUTTON_GAP     60   // space between one button's label and the next glyph
-#define LABEL_DROP     10   // label y offset below the glyph top to center it
+#define LABEL_DROP     ((BUTTON_ICON - BUTTON_SIZE) / 2)   // center the label on the glyph
 
 // separator (dialog-relative)
 #define SEP_X          45
@@ -67,10 +68,10 @@ void initConfirmOverlay(GfxTexture sprites, Audio *sfx)
    initDialogPanel(&panel, sprites, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP);
    initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
 
-   initImage(&warningIcon, sprites, 0, 0, WARNING_W,   WARNING_H,   spriteRegions[SPRITE_WARNING], GFX_FILTER_LINEAR);
-   initImage(&crossIcon,   sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_CROSS],   GFX_FILTER_LINEAR);
-   initImage(&squareIcon,  sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_SQUARE],  GFX_FILTER_LINEAR);
-   initImage(&circleIcon,  sprites, 0, 0, BUTTON_ICON, BUTTON_ICON, spriteRegions[SPRITE_CIRCLE],  GFX_FILTER_LINEAR);
+   initImage(&warningIcon, sprites, 0, 0, WARNING_W, WARNING_H, spriteRegions[SPRITE_WARNING], GFX_FILTER_LINEAR);
+   initGlyphIcon(&crossIcon,  GLYPH_CROSS,  BUTTON_ICON);
+   initGlyphIcon(&squareIcon, GLYPH_SQUARE, BUTTON_ICON);
+   initGlyphIcon(&circleIcon, GLYPH_CIRCLE, BUTTON_ICON);
 
    int textW = DIALOG_W - TITLE_X - TEXT_RIGHT_PAD;
    initLabel(&titleLabel,   &font, 0, 0, textW, AUTO, TITLE_SIZE,   COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
@@ -139,15 +140,15 @@ static void draw(void)
 
    int widths[3], total = 0;
    for (int i = 0; i < n; i++) {
-      widths[i] = BUTTON_ICON + ICON_LABEL_GAP + (int)measureFontText(&font, BUTTON_SIZE, labels[i]->text);
+      widths[i] = icons[i]->w + ICON_LABEL_GAP + (int)measureFontText(&font, BUTTON_SIZE, labels[i]->text);
       total += widths[i];
    }
    total += (n - 1) * BUTTON_GAP;
 
    int x = dialogX + (DIALOG_W - total) / 2;
    for (int i = 0; i < n; i++) {
-      drawImageAt(icons[i],  x,                            dialogY + BUTTON_ROW_Y);
-      drawLabelAt(labels[i], x + BUTTON_ICON + ICON_LABEL_GAP, dialogY + BUTTON_ROW_Y + LABEL_DROP);
+      drawImageAt(icons[i],  x,                              dialogY + BUTTON_ROW_Y);
+      drawLabelAt(labels[i], x + icons[i]->w + ICON_LABEL_GAP, dialogY + BUTTON_ROW_Y + LABEL_DROP);
       x += widths[i] + BUTTON_GAP;
    }
 }

@@ -9,6 +9,7 @@
 #include "colors.h"
 #include "ui/label.h"
 #include "ui/image.h"
+#include "ui/console-glyphs.h"
 #include "ui/slice.h"
 #include "ui/dialog-panel.h"
 #include "ui/progress-bar.h"
@@ -49,8 +50,8 @@
 #define SEP_H          2
 
 // cancel button (circle icon + label, centered as a group)
-#define CANCEL_ICON    39   // native circle glyph size
-#define CANCEL_Y       215
+#define CANCEL_ICON    32   // rendered height of the XMB circle glyph
+#define CANCEL_Y       218
 #define CANCEL_GAP     10
 #define CANCEL_SIZE    18
 
@@ -78,7 +79,7 @@ void initProgressOverlay(GfxTexture sprites, Audio *sfx)
    initProgressBar(&bar, sprites, &font, FRAME_W, FRAME_H, spriteRegions[SPRITE_FRAME], FRAME_CAP,
                    spriteRegions[SPRITE_PROGRESS], PROGRESS_CAP, BAR_PAD, PCT_W, PCT_SIZE, COLOR_WHITE, PCT_GAP);
    initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
-   initImage(&circleIcon, sprites, 0, 0, CANCEL_ICON, CANCEL_ICON, spriteRegions[SPRITE_CIRCLE], GFX_FILTER_LINEAR);
+   initGlyphIcon(&circleIcon, GLYPH_CIRCLE, CANCEL_ICON);
 
    initLabel(&titleLabel,    &font, 0, 0, DIALOG_W - TITLE_X - TEXT_RIGHT_PAD,    AUTO, TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
    initLabel(&subtitleLabel, &font, 0, 0, DIALOG_W - SUBTITLE_X - TEXT_RIGHT_PAD, AUTO, SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
@@ -138,10 +139,10 @@ static void draw(void)
 
    // single Cancel button: circle icon + label, centered as a group
    float tw = measureFontText(&font, CANCEL_SIZE, "Cancel");
-   int groupW = CANCEL_ICON + CANCEL_GAP + (int)tw;
+   int groupW = circleIcon.w + CANCEL_GAP + (int)tw;
    int gx = dialogX + (DIALOG_W - groupW) / 2;
    drawImageAt(&circleIcon,  gx, dialogY + CANCEL_Y);
-   drawLabelAt(&cancelLabel, gx + CANCEL_ICON + CANCEL_GAP, dialogY + CANCEL_Y + (CANCEL_ICON - CANCEL_SIZE) / 2);
+   drawLabelAt(&cancelLabel, gx + circleIcon.w + CANCEL_GAP, dialogY + CANCEL_Y + (CANCEL_ICON - CANCEL_SIZE) / 2);
 }
 
 static void term(void)

@@ -1,5 +1,6 @@
 // file-list - scrollable directory listing widget
 #include "widgets/file-list.h"
+#include "app.h"   // requestAppExit: Circle at root offers to quit
 #include "ui/label.h"
 #include "ui/image.h"
 #include "ui/slice.h"
@@ -399,9 +400,18 @@ static void activateSelectedEntry(void)
    else                                openHexViewer(full);
 }
 
+static void onExitConfirmResolved(ConfirmChoice choice)
+{
+   if (choice == CONFIRM_CROSS) requestAppExit();
+}
+
 static void goToParentDir(void)
 {
-   if (strlen(currentPath) <= 1) return;
+   if (strlen(currentPath) <= 1) {
+      // already at root: Back means leaving the app, so make sure it's intentional
+      askConfirm("Exit", "Are you sure you want to exit?", "Exit", NULL, "Cancel", onExitConfirmResolved);
+      return;
+   }
 
    playAudioOnce(clickSfx);
    toParentPath(currentPath);
@@ -427,8 +437,7 @@ static void syncFooterButtons(void)
       crossShowsOpen = showsOpen;
    }
 
-   setFooterButtonEnabled(PAD_BTN_CIRCLE, strlen(currentPath) > 1);
-   setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);
+   setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);   // Circle stays enabled: at root it offers to exit the app
 }
 
 void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check, int x, int y, int maxWidth, int rowHeight, int fontSize, uint32_t color, Breadcrumb *bc)
@@ -451,9 +460,9 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
 
    initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
    initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
-   addFooterButton(PAD_BTN_CROSS,  spriteRegions[SPRITE_CROSS],  "Enter", activateSelectedEntry);
-   addFooterButton(PAD_BTN_CIRCLE, spriteRegions[SPRITE_CIRCLE], "Back",  goToParentDir);
-   addFooterButton(PAD_BTN_SQUARE, spriteRegions[SPRITE_SQUARE], "Mark",  NULL);
+   addFooterButton(PAD_BTN_CROSS,  GLYPH_CROSS,  "Enter", activateSelectedEntry);
+   addFooterButton(PAD_BTN_CIRCLE, GLYPH_CIRCLE, "Back",  goToParentDir);
+   addFooterButton(PAD_BTN_SQUARE, GLYPH_SQUARE, "Mark",  NULL);
 
    for (int t = 0; t < FILE_TYPE_COUNT; t++)
       initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);

@@ -130,7 +130,7 @@ file-manager/
 │   ├── screens/home.c
 │   ├── widgets/            # clock, free-space, file-list
 │   └── overlays/           # sidepanel, confirm-overlay, progress-overlay, image-viewer-overlay, audio-player-overlay
-├── res/                    # runtime assets (background.png, sprites.png, click.wav)
+├── res/                    # runtime assets (sprites.png, click.wav, font); the UI background is a solid colour drawn in code
 ├── bin/<Cfg>/              # OutDir + package staging
 └── obj/<Cfg>/              # IntDir
 ```

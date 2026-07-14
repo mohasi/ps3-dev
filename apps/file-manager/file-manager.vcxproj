@@ -96,7 +96,6 @@
    <None Include="file-manager.conf" />
    <None Include="PARAM.SFO" />
    <None Include="PARAM.SFO.xml" />
-   <None Include="res\background.png" />
    <None Include="res\sprites.png" />
    <None Include="res\check.wav" />
    <None Include="res\click.wav" />

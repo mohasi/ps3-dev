@@ -14,14 +14,16 @@ static void refresh(void *ctx)
    (void)ctx;
    uint64_t freeBytes = 0;
    if (getFreeSpace(freeSpacePath, &freeBytes, NULL) != 0) {
-      setLabelText(&label, EM_DASH);   // no single volume here (e.g. the device-list root)
+      setLabelText(&label, "Free Space : " EM_DASH);   // no single volume here (e.g. the device-list root)
       return;
    }
 
    uint64_t freeGB = freeBytes / (1024 * 1024 * 1024);
 
-   char buf[16];
-   int p = intToDec((int)freeGB, buf);
+   char buf[32];
+   int p = 0;
+   appendStr(buf, sizeof buf, &p, "Free Space : ");
+   p += intToDec((int)freeGB, buf + p);
    buf[p++] = ' ';
    buf[p++] = 'G';
    buf[p++] = 'B';

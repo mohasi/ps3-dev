@@ -5,6 +5,8 @@
 #include "font.h"
 #include "ftp.h"
 #include "ui/image.h"
+#include "ui/label.h"
+#include "ui/slice.h"
 #include "ui/console-glyphs.h"
 #include "ui/breadcrumb.h"
 #include "ui/keyboard.h"
@@ -27,12 +29,39 @@
 #include "network.h"
 
 static Font pop;
-static GfxTexture bg;
 static GfxTexture sprites;
-static Image background;
+static Image titleFolderIcon;
+static Image clockIcon;
+static Label titleLabel;
+static NineSlice breadcrumbBox;
 static Breadcrumb breadcrumb;
 static Audio clickSfx;
 static Audio checkSfx;
+
+// the whole screen background is a solid fill (no background.png) with the header/footer chrome
+// drawn on top, so everything here can be moved, restyled, and themed freely
+#define COLOR_APP_BG   0xFF001636u   // flat navy the old background.png used everywhere
+#define BOX_X          44   // breadcrumb container (was baked into the background); now a nine-slice
+#define BOX_Y         117
+#define BOX_W        1832
+#define BOX_H          46
+#define BOX_CAP        14   // rounded-corner cap of the breadcrumb-box sprite
+#define TITLE_ICON_X   40
+#define TITLE_ICON_Y   30
+#define TITLE_ICON_W   70
+#define TITLE_ICON_H   58
+#define TITLE_TEXT_X  136
+#define TITLE_TEXT_Y   44
+#define TITLE_TEXT_SIZE 32
+#define CLOCK_ICON_X  1848   // where the old baked clock icon sat, top-right
+#define CLOCK_ICON_Y    47
+#define CLOCK_ICON_W    36
+#define CLOCK_ICON_H    37
+#define DIVIDER_X      51
+#define DIVIDER_W    (1869 - 51)
+#define DIVIDER_TOP_Y  932
+#define DIVIDER_BOT_Y  988
+#define COLOR_DIVIDER  0xFF232D43u   // exact colour of the old baked divider lines (bg is solid, so opaque)
 
 // Sets the SELECT button label to "<prefix> / <ip>:<port>", or just "<prefix>"
 // if the local IP can't be resolved.
@@ -77,15 +106,17 @@ static void openSidepanel(void)
 static void initHome(void)
 {
    pop      = openSystemFont(FONT_POP);
-   bg       = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/background.png");
    sprites  = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/sprites.png");
    clickSfx = loadAudio("/dev_hdd0/game/FILEMGR01/USRDIR/click.wav", AUDIO_MEMORY);
    checkSfx = loadAudio("/dev_hdd0/game/FILEMGR01/USRDIR/check.wav", AUDIO_MEMORY);
 
-   initImage(&background, bg, 0, 0, AUTO, AUTO, SPRITE_FULL, GFX_FILTER_LINEAR);
+   initNineSlice(&breadcrumbBox, sprites, BOX_X, BOX_Y, BOX_W, BOX_H, spriteRegions[SPRITE_BREADCRUMB_BOX], BOX_CAP, BOX_CAP);
+   initImage(&titleFolderIcon, sprites, TITLE_ICON_X, TITLE_ICON_Y, TITLE_ICON_W, TITLE_ICON_H, spriteRegions[SPRITE_TITLE_FOLDER], GFX_FILTER_LINEAR);
+   initImage(&clockIcon, sprites, CLOCK_ICON_X, CLOCK_ICON_Y, CLOCK_ICON_W, CLOCK_ICON_H, spriteRegions[SPRITE_CLOCK], GFX_FILTER_LINEAR);
+   initLabel(&titleLabel, &pop, TITLE_TEXT_X, TITLE_TEXT_Y, AUTO, AUTO, TITLE_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, "PS3 File Manager");
    initBreadcrumb(&breadcrumb, &pop, 70, 130, COLOR_WHITE, sprites, spriteRegions[SPRITE_CHEVRON], 20);
    initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
-   initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
+   initFreeSpaceWidget(&pop, 1668, 951, 20, 0x64FFFFFF, 210);
    initFooterWidget(&pop);
    initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 860, 74, 24, COLOR_WHITE, &breadcrumb);   // name width leaves room for the permissions column
    initSidepanel(sprites, &clickSfx, dispatchAction);
@@ -157,7 +188,13 @@ static void updateHome(void)
 
 static void drawHome(void)
 {
-   drawImage(&background);
+   fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), COLOR_APP_BG);
+   drawNineSlice(&breadcrumbBox);
+   drawImage(&titleFolderIcon);
+   drawImage(&clockIcon);
+   drawLabel(&titleLabel);
+   fillGfxRectangle(DIVIDER_X, DIVIDER_TOP_Y, DIVIDER_W, 2, COLOR_DIVIDER);
+   fillGfxRectangle(DIVIDER_X, DIVIDER_BOT_Y, DIVIDER_W, 2, COLOR_DIVIDER);
    drawBreadcrumb(&breadcrumb);
    drawClockWidget();
    drawFreeSpaceWidget();
@@ -195,11 +232,11 @@ static void termHome(void)
    termClockWidget();
    termFreeSpaceWidget();
    termBreadcrumb(&breadcrumb);
+   freeLabel(&titleLabel);
 
    // release the screen's own textures (the RSX is already idle after the
    // widget teardown above, but make sure before reclaiming their VRAM).
    finishGfx();
-   freeGfxTexture(&bg);
    freeGfxTexture(&sprites);
 
    freeAudio(&clickSfx);

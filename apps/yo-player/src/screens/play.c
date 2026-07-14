@@ -30,6 +30,7 @@
 #include "storage.h"            // resume position (get/setWatchedPosition)
 #include "sponsorblock.h"       // skip segments (auto-skip + seek-bar marks)
 #include "subtitles.h"          // fetch + parse a caption track; cue lookup during playback
+#include "chapters.h"           // description timestamp lines -> chapter list
 #include "dbg.h"                // logInfo/logError (bridge)
 
 #include <string.h>
@@ -52,11 +53,18 @@
 // seek bar, and the HUD shows the chosen language top-right while the controls are up.
 #define SUBTITLE_TEXT_SIZE 30
 
-// description overlay: SELECT pauses the video and shows the description full-screen; up/down scroll it.
+// description overlay: SELECT toggles the description full-screen; up/down scroll it.
 #define DESCRIPTION_MARGIN_X    120
 #define DESCRIPTION_MARGIN_Y    80
 #define DESCRIPTION_TEXT_SIZE   24
 #define DESCRIPTION_SCROLL_STEP 40
+
+// chapter picker: START toggles a centred list of the video's chapters; up/down select
+// (the window follows the selection), cross jumps there, circle/START close without jumping.
+#define CHAPTER_TEXT_SIZE    24
+#define CHAPTER_ROW_HEIGHT   46
+#define CHAPTER_VISIBLE_ROWS 12
+#define CHAPTER_TIME_GAP     24   // between the right-aligned time column and the title column
 
 // the video to play, set by playVideo() before the screen is pushed. defaults to
 // a short public clip so pushing the screen directly still does something.
@@ -78,12 +86,25 @@ static struct {
    char             title[256];        // resolved video title (worker sets, UI reads after adoption)
    char             description[2048]; // resolved video description (worker sets, UI reads after adoption)
 
-   // description overlay: opening pauses the video (if it wasn't already); closing only resumes when the
-   // pause was ours. the text is rasterised once, on first open, into one tall texture that up/down scroll.
+   // description overlay: the text is rasterised once, on first open, into one tall texture that
+   // up/down scroll. playback carries on untouched underneath.
    int              descriptionVisible;
    int              descriptionRendered;
-   int              descriptionPausedByUs;
    int              descriptionScroll;   // pixels scrolled down into the text
+
+   // chapter picker: chapters come out of the description at resolve time; when that finds none, a
+   // side worker asks the /next endpoint (YouTube's own chapter list). the row labels are rasterised
+   // on first open, and the widest row sizes the panel.
+   ChapterList      chapters;            // parsed by the worker (UI reads after adoption)
+   ChapterList      fetchedChapters;     // /next result (worker writes, copied over on reap)
+   volatile int     chWorkerDone;
+   int              chThreadActive, chFetchTried;
+   sys_ppu_thread_t chWorkerTid;
+   int              chaptersVisible;
+   int              chaptersRendered;
+   int              chapterSelected;
+   int              chapterTimeWidth;    // widest time label (the right-aligned time column)
+   int              chapterPanelWidth;
    int              vidItag, vidW, vidH, vidFps, audItag;   // picked formats (worker sets, UI reads)
    int              isLive;           // a live stream: no duration, no resume/save, no seek
    const uint8_t   *lastFrame;        // fps measure: a changed pointer means a newly presented frame
@@ -130,6 +151,8 @@ static Label toastLabel;                      // brief centred toast ("Skipped .
 static Label titleLabel;                      // video title, top-left while the seek bar is up
 static Label subtitleLabel;                   // active subtitle cue, above the seek bar
 static Label subsHudLabel;                    // chosen subtitle language, top-right while the HUD is up
+static Label chapterLabels[MAX_CHAPTERS];     // chapter titles (picker overlay rows)
+static Label chapterTimeLabels[MAX_CHAPTERS]; // chapter start times, right-aligned in their own column
 static TextTexture descriptionTexture;        // whole description as one tall texture (scrolled by draw)
 
 // the shared pill meter; its level is kept in `volumeLevel` outside `state` so it survives across videos.
@@ -174,6 +197,7 @@ static void worker(uint64_t arg)
    if (extractor->extract(requestedInput, info) != 0 || info->formatCount == 0) { fail("resolve failed"); goto done; }
    strCopy(state.title, sizeof state.title, info->title);
    strCopy(state.description, sizeof state.description, info->description);
+   parseChapters(state.description, &state.chapters);
    for (int i = 0; i < info->captionCount; i++)   // keep only tracks the system font can render
       if (isRenderableSubtitleLanguage(info->captions[i].languageCode))
          state.captionTracks[state.captionCount++] = info->captions[i];
@@ -232,6 +256,16 @@ static void sponsorWorker(uint64_t arg)
    exitThread();
 }
 
+// asks /next for youtube's own chapter list; spawned only when the description parse found none.
+static void chapterWorker(uint64_t arg)
+{
+   (void)arg;
+   fetchChapters(requestedInput, &state.fetchedChapters);
+   __sync_synchronize();
+   state.chWorkerDone = 1;
+   exitThread();
+}
+
 void playVideo(const char *input)
 {
    strCopy(requestedInput, sizeof requestedInput, input);
@@ -255,6 +289,10 @@ static void initPlay(void)
    initLabelRaw(&titleLabel, &font, 0, 0, 1100, AUTO, 22, COLOR_SLATE_100, TEXT_NOWRAP_ELLIPSIS, "");
    initLabelRaw(&subtitleLabel, &font, 0, 0, 1600, AUTO, SUBTITLE_TEXT_SIZE, COLOR_SLATE_100, TEXT_WRAP, "");
    initLabelRaw(&subsHudLabel, &font, 0, 0, 500, AUTO, 22, COLOR_SLATE_100, TEXT_NOWRAP_ELLIPSIS, "");
+   for (int i = 0; i < MAX_CHAPTERS; i++) {
+      initLabelRaw(&chapterLabels[i], &font, 0, 0, 990, AUTO, CHAPTER_TEXT_SIZE, COLOR_SLATE_100, TEXT_NOWRAP_ELLIPSIS, "");
+      initLabel(&chapterTimeLabels[i], &font, 0, 0, 150, AUTO, CHAPTER_TEXT_SIZE, COLOR_SLATE_400, TEXT_NOWRAP, "");
+   }
    state.subtitlePick = state.subtitleFetched = -1;   // default off (memset left them 0)
 
    if (!spriteSheetLoadTried) {
@@ -275,6 +313,13 @@ static void initPlay(void)
 }
 
 static void showControls(void) { state.controlsShownUs = sys_time_get_system_time(); }
+
+static void formatTime(char *buffer, int cap, int seconds)
+{
+   if (seconds < 0) seconds = 0;
+   if (seconds >= 3600) snprintf(buffer, cap, "%d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60);
+   else                 snprintf(buffer, cap, "%d:%02d", seconds / 60, seconds % 60);
+}
 
 static void showToast(const char *text)
 {
@@ -375,8 +420,8 @@ static void autoSkipSponsor(void)
    }
 }
 
-// SELECT opens the description: pause the video (remembering whether the pause was ours) and rasterise
-// the text once, off the draw path, as one tall wrapped texture the draw scrolls through.
+// SELECT opens the description: rasterise the text once, off the draw path, as one tall wrapped
+// texture the draw scrolls through. playback carries on untouched underneath.
 static void openDescription(void)
 {
    if (!state.descriptionRendered) {
@@ -384,19 +429,16 @@ static void openDescription(void)
                     COLOR_SLATE_100, state.screenW - 2 * DESCRIPTION_MARGIN_X, TEXT_WRAP);
       state.descriptionRendered = 1;
    }
-   state.descriptionPausedByUs = !isVideoPaused(state.player);
-   if (state.descriptionPausedByUs) setVideoPaused(state.player, 1);
    state.descriptionScroll = 0;
    state.descriptionVisible = 1;
 }
 
-// while the description is up it owns the pad: SELECT/circle close it (resuming only a pause that was
-// ours), up/down scroll. playback input (seek, pause, back-out) is blocked underneath.
+// while the description is up it owns the pad: SELECT/circle close it, up/down scroll. playback
+// input (seek, pause, back-out) is blocked underneath.
 static void handleDescriptionInput(void)
 {
    if (isPadButtonPressed(PAD_BTN_SELECT) || isPadButtonPressed(PAD_BTN_CIRCLE)) {
       state.descriptionVisible = 0;
-      if (state.descriptionPausedByUs) setVideoPaused(state.player, 0);
       return;
    }
 
@@ -410,13 +452,68 @@ static void handleDescriptionInput(void)
    if (state.descriptionScroll < 0) state.descriptionScroll = 0;
 }
 
+// START opens the chapter picker: the rows are rasterised once (off the draw path), the widest time
+// and title size the two columns, and the selection starts on the chapter the playhead is in.
+static void openChapters(void)
+{
+   // live streams can't seek, so a chapter jump has nowhere to go even if the description lists times
+   if (state.chapters.count == 0 || state.isLive) { showToast("No chapters"); return; }
+
+   if (!state.chaptersRendered) {
+      int widestTitle = 0;
+      for (int i = 0; i < state.chapters.count; i++) {
+         char timeText[16];
+         formatTime(timeText, sizeof timeText, (int)state.chapters.chapters[i].start);
+         setLabelText(&chapterTimeLabels[i], timeText);
+         setLabelText(&chapterLabels[i], state.chapters.chapters[i].title);
+         if (chapterTimeLabels[i].tt.tex.w > state.chapterTimeWidth) state.chapterTimeWidth = chapterTimeLabels[i].tt.tex.w;
+         if (chapterLabels[i].tt.tex.w > widestTitle) widestTitle = chapterLabels[i].tt.tex.w;
+      }
+      state.chapterPanelWidth = state.chapterTimeWidth + CHAPTER_TIME_GAP + widestTitle;
+      state.chaptersRendered = 1;
+   }
+
+   float position = getVideoPositionSeconds(state.player);
+   state.chapterSelected = 0;
+   for (int i = 0; i < state.chapters.count; i++)
+      if (state.chapters.chapters[i].start <= position) state.chapterSelected = i;
+   state.chaptersVisible = 1;
+}
+
+// while the picker is up it owns the pad: up/down move the selection, cross jumps to the chapter
+// (playback carries on paused or playing, only the position moves), circle/START close without
+// jumping. playback input is blocked underneath.
+static void handleChaptersInput(void)
+{
+   if (isPadButtonPressed(PAD_BTN_CIRCLE) || isPadButtonPressed(PAD_BTN_START)) { state.chaptersVisible = 0; return; }
+
+   if (isPadButtonPressed(PAD_BTN_CROSS)) {
+      state.chaptersVisible = 0;
+      state.seeking = 0;   // a pending scrub must not overwrite the jump
+      seekVideoPlayer(state.player, state.chapters.chapters[state.chapterSelected].start);
+      showControls();
+      return;
+   }
+
+   static ButtonRepeat navigateRepeat;
+   if (isRepeatDue(&navigateRepeat, getPadButtonState(PAD_BTN_DOWN)))    state.chapterSelected++;
+   else if (isRepeatDue(&navigateRepeat, getPadButtonState(PAD_BTN_UP))) state.chapterSelected--;
+   if (state.chapterSelected < 0) state.chapterSelected = 0;
+   if (state.chapterSelected >= state.chapters.count) state.chapterSelected = state.chapters.count - 1;
+}
+
 static void updatePlay(void)
 {
+   // an overlay owns the pad for the whole frame it was (or just became) visible, so the button that
+   // closed or opened it can't leak into playback input below (e.g. cross toggling pause on the way out)
+   int overlayHadPad = state.descriptionVisible || state.chaptersVisible;
    if (state.descriptionVisible) handleDescriptionInput();
+   else if (state.chaptersVisible) handleChaptersInput();
    else {
       if (isPadButtonPressed(PAD_BTN_CIRCLE)) { popScreen(); return; }   // back to the results list
       if (isPadButtonPressed(PAD_BTN_R3)) state.showStats = !state.showStats;
       if (isPadButtonPressed(PAD_BTN_SELECT) && state.stage == STAGE_PLAYING && state.player) openDescription();
+      if (isPadButtonPressed(PAD_BTN_START) && state.stage == STAGE_PLAYING && state.player) openChapters();
    }
 
    // reap the worker once it's done; adopt the player it built
@@ -437,6 +534,19 @@ static void updatePlay(void)
       joinThread(state.sbWorkerTid);
       state.sbThreadActive = 0;
       state.sbReady = 1;
+   }
+
+   // chapters: when the description parse found none, ask /next once for youtube's own list
+   if (state.stage == STAGE_PLAYING && !state.chFetchTried && state.chapters.count == 0 && !state.isLive &&
+       isBareVideoId(requestedInput)) {
+      state.chFetchTried = 1;
+      state.chThreadActive = (spawnJoinableThread(&state.chWorkerTid, chapterWorker, 0,
+                              THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_64KB, "yt-chapters") == 0);
+   }
+   if (state.chWorkerDone && state.chThreadActive) {
+      joinThread(state.chWorkerTid);
+      state.chThreadActive = 0;
+      state.chapters = state.fetchedChapters;   // safe to adopt now the worker is reaped
    }
 
    // subtitles: reap a finished fetch (stale if the pick moved mid-fetch), then start one whenever
@@ -470,7 +580,8 @@ static void updatePlay(void)
    if (state.subtitlesReady && state.subtitlePick >= 0 && state.stage == STAGE_PLAYING && state.player)
       setLabelText(&subtitleLabel, getSubtitleCueText(state.subtitleTrack, getVideoPositionSeconds(state.player), &state.subtitleScanFrom));
 
-   if (state.stage == STAGE_PLAYING && state.player && !state.descriptionVisible) handlePlaybackInput();
+   if (state.stage == STAGE_PLAYING && state.player && !overlayHadPad && !state.descriptionVisible && !state.chaptersVisible)
+      handlePlaybackInput();
    if (state.sbReady && state.stage == STAGE_PLAYING && state.player && !isVideoPaused(state.player) && !state.seeking)
       autoSkipSponsor();
 
@@ -533,13 +644,6 @@ static int controlsVisible(void)
    return state.controlsShownUs != 0 && sys_time_get_system_time() - state.controlsShownUs < CONTROLS_VISIBLE_US;
 }
 
-static void formatTime(char *buffer, int cap, int seconds)
-{
-   if (seconds < 0) seconds = 0;
-   if (seconds >= 3600) snprintf(buffer, cap, "%d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60);
-   else                 snprintf(buffer, cap, "%d:%02d", seconds / 60, seconds % 60);
-}
-
 // paint each sponsor segment onto the bar in its category colour, over the progress fill so it stays
 // visible in the already-watched region (as YouTube's SponsorBlock overlay does).
 static void drawSponsorSegments(int barLeft, int span, int barTopY, int barH, float duration)
@@ -578,6 +682,9 @@ static void drawSeekBar(void)
    fillGfxRectangle(barLeft, barTopY, span, barH, 0x66FFFFFF);            // track
    fillGfxRectangle(barLeft, barTopY, filledW, barH, 0xFFFF0000);        // progress (youtube red)
    if (state.sbReady) drawSponsorSegments(barLeft, span, barTopY, barH, duration);
+   if (duration > 0.0f)   // chapter boundaries notch the bar, youtube-style
+      for (int i = 1; i < state.chapters.count; i++)
+         fillGfxRectangle(barLeft + (int)(state.chapters.chapters[i].start / duration * span), barTopY, 3, barH, 0xFF000000);
    fillGfxRectangle(barLeft + filledW - 3, barY - 11, 6, 22, 0xFFFFFFFF);   // scrubber handle
 
    char text[16];
@@ -591,21 +698,21 @@ static void drawSeekBar(void)
 // with breathing room either side so the text never touches the box edges.
 #define BADGE_PAD_X 14
 
-static void drawBadge(Label *label, int x)
+static void drawBadge(Label *label, int x, int y)
 {
-   fillGfxRectangle(x, 32, label->tt.tex.w + 2 * BADGE_PAD_X, label->tt.tex.h + 8, 0xCC000000);
-   drawLabelAt(label, x + BADGE_PAD_X, 36);
+   fillGfxRectangle(x, y, label->tt.tex.w + 2 * BADGE_PAD_X, label->tt.tex.h + 8, 0xCC000000);
+   drawLabelAt(label, x + BADGE_PAD_X, y + 4);
 }
 
 // title top-left + chosen subtitle language top-right, shown whenever the seek bar is up.
 static void drawTitle(void)
 {
-   if (titleLabel.tt.tex.w > 0) drawBadge(&titleLabel, 40);
+   if (titleLabel.tt.tex.w > 0) drawBadge(&titleLabel, 40, 32);
 }
 
 static void drawSubsHud(void)
 {
-   if (subsHudLabel.tt.tex.w > 0) drawBadge(&subsHudLabel, state.screenW - 40 - (subsHudLabel.tt.tex.w + 2 * BADGE_PAD_X));
+   if (subsHudLabel.tt.tex.w > 0) drawBadge(&subsHudLabel, state.screenW - 40 - (subsHudLabel.tt.tex.w + 2 * BADGE_PAD_X), 32);
 }
 
 // the active subtitle cue, centred above the seek bar on a dim backdrop.
@@ -622,7 +729,7 @@ static void drawSubtitle(void)
 // texture the scroll position selects (the texture is drawn through a window, so no clipping is needed).
 static void drawDescription(void)
 {
-   fillGfxRectangle(0, 0, state.screenW, state.screenH, 0xE6000000);   // 90% opaque black
+   fillGfxRectangle(0, 0, state.screenW, state.screenH, 0xD9000000);   // 85% opaque black
    if (descriptionTexture.tex.w == 0) return;
 
    int viewHeight = state.screenH - 2 * DESCRIPTION_MARGIN_Y;
@@ -636,15 +743,40 @@ static void drawDescription(void)
                   descriptionTexture.tex, 0.0f, sliceTop, 1.0f, sliceBottom, 0xFFFFFFFF, GFX_FILTER_NEAREST);
 }
 
-// a brief toast, centred well above the seek bar (clear of the subtitle area).
+// the chapter picker: a dim layer, then a centred column of rows windowed around the selection;
+// the selected row gets a subtle highlight with a youtube-red accent on its left edge.
+static void drawChapters(void)
+{
+   fillGfxRectangle(0, 0, state.screenW, state.screenH, 0xD9000000);   // 85% opaque black
+
+   // window the rows around the selection so long lists stay reachable without a scrollbar
+   int rows = state.chapters.count < CHAPTER_VISIBLE_ROWS ? state.chapters.count : CHAPTER_VISIBLE_ROWS;
+   int firstRow = state.chapterSelected - rows / 2;
+   if (firstRow > state.chapters.count - rows) firstRow = state.chapters.count - rows;
+   if (firstRow < 0) firstRow = 0;
+
+   int panelX = state.screenW / 2 - state.chapterPanelWidth / 2;
+   int titleX = panelX + state.chapterTimeWidth + CHAPTER_TIME_GAP;
+   int topY   = state.screenH / 2 - rows * CHAPTER_ROW_HEIGHT / 2;
+
+   for (int row = 0; row < rows; row++) {
+      int index = firstRow + row;
+      int rowY  = topY + row * CHAPTER_ROW_HEIGHT;
+      if (index == state.chapterSelected) {
+         fillGfxRectangle(panelX - 19, rowY, state.chapterPanelWidth + 43, CHAPTER_ROW_HEIGHT, 0x28FFFFFF);
+         fillGfxRectangle(panelX - 24, rowY, 5, CHAPTER_ROW_HEIGHT, 0xFFFF0000);   // red accent, flush with the highlight
+      }
+      drawLabelAt(&chapterTimeLabels[index], panelX + state.chapterTimeWidth - chapterTimeLabels[index].tt.tex.w,
+                  getCenteredLabelY(&chapterTimeLabels[index], rowY, CHAPTER_ROW_HEIGHT));
+      drawLabelAt(&chapterLabels[index], titleX, getCenteredLabelY(&chapterLabels[index], rowY, CHAPTER_ROW_HEIGHT));
+   }
+}
+
+// a brief toast in the top-right notification spot, one badge row below the subtitle-language badge.
 static void drawToast(void)
 {
    if (state.toastShownUs == 0 || sys_time_get_system_time() - state.toastShownUs >= TOAST_VISIBLE_US) return;
-   int barY = (int)(state.screenH * 0.94f);
-   int x = state.screenW / 2 - toastLabel.tt.tex.w / 2;
-   int y = barY - 150;
-   fillGfxRectangle(x - 14, y - 6, toastLabel.tt.tex.w + 28, toastLabel.tt.tex.h + 12, 0xC0000000);
-   drawLabelAt(&toastLabel, x, y);
+   drawBadge(&toastLabel, state.screenW - 40 - (toastLabel.tt.tex.w + 2 * BADGE_PAD_X), 80);
 }
 
 static void drawPlay(void)
@@ -667,8 +799,11 @@ static void drawPlay(void)
       }
       measureFps(frame);
       if (state.showStats && frame) { updateStatLabels(); drawStatsOverlay(); }
-      if (state.stage == STAGE_PLAYING && !state.isLive && controlsVisible()) { drawSeekBar(); drawTitle(); drawSubsHud(); }   // live has no timeline
-      if (state.stage == STAGE_PLAYING) { drawSubtitle(); drawToast(); drawVolumeMeter(&volumeMeter); }
+      int overlayUp = state.chaptersVisible || state.descriptionVisible;   // a full-screen overlay hides the HUD noise
+      if (state.stage == STAGE_PLAYING && !state.isLive && controlsVisible() && !overlayUp)   // live has no timeline
+         { drawSeekBar(); drawTitle(); drawSubsHud(); }
+      if (state.stage == STAGE_PLAYING && !overlayUp) { drawSubtitle(); drawToast(); drawVolumeMeter(&volumeMeter); }
+      if (state.chaptersVisible) drawChapters();
       if (state.descriptionVisible) drawDescription();
    }
 
@@ -683,6 +818,7 @@ static void termPlay(void)
    if (state.threadActive) { joinThread(state.workerTid); state.threadActive = 0; }
    if (state.sbThreadActive) { joinThread(state.sbWorkerTid); state.sbThreadActive = 0; }   // usually already done
    if (state.subThreadActive) { joinThread(state.subWorkerTid); state.subThreadActive = 0; }
+   if (state.chThreadActive) { joinThread(state.chWorkerTid); state.chThreadActive = 0; }
    free(state.subtitleTrack);
    state.subtitleTrack = NULL;
    // save the resume position on the way out; a finished video is saved as 0 so it restarts next time.
@@ -701,6 +837,7 @@ static void termPlay(void)
    freeLabel(&titleLabel);
    freeLabel(&subtitleLabel);
    freeLabel(&subsHudLabel);
+   for (int i = 0; i < MAX_CHAPTERS; i++) { freeLabel(&chapterLabels[i]); freeLabel(&chapterTimeLabels[i]); }
    freeVolumeMeter(&volumeMeter);
    freeTextTexture(&descriptionTexture);
    closeFont(&font);

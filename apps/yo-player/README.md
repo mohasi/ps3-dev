@@ -60,10 +60,12 @@ the bottom use the console's own controller glyphs.
   video if it had ended). Community
   **SponsorBlock** segments (sponsors, intros, self-promo, …) are skipped automatically and marked on the
   seek bar in their category colours. Live streams have no seek bar (there's nothing to scrub).
-  **Select** — pause and show the video **description** over the video; scroll it with up/down, close with
-  Select or Circle (playback resumes unless it was already paused before opening).
+  **Select** — show the video **description** over the video (playback carries on); scroll it with up/down,
+  close with Select or Circle.
   **Triangle** — cycle **subtitles** (off by default) through the video's available languages; the current
   language shows top-right while the seek bar is up.
+  **Start** — open the **chapter** list (from the description's timestamps, or YouTube's own chapter data);
+  up/down select, X jumps there, Start or Circle closes. Chapter boundaries notch the seek bar.
 - **Start** — open the keyboard to search.
 - **L1 / R1** — (home) switch category (Subscriptions, Gaming, Sports, Podcasts, Watch Later).
 - **Select** — cycle the sort order (shown top-right): search = Relevance/Views, channel = Latest/Popular/Oldest.

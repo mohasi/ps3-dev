@@ -288,6 +288,17 @@ const char *getCurrentPath(void)
 
 static void scrollToSelected(void);   // defined below; used by refreshMounts
 
+// opens folder and lands the cursor on selectName (if present); used to jump to a search result.
+void showFileListPath(const char *folder, const char *selectName)
+{
+   loadDir(folder);   // resets selection to the top and refreshes the breadcrumb
+   if (selectName) {
+      for (int i = 0; i < entryCount; i++)
+         if (strEq(entries[i].name, selectName)) { selectedIndex = i; break; }
+   }
+   scrollToSelected();
+}
+
 // Handles a mount-set change (USB hotplug). Registered with the VFS as the
 // mounts-changed callback (see initFileList), so pollMounts() drives it.
 static void refreshMounts(void)
@@ -384,41 +395,21 @@ static void enterSelectedDir(void)
    loadDir(next);
 }
 
-// whether the selected row is an image the viewer can actually open.
-static int selectedIsViewableImage(void)
+// opens fullPath in the right viewer for its type: supported images in the image viewer, playable
+// audio in the player, video in the player (which probes decodability itself), text in the editor,
+// and anything else in the hex viewer - so every non-folder always opens something. shared by the
+// file list's Cross handler and by search (a file result opens exactly as it would here).
+void openFile(const char *fullPath, FileType type)
 {
-   if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
-   return entries[selectedIndex].type == FILE_TYPE_IMAGE &&
-         isSupportedImageFormat(entries[selectedIndex].name);
+   const char *name = getBaseName(fullPath);
+   if (type == FILE_TYPE_IMAGE && isSupportedImageFormat(name)) openImageViewer(fullPath);
+   else if (type == FILE_TYPE_AUDIO && isPlayableAudioFile(name)) openAudioPlayer(fullPath);
+   else if (type == FILE_TYPE_VIDEO) openVideoPlayer(fullPath);
+   else if (type == FILE_TYPE_TEXT)  openTextEditor(fullPath);
+   else                              openHexViewer(fullPath);
 }
 
-// whether the selected row is an audio file the player can actually decode (wav/ogg).
-static int selectedIsPlayableAudio(void)
-{
-   if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
-   return entries[selectedIndex].type == FILE_TYPE_AUDIO &&
-         isPlayableAudioFile(entries[selectedIndex].name);
-}
-
-// whether the selected row is a text file the editor can open.
-static int selectedIsTextFile(void)
-{
-   if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
-   return entries[selectedIndex].type == FILE_TYPE_TEXT;
-}
-
-// whether the selected row is a video file. any video opens the player, which probes the file and
-// reports inside whether the PS3 can actually decode it (unlike image/audio, gated on decodability).
-static int selectedIsVideo(void)
-{
-   if (selectedIndex < 0 || selectedIndex >= entryCount) return 0;
-   return entries[selectedIndex].type == FILE_TYPE_VIDEO;
-}
-
-// cross handler: folders enter, supported images open in the viewer, playable audio opens in
-// the player, text files open in the editor. anything else - and any image/audio/video the
-// specific viewer can't decode - falls back to the hex viewer, so every non-folder row opens
-// something.
+// cross handler: folders enter, files open in their viewer (see openFile).
 static void activateSelectedEntry(void)
 {
    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
@@ -430,12 +421,7 @@ static void activateSelectedEntry(void)
 
    char full[MAX_PATH_LEN];
    joinPath(full, MAX_PATH_LEN, currentPath, entries[selectedIndex].name);
-
-   if (selectedIsViewableImage())      openImageViewer(full);
-   else if (selectedIsPlayableAudio()) openAudioPlayer(full);
-   else if (selectedIsVideo())         openVideoPlayer(full);
-   else if (selectedIsTextFile())      openTextEditor(full);
-   else                                openHexViewer(full);
+   openFile(full, entries[selectedIndex].type);
 }
 
 static void onExitConfirmResolved(ConfirmChoice choice)

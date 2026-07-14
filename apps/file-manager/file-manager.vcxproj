@@ -53,6 +53,7 @@
    <ClCompile Include="src\file-actions.c" />
    <ClCompile Include="src\folder-sizer.c" />
    <ClCompile Include="src\file-type.c" />
+   <ClCompile Include="src\search-controller.c" />
    <ClCompile Include="src\screens\home.c" />
    <ClCompile Include="src\overlays\sidepanel.c" />
    <ClCompile Include="src\overlays\confirm-overlay.c" />
@@ -66,6 +67,7 @@
    <ClCompile Include="src\widgets\footer-widget.c" />
    <ClCompile Include="src\widgets\free-space-widget.c" />
    <ClCompile Include="src\widgets\file-list.c" />
+   <ClCompile Include="src\widgets\search-list.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\clipboard.h" />
@@ -77,6 +79,7 @@
    <ClInclude Include="include\file-actions.h" />
    <ClInclude Include="include\folder-sizer.h" />
    <ClInclude Include="include\file-type.h" />
+   <ClInclude Include="include\search-controller.h" />
    <ClInclude Include="include\screens\home.h" />
    <ClInclude Include="include\overlays\sidepanel.h" />
    <ClInclude Include="include\overlays\confirm-overlay.h" />
@@ -90,6 +93,7 @@
    <ClInclude Include="include\widgets\footer-widget.h" />
    <ClInclude Include="include\widgets\free-space-widget.h" />
    <ClInclude Include="include\widgets\file-list.h" />
+   <ClInclude Include="include\widgets\search-list.h" />
    <ClInclude Include="include\sprite-regions.h" />
   </ItemGroup>
   <ItemGroup>

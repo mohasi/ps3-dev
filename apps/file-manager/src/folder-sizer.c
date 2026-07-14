@@ -1,12 +1,11 @@
 // folder-sizer - see folder-sizer.h
 #include "folder-sizer.h"
+#include "tree-walk.h"
 #include "vfs.h"
 #include "thread.h"
-#include <string.h>
 #include <sys/sys_time.h>
 
 #define SIZE_BUDGET_US 500000  // per-folder walker budget; longer trees report approximate
-#define WALK_DEPTH_MAX 64
 
 // one walker at a time. cancel is raised by the main thread and lowered by
 // the next updateFolderSizer() once the previous worker has exited, so we
@@ -15,74 +14,19 @@
 static volatile int cancel;
 static volatile int busy;
 
-static int shouldStop(uint64_t deadline)
+// per-folder accumulation for one walkTree pass. the deadline caps how long a single folder's walk
+// runs; going over it stops the walk and the result is reported as approximate.
+typedef struct { int files; uint64_t bytes; uint64_t deadline; } SizeAccum;
+
+static WalkResult sizeVisit(const char *fullPath, const char *name, VfsEntryType type, void *ctx)
 {
-   return cancel || sys_time_get_system_time() > deadline;
-}
-
-// iterative directory walk. one shared path buffer is mutated as we descend
-// (append "/name" on push, truncate back to the parent length on pop), so
-// stack usage stays flat regardless of depth. fdStack/lenStack hold the
-// open dir handle and the parent-path length for each level.
-static void walkPath(char *path, int pathLen, int *files, uint64_t *bytes, uint64_t deadline)
-{
-   VfsDir dirStack[WALK_DEPTH_MAX];
-   int lenStack[WALK_DEPTH_MAX];
-   int top = 0;
-
-   VfsStat st;
-   if (statPath(path, &st) != 0) return;
-   if (!st.isDir) {
-      (*files)++;
-      *bytes += st.size;
-      return;
+   (void)name;
+   SizeAccum *accum = (SizeAccum *)ctx;
+   if (type == VFS_ENTRY_FILE) {
+      VfsStat st;
+      if (statPath(fullPath, &st) == 0) { accum->files++; accum->bytes += st.size; }
    }
-   if (openDir(path, &dirStack[0]) != 0) return;
-   lenStack[0] = pathLen;
-   top = 1;
-
-   char name[256];
-
-   while (top > 0) {
-      if (shouldStop(deadline)) break;
-
-      if (readDir(&dirStack[top - 1], name, sizeof name, NULL) != 1) {
-         closeDir(&dirStack[top - 1]);
-         top--;
-         if (top > 0) path[lenStack[top]] = '\0';
-         continue;
-      }
-      if (name[0] == '.') continue;   // readDir already drops "."/".."; skip other dotfiles too
-
-      int parentLen = lenStack[top - 1];
-      path[parentLen] = '\0';
-      int nameLen = (int)strlen(name);
-      int needsSlash = parentLen > 0 && path[parentLen - 1] != '/';
-      int childLen = parentLen + (needsSlash ? 1 : 0) + nameLen;
-      if (childLen >= MAX_PATH_LEN) continue;
-      if (needsSlash) path[parentLen++] = '/';
-      memcpy(path + parentLen, name, nameLen);
-      path[childLen] = '\0';
-
-      if (statPath(path, &st) != 0) {
-         path[lenStack[top - 1]] = '\0';
-         continue;
-      }
-      if (!st.isDir) {
-         (*files)++;
-         *bytes += st.size;
-         path[lenStack[top - 1]] = '\0';
-         continue;
-      }
-      if (top >= WALK_DEPTH_MAX || openDir(path, &dirStack[top]) != 0) {
-         path[lenStack[top - 1]] = '\0';
-         continue;
-      }
-      lenStack[top] = childLen;
-      top++;
-   }
-
-   while (top > 0) closeDir(&dirStack[--top]);
+   return sys_time_get_system_time() > accum->deadline ? WALK_STOP : WALK_CONTINUE;
 }
 
 static void worker(uint64_t arg)
@@ -95,13 +39,11 @@ static void worker(uint64_t arg)
       int generation = 0;
       if (!callbacks->needsSizing(i, path, MAX_PATH_LEN, &generation)) continue;
 
-      int files = 0;
-      uint64_t bytes = 0;
-      uint64_t deadline = sys_time_get_system_time() + SIZE_BUDGET_US;
-      walkPath(path, (int)strlen(path), &files, &bytes, deadline);
+      SizeAccum accum = { 0, 0, sys_time_get_system_time() + SIZE_BUDGET_US };
+      walkTree(path, sizeVisit, &accum, &cancel);
 
       if (cancel) break;
-      callbacks->applyResult(i, bytes, files, sys_time_get_system_time() > deadline, generation);
+      callbacks->applyResult(i, accum.bytes, accum.files, sys_time_get_system_time() > accum.deadline, generation);
    }
    busy = 0;
    exitThread();

@@ -5,6 +5,7 @@
 #include "font.h"
 #include "gfx.h"
 #include "audio.h"
+#include "file-type.h"
 #include "ui/breadcrumb.h"
 #include "selection-actions.h"
 
@@ -15,6 +16,14 @@ void drawFileList(void);
 
 // the directory currently being browsed (valid until the next directory change).
 const char *getCurrentPath(void);
+
+// opens `folder` in the list and, if `selectName` is non-NULL, lands the cursor on that entry
+// (used when jumping to a search result).
+void showFileListPath(const char *folder, const char *selectName);
+
+// opens a file in the viewer matching its type (image/audio/video/text, else hex). shared with
+// search so a file result opens exactly as it would from the list.
+void openFile(const char *fullPath, FileType type);
 
 // queried by the home screen when the action menu is opened.
 // pointers are valid until the selection or directory changes.

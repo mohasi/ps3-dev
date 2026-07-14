@@ -15,6 +15,7 @@
 #include "widgets/footer-widget.h"
 #include "widgets/free-space-widget.h"
 #include "widgets/file-list.h"
+#include "search-controller.h"
 #include "overlays/sidepanel.h"
 #include "overlays/confirm-overlay.h"
 #include "overlays/progress-overlay.h"
@@ -25,7 +26,7 @@
 #include "overlays/hex-viewer-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
-#include "string-utilities.h"
+#include "string-utilities.h"   // appendStr / appendUint64 / formatIpv4 for the FTP button label
 #include "network.h"
 
 static Font pop;
@@ -94,11 +95,26 @@ static void toggleFtpServer(void)
    setFtpButtonLabel("Stop FTP Server");
 }
 
+// the shared sidepanel has one handler; route it by which list is showing (see search-controller).
+static void onSidepanelAction(SelectionAction action)
+{
+   if (isSearchActive()) dispatchSearchAction(action);
+   else                  dispatchAction(action);
+}
+
 static void openSidepanel(void)
 {
    int count;
-   const SelectionAction *actions = getAvailableActions(&count);
-   const SelectionSummary *summary = getSelectionSummary();
+   const SelectionAction *actions;
+   const SelectionSummary *summary;
+   if (isSearchActive()) {
+      if (!searchHasOptions()) return;   // no results yet, or the walk is still running
+      actions = getSearchActions(&count);
+      summary = getSearchSummary();
+   } else {
+      actions = getAvailableActions(&count);
+      summary = getSelectionSummary();
+   }
    setSidepanelContent(summary, actions, count);
    showOverlay(&sidepanel);
 }
@@ -119,7 +135,8 @@ static void initHome(void)
    initFreeSpaceWidget(&pop, 1668, 951, 20, 0x64FFFFFF, 210);
    initFooterWidget(&pop);
    initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 860, 74, 24, COLOR_WHITE, &breadcrumb);   // name width leaves room for the permissions column
-   initSidepanel(sprites, &clickSfx, dispatchAction);
+   initSearchController(&pop, sprites, &clickSfx, &checkSfx, 244, 74, 24, COLOR_WHITE, openSidepanel);
+   initSidepanel(sprites, &clickSfx, onSidepanelAction);
    initConfirmOverlay(sprites, &clickSfx);
    initProgressOverlay(sprites, &clickSfx);
    initAudioPlayerOverlay(sprites);
@@ -129,8 +146,7 @@ static void initHome(void)
    initKeyboard(sprites, spriteRegions[SPRITE_HIGHLIGHT], 7);   // 7 = highlight sprite's 9-slice corner cap
    initHexPad(sprites, spriteRegions[SPRITE_HIGHLIGHT], 7);
    addFooterButton(PAD_BTN_TRIANGLE, GLYPH_TRIANGLE, "Options", openSidepanel);
-   addFooterButton(PAD_BTN_START, GLYPH_START, "Search", NULL);   // hint only - search isn't implemented yet
-   setFooterButtonEnabled(PAD_BTN_START, 0);
+   addFooterButton(PAD_BTN_START, GLYPH_START, "Search", launchSearch);
    addFooterButton(PAD_BTN_SELECT, GLYPH_SELECT, "Start FTP Server", toggleFtpServer);
 
    if (!isNetworkAvailable()) {
@@ -178,11 +194,17 @@ static void updateHome(void)
    updateHexPad();
 
    if (!overlayWasVisible) {
-      updateFooterWidget();
       updateClockWidget();
       setFreeSpacePath(getCurrentPath());   // report the volume the user is in
       updateFreeSpaceWidget();
-      updateFileList();
+      if (isSearchActive()) {
+         updateSearchView();
+      } else if (handleSearchBack()) {
+         // Back at the jumped-into folder re-entered the search; nothing else this frame
+      } else {
+         updateFooterWidget();
+         updateFileList();
+      }
    }
 }
 
@@ -195,10 +217,10 @@ static void drawHome(void)
    drawLabel(&titleLabel);
    fillGfxRectangle(DIVIDER_X, DIVIDER_TOP_Y, DIVIDER_W, 2, COLOR_DIVIDER);
    fillGfxRectangle(DIVIDER_X, DIVIDER_BOT_Y, DIVIDER_W, 2, COLOR_DIVIDER);
-   drawBreadcrumb(&breadcrumb);
+   if (isSearchActive()) drawSearchTitle(); else drawBreadcrumb(&breadcrumb);
    drawClockWidget();
    drawFreeSpaceWidget();
-   drawFileList();
+   if (isSearchActive()) drawSearchResults(); else drawFileList();
    drawFooterWidget();
    drawOverlay(&imageViewerOverlay);
    drawOverlay(&audioPlayerOverlay);
@@ -228,6 +250,7 @@ static void termHome(void)
    termOverlay(&confirmOverlay);
    termOverlay(&sidepanel);
    termFileList();
+   termSearchController();
    termFooterWidget();
    termClockWidget();
    termFreeSpaceWidget();

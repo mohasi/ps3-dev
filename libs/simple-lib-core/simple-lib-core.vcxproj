@@ -47,6 +47,7 @@
    <ClCompile Include="src\cellhttp-stack.c" />
    <ClCompile Include="src\transport-cellhttp.c" />
    <ClCompile Include="src\zip.c" />
+   <ClCompile Include="src\tree-walk.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\ftp.h" />
@@ -74,6 +75,7 @@
    <ClInclude Include="include\sha1.h" />
    <ClInclude Include="include\network.h" />
    <ClInclude Include="include\zip.h" />
+   <ClInclude Include="include\tree-walk.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="README.md" />

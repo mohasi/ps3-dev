@@ -159,6 +159,7 @@ static void performSeek(VideoPlayer *player)
       player->audioFlushRequest = 1;
       while (!player->audioFlushDone && player->audioAlive && player->running) sleepMs(1);
    }
+   if (!player->running) return;   // released by teardown, not by a parked audio thread: don't seek a dying player
 
    // flush the decoder; if the reset wedged it (EndSeq fatal) or it already died, rebuild it rather
    // than going dark (a NULL decoder makes decode report end-of-stream until a later seek revives it)
@@ -203,7 +204,10 @@ static void performSeek(VideoPlayer *player)
       player->audioThreadActive = (spawnJoinableThread(&player->audioThread, audioDecodeThread,
                                    (uint64_t)(uintptr_t)player, THREAD_PRIORITY_DEFAULT,
                                    THREAD_STACK_SIZE_64KB, "video-audio") == 0);
-      if (!player->audioThreadActive) player->audioAlive = 0;
+      if (!player->audioThreadActive) {
+         player->audioAlive = 0;
+         logWarn("[video-player] audio thread respawn failed, staying silent\n");   // also disables later revives
+      }
    }
 
    if (player->seekRequestNs == (int64_t)targetNs) player->seekRequestNs = -1;   // keep a newer request live
@@ -297,7 +301,12 @@ static void audioDecodeThread(uint64_t arg)
             player->audioClockValid = 1;
          }
          int offset = 0;
-         while (offset < frames && player->running) {
+         // a park request must break this wait: at start-of-playback the feed is held silent until
+         // the first frame presents, a pending seek blocks that present, and the park waits on us -
+         // pushing on regardless deadlocked every resume-at-open (decode waits for our park, we wait
+         // for feed space, feed space waits for the seek). dropping the remainder is fine: the park's
+         // flush discards the whole feed anyway.
+         while (offset < frames && player->running && !player->audioFlushRequest) {
             offset += pushAudioPcm(player->pcmScratch + offset * 2, frames - offset);
             if (offset < frames) sleepMs(4);   // feed ring full: the mixer drains ~256 frames per block
          }
@@ -357,7 +366,7 @@ static void startAudioPipeline(VideoPlayer *player)
    player->adtsBuffers[0] = (uint8_t *)malloc(ADTS_HEADER_BYTES + AUDIO_AU_MAX_BYTES);
    player->adtsBuffers[1] = (uint8_t *)malloc(ADTS_HEADER_BYTES + AUDIO_AU_MAX_BYTES);
    player->pcmScratch = (float *)malloc(AAC_MAX_FRAME_SAMPLES * 2 * sizeof(float));
-   player->audioFeedOpen = openAudioPcmFeed(source->audioRate) == 0;
+   player->audioFeedOpen = openAudioPcmFeed(source->audioRate, 0) == 0;   // 0 = the default file-playback backlog
 
    if (!player->aacDecoder || !player->adtsBuffers[0] || !player->adtsBuffers[1] || !player->pcmScratch || !player->audioFeedOpen) goto silent;
 
@@ -440,7 +449,11 @@ VideoPlayer *createVideoPlayerSplit(const char *videoPath, const char *audioPath
    if (readH264StreamInfo(player->demuxer.h264.header, player->demuxer.h264.headerSize, &streamInfo) == 0) {
       player->allocW = streamInfo.codedWidth;
       player->allocH = streamInfo.codedHeight;
+      if (player->allocW != player->demuxer.width || player->allocH != player->demuxer.height)
+         logInfo("[video-player] stream displays %dx%d but codes %dx%d\n", player->demuxer.width, player->demuxer.height,
+                 player->allocW, player->allocH);
    } else {
+      logWarn("[video-player] no SPS in the container header, guessing the coded size from the display size\n");
       player->allocW = roundUp16(player->demuxer.width);
       player->allocH = roundUp16(player->demuxer.height);
    }
@@ -499,6 +512,19 @@ void destroyVideoPlayer(VideoPlayer *player)
 // presentation
 // ============================================================================
 
+// the frame currently on screen (NULL before the first-ever present). shown while a seek or the
+// post-seek pre-roll refills, so playback cuts frame-to-frame instead of dropping to black. the
+// DISPLAYING slot survives performSeek's flush (only READY slots are emptied), so it stays valid.
+// caller holds player->lock; this releases it.
+static const uint8_t *takeHeldFrame(VideoPlayer *player, int *width, int *height)
+{
+   int held = player->displayIndex;
+   const uint8_t *heldBuffer = 0;
+   if (held >= 0) { heldBuffer = player->slots[held].yuv; *width = player->slots[held].width; *height = player->slots[held].height; }
+   unlock(&player->lock);
+   return heldBuffer;
+}
+
 const uint8_t *getVideoFrame(VideoPlayer *player, int *width, int *height)
 {
    uint64_t nowUs = sys_time_get_system_time();
@@ -507,13 +533,7 @@ const uint8_t *getVideoFrame(VideoPlayer *player, int *width, int *height)
 
    // a posted seek freezes presentation: frames decoded before the flush must not advance the
    // position; the displayed frame stays up until the new position's frames arrive
-   if (player->seekRequestNs >= 0) {
-      int held = player->displayIndex;
-      const uint8_t *heldBuffer = 0;
-      if (held >= 0) { heldBuffer = player->slots[held].yuv; *width = player->slots[held].width; *height = player->slots[held].height; }
-      unlock(&player->lock);
-      return heldBuffer;
-   }
+   if (player->seekRequestNs >= 0) return takeHeldFrame(player, width, height);
 
    // anchor the clock to the earliest ready frame, with a short pre-roll: hold the first present until a
    // few frames are buffered (PREROLL_FRAMES) and the audio clock is live. Starting on the very first
@@ -536,7 +556,7 @@ const uint8_t *getVideoFrame(VideoPlayer *player, int *width, int *height)
             audioWaiting = 0;
          }
       }
-      if (found < 0 || !decoderWarm || audioWaiting) { unlock(&player->lock); return 0; }
+      if (found < 0 || !decoderWarm || audioWaiting) return takeHeldFrame(player, width, height);
       player->basePts    = earliest;
       player->baseWallUs = nowUs;
       player->started    = 1;

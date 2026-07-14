@@ -11,7 +11,7 @@
 #include "font.h"
 #include "colors.h"
 #include "ui/label.h"
-#include "ui/image.h"
+#include "ui/volume-meter.h"
 #include "thread.h"             // spawnJoinableThread, joinThread
 #include "vfs.h"               // getBaseName, MAX_PATH_LEN
 #include "string-utilities.h"   // strCopy
@@ -57,19 +57,8 @@
 #define COLOR_SEEK_TRACK  0x66FFFFFFu   // translucent white track
 #define COLOR_SEEK_FILL   COLOR_BLUE_500
 #define COLOR_SEEK_HANDLE 0xFFFFFFFFu
-#define COLOR_PILL_EMPTY  0x33FFFFFFu   // unfilled volume pill
 
-// volume meter (mirrors the audio player: a pill column that auto-hides)
-#define VOLUME_PILLS       15
-#define VOLUME_DEFAULT     10
-#define VOLUME_VISIBLE_US  2500000ULL
-#define VOL_NUM_SIZE       22
-#define VOL_PILL_W         31
-#define VOL_PILL_H         10
-#define VOL_PILL_PITCH     19
-#define VOL_SPEAKER_W      32
-#define VOL_SPEAKER_H      29
-#define VOL_SPEAKER_GAP    22
+#define VOLUME_DEFAULT 10   // starting level the first time the player opens (shared ui/volume-meter.h)
 
 static struct {
    int  screenW, screenH;
@@ -89,7 +78,6 @@ static struct {
 
    VideoPlayer *player;          // frames draw zero-copy from RSX-mapped memory (drawGfxYuvFrame)
 
-   uint64_t     volumeShownUs;   // last volume change, for the meter auto-hide
    uint64_t     controlsShownUs; // last user activity, for the seek bar / caption auto-hide
 
    // left/right scrubbing: the UI owns the target so the bar moves instantly; the engine seek is
@@ -101,20 +89,19 @@ static struct {
    DirPlaylist  playlist;        // sibling videos in the folder, for L1/R1 navigation
 
    int          barLeft, barRight, barY;
-   int          volPillX, volBottomY;   // left edge of pills; top-y of the lowest pill
 } state;
 
-// volume level (0..VOLUME_PILLS) kept outside `state` so it survives re-opens; shared feel with the
-// audio player but tracked separately (it drives the video feed's volume, not a mixer stream's).
+// the shared pill meter; its level lives in `volumeLevel` outside `state` so it survives re-opens.
+// tracked separately from the audio player's (it drives the video feed's volume, not a mixer stream's).
+static VolumeMeter volumeMeter;
 static int volumeLevel = VOLUME_DEFAULT;
 
 static GfxTexture sprites;
 
 static Font  font;
 static int   ready;
-static Label messageLabel, statusLabel, nameLabel, timeLeftLabel, timeRightLabel, volNumLabel;
-static Image speakerImg;
-static int   lastElapsed = -1, lastRemain = -1, lastVolNum = -1;
+static Label messageLabel, statusLabel, nameLabel, timeLeftLabel, timeRightLabel;
+static int   lastElapsed = -1, lastRemain = -1;
 
 static void show(void);
 static void hide(void);
@@ -136,9 +123,7 @@ void initVideoPlayerOverlay(GfxTexture spritesheet)
    initLabel(&timeLeftLabel,  &font, 0, 0, 200,  AUTO, TIME_SIDE_SIZE, COLOR_TIME_DIM, TEXT_NOWRAP, "");
    initLabel(&timeRightLabel, &font, 0, 0, 200,  AUTO, TIME_SIDE_SIZE, COLOR_TIME_DIM, TEXT_NOWRAP, "");
 
-   initLabel(&volNumLabel, &font, 0, 0, 80, AUTO, VOL_NUM_SIZE, COLOR_MESSAGE, TEXT_NOWRAP, "");
-
-   initImage(&speakerImg, sprites, 0, 0, VOL_SPEAKER_W, VOL_SPEAKER_H, spriteRegions[SPRITE_SPEAKER], GFX_FILTER_LINEAR);
+   initVolumeMeter(&volumeMeter, &font, sprites, spriteRegions[SPRITE_SPEAKER], COLOR_SEEK_FILL, volumeLevel);
    ready = 1;
 }
 
@@ -150,8 +135,7 @@ static void layoutPlayer(void)
    state.barLeft  = (int)(w * 0.24f);
    state.barRight = w - state.barLeft;
    state.barY     = (int)(h * 0.94f);   // low on the screen, per the design
-   state.volPillX   = (int)(w * 0.07f);
-   state.volBottomY = state.centerY + (VOLUME_PILLS - 1) * VOL_PILL_PITCH / 2;   // column centred vertically
+   layoutVolumeMeter(&volumeMeter, w, h);
 }
 
 // ============================================================================
@@ -196,7 +180,7 @@ static void startVideo(const char *videoPath)
    state.workerDone = 0;
    state.seeking = 0;
    state.controlsShownUs = 0;
-   state.volumeShownUs = 0;
+   hideVolumeMeter(&volumeMeter);
    lastElapsed = lastRemain = -1;
 
    state.working      = 1;
@@ -245,7 +229,7 @@ static void term(void)
       freeLabel(&nameLabel);
       freeLabel(&timeLeftLabel);
       freeLabel(&timeRightLabel);
-      freeLabel(&volNumLabel);
+      freeVolumeMeter(&volumeMeter);
       closeFont(&font);
       ready = 0;
    }
@@ -264,7 +248,7 @@ static void adoptResult(void)
    if (state.result.verdict == VIDEO_PLAYABLE && state.pendingPlayer) {
       state.player = state.pendingPlayer;
       state.pendingPlayer = 0;
-      setAudioPcmFeedVolume((float)volumeLevel / VOLUME_PILLS);
+      setAudioPcmFeedVolume(getVolumeMeterFraction(&volumeMeter));
       state.controlsShownUs = sys_time_get_system_time();   // show the bar + name briefly at start
       logInfo("[video-player] playing: %s\n", state.name);
    } else if (state.result.verdict != VIDEO_PLAYABLE) {
@@ -281,12 +265,8 @@ static void adoptResult(void)
 
 static void changeVolume(int delta)
 {
-   int level = volumeLevel + delta;
-   if (level < 0) level = 0;
-   if (level > VOLUME_PILLS) level = VOLUME_PILLS;
-   volumeLevel = level;
-   setAudioPcmFeedVolume((float)level / VOLUME_PILLS);
-   state.volumeShownUs = sys_time_get_system_time();   // (re)show the meter
+   volumeLevel = stepVolumeMeter(&volumeMeter, delta);
+   setAudioPcmFeedVolume(getVolumeMeterFraction(&volumeMeter));
 }
 
 static void showControls(void) { state.controlsShownUs = sys_time_get_system_time(); }
@@ -391,30 +371,6 @@ static void drawSeekBar(void)
    drawLabelAt(&timeRightLabel, state.barRight + SIDE_TIME_GAP, state.barY - timeRightLabel.tt.tex.h / 2);
 }
 
-static void drawVolumeMeter(void)
-{
-   uint64_t shownFor = sys_time_get_system_time() - state.volumeShownUs;
-   if (state.volumeShownUs == 0 || shownFor >= VOLUME_VISIBLE_US) return;
-
-   if (volumeLevel != lastVolNum) {
-      char num[8];
-      snprintf(num, sizeof num, "%d", volumeLevel);
-      setLabelText(&volNumLabel, num);
-      lastVolNum = volumeLevel;
-   }
-
-   // pills bottom-up: the lowest `volumeLevel` are filled seek-bar blue, the rest dim
-   for (int i = 0; i < VOLUME_PILLS; i++) {
-      int y = state.volBottomY - i * VOL_PILL_PITCH;
-      fillGfxRectangle(state.volPillX, y, VOL_PILL_W, VOL_PILL_H, i < volumeLevel ? COLOR_SEEK_FILL : COLOR_PILL_EMPTY);
-   }
-
-   int colCenterX = state.volPillX + VOL_PILL_W / 2;
-   int topPillY   = state.volBottomY - (VOLUME_PILLS - 1) * VOL_PILL_PITCH;
-   drawLabelAt(&volNumLabel, colCenterX - volNumLabel.tt.tex.w / 2, topPillY - VOL_NUM_SIZE - 14);
-   drawImageAt(&speakerImg, colCenterX - VOL_SPEAKER_W / 2, state.volBottomY + VOL_PILL_H + VOL_SPEAKER_GAP);
-}
-
 // fits w x h inside the screen preserving aspect ratio; returns the centred destination rect.
 static void letterboxRect(int w, int h, int *dx, int *dy, int *dw, int *dh)
 {
@@ -459,7 +415,7 @@ static void draw(void)
          drawSeekBar();
          drawNameCaption();
       }
-      drawVolumeMeter();
+      drawVolumeMeter(&volumeMeter);
       return;
    }
 

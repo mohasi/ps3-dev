@@ -207,6 +207,37 @@ static void parseFormatArray(const char *arrayStart, const char *regionEnd, int 
    }
 }
 
+// parse the caption track list into out->captions. the list ends where the renderer's next field
+// starts (entries hold nested arrays, so a plain ']' scan would cut early); each entry leads with
+// "baseUrl". the display name sits in the entry's name block as "text" (runs) or "simpleText".
+static void parseCaptionTracks(const char *resp, const char *end, StreamInfo *out)
+{
+   const char *captions = strstr(resp, "\"captionTracks\"");
+   if (!captions) return;
+   const char *listEnd = strstr(captions, "\"audioTracks\"");
+   if (!listEnd) listEnd = strstr(captions, "\"translationLanguages\"");
+   if (!listEnd) listEnd = end;
+
+   const char *scan = captions;
+   while (out->captionCount < MAX_CAPTION_TRACKS) {
+      const char *entry = strstr(scan, "\"baseUrl\"");
+      if (!entry || entry >= listEnd) break;
+      const char *next = strstr(entry + 1, "\"baseUrl\"");
+      const char *entryEnd = (next && next < listEnd) ? next : listEnd;
+
+      CaptionTrack *track = &out->captions[out->captionCount];
+      if (jsonString(entry, entryEnd, "baseUrl", track->url, sizeof track->url) &&
+          jsonString(entry, entryEnd, "languageCode", track->languageCode, sizeof track->languageCode)) {
+         if (!jsonString(entry, entryEnd, "text", track->name, sizeof track->name) &&
+             !jsonString(entry, entryEnd, "simpleText", track->name, sizeof track->name))
+            strCopy(track->name, sizeof track->name, track->languageCode);
+         out->captionCount++;
+      }
+      scan = entryEnd;
+   }
+   if (out->captionCount) logInfo("[yt] %d caption track(s)\n", out->captionCount);
+}
+
 // parse both stream arrays. iOS returns only adaptiveFormats (separate video and
 // audio); WEB/TVHTML5 would also carry a progressive "formats" (muxed) array.
 static void parseFormats(const char *resp, const char *end, StreamInfo *out)
@@ -393,6 +424,7 @@ static int extract(const char *input, StreamInfo *out)
    if (jsonString(details ? details : resp, end, "lengthSeconds", lenText, sizeof lenText))
       out->durationSeconds = atoi(lenText);
 
+   parseCaptionTracks(resp, end, out);
    parseFormats(resp, end, out);
 
    // a currently-live stream (isLive:true) is a rolling DVR window, so the init/moov at byte 0 may have

@@ -62,6 +62,8 @@ the bottom use the console's own controller glyphs.
   seek bar in their category colours. Live streams have no seek bar (there's nothing to scrub).
   **Select** — pause and show the video **description** over the video; scroll it with up/down, close with
   Select or Circle (playback resumes unless it was already paused before opening).
+  **Triangle** — cycle **subtitles** (off by default) through the video's available languages; the current
+  language shows top-right while the seek bar is up.
 - **Start** — open the keyboard to search.
 - **L1 / R1** — (home) switch category (Subscriptions, Gaming, Sports, Podcasts, Watch Later).
 - **Select** — cycle the sort order (shown top-right): search = Relevance/Views, channel = Latest/Popular/Oldest.

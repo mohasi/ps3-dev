@@ -18,6 +18,7 @@
 #include "colors.h"
 #include "ui/label.h"
 #include "ui/image.h"
+#include "ui/volume-meter.h"
 #include "button-repeat.h"
 #include "thread.h"             // spawnJoinableThread, joinThread
 #include "dir-playlist.h"       // folder scan + prev/next-with-wrap navigation
@@ -41,9 +42,7 @@
 
 #define WAVE_BARS          96            // thin bars with clear gaps between them
 #define WAVE_EDGE_FADE     0.18f         // fraction of each side the bars fade in over (bigger = wider fade)
-#define VOLUME_PILLS       15            // meter height in pills; also the max volume level
-#define VOLUME_DEFAULT     10            // starting level the first time the player opens
-#define VOLUME_VISIBLE_US  2500000ULL    // meter auto-hides this long after the last change
+#define VOLUME_DEFAULT     10            // starting level the first time the player opens (shared ui/volume-meter.h)
 
 // seek-by-hold: a single tap nudges by a small fixed amount; holding ramps the rate from MIN to MAX
 // along a squared curve (gentle and granular at first, accelerating the longer it's held).
@@ -58,7 +57,6 @@
 #define SUBTITLE_GAP       16            // below the filename
 #define TIME_CENTER_SIZE   26
 #define TIME_SIDE_SIZE     20
-#define VOL_NUM_SIZE       22
 
 // icon (top, centred)
 #define ICON_W             84
@@ -72,15 +70,6 @@
 #define COLOR_SEEK_TRACK   0x66FFFFFFu   // translucent white track
 #define COLOR_SEEK_FILL    COLOR_BLUE_500
 #define COLOR_SEEK_HANDLE  0xFFFFFFFFu
-#define COLOR_PILL_EMPTY   0x33FFFFFFu   // unfilled volume pill
-
-// volume meter geometry
-#define VOL_PILL_W         31
-#define VOL_PILL_H         10
-#define VOL_PILL_PITCH     19            // pill height + vertical gap
-#define VOL_SPEAKER_W      32
-#define VOL_SPEAKER_H      29
-#define VOL_SPEAKER_GAP    22            // gap below the lowest pill to the speaker glyph
 
 static struct {
    int screenW, screenH;
@@ -88,8 +77,6 @@ static struct {
    Audio audio;
    int   loaded;                 // 1 once a clip is decoded and playing/paused
    char  name[256];
-
-   uint64_t volumeShownUs;       // last volume change, for the meter auto-hide
 
    uint64_t lastUpdateUs;        // previous frame time, for dt
    uint64_t seekHeldUs;          // accumulated hold time on the active seek direction
@@ -106,7 +93,6 @@ static struct {
    int waveLeft, waveRight, waveCenterY, waveMaxH;
    int timeCenterY;
    int barLeft, barRight, barY;
-   int volPillX, volBottomY;     // left edge of pills; top-y of the lowest pill
 
    DirPlaylist playlist;   // sibling playable tracks in the folder, for L1/R1 navigation
 
@@ -119,21 +105,22 @@ static struct {
    sys_ppu_thread_t decodeTid;
 } state;
 
-// volume level (0..VOLUME_PILLS) kept outside `state` so it survives re-opens and the overlay's
-// term(); persists for the app's lifetime and resets to VOLUME_DEFAULT when the file manager exits.
+// the shared pill meter; its level lives in `volumeLevel` outside `state` so it survives re-opens and
+// the overlay's term(); persists for the app's lifetime and resets to VOLUME_DEFAULT on app exit.
+static VolumeMeter volumeMeter;
 static int volumeLevel = VOLUME_DEFAULT;
 
 // sprite-sheet UI pieces (lazy-initialised in init, reused across opens)
 static GfxTexture sprites;
-static Image  iconImg, speakerImg;
+static Image  iconImg;
 
 // fonts/labels (kept across re-opens; their text textures grow as needed)
 static Font  font;
 static int   ready;
-static Label nameLabel, subtitleLabel, statusLabel, timeCenterLabel, timeLeftLabel, timeRightLabel, volNumLabel;
+static Label nameLabel, subtitleLabel, statusLabel, timeCenterLabel, timeLeftLabel, timeRightLabel;
 
 // last values the time labels were rendered at, so we only re-rasterise on change
-static int lastElapsed = -1, lastRemain = -1, lastTotal = -1, lastVolNum = -1;
+static int lastElapsed = -1, lastRemain = -1, lastTotal = -1;
 
 // forward decls (referenced by the Overlay table; defined below)
 static void show(void);
@@ -157,8 +144,7 @@ void initAudioPlayerOverlay(GfxTexture spritesheet)
    sprites = spritesheet;
    font    = openSystemFont(FONT_POP);
 
-   initImage(&iconImg,    sprites, 0, 0, ICON_W,        ICON_H,        spriteRegions[SPRITE_AUDIO],   GFX_FILTER_LINEAR);
-   initImage(&speakerImg, sprites, 0, 0, VOL_SPEAKER_W, VOL_SPEAKER_H, spriteRegions[SPRITE_SPEAKER], GFX_FILTER_LINEAR);
+   initImage(&iconImg, sprites, 0, 0, ICON_W, ICON_H, spriteRegions[SPRITE_AUDIO], GFX_FILTER_LINEAR);
 
    initLabel(&nameLabel,       &font, 0, 0, 1400, AUTO, NAME_SIZE,        COLOR_NAME,     TEXT_NOWRAP_ELLIPSIS, "");
    initLabel(&subtitleLabel,   &font, 0, 0, 1400, AUTO, SUBTITLE_SIZE,    COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
@@ -166,7 +152,7 @@ void initAudioPlayerOverlay(GfxTexture spritesheet)
    initLabel(&timeCenterLabel, &font, 0, 0, 600,  AUTO, TIME_CENTER_SIZE, COLOR_TIME,     TEXT_NOWRAP,          "");
    initLabel(&timeLeftLabel,   &font, 0, 0, 200,  AUTO, TIME_SIDE_SIZE,   COLOR_TIME_DIM, TEXT_NOWRAP,          "");
    initLabel(&timeRightLabel,  &font, 0, 0, 200,  AUTO, TIME_SIDE_SIZE,   COLOR_TIME_DIM, TEXT_NOWRAP,          "");
-   initLabel(&volNumLabel,     &font, 0, 0, 80,   AUTO, VOL_NUM_SIZE,     COLOR_WHITE,    TEXT_NOWRAP,          "");
+   initVolumeMeter(&volumeMeter, &font, sprites, spriteRegions[SPRITE_SPEAKER], COLOR_SEEK_FILL, volumeLevel);
    ready = 1;
 }
 
@@ -191,10 +177,7 @@ static void layoutPlayer(void)
    state.barRight = w - state.barLeft;
    state.barY     = (int)(h * 0.75f);
 
-   state.volPillX   = (int)(w * 0.07f);
-   int stackHeight  = VOLUME_PILLS * VOL_PILL_PITCH - (VOL_PILL_PITCH - VOL_PILL_H);
-   int stackTop     = h / 2 - stackHeight / 2;
-   state.volBottomY = stackTop + stackHeight - VOL_PILL_H;   // top-y of the lowest pill
+   layoutVolumeMeter(&volumeMeter, w, h);
 }
 
 // ============================================================================
@@ -262,11 +245,11 @@ static void startTrack(const char *audioPath)
    setLabelText(&subtitleLabel, "");   // cleared until tags are read; avoids showing a stale title
 
    state.decodeDone = 0;
-   state.volumeShownUs = 0;            // meter hidden until the user touches it
+   hideVolumeMeter(&volumeMeter);      // meter hidden until the user touches it
    state.seekDir = 0; state.seekHeldUs = 0; state.seekMuted = 0;
    state.lastUpdateUs = sys_time_get_system_time();
    memset(state.waveBars, 0, sizeof state.waveBars);
-   lastElapsed = lastRemain = lastTotal = lastVolNum = -1;
+   lastElapsed = lastRemain = lastTotal = -1;
 
    // decode on a worker so the overlay stays responsive and never freezes on a big file
    state.loading      = 1;
@@ -302,7 +285,7 @@ static void term(void)
       freeLabel(&timeCenterLabel);
       freeLabel(&timeLeftLabel);
       freeLabel(&timeRightLabel);
-      freeLabel(&volNumLabel);
+      freeVolumeMeter(&volumeMeter);
       closeFont(&font);
       ready = 0;
    }
@@ -320,19 +303,15 @@ static void togglePlayPause(void)
       case AUDIO_STATE_PLAYING: pauseAudio(&state.audio);  break;
       case AUDIO_STATE_PAUSED:  resumeAudio(&state.audio); break;
       default:  // ended/stopped: restart from the beginning
-         playAudio(&state.audio, (float)volumeLevel / VOLUME_PILLS, 1.0f, 0);
+         playAudio(&state.audio, getVolumeMeterFraction(&volumeMeter), 1.0f, 0);
          break;
    }
 }
 
 static void changeVolume(int delta)
 {
-   int level = volumeLevel + delta;
-   if (level < 0) level = 0;
-   if (level > VOLUME_PILLS) level = VOLUME_PILLS;
-   volumeLevel = level;
-   setAudioVolume(&state.audio, (float)level / VOLUME_PILLS);
-   state.volumeShownUs = sys_time_get_system_time();   // (re)show the meter
+   volumeLevel = stepVolumeMeter(&volumeMeter, delta);
+   setAudioVolume(&state.audio, getVolumeMeterFraction(&volumeMeter));
 }
 
 // applies a seek for the held direction this frame. a fresh press jumps a fixed amount; holding
@@ -403,7 +382,7 @@ static void update(void)
       if (!state.loaded) { logError("[audio-player] decode failed: %s\n", state.pendingPath); return; }
       setLabelText(&subtitleLabel, state.audio.title);   // track title from tags (empty if none)
       state.lastUpdateUs = now;   // don't count the decode wait as a seek dt
-      playAudio(&state.audio, (float)volumeLevel / VOLUME_PILLS, 1.0f, 0);
+      playAudio(&state.audio, getVolumeMeterFraction(&volumeMeter), 1.0f, 0);
       return;
    }
 
@@ -428,7 +407,7 @@ static void update(void)
    // silent scrub: mute while actively seeking so you don't hear the playback jumping around,
    // then restore the user's volume on release.
    if (seeking && !state.seekMuted) { setAudioVolume(&state.audio, 0.0f); state.seekMuted = 1; }
-   else if (!seeking && state.seekMuted) { setAudioVolume(&state.audio, (float)volumeLevel / VOLUME_PILLS); state.seekMuted = 0; }
+   else if (!seeking && state.seekMuted) { setAudioVolume(&state.audio, getVolumeMeterFraction(&volumeMeter)); state.seekMuted = 0; }
 
    sampleWaveform();   // pull the latest amplitude envelope from the mixer
 }
@@ -532,12 +511,7 @@ static void syncLabels(void)
       formatSidedMS(right, sizeof right, remain, '+');
       setLabelText(&timeRightLabel, right);
    }
-   if (volumeLevel != lastVolNum) {
-      char num[8];
-      snprintf(num, sizeof num, "%d", volumeLevel);
-      setLabelText(&volNumLabel, num);
-   }
-   lastElapsed = elapsed; lastRemain = remain; lastTotal = total; lastVolNum = volumeLevel;
+   lastElapsed = elapsed; lastRemain = remain; lastTotal = total;
 }
 
 // ============================================================================
@@ -567,23 +541,6 @@ static void drawSeekBar(void)
    drawLabelAt(&timeRightLabel, state.barRight + SIDE_TIME_GAP, state.barY - timeRightLabel.tt.tex.h / 2);
 }
 
-static void drawVolumeMeter(void)
-{
-   uint64_t shownFor = sys_time_get_system_time() - state.volumeShownUs;
-   if (state.volumeShownUs == 0 || shownFor >= VOLUME_VISIBLE_US) return;
-
-   // pills bottom-up: the lowest `volumeLevel` are filled seek-bar blue, the rest dim
-   for (int i = 0; i < VOLUME_PILLS; i++) {
-      int y = state.volBottomY - i * VOL_PILL_PITCH;
-      fillGfxRectangle(state.volPillX, y, VOL_PILL_W, VOL_PILL_H, i < volumeLevel ? COLOR_SEEK_FILL : COLOR_PILL_EMPTY);
-   }
-
-   int colCenterX = state.volPillX + VOL_PILL_W / 2;
-   int topPillY   = state.volBottomY - (VOLUME_PILLS - 1) * VOL_PILL_PITCH;
-   drawLabelAt(&volNumLabel, colCenterX - volNumLabel.tt.tex.w / 2, topPillY - VOL_NUM_SIZE - 14);
-   drawImageAt(&speakerImg, colCenterX - VOL_SPEAKER_W / 2, state.volBottomY + VOL_PILL_H + VOL_SPEAKER_GAP);
-}
-
 static void draw(void)
 {
    fillGfxRectangle(0, 0, state.screenW, state.screenH, COLOR_SCRIM);
@@ -608,5 +565,5 @@ static void draw(void)
    drawLabelAt(&timeCenterLabel, state.centerX - timeCenterLabel.tt.tex.w / 2, state.timeCenterY);
 
    drawSeekBar();
-   drawVolumeMeter();
+   drawVolumeMeter(&volumeMeter);
 }

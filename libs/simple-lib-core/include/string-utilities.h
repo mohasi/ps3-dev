@@ -52,6 +52,15 @@ static inline char toLowerChar(char c)
    return (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
 }
 
+// Truncates a UTF-8 string in place to at most maxBytes bytes (excluding the terminator),
+// backing off so a multi-byte character is never cut in half.
+static inline void truncateUtf8(char *text, int maxBytes)
+{
+   if (maxBytes < 0 || getStrLen(text) <= maxBytes) return;
+   while (maxBytes > 0 && ((unsigned char)text[maxBytes] & 0xC0) == 0x80) maxBytes--;
+   text[maxBytes] = 0;
+}
+
 // Normalizes a slash-separated path in place: ensures a leading '/',
 // collapses repeated '/', and resolves '.' / '..' segments within cap.
 // cap is BOTH the work bound and the size of `path`: pass cap == sizeof(path).

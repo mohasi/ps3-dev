@@ -67,6 +67,7 @@
    <ClInclude Include="include\syscall.h" />
    <ClInclude Include="include\thread.h" />
    <ClInclude Include="include\string-utilities.h" />
+   <ClInclude Include="include\text-sanitize.h" />
    <ClInclude Include="include\wire.h" />
    <ClInclude Include="include\log-backlog.h" />
    <ClInclude Include="include\bridge-client.h" />

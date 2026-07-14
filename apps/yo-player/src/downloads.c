@@ -216,15 +216,13 @@ void enqueueDownload(const SearchResult *item)
 // ---- overlay ----
 
 // "Downloading "<title>" NN%" with the title truncated so it can't fill the screen; "(+N)" when more are
-// queued. drops a dangling UTF-8 byte if the cut lands mid-character.
+// queued.
 static void formatOverlay(char *out, int cap)
 {
-   char clipped[DISPLAY_TITLE_MAX + 4];
-   int i = 0;
-   for (; i < DISPLAY_TITLE_MAX && dl.activeTitle[i]; i++) clipped[i] = dl.activeTitle[i];
-   int truncated = dl.activeTitle[i] != 0;
-   if (truncated) while (i > 0 && ((unsigned char)clipped[i - 1] & 0xC0) == 0x80) i--;   // don't split a UTF-8 char
-   clipped[i] = 0;
+   char clipped[sizeof dl.activeTitle];
+   strCopy(clipped, sizeof clipped, dl.activeTitle);
+   truncateUtf8(clipped, DISPLAY_TITLE_MAX);
+   int truncated = strcmp(clipped, dl.activeTitle) != 0;
 
    int queued = dl.count;
    if (queued > 0) snprintf(out, cap, "Downloading \"%s%s\" %d%% (+%d)", clipped, truncated ? "..." : "", dl.percent, queued);

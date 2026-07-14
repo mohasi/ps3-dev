@@ -49,6 +49,7 @@
    <ClCompile Include="src\ui\breadcrumb.c" />
    <ClCompile Include="src\ui\stats.c" />
    <ClCompile Include="src\ui\scrollbar.c" />
+   <ClCompile Include="src\ui\volume-meter.c" />
    <ClCompile Include="src\ui\dialog-panel.c" />
    <ClCompile Include="src\ui\progress-bar.c" />
    <ClCompile Include="src\ui\key-grid.c" />
@@ -83,6 +84,7 @@
    <ClInclude Include="include\ui\line.h" />
    <ClInclude Include="include\ui\slice.h" />
    <ClInclude Include="include\ui\scrollbar.h" />
+   <ClInclude Include="include\ui\volume-meter.h" />
    <ClInclude Include="include\ui\dialog-panel.h" />
    <ClInclude Include="include\ui\progress-bar.h" />
    <ClInclude Include="include\ui\checkbox.h" />

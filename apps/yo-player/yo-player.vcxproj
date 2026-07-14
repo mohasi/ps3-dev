@@ -54,6 +54,7 @@
    <ClCompile Include="src\extractor.c" />
    <ClCompile Include="src\extractors\youtube.c" />
    <ClCompile Include="src\sponsorblock.c" />
+   <ClCompile Include="src\subtitles.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\screens\home.h" />
@@ -65,6 +66,7 @@
    <ClInclude Include="include\downloads.h" />
    <ClInclude Include="include\extractor.h" />
    <ClInclude Include="include\sponsorblock.h" />
+   <ClInclude Include="include\subtitles.h" />
    <ClInclude Include="include\sprite-regions.h" />
   </ItemGroup>
   <ItemGroup>

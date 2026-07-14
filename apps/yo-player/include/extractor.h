@@ -23,9 +23,20 @@ typedef struct {
    long liveEdgeSq;        // most recent segment number available (live edge)
 } StreamFormat;
 
+#define MAX_CAPTION_TRACKS 8
+
+// one subtitle track offered by the source. url fetches the timed-text file (see subtitles.h).
+typedef struct {
+   char languageCode[12];   // "en", "es-419"
+   char name[48];           // display name, e.g. "English (auto-generated)"
+   char url[MAX_STREAM_URL];
+} CaptionTrack;
+
 typedef struct {
    char title[256];
    char description[2048];   // video description, truncated; newlines are real '\n'
+   int  captionCount;
+   CaptionTrack captions[MAX_CAPTION_TRACKS];
    int  durationSeconds;
    int  isLive;            // currently broadcasting: streams need live segment-sequence fetching, not a static moov
    int  formatCount;

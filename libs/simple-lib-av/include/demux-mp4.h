@@ -51,6 +51,7 @@ typedef struct {
    uint64_t firstMoofPos;         // first fragment, for restart-on-seek
    uint64_t nextMoofPos;          // where the next fragment begins (end of the current mdat)
    uint64_t sidxPos, sidxSize;    // segment index box (DASH/googlevideo): maps time -> fragment offset for seeks (0 = none)
+   uint8_t *sidxCache;            // the sidx box bytes, read once (it's immutable) so a seek costs no index re-fetch
    uint64_t videoTimescale;       // video track timescale (fragmented converts pts at read time)
    uint64_t audioTimescale;       // audio track timescale (audio-only fragmented converts pts at read time)
    uint32_t trexDuration, trexSize, trexFlags;   // mvex/trex per-sample defaults (of the primary track)

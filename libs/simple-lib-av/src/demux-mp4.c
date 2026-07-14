@@ -390,6 +390,21 @@ static int loadFragmentInto(Mp4Demuxer *demuxer, Mp4Sample *samples, int maxSamp
    return (int)count;
 }
 
+// read the sidx box into the demuxer's cache if it isn't there yet. called at open, where the reader
+// is still near the file start so the bytes come out of the buffered window (no network round trip);
+// a seek that finds the cache missing (open-time read failed) retries here, paying one ranged read.
+static void cacheSidx(Mp4Demuxer *demuxer)
+{
+   if (demuxer->sidxCache || demuxer->sidxSize < 32 || demuxer->sidxSize > MAX_SIDX_BYTES) return;
+   demuxer->sidxCache = (uint8_t *)malloc((size_t)demuxer->sidxSize);
+   if (!demuxer->sidxCache) return;
+   if (readVideoSourceAt(&demuxer->source, demuxer->sidxPos, demuxer->sidxCache, demuxer->sidxSize) != 0) {
+      logWarn("[demux-mp4] sidx read failed\n");
+      free(demuxer->sidxCache);
+      demuxer->sidxCache = 0;
+   }
+}
+
 // refills the primary track's current fragment: audio in audio-only mode, otherwise video.
 static int loadNextFragment(Mp4Demuxer *demuxer)
 {
@@ -486,6 +501,7 @@ int openMp4Demuxer(Mp4Demuxer *demuxer, VideoSource *source, int audioOnly)
       demuxer->nextMoofPos  = firstMoofPos;
       demuxer->sidxPos      = sidxPos;
       demuxer->sidxSize     = sidxSize;
+      cacheSidx(demuxer);   // while the reader is still near the file start (free); seeks then need no index fetch
       if (!loadNextFragment(demuxer)) { logError("[demux-mp4] no playable fragments\n"); goto fail; }
       logInfo("[demux-mp4] fragmented stream, %d samples in first fragment\n",
               audioOnly ? demuxer->audioSampleCount : demuxer->videoSampleCount);
@@ -588,31 +604,25 @@ int readMp4AudioAu(Mp4Demuxer *demuxer, AudioAu *au)
 
 // find the fragment covering targetNs via the sidx segment index. the sidx (present in DASH/googlevideo
 // streams, right after moov) lists every subsegment's byte size and duration, so the target fragment's
-// offset comes from one small read + an in-memory scan - no per-fragment network I/O. sets nextMoofPos to
+// offset comes from an in-memory scan of the cached box - no network I/O at all. sets nextMoofPos to
 // that fragment's start and returns its start time. returns 0 (restart from the first fragment) when there
 // is no usable index, so a seek never falls back to reading the whole stream.
 static uint64_t seekViaSidx(Mp4Demuxer *demuxer, uint64_t targetNs, int landAfter)
 {
    demuxer->nextMoofPos = demuxer->firstMoofPos;
-   if (demuxer->sidxSize < 32 || demuxer->sidxSize > MAX_SIDX_BYTES) {
+   cacheSidx(demuxer);
+   if (!demuxer->sidxCache) {
       logWarn("[demux-mp4] seek: no sidx index, restarting from the first fragment\n");
       return 0;
    }
-
-   uint8_t *sidx = (uint8_t *)malloc((size_t)demuxer->sidxSize);
-   if (!sidx) return 0;
-   if (readVideoSourceAt(&demuxer->source, demuxer->sidxPos, sidx, demuxer->sidxSize) != 0) {
-      free(sidx);
-      logWarn("[demux-mp4] seek: sidx read failed, restarting from the first fragment\n");
-      return 0;
-   }
+   const uint8_t *sidx = demuxer->sidxCache;
 
    // sidx layout: box header (8) + FullBox version/flags (4) + reference_ID (4) + timescale (4), then
    // earliest_presentation_time + first_offset (4 or 8 bytes each by version), reserved (2), reference_count (2)
    // a version-1 sidx uses 64-bit time/offset fields, so its header runs to byte 40; the >=32 floor
    // above only covers version 0. reject a short v1 box rather than reading past the buffer.
    uint8_t version = sidx[8];
-   if (version != 0 && demuxer->sidxSize < 40) { free(sidx); logWarn("[demux-mp4] seek: sidx too small for v1\n"); return 0; }
+   if (version != 0 && demuxer->sidxSize < 40) { logWarn("[demux-mp4] seek: sidx too small for v1\n"); return 0; }
    uint32_t timescale = readU32BE(sidx + 16);
    if (timescale == 0) timescale = 1;
    uint32_t cursor = version == 0 ? 20 + 8 : 20 + 16;   // skip earliest_presentation_time + first_offset
@@ -642,7 +652,6 @@ static uint64_t seekViaSidx(Mp4Demuxer *demuxer, uint64_t targetNs, int landAfte
       offset    += sizeField & 0x7FFFFFFF;   // referenced_size (mask off the reference_type bit)
       timeTicks += duration;
    }
-   free(sidx);
 
    demuxer->nextMoofPos = landOffset;
    uint64_t landedNs = ticksToNs(landTicks, timescale);
@@ -701,6 +710,8 @@ void closeMp4Demuxer(Mp4Demuxer *demuxer)
    free(demuxer->sampleBuffer);
    free(demuxer->videoSamples);
    free(demuxer->audioSamples);
+   free(demuxer->sidxCache);
+   demuxer->sidxCache = 0;
    demuxer->sampleBuffer = 0;
    demuxer->videoSamples = 0;
    demuxer->audioSamples = 0;

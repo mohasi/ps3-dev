@@ -14,6 +14,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <sys/sys_time.h>   // sys_time_get_system_time (slow-transfer diagnostics)
 
 #define HTTP_URL_MAX 2048
 #define MAX_STREAMS  4
@@ -139,11 +140,12 @@ static void prefetchThread(uint64_t arg)
 
       // reconnect when the reader seeked off the window
       if (needReconnect || !stream->conn || position < ringStart || position > ringEnd + FORWARD_RECONNECT) {
-         if (stream->conn && (position < ringStart || position > ringEnd + FORWARD_RECONNECT))
-            logInfo("[http] seek reconnect to offset %llu\n", (unsigned long long)position);
          if (stream->conn) { transport->close(stream->conn); stream->conn = NULL; }
 
+         uint64_t tReconnect = sys_time_get_system_time();
          void *conn = openConnection(stream->url, position, NULL);
+         if (conn) logInfo("[http] reconnect at offset %llu took %llums\n", (unsigned long long)position,
+                           (unsigned long long)((sys_time_get_system_time() - tReconnect) / 1000));
 
          lock(&stream->stateLock);
          stream->atEof = 0;
@@ -171,7 +173,12 @@ static void prefetchThread(uint64_t arg)
       size_t slot = (size_t)(ringEnd % RING_SIZE);
       size_t contiguous = RING_SIZE - slot;
       size_t chunk = contiguous < PREFETCH_CHUNK ? contiguous : PREFETCH_CHUNK;
+      uint64_t tRead = sys_time_get_system_time();
       int64_t got = transport->read(stream->conn, stream->ring + slot, chunk);
+      uint64_t readMs = (sys_time_get_system_time() - tRead) / 1000;
+      if (readMs >= 2000)   // a normal chunk arrives in milliseconds; this is the "video stuck loading" shape
+         logWarn("[http] slow recv: %llums for a %d-byte chunk at offset %llu\n",
+                 (unsigned long long)readMs, (int)chunk, (unsigned long long)ringEnd);
 
       lock(&stream->stateLock);
       if (got > 0) {
@@ -234,6 +241,7 @@ HttpStream *openHttpStream(const char *url)
 
 int64_t readHttpStream(HttpStream *stream, void *buffer, uint64_t length)
 {
+   int starvedMs = 0;   // how long this call has waited on an empty ring (diagnoses a stalled stream)
    for (;;) {
       lock(&stream->stateLock);
       if (!stream->inUse) { unlock(&stream->stateLock); return -1; }
@@ -257,6 +265,11 @@ int64_t readHttpStream(HttpStream *stream, void *buffer, uint64_t length)
       unlock(&stream->stateLock);
       if (failed) return -1;
       sleepMs(READER_WAIT_MS);   // nothing buffered yet; let the prefetch thread catch up
+      starvedMs += READER_WAIT_MS;
+      if (starvedMs >= 3000) {   // repeats every 3s while starved, so a long stall leaves a trail in the log
+         logWarn("[http] reader starved %dms at offset %llu\n", starvedMs, (unsigned long long)stream->position);
+         starvedMs = 0;
+      }
    }
 }
 

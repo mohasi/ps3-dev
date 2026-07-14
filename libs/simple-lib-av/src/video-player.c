@@ -74,8 +74,8 @@ struct VideoPlayer {
    int              seekLandAfter;      // 1 = land on the next keyframe at/after the target (sponsor skip), not before
    volatile int     audioFlushRequest;  // decode thread -> audio thread: flush and park
    volatile int     audioFlushDone;     // audio thread -> decode thread: flushed, parked
-   volatile uint64_t diagSeekUs;        // TEMP: wall time (us) a seek started, to measure time-to-audio-up
-   volatile int     diagAwaitFrame;     // TEMP: set at seek end, cleared when the first post-seek frame decodes
+   volatile int64_t audioSeekPendingNs; // decode thread -> audio thread: seek your demuxer here (-1 = none); keeps
+                                        // the audio stream's network round trips off the picture's critical path
 
    // presentation clock (wall-time based until audio drives it)
    int      started;              // 1 once the first frame's pts anchored the clock
@@ -152,8 +152,6 @@ static int decodeNextFrame(VideoPlayer *player, uint8_t *yuv, int *width, int *h
 static void performSeek(VideoPlayer *player)
 {
    uint64_t targetNs = (uint64_t)player->seekRequestNs;
-   uint64_t tSeekStart = sys_time_get_system_time();   // TEMP: measure each phase of the seek
-   player->diagSeekUs = tSeekStart;
 
    // park the audio thread: it flushes its decoder + the mixer feed, then waits for our release
    if (player->audioAlive) {
@@ -161,7 +159,6 @@ static void performSeek(VideoPlayer *player)
       player->audioFlushRequest = 1;
       while (!player->audioFlushDone && player->audioAlive && player->running) sleepMs(1);
    }
-   uint64_t tParked = sys_time_get_system_time();
 
    // flush the decoder; if the reset wedged it (EndSeq fatal) or it already died, rebuild it rather
    // than going dark (a NULL decoder makes decode report end-of-stream until a later seek revives it)
@@ -171,16 +168,12 @@ static void performSeek(VideoPlayer *player)
       player->decoder = createH264Decoder(player->allocW, player->allocH, player->demuxer.level, player->demuxer.h264.maxRefFrames);
    }
    player->hasPendingAu = 0;
-   uint64_t tDecoderReset = sys_time_get_system_time();
    // land on the fragment keyframe covering the target - or, for a sponsor skip, the next keyframe at/after it
    uint64_t landedNs = seekVideoDemuxer(&player->demuxer, targetNs, player->seekLandAfter);
-   uint64_t tVideoSeek = sys_time_get_system_time();
-   if (player->hasAudioDemuxer) seekVideoDemuxer(&player->audioDemuxer, landedNs, 0);   // audio follows the video keyframe
-   uint64_t tAudioSeek = sys_time_get_system_time();
+   // audio follows the video keyframe, but on its own thread: its demuxer seek costs a network
+   // reconnect, and doing it here would hold up the first post-seek picture for no reason
+   if (player->hasAudioDemuxer) player->audioSeekPendingNs = (int64_t)landedNs;
    logInfo("[video-player] seek to %ds landed at %ds\n", (int)(targetNs / 1000000000ull), (int)(landedNs / 1000000000ull));
-   logInfo("[video-player] diag seek phases: park=%llums decoderReset=%llums videoSeek=%llums audioSeek=%llums\n",   // TEMP
-           (unsigned long long)((tParked - tSeekStart) / 1000), (unsigned long long)((tDecoderReset - tParked) / 1000),
-           (unsigned long long)((tVideoSeek - tDecoderReset) / 1000), (unsigned long long)((tAudioSeek - tVideoSeek) / 1000));
 
    lock(&player->lock);
    for (int i = 0; i < FRAME_SLOTS; i++)
@@ -214,7 +207,6 @@ static void performSeek(VideoPlayer *player)
    }
 
    if (player->seekRequestNs == (int64_t)targetNs) player->seekRequestNs = -1;   // keep a newer request live
-   player->diagAwaitFrame = 1;           // TEMP: time until the first frame decodes after the seek
    __sync_synchronize();
    player->audioFlushRequest = 0;        // release the audio thread
 }
@@ -240,10 +232,6 @@ static void decodeThread(uint64_t arg)
          player->slots[slot].height = height;
          player->slots[slot].state  = SLOT_READY;
          unlock(&player->lock);
-         if (player->diagAwaitFrame) {   // TEMP: first frame decoded after the seek
-            player->diagAwaitFrame = 0;
-            logInfo("[video-player] diag first frame %llums after seek start\n", (unsigned long long)((sys_time_get_system_time() - player->diagSeekUs) / 1000));
-         }
       } else {
          player->slots[slot].state = SLOT_EMPTY;
          if (player->seekRequestNs < 0) player->ended = 1;
@@ -285,6 +273,14 @@ static void audioDecodeThread(uint64_t arg)
          continue;
       }
 
+      // reposition our demuxer after a seek (posted by performSeek): the network reconnect this costs
+      // runs here, in parallel with the video's own fragment load + decode
+      if (player->audioSeekPendingNs >= 0) {
+         seekVideoDemuxer(&player->audioDemuxer, (uint64_t)player->audioSeekPendingNs, 0);
+         player->audioSeekPendingNs = -1;
+         continue;
+      }
+
       // drain decoded PCM into the mixer feed first — the decoder stalls while its buffers are full
       int frames, rate; uint64_t pts;
       int got = getPcmAac(player->aacDecoder, player->pcmScratch, &frames, &rate, &pts);
@@ -296,8 +292,6 @@ static void audioDecodeThread(uint64_t arg)
             int expectedRate = getAudioSource(player)->audioRate;
             if (rate != expectedRate) logWarn("[video-player] decoded audio rate %d Hz != demuxer rate %d Hz\n", rate, expectedRate);
             else logInfo("[video-player] audio up: %d Hz, %d samples/frame\n", rate, frames);
-            if (player->diagSeekUs) logInfo("[video-player] diag audio up %llums after seek start\n",   // TEMP
-                                            (unsigned long long)((sys_time_get_system_time() - player->diagSeekUs) / 1000));
             player->audioClockBasePts = pts;
             __sync_synchronize();
             player->audioClockValid = 1;
@@ -402,6 +396,7 @@ VideoPlayer *createVideoPlayerSplit(const char *videoPath, const char *audioPath
    if (!player) return 0;
    player->displayIndex = -1;
    player->seekRequestNs = -1;
+   player->audioSeekPendingNs = -1;
    player->freeFrame = freeFrame ? freeFrame : freeFrameToHeap;
    if (!allocFrame) allocFrame = allocFrameFromHeap;
    createLock(&player->lock);

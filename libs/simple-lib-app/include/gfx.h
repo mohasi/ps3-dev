@@ -91,6 +91,19 @@ void  drawGfxYuvFrame(int x, int y, int w, int h, const void *yuvPlanes, int fra
 int getGfxScreenWidth(void);
 int getGfxScreenHeight(void);
 
+// fits a w x h frame inside the screen preserving aspect ratio; returns the centred destination
+// rect (the letterbox for a video frame).
+static inline void getGfxLetterboxRect(int w, int h, int *dx, int *dy, int *dw, int *dh)
+{
+   int screenW = getGfxScreenWidth(), screenH = getGfxScreenHeight();
+   float frameAspect  = (float)w / (float)h;
+   float screenAspect = (float)screenW / (float)screenH;
+   if (frameAspect > screenAspect) { *dw = screenW; *dh = (int)(screenW / frameAspect); }
+   else                            { *dh = screenH; *dw = (int)(screenH * frameAspect); }
+   *dx = (screenW - *dw) / 2;
+   *dy = (screenH - *dh) / 2;
+}
+
 // free-list VRAM allocator. allocateVram returns an aligned pointer into RSX
 // local memory; freeVram releases it and coalesces adjacent free space. Each
 // owner frees what it allocated (no global mark/reset).

@@ -328,12 +328,6 @@ static void showToast(const char *text)
    showControls();
 }
 
-static void changeVolume(int delta)
-{
-   volumeLevel = stepVolumeMeter(&volumeMeter, delta);
-   setAudioPcmFeedVolume(getVolumeMeterFraction(&volumeMeter));
-}
-
 // fetches the picked caption track in the background; updatePlay reaps it and respawns on a new pick.
 static void subtitleWorker(uint64_t arg)
 {
@@ -386,10 +380,11 @@ static void handlePlaybackInput(void)
 
    if (isPadButtonPressed(PAD_BTN_TRIANGLE)) cycleSubtitles();
 
-   // volume: stepped, with auto-repeat while held (works on live streams too)
-   static ButtonRepeat volumeRepeat;
-   if (isRepeatDue(&volumeRepeat, getPadButtonState(PAD_BTN_UP)))        changeVolume(+1);
-   else if (isRepeatDue(&volumeRepeat, getPadButtonState(PAD_BTN_DOWN))) changeVolume(-1);
+   // volume: the widget steps itself on up/down; apply + persist the new level (works on live streams too)
+   if (handleVolumeMeterInput(&volumeMeter)) {
+      volumeLevel = volumeMeter.level;
+      setAudioPcmFeedVolume(getVolumeMeterFraction(&volumeMeter));
+   }
 
    if (state.isLive) return;   // a live stream has no seek index; scrubbing would break the segment stream
 
@@ -591,17 +586,6 @@ static void updatePlay(void)
    else if (state.stage != STAGE_PLAYING) setLabelText(&statusLabel, "Loading...");
 }
 
-// fits w x h inside the screen preserving aspect ratio; returns the centred rect.
-static void letterboxRect(int w, int h, int *dx, int *dy, int *dw, int *dh)
-{
-   float frameAspect  = (float)w / (float)h;
-   float screenAspect = (float)state.screenW / (float)state.screenH;
-   if (frameAspect > screenAspect) { *dw = state.screenW; *dh = (int)(state.screenW / frameAspect); }
-   else                            { *dh = state.screenH; *dw = (int)(state.screenH * frameAspect); }
-   *dx = (state.screenW - *dw) / 2;
-   *dy = (state.screenH - *dh) / 2;
-}
-
 // measure the real presented frame rate: a changed frame pointer is a new frame; tally them per second.
 static void measureFps(const uint8_t *frame)
 {
@@ -794,7 +778,7 @@ static void drawPlay(void)
          }
          state.firstFrameSeen = 1;
          int dx, dy, dw, dh;
-         letterboxRect(w, h, &dx, &dy, &dw, &dh);
+         getGfxLetterboxRect(w, h, &dx, &dy, &dw, &dh);
          drawGfxYuvFrame(dx, dy, dw, dh, frame, w, h);
       }
       measureFps(frame);

@@ -26,6 +26,7 @@
 #define PREFETCH_AHEAD    (2 * 1024 * 1024)
 #define PREFETCH_CHUNK    (8 * 1024)   // bytes per recv step; small keeps seek-reconnect reaction snappy
 #define FORWARD_RECONNECT (1 * 1024 * 1024)
+#define SEEK_COAST_BYTES  (256 * 1024)   // a forward seek gap this small streams through faster than a reconnect
 #define PREFETCH_ERROR_RETRIES 3       // reconnects to try on a failed recv/open before latching an error
 
 // prefetch-thread idle/backoff waits, in milliseconds.
@@ -278,10 +279,12 @@ int seekHttpStream(HttpStream *stream, uint64_t offset)
    lock(&stream->stateLock);
    if (!stream->inUse) { unlock(&stream->stateLock); return -1; }
    stream->position = offset;
-   // a seek to data not already in the ring: reconnect at the target (a forward seek just past the window
-   // would otherwise be mistaken for sequential drift and coast up at the server's throttled bitrate). clear
-   // atEof with it: a stale end flag would make the next read return a spurious 0 before the reconnect lands.
-   if (stream->position < stream->ringStart || stream->position > stream->ringEnd) {
+   // a seek to data not already in the ring: reconnect at the target (a large forward seek would
+   // otherwise coast up at the server's throttled bitrate). a SMALL forward gap is the exception -
+   // the prefetch streams through it in a few chunks, cheaper than a full https round trip (seeks
+   // land the audio stream a couple of seconds short of the target, which is exactly this shape).
+   // clear atEof with a reconnect: a stale end flag would return a spurious 0 before it lands.
+   if (stream->position < stream->ringStart || (stream->position > stream->ringEnd + SEEK_COAST_BYTES && !stream->atEof)) {
       stream->needReconnect = 1;
       stream->atEof = 0;
    }

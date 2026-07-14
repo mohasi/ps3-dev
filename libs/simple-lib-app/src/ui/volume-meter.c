@@ -40,6 +40,13 @@ void layoutVolumeMeter(VolumeMeter *meter, int screenW, int screenH)
    meter->bottomY  = screenH / 2 - stackHeight / 2 + stackHeight - PILL_H;   // top-y of the lowest pill
 }
 
+int handleVolumeMeterInput(VolumeMeter *meter)
+{
+   if (isRepeatDue(&meter->repeat, getPadButtonState(PAD_BTN_UP)))   { stepVolumeMeter(meter, +1); return 1; }
+   if (isRepeatDue(&meter->repeat, getPadButtonState(PAD_BTN_DOWN))) { stepVolumeMeter(meter, -1); return 1; }
+   return 0;
+}
+
 int stepVolumeMeter(VolumeMeter *meter, int delta)
 {
    int level = meter->level + delta;

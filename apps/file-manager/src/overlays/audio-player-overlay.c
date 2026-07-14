@@ -19,7 +19,6 @@
 #include "ui/label.h"
 #include "ui/image.h"
 #include "ui/volume-meter.h"
-#include "button-repeat.h"
 #include "thread.h"             // spawnJoinableThread, joinThread
 #include "dir-playlist.h"       // folder scan + prev/next-with-wrap navigation
 #include "vfs.h"               // getBaseName, MAX_PATH_LEN
@@ -308,12 +307,6 @@ static void togglePlayPause(void)
    }
 }
 
-static void changeVolume(int delta)
-{
-   volumeLevel = stepVolumeMeter(&volumeMeter, delta);
-   setAudioVolume(&state.audio, getVolumeMeterFraction(&volumeMeter));
-}
-
 // applies a seek for the held direction this frame. a fresh press jumps a fixed amount; holding
 // ramps the scrub rate up over time. dtUs is the time since the previous frame.
 static void handleSeek(int dir, uint64_t dtUs)
@@ -388,10 +381,11 @@ static void update(void)
 
    if (isPadButtonPressed(PAD_BTN_CROSS))  togglePlayPause();
 
-   // volume: stepped, with auto-repeat while held
-   static ButtonRepeat volumeRepeat;
-   if (isRepeatDue(&volumeRepeat, getPadButtonState(PAD_BTN_UP)))        changeVolume(+1);
-   else if (isRepeatDue(&volumeRepeat, getPadButtonState(PAD_BTN_DOWN))) changeVolume(-1);
+   // volume: the widget steps itself on up/down; apply + persist the new level
+   if (handleVolumeMeterInput(&volumeMeter)) {
+      volumeLevel = volumeMeter.level;
+      setAudioVolume(&state.audio, getVolumeMeterFraction(&volumeMeter));
+   }
 
    // seek: left/right, accelerating while held
    int seeking = 1;

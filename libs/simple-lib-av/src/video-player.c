@@ -379,6 +379,18 @@ silent:
 // lifecycle
 // ============================================================================
 
+// opens the split audio demuxer on a side thread, in parallel with the video open (each open costs
+// an https connect + header parse, so doing them together nearly halves startup). create joins this
+// before anything touches the audio demuxer.
+typedef struct { VideoPlayer *player; const char *path; int ok; } AudioOpenJob;
+
+static void audioOpenThread(uint64_t arg)
+{
+   AudioOpenJob *job = (AudioOpenJob *)(uintptr_t)arg;
+   job->ok = openAudioDemuxer(&job->player->audioDemuxer, job->path) == 0;
+   exitThread();
+}
+
 static int roundUp16(int value) { return (value + 15) & ~15; }
 
 // heap fallbacks when the caller supplies no frame allocator
@@ -401,14 +413,24 @@ VideoPlayer *createVideoPlayerSplit(const char *videoPath, const char *audioPath
    if (!allocFrame) allocFrame = allocFrameFromHeap;
    createLock(&player->lock);
 
-   if (openVideoDemuxer(&player->demuxer, videoPath) != 0) goto fail;
+   // adaptive streams carry audio in a separate url; open it in parallel with the video open below.
+   // failure just means silent playback, so it never fails the whole player.
+   AudioOpenJob audioJob = { player, audioPath, 0 };
+   sys_ppu_thread_t audioOpenTid;
+   int audioOpening = audioPath && audioPath[0] &&
+                      spawnJoinableThread(&audioOpenTid, audioOpenThread, (uint64_t)(uintptr_t)&audioJob,
+                                          THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_64KB, "audio-open") == 0;
 
-   // adaptive streams carry audio in a separate url; open it as the audio source. failure just
-   // means silent playback, so it never fails the whole player.
-   if (audioPath && audioPath[0] && openAudioDemuxer(&player->audioDemuxer, audioPath) == 0)
-      player->hasAudioDemuxer = 1;
-   else if (audioPath && audioPath[0])
+   int videoOk = openVideoDemuxer(&player->demuxer, videoPath) == 0;
+
+   // join the audio open before ANY exit: the thread writes into the player, so it must be done
+   // (and its outcome adopted) before a failed video open can tear the player down
+   if (audioOpening) { joinThread(audioOpenTid); player->hasAudioDemuxer = audioJob.ok; }
+   else if (audioPath && audioPath[0]) player->hasAudioDemuxer = openAudioDemuxer(&player->audioDemuxer, audioPath) == 0;
+   if (audioPath && audioPath[0] && !player->hasAudioDemuxer)
       logWarn("[video-player] separate audio stream failed to open, playing silent\n");
+
+   if (!videoOk) goto fail;
 
    // the decoder must be built for the stream's CODED size, which the SPS alone knows: the container
    // reports the DISPLAY size, and encoders pad beyond it (Intel QuickSync codes 720 as 736 and crops

@@ -9,6 +9,7 @@
 #include "font.h"
 #include "ui/label.h"
 #include "ui/image.h"
+#include "button-repeat.h"
 
 #define VOLUME_METER_PILLS 15   // meter height in pills; also the max volume level
 
@@ -20,6 +21,7 @@ typedef struct {
    int      level;            // 0..VOLUME_METER_PILLS
    uint64_t shownUs;          // last change, for the auto-hide (0 = hidden)
    int      pillX, bottomY;   // left edge of the pills; top-y of the lowest pill
+   ButtonRepeat repeat;       // up/down auto-repeat state (handleVolumeMeterInput)
 } VolumeMeter;
 
 // speakerSprite comes from the app's sprite sheet; pass a zero-width `sprites` texture to skip the glyph.
@@ -31,6 +33,10 @@ void layoutVolumeMeter(VolumeMeter *meter, int screenW, int screenH);
 // clamps level + delta, re-rasterises the number (off the draw path) and (re)shows the meter.
 // returns the new level; getVolumeMeterFraction converts it for an audio api.
 int stepVolumeMeter(VolumeMeter *meter, int delta);
+
+// steps the meter on the pad's up/down (with hold auto-repeat); returns 1 when a step fired, so the
+// caller applies meter->level to its audio path and persists it.
+int handleVolumeMeterInput(VolumeMeter *meter);
 
 static inline float getVolumeMeterFraction(const VolumeMeter *meter) { return (float)meter->level / VOLUME_METER_PILLS; }
 

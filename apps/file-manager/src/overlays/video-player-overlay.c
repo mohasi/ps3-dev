@@ -263,12 +263,6 @@ static void adoptResult(void)
 // input
 // ============================================================================
 
-static void changeVolume(int delta)
-{
-   volumeLevel = stepVolumeMeter(&volumeMeter, delta);
-   setAudioPcmFeedVolume(getVolumeMeterFraction(&volumeMeter));
-}
-
 static void showControls(void) { state.controlsShownUs = sys_time_get_system_time(); }
 
 // steps to the prev/next sibling video in the folder, wrapping at the ends.
@@ -311,10 +305,11 @@ static void update(void)
       showControls();
    }
 
-   // volume: stepped, with auto-repeat while held
-   static ButtonRepeat volumeRepeat;
-   if (isRepeatDue(&volumeRepeat, getPadButtonState(PAD_BTN_UP)))        changeVolume(+1);
-   else if (isRepeatDue(&volumeRepeat, getPadButtonState(PAD_BTN_DOWN))) changeVolume(-1);
+   // volume: the widget steps itself on up/down; apply + persist the new level
+   if (handleVolumeMeterInput(&volumeMeter)) {
+      volumeLevel = volumeMeter.level;
+      setAudioPcmFeedVolume(getVolumeMeterFraction(&volumeMeter));
+   }
 
    // seek: left/right scrub the target; the jump applies when the input goes quiet
    static ButtonRepeat seekRepeat;
@@ -371,17 +366,6 @@ static void drawSeekBar(void)
    drawLabelAt(&timeRightLabel, state.barRight + SIDE_TIME_GAP, state.barY - timeRightLabel.tt.tex.h / 2);
 }
 
-// fits w x h inside the screen preserving aspect ratio; returns the centred destination rect.
-static void letterboxRect(int w, int h, int *dx, int *dy, int *dw, int *dh)
-{
-   float frameAspect  = (float)w / (float)h;
-   float screenAspect = (float)state.screenW / (float)state.screenH;
-   if (frameAspect > screenAspect) { *dw = state.screenW; *dh = (int)(state.screenW / frameAspect); }
-   else                            { *dh = state.screenH; *dw = (int)(state.screenH * frameAspect); }
-   *dx = (state.screenW - *dw) / 2;
-   *dy = (state.screenH - *dh) / 2;
-}
-
 // controls (seek bar + filename) stay up while paused / scrubbing / at the end, else auto-hide
 static int controlsVisible(void)
 {
@@ -408,7 +392,7 @@ static void draw(void)
       const uint8_t *frame = getVideoFrame(state.player, &w, &h);
       if (frame) {
          int dx, dy, dw, dh;
-         letterboxRect(w, h, &dx, &dy, &dw, &dh);
+         getGfxLetterboxRect(w, h, &dx, &dy, &dw, &dh);
          drawGfxYuvFrame(dx, dy, dw, dh, frame, w, h);
       }
       if (controlsVisible()) {

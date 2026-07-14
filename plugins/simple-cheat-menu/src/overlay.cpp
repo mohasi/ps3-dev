@@ -744,8 +744,7 @@ void parseCheatsForTitle(const char *titleId, const char *version)
    char *file = (char *)overlayHeapAlloc(FILE_READ_CAP);
    if (!file) { overlayLog("cheats: parse buffer alloc failed"); return; }
    int bytes = readFile(path, file, FILE_READ_CAP);
-   overlayLogHex("cheats: readFile bytes", (unsigned int)bytes);
-   if (bytes <= 0) { overlayHeapFree(file); return; }
+   if (bytes <= 0) { overlayHeapFree(file); return; }   // no local file is the normal no-cheats case
 
    arena->textBlob[0] = 0;   // offset 0 is the shared empty string (overflow / no-value fallback)
    int textUsed = 1, opUsed = 0, aobUsed = 0, snapUsed = 0;
@@ -1099,7 +1098,6 @@ extern "C" void overlayShowBox(void)
    // built under this same parent: hide was alpha-0, so re-show is just colours.
    // reopen at the top of the list (the menu thread resets the selection to 0).
    if (box && parent == builtUnder) {
-      overlayLog("show: re-show");
       scrollOffset = 0;
       highlightIndex = -1;
       layoutPanel();   // the cheat count may have changed since last open (e.g. after an Update)
@@ -1112,7 +1110,6 @@ extern "C" void overlayShowBox(void)
    // the current parent. the old widgets died with their parent — drop the stale
    // pointers WITHOUT touching them (that is the freeze), and build anew.
    if (box) overlayLogHex("show: parent changed - rebuilding, was", builtUnder);
-   else     overlayLog("show: constructing (first open)");
    forgetOverlayWidgets();
 
    // the cheat list is already parsed (overlayPrepareForTitle, on the menu thread), so the frame
@@ -1205,10 +1202,8 @@ extern "C" int overlayPrepareForTitle(void)
    }
 
    char titleId[16], name[64];
-   overlayLog("prepare: reading game header");
    getGameHeader(titleId, name);
    if (strCmpICase(titleId, lastParsedTitle) != 0) loadTitle(titleId, name);   // new title: (re)parse
-   overlayLogHex("prepare: cheat count", (unsigned int)cheatCount);
    return cheatCount;
 }
 
@@ -1421,7 +1416,6 @@ static int scanRange(unsigned int pid, const unsigned char *pattern, int pattern
 static int scanGameForMatches(unsigned int pid, const unsigned char *pattern, int patternLen, int cheat, int wantOn)
 {
    if (patternLen <= 0) return 0;
-   overlayLogHex("scan: pattern len", (unsigned int)patternLen);
 
    // the bulk scan buffer is a transient page (the arena has no room to grow it): taken for
    // the sweep and freed right after, so nothing extra is resident between scans.
@@ -1451,7 +1445,8 @@ static int scanGameForMatches(unsigned int pid, const unsigned char *pattern, in
    }
 
    overlayHeapFree(scanBuffer);
-   if (found != SCAN_ABORTED) overlayLogHex("scan: matches", (unsigned int)found);
+   // exactly one match is the expected outcome; only anything else is worth a line
+   if (found != SCAN_ABORTED && found != 1) overlayLogHex("scan: matches", (unsigned int)found);
    return found;
 }
 
@@ -1623,8 +1618,6 @@ static int applyCheat(int cheat, int enable)
       if (reverted) freeCheatMatches(cheat);   // now OFF: reclaim its match slice
       return reverted;
    }
-
-   overlayLogHex("apply: begin, ops", (unsigned int)c->opCount);
 
    // phase 1: scan every aob op for its matches (no poke yet). a missing or cancelled scan
    // fails the whole cheat before anything is written.

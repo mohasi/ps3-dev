@@ -36,6 +36,8 @@ struct H264Decoder {
    volatile int   picPending;      // decoded pictures reported but not yet retrieved
    volatile int   seqDone;         // EndSeq finished (set by the callback, cleared by reset)
    volatile int   errored;
+   int            auRejectedCount;   // AUs the decoder refused (a broken stream refuses every one)
+   int            picIncompleteCount;   // pictures that came out damaged
 };
 
 static uint32_t vdecCallback(CellVdecHandle handle, CellVdecMsgType type, int32_t data, void *arg)
@@ -45,10 +47,15 @@ static uint32_t vdecCallback(CellVdecHandle handle, CellVdecMsgType type, int32_
    lock(&decoder->lock);
    switch (type) {
       // a rejected access unit is reported here, NOT as MSG_TYPE_ERROR (which is fatal-only): the
-      // decoder still emits a picture for it, so without this line a broken stream looks healthy
+      // decoder still emits a picture for it, so without this line a broken stream looks healthy.
+      // throttled: a broken stream rejects every AU, which would be 30-60 lines a second
       case CELL_VDEC_MSG_TYPE_AUDONE:
          decoder->auDoneCount++;
-         if (data != CELL_OK) logWarn("[decode-h264] decoder rejected an access unit, rc=0x%x\n", data);
+         if (data != CELL_OK) {
+            decoder->auRejectedCount++;
+            if (decoder->auRejectedCount == 1 || decoder->auRejectedCount % 256 == 0)
+               logWarn("[decode-h264] decoder rejected access unit #%d, rc=0x%x\n", decoder->auRejectedCount, data);
+         }
          break;
       case CELL_VDEC_MSG_TYPE_PICOUT: decoder->picPending++;  break;
       case CELL_VDEC_MSG_TYPE_SEQDONE: decoder->seqDone = 1;  break;
@@ -216,7 +223,12 @@ int getFrameH264(H264Decoder *decoder, void *yuvOut, int *outWidth, int *outHeig
    if (cellVdecGetPicItem(decoder->handle, &picItem) != CELL_OK) return 0;   // counter ran ahead: nothing queued yet
    lock(&decoder->lock); decoder->picPending--; unlock(&decoder->lock);
 
-   if (picItem->status != CELL_OK) logWarn("[decode-h264] picture came out incomplete, status=0x%x\n", picItem->status);
+   // throttled: a degraded stream damages every picture, which would be 30-60 lines a second
+   if (picItem->status != CELL_OK) {
+      decoder->picIncompleteCount++;
+      if (decoder->picIncompleteCount == 1 || decoder->picIncompleteCount % 256 == 0)
+         logWarn("[decode-h264] picture #%d came out incomplete, status=0x%x\n", decoder->picIncompleteCount, picItem->status);
+   }
 
    const CellVdecAvcInfo *info = (const CellVdecAvcInfo *)picItem->picInfo;
    int frameW = info->horizontalSize;

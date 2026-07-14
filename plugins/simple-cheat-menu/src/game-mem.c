@@ -1,10 +1,7 @@
 #include "game-mem.h"
 #include "syscall.h"
-#include "dbg.h"
 
 #include <sys/prx.h>   // sys_prx_module_info_t / sys_prx_segment_info_t for the segments query
-
-#define TAG "[cht] "
 
 // dbg process-memory syscalls, arg order (pid, address, size, buffer). disabled
 // on some CFW, so both paths fall back to cobra ps3mapi (syscall 8, opcode
@@ -93,6 +90,5 @@ int getGameScanRanges(uint32_t pid, GameRange *rangesOut, int maxRanges)
          count++;
       }
    }
-   logInfo(TAG "segments: %d scan ranges enumerated\n", count);
-   return count;
+   return count;   // 0 = caller falls back to the fixed scan window (and its no-match log tells the story)
 }

@@ -250,7 +250,7 @@ int readTlsHead(TlsConn *conn, int *status, uint64_t *totalSize)
       headLen += got;
       if ((bodyStart = findBodyStart(conn->head, headLen)) >= 0) break;
    }
-   if (bodyStart < 0) { logError("[tls] no header break in response\n"); return -1; }
+   if (bodyStart < 0) return -1;   // the caller logs the outcome (stale-reuse retry vs real failure)
 
    conn->head[bodyStart - 2] = '\0';   // terminate the header text at the blank line's first \r\n
    const char *headers = (const char *)conn->head;

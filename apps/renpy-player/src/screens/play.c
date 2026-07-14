@@ -278,9 +278,6 @@ void beginImageMap(const RbcImageMap *im, const char *resultVar)
    }
    clearFocus();
    mode = M_IMAGEMAP;
-   logInfo("[rpp] imagemap[%s]: %s (%d hotspots) -> %s\n",
-           im && im->kind ? im->kind : "", im ? im->ground : "?",
-           im ? im->hotspotCount : 0, imResultVar);
 }
 
 // Resolve a state slot through the engine's fallback chain to an actually-loaded texture (or -1).

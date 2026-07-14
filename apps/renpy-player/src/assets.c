@@ -145,7 +145,6 @@ int loadAssetTexture(const char *base, GfxTexture *out)
    free(buf);
    if (t.offset == 0) { logWarn("[rpp] img: decode failed %s\n", name); return 0; }
    *out = t;
-   logInfo("[rpp] img: %s\n", name);
    return 1;
 }
 

@@ -35,7 +35,6 @@
 #define PAF_FRAMEWORK_BEGIN_FNID  0x59BDA198u
 
 #define PAD_POLL_USEC      (33 * 1000)   // ~30 Hz
-#define HEARTBEAT_TICKS    600           // ~20s of polls
 
 // ps-menu detection thresholds, in poll ticks
 #define PS_MENU_QUIET_TICKS  30   // ~1s with no pad report = ps menu closed
@@ -62,16 +61,11 @@ static volatile int menuOpen = 0;
 // paf frame hook which moves the highlight bar on vsh's frame thread.
 static volatile int menuSelection = 0;
 
-// bumped by the paf frame hook on every frame; read by menuThread to prove
-// the detour is live. volatile: written from vsh's frame thread.
-static volatile uint32_t frameHookCount = 0;
-
 // runs on vsh's frame thread every frame. keep it light: show or hide the box
 // to match menuOpen. widget create/update must happen on this thread (it is the
 // one paf composites on), which is why drawing rides the frame hook.
 static void onPafFrame(void)
 {
-   frameHookCount++;
    if (overlayFrameFrozen()) return;   // parked while a live Update re-parses; also does the post-parse repaint
    if (menuOpen) {
       overlayShowBox();
@@ -188,9 +182,8 @@ static void menuThread(uint64_t arg)
    int      lastInGame = -1;
    int      fetchAttempted = 0;   // one online cheat-fetch per game session (reset on exit)
    int      captured = 0, dismissed = 0, psReleased = 0, classified = 0;
-   int      lastPsMenuOpen = 0, blockedLogged = 0;
+   int      blockedLogged = 0;
    uint32_t captureTicks = 0, rawQuietTicks = 0;
-   uint32_t tick = 0, lastFrameCount = 0;
    int      selection = 0;        // current cheat row, moved by the d-pad
    int      voteDismissTicks = 0; // frames left showing a vote outcome before the rows return
    uint32_t prevDpad = 0;         // last raw buttons, for the edge-triggered cross toggle
@@ -276,7 +269,6 @@ static void menuThread(uint64_t arg)
                   setVshPadEnabled(1);   // long press: hand the pad straight back, untouched
                   captured = 0;
                   dismissed = 1;
-                  logInfo(TAG "classify: long press - passthrough\n");
                } else if (overlayPrepareForTitle() > 0) {
                   // short press AND this title has cheats: show the menu. the file
                   // read+parse happened just now on this thread, so the frame
@@ -288,11 +280,10 @@ static void menuThread(uint64_t arg)
                   prevDpad = 0;
                   menuSelection = 0;
                   navUp.wasDown = navDown.wasDown = 0;   // fresh press edge on the first held direction
-                  logInfo(TAG "classify: short press, cheats found - menu shown\n");
                } else {
-                  // no cheats for this title: don't show the box at all, hand the
-                  // pad straight back so the normal in-game XMB behaves as usual.
-                  logInfo(TAG "classify: short press, no cheats - passthrough\n");
+                  // no cheats for this title: don't show the box at all, hand the pad straight back so
+                  // the normal in-game XMB behaves as usual. no log - the toast tells the user, and a
+                  // PS press per minute of gameplay would fill the file
                   setVshPadEnabled(1);   // restore the pad BEFORE the toast (not during the blind)
                   captured = 0;
                   dismissed = 1;
@@ -391,18 +382,9 @@ static void menuThread(uint64_t arg)
 
          int psMenuOpen = inGameTicks > PS_MENU_ARM_TICKS && quietTicks < PS_MENU_QUIET_TICKS;
 
-         // rising edge of "pad reports flowing" = a ps overlay just opened. log
-         // it whether or not we capture, so a short press that shows the xmb but
-         // NOT the cheat menu leaves a reason on disk (dismissed / rawPadUsable).
-         if (psMenuOpen && !lastPsMenuOpen)
-            logInfo(TAG "ps activity detected (dismissed=%d rawPadUsable=%d quietTicks=%u inGameTicks=%u)\n",
-                    dismissed, rawPadUsable, quietTicks, inGameTicks);
-         lastPsMenuOpen = psMenuOpen;
-
          if (!psMenuOpen && dismissed) {
             dismissed = 0;     // ps menu closed after a circle-dismiss; re-arm
             blockedLogged = 0;
-            logInfo(TAG "ps-menu CLOSE\n");
          }
 
          // pad active but still dismissed = a press we're NOT acting on. log it
@@ -422,16 +404,7 @@ static void menuThread(uint64_t arg)
             captureTicks = 0;
             rawQuietTicks = 0;
             psReleased = 0;    // wait for the opening PS to lift before it can exit
-            logInfo(TAG "capture: begin (blinded vsh libpad), classifying\n");
          }
-      }
-
-      // section: ~20s heartbeat proving the frame hook still ticks
-      if (++tick >= HEARTBEAT_TICKS) {
-         uint32_t now = frameHookCount;
-         logInfo(TAG "alive frames=%u (+%u) ingame=%d captured=%d\n", now, now - lastFrameCount, inGame, captured);
-         lastFrameCount = now;
-         tick = 0;
       }
 
       sys_timer_usleep(PAD_POLL_USEC);

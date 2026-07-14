@@ -31,6 +31,7 @@ struct LiveSource {
    char     base[2048];   // "<...>/" - append "sq/<n>"
    long     nextSq;       // next segment number to fetch (prefetch-thread owned)
    int      firstDone;    // the first (init-bearing) segment has been emitted
+   int      failStreak;   // consecutive failed fetches of the current segment, for log throttling
 
    uint8_t *window;       // rolling buffer of the virtual stream (guarded by lock)
    int      windowLen;
@@ -90,10 +91,14 @@ static int fetchNextSegment(LiveSource *source)
    int rc = fetchHttp("GET", url, headers, 2, NULL, 0, (char *)source->fetchBuffer, SEGMENT_FETCH_CAP, &length, &status);
    if (rc != 0 || length <= 0) {
       if (rc == 0 && (status == 204 || status == 404)) return 1;   // not generated yet: we're at the live edge
-      logError("[live] segment sq/%ld failed rc=%d status=%d\n", source->nextSq, rc, status);
+      // the caller retries the same segment every 200ms, so a network outage would log 5 lines a second
+      // forever; log the first failure and then one per ~5s of outage
+      if (source->failStreak++ % 25 == 0)
+         logError("[live] segment sq/%ld failed rc=%d status=%d (fail #%d)\n", source->nextSq, rc, status, source->failStreak);
       return -1;
    }
    if (status != 200 && status != 206) return (status == 204 || status == 404) ? 1 : -1;
+   source->failStreak = 0;
 
    int offset = source->firstDone ? firstMoofOffset(source->fetchBuffer, length) : 0;
    lock(&source->lock);

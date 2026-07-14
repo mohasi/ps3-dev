@@ -69,7 +69,7 @@ static uint32_t   batchColOffset[FRAME_COUNT];
 static uint32_t   batchUvOffset[FRAME_COUNT];
 static int        batchVertCount = 0;
 static int        batchFlushStart = 0;
-static int        batchOverflowWarned = 0;   // logs the full-batch warning once per frame, not once per dropped draw call
+static int        batchOverflowWarned = 0;   // logs the full-batch warning once per run
 
 // shader state
 extern struct _CGprogram _binary_vpshader_vpo_start;
@@ -445,7 +445,6 @@ void beginGfxFrame(void)
    batchTexH = 1;
    batchTexPitch = 64;
    batchTexLinear = 0;
-   batchOverflowWarned = 0;
 }
 
 void clearGfx(uint32_t argb)
@@ -479,12 +478,13 @@ static void ensureWhiteTex(void)
    }
 }
 
-// batch is full for this frame: log once per frame (not once per dropped draw call) and drop the call.
+// batch is full for this frame: drop the call. logged once per run - a persistently heavy screen
+// overflows every frame, and one line is enough to know MAX_VERTS needs raising.
 static int batchWouldOverflow(int vertsNeeded)
 {
    if (batchVertCount + vertsNeeded <= MAX_VERTS) return 0;
    if (!batchOverflowWarned) {
-      logWarn("[gfx] batch full (%d verts/frame): dropping further draw calls this frame\n", MAX_VERTS);
+      logWarn("[gfx] batch full (%d verts/frame): dropping draw calls past the cap\n", MAX_VERTS);
       batchOverflowWarned = 1;
    }
    return 1;

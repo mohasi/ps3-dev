@@ -28,6 +28,7 @@
 #include "video-player.h"
 #include "audio.h"              // setAudioPcmFeedVolume
 #include "storage.h"            // resume position (get/setWatchedPosition)
+#include "settings.h"           // sponsorblock-mode (which segment categories auto-skip)
 #include "sponsorblock.h"       // skip segments (auto-skip + seek-bar marks)
 #include "subtitles.h"          // fetch + parse a caption track; cue lookup during playback
 #include "chapters.h"           // description timestamp lines -> chapter list
@@ -162,7 +163,6 @@ static int volumeLevel = VOLUME_DEFAULT;
 // the packed sprite sheet, loaded once for the app's lifetime (only the speaker icon lives in it)
 static GfxTexture spriteSheet;
 static int spriteSheetLoadTried;
-static uint64_t playRequestUs;   // TEMP: set when the user picks a video, to time the WHOLE select->picture path
 
 static void fail(const char *reason)
 {
@@ -187,8 +187,6 @@ static int isRenderableSubtitleLanguage(const char *code)
 static void worker(uint64_t arg)
 {
    (void)arg;
-   uint64_t tPlayStart = sys_time_get_system_time();   // TEMP: full resume-path timing (resolve -> open -> seek)
-   logInfo("[yt] diag worker started %llums after select\n", (unsigned long long)((tPlayStart - playRequestUs) / 1000));   // TEMP
    StreamInfo *info = malloc(sizeof *info);   // ~50 KB, too big for the stack
    const Extractor *extractor = findExtractor(requestedInput);
    if (!info || !extractor) { fail("unrecognised link or id"); goto done; }
@@ -201,7 +199,6 @@ static void worker(uint64_t arg)
    for (int i = 0; i < info->captionCount; i++)   // keep only tracks the system font can render
       if (isRenderableSubtitleLanguage(info->captions[i].languageCode))
          state.captionTracks[state.captionCount++] = info->captions[i];
-   logInfo("[yt] diag resolve took %llums\n", (unsigned long long)((sys_time_get_system_time() - tPlayStart) / 1000));   // TEMP
 
    const StreamFormat *video = pickBestVideo(info);
    if (!video) { fail("no playable mp4 video"); goto done; }
@@ -216,12 +213,8 @@ static void worker(uint64_t arg)
 
    // open the decoder: both streams ride the http module by range request. an audio open
    // failure inside the player just means silent playback. NULL if it can't be demuxed/decoded.
-   uint64_t tBeforeOpen = sys_time_get_system_time();   // TEMP
    state.pendingPlayer = createVideoPlayerSplit(video->url, audio ? audio->url : NULL, allocGfxVideoBuffer, freeGfxVideoBuffer);
    if (!state.pendingPlayer) { fail("couldn't open stream"); goto done; }
-   logInfo("[yt] diag open both streams took %llums (total since play %llums)\n",   // TEMP
-           (unsigned long long)((sys_time_get_system_time() - tBeforeOpen) / 1000),
-           (unsigned long long)((sys_time_get_system_time() - tPlayStart) / 1000));
 
    // resume where we left off. seekVideoPlayer only posts the target; the decode thread does the
    // reconnect + fragment reload. drawPlay keeps the "Loading..." status up until the first frame is
@@ -269,7 +262,6 @@ static void chapterWorker(uint64_t arg)
 void playVideo(const char *input)
 {
    strCopy(requestedInput, sizeof requestedInput, input);
-   playRequestUs = sys_time_get_system_time();   // TEMP: start of the true perceived resume
    pushScreen(&playScreen);
 }
 
@@ -307,7 +299,7 @@ static void initPlay(void)
                          THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_64KB, "yt-play") == 0);
    if (!state.threadActive) fail("couldn't start worker");
 
-   if (isBareVideoId(requestedInput))
+   if (getSponsorblockMode() != SPONSORBLOCK_OFF && isBareVideoId(requestedInput))
       state.sbThreadActive = (spawnJoinableThread(&state.sbWorkerTid, sponsorWorker, 0,
                               THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_64KB, "yt-sponsor") == 0);
 }
@@ -398,6 +390,16 @@ static void handlePlaybackInput(void)
    }
 }
 
+// which categories the sponsorblock-mode setting auto-skips: ads = paid-promotion categories only.
+// (every fetched segment still gets marked on the seek bar, whatever the mode.)
+static int shouldAutoSkipSponsor(SponsorCategory category)
+{
+   SponsorblockMode mode = getSponsorblockMode();
+   if (mode == SPONSORBLOCK_ALL) return 1;
+   return mode == SPONSORBLOCK_ADS &&
+          (category == SPONSOR_SPONSOR || category == SPONSOR_SELFPROMO || category == SPONSOR_INTERACTION);
+}
+
 // jump past the first not-yet-skipped sponsor segment the playhead has entered. one-shot per segment so a
 // manual rewind into it doesn't fight the user.
 static void autoSkipSponsor(void)
@@ -405,6 +407,7 @@ static void autoSkipSponsor(void)
    float pos = getVideoPositionSeconds(state.player);
    for (int i = 0; i < state.sb.count; i++) {
       SponsorSegment *segment = &state.sb.segments[i];
+      if (!shouldAutoSkipSponsor(segment->category)) continue;
       if (segment->skipped || pos < segment->start || pos >= segment->end - 0.2f) continue;
       segment->skipped = 1;
       seekVideoPlayerPast(state.player, segment->end);   // land on the next keyframe after the segment, not before it
@@ -772,10 +775,7 @@ static void drawPlay(void)
       int w, h;
       frame = getVideoFrame(state.player, &w, &h);
       if (frame) {
-         if (!state.firstFrameSeen) {
-            logInfo("[yt] diag select-to-picture %llums\n", (unsigned long long)((sys_time_get_system_time() - playRequestUs) / 1000));   // TEMP
-            showControls();   // bring the HUD (seek bar + title) up as playback starts; it auto-hides as usual
-         }
+         if (!state.firstFrameSeen) showControls();   // bring up the HUD as playback starts; it auto-hides as usual
          state.firstFrameSeen = 1;
          int dx, dy, dw, dh;
          getGfxLetterboxRect(w, h, &dx, &dy, &dw, &dh);

@@ -25,7 +25,9 @@ It reuses what this repo already has:
 - **Download** — combine a video's 1080p video + audio into one `.mkv` on the console, in the background, with a
   queue and a progress readout. Live streams excluded.
 - **SponsorBlock** — community-marked sponsor / intro / self-promo segments are skipped automatically and shown
-  on the seek bar in their category colours.
+  on the seek bar in their category colours. How much gets skipped is set by `sponsorblock-mode` in
+  `/dev_hdd0/tmp/yo-player/settings.txt` (created on first launch): `off` = never skip, `ads` = paid promotions
+  only (the default), `all` = also intros, outros, filler and non-music sections.
 - **No PSN, no ads** — talks to YouTube directly; appears under the XMB **Video** column like the old app.
 
 ## Status

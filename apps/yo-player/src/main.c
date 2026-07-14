@@ -19,6 +19,7 @@
 #include "screen-manager.h"
 #include "screens/home.h"
 #include "storage.h"
+#include "settings.h"
 #include "downloads.h"
 #include "ui/console-glyphs.h"
 #include "ui/stats.h"
@@ -51,6 +52,7 @@ int main(int argc, char **argv)
 
    initStats(5, 5, 14, COLOR_AMBER_300);
    initStorage();          // prefs (last category) + watch history, under /dev_hdd0/tmp/yo-player/
+   loadSettings();         // user-editable settings.txt (created with defaults on first launch)
    loadConsoleGlyphs();    // decode the console's own button glyphs for the on-screen hints
    initDownloads();        // background download queue + its progress overlay
 

@@ -45,6 +45,7 @@ typedef struct {
    char name[NAME_LEN];
    uint64_t size;
    uint64_t modified;
+   uint32_t mode;    // st_mode-style permission bits (0 when the entry couldn't be stat'ed)
    int fileCount;    // 1 for files; recursive count for folders (valid when sized)
    FileType type;
    int checked;
@@ -63,7 +64,28 @@ static Label labels[FILE_LIST_PAGE_SIZE];
 static Label sizeLabels[FILE_LIST_PAGE_SIZE];
 static Label typeLabels[FILE_LIST_PAGE_SIZE];
 static Label modifiedLabels[FILE_LIST_PAGE_SIZE];
+static Label permissionLabels[FILE_LIST_PAGE_SIZE];
 static Label counterLabel;
+
+// column layout: one x/width per column, shared by the header row and the row labels
+#define COLUMN_TYPE_X        1080
+#define COLUMN_TYPE_W         140
+#define COLUMN_SIZE_X        1270
+#define COLUMN_SIZE_W         130
+#define COLUMN_MODIFIED_X    1440
+#define COLUMN_MODIFIED_W     190
+#define COLUMN_PERMISSIONS_X 1680
+#define COLUMN_PERMISSIONS_W  175
+
+// column headers, rendered here rather than baked into background.png so columns can be moved
+// and added freely (Name sits over the checkbox/icon block, the rest match the row columns)
+#define COLUMN_HEADER_Y 198
+static const struct { int x; const char *text; } COLUMN_HEADERS[] = {
+   { 88, "Name" }, { COLUMN_TYPE_X, "Type" }, { COLUMN_SIZE_X, "Size" },
+   { COLUMN_MODIFIED_X, "Modified" }, { COLUMN_PERMISSIONS_X, "Permissions" }
+};
+#define COLUMN_HEADER_COUNT ((int)(sizeof COLUMN_HEADERS / sizeof COLUMN_HEADERS[0]))
+static Label columnHeaderLabels[COLUMN_HEADER_COUNT];
 static int listY, listRowHeight;
 static int labelsStale;
 static char currentPath[MAX_PATH_LEN];
@@ -163,6 +185,7 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
    e->fileCount = 0;
    e->approx    = 0;
    e->modified  = 0;
+   e->mode      = 0;
    // root listing only: badge removable devices (folders) with the USB icon
    int atRoot = currentPath[0] == '/' && currentPath[1] == '\0';
    e->isUsb = atRoot && isUsbDevice(name, fullPath);
@@ -179,6 +202,7 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
    int isDir = st.isDir;
    e->type = classifyFileType(name, isDir);
    e->modified = st.mtime;
+   e->mode = st.mode;
    if (isDir) {
       e->size  = 0;
       e->sized = 0;  // folder-sizer fills this in
@@ -294,9 +318,18 @@ static void refreshMounts(void)
    scrollToSelected();
 }
 
+// "drwxr-xr-x"-style text from st_mode permission bits: type char, then owner/group/other rwx triplets
+static void formatPermissions(char *out, uint32_t mode, int isDir)
+{
+   out[0] = isDir ? 'd' : '-';
+   for (int bit = 0; bit < 9; bit++)
+      out[1 + bit] = (mode & (0400u >> bit)) ? "rwx"[bit % 3] : '-';
+   out[10] = '\0';
+}
+
 static void rebuildLabels(void)
 {
-   // row labels (name, type, size, modified local time)
+   // row labels (name, type, size, modified local time, permissions)
    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
       int idx = scrollOffset + i;
       if (idx >= entryCount) {
@@ -304,6 +337,7 @@ static void rebuildLabels(void)
          setLabelText(&sizeLabels[i], "");
          setLabelText(&typeLabels[i], "");
          setLabelText(&modifiedLabels[i], "");
+         setLabelText(&permissionLabels[i], "");
          continue;
       }
       setLabelText(&labels[i],     entries[idx].name);
@@ -320,6 +354,10 @@ static void rebuildLabels(void)
       char modifiedText[20];
       formatDateTimeLocal(modifiedText, sizeof(modifiedText), entries[idx].modified);
       setLabelText(&modifiedLabels[i], modifiedText);
+
+      char permissionText[12];
+      formatPermissions(permissionText, entries[idx].mode, entries[idx].type == FILE_TYPE_FOLDER);
+      setLabelText(&permissionLabels[i], permissionText);
    }
 
    // checked / total counter
@@ -460,6 +498,8 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
 
    initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
    initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
+   for (int i = 0; i < COLUMN_HEADER_COUNT; i++)
+      initLabel(&columnHeaderLabels[i], font, COLUMN_HEADERS[i].x, COLUMN_HEADER_Y, 240, AUTO, fontSize, color, TEXT_NOWRAP, COLUMN_HEADERS[i].text);
    addFooterButton(PAD_BTN_CROSS,  GLYPH_CROSS,  "Enter", activateSelectedEntry);
    addFooterButton(PAD_BTN_CIRCLE, GLYPH_CIRCLE, "Back",  goToParentDir);
    addFooterButton(PAD_BTN_SQUARE, GLYPH_SQUARE, "Mark",  NULL);
@@ -474,9 +514,10 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
       int cy = ry + (rowHeight - 25) / 2;
 
       initLabel(&labels[i], font, x, ry + 25, maxWidth, AUTO, fontSize, color, TEXT_NOWRAP_ELLIPSIS, NULL);
-      initLabel(&typeLabels[i], font, 1240, ry + 25, 140, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-      initLabel(&sizeLabels[i], font, 1430, ry + 25, 130, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-      initLabel(&modifiedLabels[i], font, 1635, ry + 25, 240, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+      initLabel(&typeLabels[i], font, COLUMN_TYPE_X, ry + 25, COLUMN_TYPE_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+      initLabel(&sizeLabels[i], font, COLUMN_SIZE_X, ry + 25, COLUMN_SIZE_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+      initLabel(&modifiedLabels[i], font, COLUMN_MODIFIED_X, ry + 25, COLUMN_MODIFIED_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
+      initLabel(&permissionLabels[i], font, COLUMN_PERMISSIONS_X, ry + 25, COLUMN_PERMISSIONS_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
       initCheckbox(&checkboxes[i], spritesheet, 71, cy, 25, spriteRegions[SPRITE_CHECKBOX], spriteRegions[SPRITE_CHECKBOX_CHECKED]);
       initSlice(&separators[i], spritesheet, 47, ry - 1, 1884 - 47, 2, spriteRegions[SPRITE_SEPARATOR], 1);
    }
@@ -559,6 +600,8 @@ static int entryIsMarked(int idx)
 
 void drawFileList(void)
 {
+   for (int i = 0; i < COLUMN_HEADER_COUNT; i++) drawLabel(&columnHeaderLabels[i]);
+
    // hide top separator when the first visible row is selected (hover replaces it)
    if (entryCount == 0 || selectedIndex != scrollOffset) {
       drawSlice(&separators[0]);
@@ -599,6 +642,7 @@ void drawFileList(void)
       drawLabelAlpha(&sizeLabels[i], alpha);
       drawLabelAlpha(&typeLabels[i], alpha);
       drawLabelAlpha(&modifiedLabels[i], alpha);
+      drawLabelAlpha(&permissionLabels[i], alpha);
    }
 
    drawLabel(&counterLabel);
@@ -614,8 +658,10 @@ void termFileList(void)
       freeLabel(&sizeLabels[i]);
       freeLabel(&typeLabels[i]);
       freeLabel(&modifiedLabels[i]);
+      freeLabel(&permissionLabels[i]);
    }
    freeLabel(&counterLabel);
+   for (int i = 0; i < COLUMN_HEADER_COUNT; i++) freeLabel(&columnHeaderLabels[i]);
 
    free(entries);
    entries = NULL;

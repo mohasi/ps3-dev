@@ -87,7 +87,7 @@ static void initHome(void)
    initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
    initFreeSpaceWidget(&pop, 1794, 953, 20, 0x64FFFFFF, 80);
    initFooterWidget(&pop);
-   initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 1024, 74, 24, COLOR_WHITE, &breadcrumb);
+   initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 860, 74, 24, COLOR_WHITE, &breadcrumb);   // name width leaves room for the permissions column
    initSidepanel(sprites, &clickSfx, dispatchAction);
    initConfirmOverlay(sprites, &clickSfx);
    initProgressOverlay(sprites, &clickSfx);

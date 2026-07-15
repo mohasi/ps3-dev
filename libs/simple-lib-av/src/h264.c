@@ -102,7 +102,11 @@ static int walkSps(const uint8_t *rbsp, int rbspSize, SpsFields *fields)
    } else if (pocType == 1) {
       readBit(&reader);                  // delta_pic_order_always_zero_flag
       readSe(&reader); readSe(&reader);  // offsets
-      int cycle = readUe(&reader);
+      int cycle = (int)readUe(&reader);
+      // the spec caps num_ref_frames_in_pic_order_cnt_cycle at 255; a hostile/corrupt SPS can encode a
+      // value near INT_MAX, and the bit reader keeps returning 0 past end-of-buffer, so an unchecked loop
+      // would spin for minutes on the decode thread. reject anything out of range instead.
+      if (cycle < 0 || cycle > 255) return -1;
       for (int i = 0; i < cycle; i++) readSe(&reader);
    }
 

@@ -79,13 +79,13 @@ static Audio * volatile mixingStream = NULL;
 
 // external PCM feed (video playback): lock-free single-producer ring drained by the mixer
 #define FEED_RING_FRAMES  32768   // stereo frames, power of two (~0.68 s at 48 kHz)
-#define FEED_PRIME_FRAMES 16384   // backlog required before the mixer starts draining (~0.35 s)
 static struct {
    float   *ring;                 // interleaved stereo
    volatile uint32_t head, tail;  // free-running frame counters (producer / mixer)
    volatile uint64_t consumed;    // total source frames mixed out — the video player's A/V clock
    double   readPos;              // fractional resample position past `tail`
    int      sampleRate;
+   int      primeFrames;          // backlog the mixer waits for before it starts draining
    float    volume;
    volatile int active, paused;
    volatile int priming;          // hold consumption until a backlog exists (start / post-flush)
@@ -279,7 +279,7 @@ static void mixFeedBlock(float *mix) {
    // hold consumption until the producer has built a backlog: draining from the very first pushed
    // frame underruns in bursts at startup, and each underrun freezes the A/V clock (video stutter)
    if (feed.priming) {
-      if (feed.head - feed.tail < FEED_PRIME_FRAMES) { feed.mixerInFeed = 0; return; }
+      if (feed.head - feed.tail < (uint32_t)feed.primeFrames) { feed.mixerInFeed = 0; return; }
       feed.priming = 0;
    }
 
@@ -892,14 +892,16 @@ void lowerAudioMasterVolume(float amount) {
 // external PCM feed (video playback)
 // ============================================================================
 
-int openAudioPcmFeed(int sampleRate) {
+int openAudioPcmFeed(int sampleRate, int primeFrames) {
    if (feed.active || sampleRate <= 0) return -1;
+   if (primeFrames <= 0 || primeFrames > FEED_RING_FRAMES / 2) primeFrames = FEED_RING_FRAMES / 2;
    feed.ring = (float *)calloc(FEED_RING_FRAMES * 2, sizeof(float));
    if (!feed.ring) return -1;
    feed.head = feed.tail = 0;
    feed.consumed = 0;
    feed.readPos = 0.0;
    feed.sampleRate = sampleRate;
+   feed.primeFrames = primeFrames;
    feed.volume = 1.0f;
    feed.paused = 0;
    feed.priming = 1;

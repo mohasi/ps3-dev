@@ -129,7 +129,10 @@ void  lowerAudioMasterVolume(float amount);
 // drains it into each block alongside the normal streams, resampling to its own rate. Interleaved
 // stereo float32 at `sampleRate`. One feed at a time. The consumed-frames counter is the A/V clock:
 // it advances only as samples actually reach the speakers' buffer.
-int      openAudioPcmFeed(int sampleRate);                          // 0 ok, -1 if busy/OOM
+// primeFrames is the backlog the mixer builds before it starts playing: it absorbs late-arriving
+// audio, and it is also pure added delay. file playback wants a big one (~0.35s, the default when
+// 0 is passed); live streaming wants a small one, because there the delay is the whole point.
+int      openAudioPcmFeed(int sampleRate, int primeFrames);         // 0 ok, -1 if busy/OOM
 void     closeAudioPcmFeed(void);
 int      pushAudioPcm(const float *stereoFrames, int frameCount);   // frames accepted (< frameCount when the ring is full)
 int      getAudioPcmFeedSpace(void);                                // frames currently pushable

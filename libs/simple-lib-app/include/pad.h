@@ -38,8 +38,9 @@ typedef struct {
 void initPad(void);
 void updatePad(void);
 PadButtonState getPadButtonState(PadButton button);
-int isPadButtonPressed(PadButton button);
-int isPadButtonHeld(PadButton button);
+int isPadButtonPressed(PadButton button);   // the frame it went down
+int isPadButtonHeld(PadButton button);      // frames after that, NOT the frame it went down
+int isPadButtonDown(PadButton button);      // down right now, however long it has been: pressed or held
 int isPadButtonReleased(PadButton button);
 Stick getPadLeftStick(void);
 Stick getPadRightStick(void);

@@ -15,9 +15,22 @@
 #include <cell/codec/vdec_avc.h>
 #include <cell/sysmodule.h>
 #include <sys/spu_initialize.h>
+#include <sys/sys_time.h>       // sys_time_get_current_time (diagnostic: decoder own-latency split)
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+
+#define PICOUT_TIME_RING 32     // power of two: masks the write/read counters
+
+// microseconds on the SAME wall clock the caller stamps its feed time with (cell-stream's getTimeUs),
+// so the two can be subtracted. must NOT use sys_time_get_system_time - that is a different epoch.
+static uint64_t nowUs(void)
+{
+   sys_time_sec_t seconds;
+   sys_time_nsec_t nanoseconds;
+   sys_time_get_current_time(&seconds, &nanoseconds);
+   return (uint64_t)seconds * 1000000ull + nanoseconds / 1000;
+}
 
 // cellVdec resource tuning (from the SDK pamf_dmux sample): AVC uses 4 SPUs.
 #define VDEC_SPU_COUNT       4
@@ -38,6 +51,15 @@ struct H264Decoder {
    volatile int   errored;
    int            auRejectedCount;   // AUs the decoder refused (a broken stream refuses every one)
    int            picIncompleteCount;   // pictures that came out damaged
+
+   // diagnostic: when each PICOUT fired, so a caller can split its feed->retrieve time into the
+   // decoder's own latency (feed->PICOUT) and the caller's drain lag (PICOUT->retrieve). one stamp
+   // pushed per PICOUT, one consumed per retrieved picture - they stay paired (pictures come out in
+   // feed order and every retrieval decrements picPending exactly once).
+   uint64_t       picoutUs[PICOUT_TIME_RING];
+   volatile int   picoutWrite;    // callback advances
+   int            picoutRead;      // getFrameH264 advances
+   uint64_t       lastReadyUs;     // PICOUT time of the most recently retrieved picture
 };
 
 static uint32_t vdecCallback(CellVdecHandle handle, CellVdecMsgType type, int32_t data, void *arg)
@@ -57,7 +79,11 @@ static uint32_t vdecCallback(CellVdecHandle handle, CellVdecMsgType type, int32_
                logWarn("[decode-h264] decoder rejected access unit #%d, rc=0x%x\n", decoder->auRejectedCount, data);
          }
          break;
-      case CELL_VDEC_MSG_TYPE_PICOUT: decoder->picPending++;  break;
+      case CELL_VDEC_MSG_TYPE_PICOUT:
+         decoder->picoutUs[decoder->picoutWrite & (PICOUT_TIME_RING - 1)] = nowUs();
+         decoder->picoutWrite++;
+         decoder->picPending++;
+         break;
       case CELL_VDEC_MSG_TYPE_SEQDONE: decoder->seqDone = 1;  break;
       case CELL_VDEC_MSG_TYPE_ERROR:
          decoder->errored = 1;
@@ -221,7 +247,11 @@ int getFrameH264(H264Decoder *decoder, void *yuvOut, int *outWidth, int *outHeig
 
    const CellVdecPicItem *picItem;
    if (cellVdecGetPicItem(decoder->handle, &picItem) != CELL_OK) return 0;   // counter ran ahead: nothing queued yet
-   lock(&decoder->lock); decoder->picPending--; unlock(&decoder->lock);
+   lock(&decoder->lock);
+   decoder->picPending--;
+   decoder->lastReadyUs = decoder->picoutUs[decoder->picoutRead & (PICOUT_TIME_RING - 1)];
+   decoder->picoutRead++;
+   unlock(&decoder->lock);
 
    // throttled: a degraded stream damages every picture, which would be 30-60 lines a second
    if (picItem->status != CELL_OK) {
@@ -256,6 +286,8 @@ int getFrameH264(H264Decoder *decoder, void *yuvOut, int *outWidth, int *outHeig
    *outHeight = frameH;
    return 1;
 }
+
+uint64_t getDecoderReadyUs(const H264Decoder *decoder) { return decoder->lastReadyUs; }
 
 void destroyH264Decoder(H264Decoder *decoder)
 {

@@ -31,6 +31,15 @@ typedef struct {
 int  initGfx(GfxVsync vsync);
 void termGfx(void);
 
+// changes how a finished frame reaches the screen, at any time. GFX_VSYNC_ON waits for the display's
+// next refresh (smooth, but holds the frame back by up to one refresh); GFX_VSYNC_OFF shows it at the
+// next scan line, which is as soon as the screen can - at the cost of tearing.
+void setGfxVsync(GfxVsync vsync);
+
+// microseconds the last endGfxFrame spent waiting for the display to take the previous frame.
+// that wait IS the cost of vsync: up to a whole refresh with it on, ~0 with it off.
+uint64_t getGfxFlipWaitUs(void);
+
 // Offscreen render target (render-to-texture). Draw a scene into one of these instead of
 // the display buffer, then sample `tex` like any other texture (cross-fades, post effects,
 // UI/scene caching, screenshots). Generic: not tied to any one app.

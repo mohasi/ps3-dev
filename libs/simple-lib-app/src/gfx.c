@@ -9,6 +9,7 @@
 #include <math.h>
 
 #include <sys/timer.h>
+#include <sys/sys_time.h>
 #include <cell/gcm.h>
 #include <cell/codec/pngdec.h>
 #include <cell/sysmodule.h>
@@ -194,11 +195,22 @@ void freeVram(void *ptr)
    }
 }
 
+// how long the last endGfxFrame spent blocked waiting for the display to take the previous frame.
+// with vsync on this is the wait for the next refresh (up to one frame); with it off it is ~0.
+static uint64_t lastFlipWaitUs;
+
+uint64_t getGfxFlipWaitUs(void)
+{
+   return lastFlipWaitUs;
+}
+
 static void waitFlip(void)
 {
+   uint64_t startUs = sys_time_get_system_time();
    while (cellGcmGetFlipStatus() != 0) {
       sys_timer_usleep(300);
    }
+   lastFlipWaitUs = sys_time_get_system_time() - startUs;
 }
 
 // Binds a linear (CELL_GCM_SURFACE_PITCH) RGBA color surface as the render target and
@@ -302,7 +314,7 @@ int initGfx(GfxVsync vsync)
       return ret;
    }
 
-   cellGcmSetFlipMode(vsync == GFX_VSYNC_ON ? CELL_GCM_DISPLAY_VSYNC : CELL_GCM_DISPLAY_HSYNC);
+   setGfxVsync(vsync);
 
    // set up vram allocator
    CellGcmConfig config;
@@ -782,6 +794,11 @@ void drawGfxYuvFrame(int x, int y, int w, int h, const void *yuvPlanes, int fram
    cellGcmSetDrawArrays(CTX, CELL_GCM_PRIMITIVE_TRIANGLES, 0, 6);
 
    batchFlushStart = batchVertCount;
+}
+
+void setGfxVsync(GfxVsync vsync)
+{
+   cellGcmSetFlipMode(vsync == GFX_VSYNC_ON ? CELL_GCM_DISPLAY_VSYNC : CELL_GCM_DISPLAY_HSYNC);
 }
 
 void endGfxFrame(void)

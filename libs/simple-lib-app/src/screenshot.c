@@ -42,19 +42,13 @@ int takeScreenshot(char *outPath, int cap)
    return 0;
 }
 
-static int isButtonDown(PadButton button)
-{
-   PadButtonState state = getPadButtonState(button);
-   return state == PAD_BUTTON_STATE_PRESSED || state == PAD_BUTTON_STATE_HELD;
-}
-
 int handleScreenshot(void)
 {
    if (!screenshotEnabled) return 0;
 
    // fire once, on the frame L3+R3 first becomes fully held: both down, and at least one only just
    // pressed this frame (so holding the combo doesn't spray screenshots every frame).
-   int bothDown = isButtonDown(PAD_BTN_L3) && isButtonDown(PAD_BTN_R3);
+   int bothDown = isPadButtonDown(PAD_BTN_L3) && isPadButtonDown(PAD_BTN_R3);
    int justCompleted = isPadButtonPressed(PAD_BTN_L3) || isPadButtonPressed(PAD_BTN_R3);
    if (bothDown && justCompleted) return takeScreenshot(0, 0) == 0;
    return 0;

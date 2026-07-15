@@ -81,6 +81,12 @@ int isPadButtonHeld(PadButton button)
    return getPadButtonState(button) == PAD_BUTTON_STATE_HELD;
 }
 
+int isPadButtonDown(PadButton button)
+{
+   PadButtonState state = getPadButtonState(button);
+   return state == PAD_BUTTON_STATE_PRESSED || state == PAD_BUTTON_STATE_HELD;
+}
+
 int isPadButtonReleased(PadButton button)
 {
    return getPadButtonState(button) == PAD_BUTTON_STATE_RELEASED;

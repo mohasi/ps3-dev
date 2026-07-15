@@ -37,6 +37,12 @@ int getAuBacklogH264(const H264Decoder *decoder);
 // 0 if none pending, -1 on error.
 int getFrameH264(H264Decoder *decoder, void *yuvOut, int *outWidth, int *outHeight, uint64_t *outPts);
 
+// diagnostic: the system time (microseconds) at which the decoder reported the LAST frame retrieved by
+// getFrameH264 as ready (its PICOUT). Compare against when the AU was fed to get the decoder's own
+// latency, and against now to get how long the ready picture waited for the caller to pull it. Only
+// meaningful straight after getFrameH264 returned 1.
+uint64_t getDecoderReadyUs(const H264Decoder *decoder);
+
 // flushes the decode pipeline for a seek: ends the sequence (discarding in-flight pictures) and
 // starts a fresh one on the same handle. Feed the new position's keyframe next. 0 ok, -1 on error.
 int resetH264Decoder(H264Decoder *decoder);

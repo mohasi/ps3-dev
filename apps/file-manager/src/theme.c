@@ -42,8 +42,7 @@ static const Theme themeOriginalBlue = {
    .highlightFill   = 0xFF12386A,
    .highlightBorder = 0xFF4A7CC0,
    .separator       = 0xFF203350,
-   .checkBorder     = 0xFF4A7CC0,
-   .checkFill       = 0xFFFFFFFF,   // white tick stays distinct from the blue row highlight
+   .checkFill       = 0xFFFFFFFF,   // white checkbox stays distinct from the blue row highlight
    .textPrimary     = 0xFFFFFFFF,
    .textSecondary   = 0x80FFFFFF,
    .textOnHighlight = 0xCCFFFFFF,
@@ -77,7 +76,6 @@ static const struct { const char *key; size_t offset; } COLOR_FIELDS[] = {
    { "highlightFill",   offsetof(Theme, highlightFill)   },
    { "highlightBorder", offsetof(Theme, highlightBorder) },
    { "separator",       offsetof(Theme, separator)       },
-   { "checkBorder",     offsetof(Theme, checkBorder)     },
    { "checkFill",       offsetof(Theme, checkFill)       },
    { "textPrimary",     offsetof(Theme, textPrimary)     },
    { "textSecondary",   offsetof(Theme, textSecondary)   },

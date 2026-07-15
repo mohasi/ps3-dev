@@ -19,6 +19,11 @@ namespace SpritePacker
 
      private static int Main(string[] args)
      {
+       // "icons" mode generates the embedded icon font (.c bytes + name->codepoint .h) from a ttf + config,
+       // instead of packing a sprite sheet.
+       if (args.Length > 0 && args[0] == "icons")
+         return RunIconMode(args);
+
        try
        {
          Options options;
@@ -71,6 +76,48 @@ namespace SpritePacker
        }
      }
 
+     // "icons <config.json> <icons.ttf> -c <dataOut.c> -i <idsOut.h>": regenerate the embedded icon font.
+     private static int RunIconMode(string[] args)
+     {
+       try
+       {
+         string config = null, ttf = null, dataOut = null, idsOut = null;
+         for (int i = 1; i < args.Length; i++)
+         {
+            switch (args[i])
+            {
+              case "-c": { string v; string e; if (!TakeValue(args, ref i, out v, out e)) { Console.Error.WriteLine(e); return Pause(2); } dataOut = v; break; }
+              case "-i": { string v; string e; if (!TakeValue(args, ref i, out v, out e)) { Console.Error.WriteLine(e); return Pause(2); } idsOut = v; break; }
+              default:
+                if (config == null) config = args[i];
+                else if (ttf == null) ttf = args[i];
+                else { Console.Error.WriteLine("unexpected argument: " + args[i]); return Pause(2); }
+                break;
+            }
+         }
+
+         if (config == null || ttf == null || dataOut == null || idsOut == null)
+         {
+            Console.Error.WriteLine("usage: sprite-packer icons <config.json> <icons.ttf> -c <dataOut.c> -i <idsOut.h>");
+            return Pause(2);
+         }
+         if (!File.Exists(config)) { Console.Error.WriteLine("config not found: " + config); return Pause(2); }
+         if (!File.Exists(ttf)) { Console.Error.WriteLine("ttf not found: " + ttf); return Pause(2); }
+
+         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dataOut)));
+         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(idsOut)));
+         IconFontWriter.Generate(config, ttf, dataOut, idsOut);
+         Console.WriteLine("  data -> " + dataOut);
+         Console.WriteLine("  ids  -> " + idsOut);
+         return 0;
+       }
+       catch (Exception error)
+       {
+         Console.Error.WriteLine("error: " + error.Message);
+         return Pause(1);
+       }
+     }
+
      // parses "<inputDir> [-o dir] [-n name] [-h dir] [-p prefix]". the first
      // non-flag argument is the input directory; flags may appear in any order.
      private static bool TryParseArguments(string[] args, out Options options, out string error)
@@ -114,6 +161,7 @@ namespace SpritePacker
      private static void PrintUsage()
      {
        Console.Error.WriteLine("usage: sprite-packer <inputDir> [-o outputDir] [-n name] [-h headerDir] [-p prefix]");
+       Console.Error.WriteLine("       sprite-packer icons <config.json> <icons.ttf> -c <dataOut.c> -i <idsOut.h>");
        Console.Error.WriteLine("       (or drag a folder onto the exe)");
      }
 

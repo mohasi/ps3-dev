@@ -15,12 +15,12 @@ ps3-dev/
 │   ├── simple-lib-app/         static library for apps (gfx, font, pad, screen, anim, ui)
 │   ├── simple-lib-av/          audio + H.264/AAC video playback (mixer, demux, decode, streaming source)
 │   ├── simple-lib-https/       modern TLS (BearSSL) — the HTTPS transport the firmware can't do
-│   ├── simple-lib-plugin/     header-only PRX-only extras (syscall, vsh)
+│   ├── simple-lib-plugin/     header-only PRX-only extras (vsh NID stubs, module hook/inspect)
 │   ├── libvshtask_export_stub.a
 │   └── libvshmain_export_stub.a
 ├── apps/
 │   ├── app-sample/             demo app showcasing engine features
-│   ├── file-manager/           PS3 file browser with sprite-based UI
+│   ├── file-manager/           PS3 file browser, flat themeable UI (image/audio/video/text/hex viewers)
 │   └── yo-player/              native YouTube client (streams video + audio directly)
 ├── plugins/
 │   ├── simple-cheat-menu/    in-game cheat overlay, synced with the shared cheat repo
@@ -28,8 +28,11 @@ ps3-dev/
 │   ├── simple-disc-mount/    mounts ISOs from an XMB submenu
 │   └── simple-ftp/           anonymous, binary-only FTP server on port 21
 ├── tools/
+│   ├── debug-bridge-client/    Windows host app: HTTP proxy to the on-console bridge (Logs, install, mem/file)
 │   ├── sprite-packer/          packs sprite PNGs into atlas + C header
 │   ├── xml-to-sfo/             generates PARAM.SFO from XML
+│   ├── nid-dump/               dumps firmware NIDs for symbol resolution
+│   ├── renpy-to-ps3/           packages Ren'Py visual novels to run on PS3
 │   └── scetool/                PRX signing tool + keys
 ├── out/                        build outputs (.sprx plugins, .pkg apps)
 └── README.md
@@ -107,10 +110,10 @@ firmware's RSA-only TLS can't (ECDSA certs, e.g. Cloudflare). It plugs in as the
 ~80 KB, so it is opt-in and apps-only. See `libs/simple-lib-https/README.md`.
 
 ### simple-lib-plugin
-Header-only library for the PRX-only extras: LV2 syscall trampolines
-(`syscall.h`) and VSH NID stubs (`vsh.h`). No archive output — plugins
-just add its `include/` path. All non-PRX-specific helpers live in
-`simple-lib-core`.
+Header-only library for the PRX-only extras: VSH NID stubs (`vsh.h`) and
+module hook/inspect helpers (`module-hook.h`, `module-inspect.h`). No archive
+output — plugins just add its `include/` path. The LV2 syscall trampolines and
+all other non-PRX-specific helpers (printf, dbg, VFS, …) live in `simple-lib-core`.
 
 ## Plugins
 
@@ -143,10 +146,11 @@ animation, input, and screen/overlay lifecycle. See
 `apps/app-sample/README.md` for details.
 
 ### file-manager
-PS3 file browser with sprite-based UI. Features directory listing with file-type
-icons, checkboxes, breadcrumb navigation, hold-to-scroll, image/audio viewers,
-read/write access to **exFAT and NTFS USB drives** (via the shared VFS, with hotplug), and
-a sprite atlas generated at build time via `sprite-packer`. See
+PS3 file browser with a flat, themeable UI. Features directory listing with file-type
+icons, checkboxes, breadcrumb navigation, hold-to-scroll, search, image/audio/video viewers,
+a text editor and hex viewer, read/write access to **exFAT and NTFS USB drives** (via the
+shared VFS, with hotplug), a built-in FTP server, and a runtime theme system (Original Blue /
+Light / Dark, switch with R1, user-editable `themes.txt`). See
 `apps/file-manager/README.md` for details.
 
 ### yo-player
@@ -158,11 +162,27 @@ adaptive H.264/AAC over the http module (BearSSL transport), and skips community
 
 ## Tools
 
+### debug-bridge-client
+Windows host app that pairs with the on-console `simple-debug-bridge` plugin. Hosts a
+local HTTP proxy at `http://localhost:8786` that all deploys and the ps3 MCP bridge tools
+talk to, and provides a Logs tab (the source of truth for forwarded console logs),
+Install & Launch, and memory/file transfer. See `tools/debug-bridge-client/README.md`.
+
 ### sprite-packer
-Packs a directory of PNGs into a power-of-2 atlas and generates a C header
-(`sprite-regions.h`) with named `SpriteRegion` coordinates. Used by file-manager's
-pre-build step.
+Two modes. **Sprite mode** packs a directory of PNGs into a power-of-2 atlas and
+generates a C header (`sprite-regions.h`) of named `SpriteRegion` coordinates (used
+by renpy-player's hand-cursor). **Icons mode** turns a Fontello TTF + `config.json`
+into an embedded byte array (`icon-data.c`) and a name→codepoint header
+(`icon-ids.h`) — the icon font shared by simple-lib-app and its apps.
 
 ### xml-to-sfo
 Generates `PARAM.SFO` from a human-readable XML source. Used by app pre-build steps.
+
+### nid-dump
+Dumps firmware NIDs (symbol IDs) from PS3 modules, for resolving VSH/system symbols.
+See `tools/nid-dump/README.md`.
+
+### renpy-to-ps3
+Packages Ren'Py visual-novel games into a runnable PS3 build. See
+`tools/renpy-to-ps3/README.md`.
 

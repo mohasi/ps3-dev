@@ -1,5 +1,5 @@
-// clock-widget - date/time label refreshed every second (the clock face icon beside it is static
-// chrome drawn by the home screen, since filled shapes here can't anti-alias - see SPRITE_CLOCK)
+// clock-widget - date/time label refreshed every second (the clock face icon beside it is the
+// home screen's ICON_CLOCK glyph, drawn separately)
 #include "widgets/clock-widget.h"
 #include "ui/label.h"
 #include "theme.h"

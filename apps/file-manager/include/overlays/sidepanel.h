@@ -10,7 +10,7 @@
 
 typedef void (*SelectionActionHandler)(SelectionAction action);
 
-void initSidepanel(GfxTexture spritesheet, Audio *clickSfx, SelectionActionHandler handler);
+void initSidepanel(Audio *clickSfx, SelectionActionHandler handler);
 void setSidepanelContent(const SelectionSummary *summary, const SelectionAction  *actions, int count);
 void rethemeSidepanel(void);   // recolour the header + row text for a live theme switch
 

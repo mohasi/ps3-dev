@@ -9,8 +9,7 @@
 #define PILL_W        31
 #define PILL_H        10
 #define PILL_PITCH    19           // pill height + vertical gap
-#define SPEAKER_W     32
-#define SPEAKER_H     29
+#define SPEAKER_SIZE  30           // speaker glyph font size
 #define SPEAKER_GAP   22           // gap below the lowest pill to the speaker glyph
 #define COLOR_EMPTY   0x33FFFFFFu  // unfilled pill
 #define COLOR_NUMBER  0xFFFFFFFFu
@@ -22,13 +21,14 @@ static void setNumberText(VolumeMeter *meter)
    setLabelText(&meter->numberLabel, number);
 }
 
-void initVolumeMeter(VolumeMeter *meter, Font *font, GfxTexture sprites, SpriteRegion speakerSprite, uint32_t fillColor, int level)
+void initVolumeMeter(VolumeMeter *meter, Font *font, uint32_t fillColor, int level)
 {
    meter->fillColor = fillColor;
    meter->level     = level;
    meter->shownUs   = 0;
-   meter->hasSpeaker = sprites.w > 0;
-   if (meter->hasSpeaker) initImage(&meter->speaker, sprites, 0, 0, SPEAKER_W, SPEAKER_H, speakerSprite, GFX_FILTER_LINEAR);
+   initIcon(&meter->speakerOff,  ICON_VOLUME_OFF,  SPEAKER_SIZE);
+   initIcon(&meter->speakerLow,  ICON_VOLUME_DOWN, SPEAKER_SIZE);
+   initIcon(&meter->speakerHigh, ICON_VOLUME_UP,   SPEAKER_SIZE);
    initLabel(&meter->numberLabel, font, 0, 0, 80, AUTO, NUMBER_SIZE, COLOR_NUMBER, TEXT_NOWRAP, "");
    setNumberText(meter);
 }
@@ -69,7 +69,12 @@ void drawVolumeMeter(VolumeMeter *meter)
    int columnCenterX = meter->pillX + PILL_W / 2;
    int topPillY      = meter->bottomY - (VOLUME_METER_PILLS - 1) * PILL_PITCH;
    drawLabelAt(&meter->numberLabel, columnCenterX - meter->numberLabel.tt.tex.w / 2, topPillY - NUMBER_SIZE - 14);
-   if (meter->hasSpeaker) drawImageAt(&meter->speaker, columnCenterX - SPEAKER_W / 2, meter->bottomY + PILL_H + SPEAKER_GAP);
+
+   // muted at 0, low glyph for the bottom half, high glyph above it
+   Icon *speaker = meter->level <= 0 ? &meter->speakerOff
+                 : meter->level * 2 <= VOLUME_METER_PILLS ? &meter->speakerLow
+                 : &meter->speakerHigh;
+   drawIconCentered(speaker, columnCenterX, meter->bottomY + PILL_H + SPEAKER_GAP, COLOR_NUMBER);
 }
 
 void freeVolumeMeter(VolumeMeter *meter)

@@ -15,7 +15,6 @@
 #include "thread.h"             // spawnJoinableThread, joinThread
 #include "vfs.h"               // getBaseName, MAX_PATH_LEN
 #include "string-utilities.h"   // strCopy
-#include "sprite-regions.h"
 #include "video-probe.h"
 #include "video-player.h"
 #include "audio.h"              // setAudioPcmFeedVolume: the video feed's volume
@@ -96,8 +95,6 @@ static struct {
 static VolumeMeter volumeMeter;
 static int volumeLevel = VOLUME_DEFAULT;
 
-static GfxTexture sprites;
-
 static Font  font;
 static int   ready;
 static Label messageLabel, statusLabel, nameLabel, timeLeftLabel, timeRightLabel;
@@ -112,10 +109,9 @@ static void worker(uint64_t arg);
 
 Overlay videoPlayerOverlay = { show, hide, update, draw, term, OVERLAY_TERMINATED };
 
-void initVideoPlayerOverlay(GfxTexture spritesheet)
+void initVideoPlayerOverlay(void)
 {
-   sprites = spritesheet;
-   font    = openSystemFont(FONT_POP);
+   font = openSystemFont(FONT_POP);
 
    initLabel(&messageLabel,   &font, 0, 0, 1200, AUTO, MESSAGE_SIZE,   COLOR_MESSAGE,  TEXT_WRAP,  "");
    initLabel(&statusLabel,    &font, 0, 0, 600,  AUTO, MESSAGE_SIZE,   COLOR_STATUS,   TEXT_NOWRAP, "Loading...");
@@ -123,7 +119,7 @@ void initVideoPlayerOverlay(GfxTexture spritesheet)
    initLabel(&timeLeftLabel,  &font, 0, 0, 200,  AUTO, TIME_SIDE_SIZE, COLOR_TIME_DIM, TEXT_NOWRAP, "");
    initLabel(&timeRightLabel, &font, 0, 0, 200,  AUTO, TIME_SIDE_SIZE, COLOR_TIME_DIM, TEXT_NOWRAP, "");
 
-   initVolumeMeter(&volumeMeter, &font, sprites, spriteRegions[SPRITE_SPEAKER], COLOR_SEEK_FILL, volumeLevel);
+   initVolumeMeter(&volumeMeter, &font, COLOR_SEEK_FILL, volumeLevel);
    ready = 1;
 }
 

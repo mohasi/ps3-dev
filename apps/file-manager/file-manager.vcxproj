@@ -37,9 +37,8 @@
      <GccOutputFormat>ELFFile</GccOutputFormat>
    </Link>
    <PreBuildEvent>
-     <Message>Packing sprites and generating PARAM.SFO</Message>
-     <Command>"$(SolutionDir)tools\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
-   "$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
+     <Message>Generating PARAM.SFO</Message>
+     <Command>"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -97,19 +96,16 @@
    <ClInclude Include="include\widgets\file-list.h" />
    <ClInclude Include="include\widgets\list-row-chrome.h" />
    <ClInclude Include="include\widgets\search-list.h" />
-   <ClInclude Include="include\sprite-regions.h" />
    <ClInclude Include="include\theme.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="file-manager.conf" />
    <None Include="PARAM.SFO" />
    <None Include="PARAM.SFO.xml" />
-   <None Include="res\sprites.png" />
    <None Include="res\themes.txt" />
    <None Include="res\check.wav" />
    <None Include="res\click.wav" />
    <None Include="res\JetBrainsMono-Regular.ttf" />
-   <None Include="sprites\**" />
    <None Include="ICON0.PNG" />
    <None Include="README.md" />
   </ItemGroup>

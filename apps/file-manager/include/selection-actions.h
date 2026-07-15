@@ -4,7 +4,7 @@
 // owns the enum and presentation lookups (title, subtitle, icon).
 // owns SelectionSummary - the read-only description of "what is selected".
 
-#include "gfx.h"
+#include "ui/icon-ids.h"
 
 typedef enum {
    ACTION_COPY,
@@ -26,9 +26,9 @@ typedef struct {
    const char  *title;     // "report.txt"   or "3 items"
    const char  *subtitle;  // "Text"         or "Mixed"
    const char  *detail;    // "1.2 KB"       or "4.7 MB total"
-   SpriteRegion icon;
+   IconId       icon;
 } SelectionSummary;
 
-const char  *getActionTitle(SelectionAction action);
-const char  *getActionSubtitle(SelectionAction action);
-SpriteRegion getActionIcon(SelectionAction action);
+const char *getActionTitle(SelectionAction action);
+const char *getActionSubtitle(SelectionAction action);
+IconId      getActionIcon(SelectionAction action);

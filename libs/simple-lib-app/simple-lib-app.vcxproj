@@ -55,6 +55,9 @@
    <ClCompile Include="src\ui\hex-pad.c" />
    <ClCompile Include="src\ui\button-hints.c" />
    <ClCompile Include="src\console-glyphs.c" />
+   <ClCompile Include="src\ui\icon-font.c" />
+   <ClCompile Include="src\ui\icon-data.c" />
+   <ClCompile Include="src\ui\checkbox.c" />
    <ClCompile Include="src\timer.c" />
    <ClCompile Include="src\file-task.c" />
    <ClCompile Include="src\osk-input.c" />
@@ -89,6 +92,8 @@
    <ClInclude Include="include\ui\hex-pad.h" />
    <ClInclude Include="include\ui\button-hints.h" />
    <ClInclude Include="include\ui\console-glyphs.h" />
+   <ClInclude Include="include\ui\icon-font.h" />
+   <ClInclude Include="include\ui\icon-ids.h" />
    <ClInclude Include="include\timer.h" />
    <ClInclude Include="include\button-repeat.h" />
    <ClInclude Include="include\dynarray.h" />
@@ -123,4 +128,11 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Import Project="$(SolutionDir)common\ps3.targets" />
+  <!-- Regenerate the embedded icon font only when icons/ actually changed (Inputs newer than Outputs). -->
+  <Target Name="GenerateIconFont" BeforeTargets="ClCompile"
+          Inputs="$(ProjectDir)icons\config.json;$(ProjectDir)icons\icons.ttf"
+          Outputs="$(ProjectDir)src\ui\icon-data.c;$(ProjectDir)include\ui\icon-ids.h">
+    <Message Text="Generating icon font from icons/" Importance="high" />
+    <Exec Command="&quot;$(SolutionDir)tools\sprite-packer.exe&quot; icons &quot;$(ProjectDir)icons\config.json&quot; &quot;$(ProjectDir)icons\icons.ttf&quot; -c &quot;$(ProjectDir)src\ui\icon-data.c&quot; -i &quot;$(ProjectDir)include\ui\icon-ids.h&quot;" />
+  </Target>
 </Project>

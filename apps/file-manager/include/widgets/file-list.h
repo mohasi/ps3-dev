@@ -9,7 +9,7 @@
 #include "ui/breadcrumb.h"
 #include "selection-actions.h"
 
-void initFileList(Font *font, GfxTexture spritesheet, Audio *clickSfx, Audio *checkSfx, int x, int y, int maxWidth, int rowHeight, int fontSize, Breadcrumb *bc);
+void initFileList(Font *font, Audio *clickSfx, Audio *checkSfx, int x, int y, int maxWidth, int rowHeight, int fontSize, Breadcrumb *bc);
 void rethemeFileList(void);   // recolour persistent labels + checkboxes for a live theme switch
 void termFileList(void);
 void updateFileList(void);

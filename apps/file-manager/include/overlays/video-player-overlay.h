@@ -5,11 +5,9 @@
 // reason. A playable file will draw its decoded frames (added in later phases). Circle closes.
 
 #include "overlay.h"
-#include "gfx.h"
 
-// One-time setup; hands the overlay the shared sprite sheet (used by the volume meter and seek bar
-// once playback lands). Call once at screen init, like the other overlays.
-void initVideoPlayerOverlay(GfxTexture spritesheet);
+// One-time setup (fonts, labels, volume meter). Call once at screen init.
+void initVideoPlayerOverlay(void);
 
 // Opens the player on the given absolute video path. Returns 0 on success, or -1 if the path isn't
 // a video file (the overlay itself reports codec support once open).

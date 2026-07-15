@@ -25,8 +25,7 @@
 #    highlightFill    selected-row fill
 #    highlightBorder  selected-row border
 #    separator        hairline between rows
-#    checkBorder      checkbox outline
-#    checkFill        checkbox tick (when checked)
+#    checkFill        checkbox colour (box outline + tick)
 #    textPrimary      main label text
 #    textSecondary    dim subtitle text
 #    textOnHighlight  subtitle text over a highlighted row
@@ -49,8 +48,7 @@ menuBorder=#4A566F
 highlightFill=#12386A
 highlightBorder=#4A7CC0
 separator=#203350
-checkBorder=#4A7CC0
-checkFill=#FFFFFF
+checkFill=#BCC4D0
 textPrimary=#FFFFFF
 textSecondary=#FFFFFF80
 textOnHighlight=#FFFFFFCC
@@ -72,7 +70,6 @@ menuBorder=#B2C0D4
 highlightFill=#CFE0F5
 highlightBorder=#5A8FD0
 separator=#D2DAE6
-checkBorder=#5A8FD0
 checkFill=#2E6FC0
 textPrimary=#10233B
 textSecondary=#10233B99
@@ -95,8 +92,7 @@ menuBorder=#3A3D45
 highlightFill=#244A73
 highlightBorder=#3E77B5
 separator=#2A2C31
-checkBorder=#3E77B5
-checkFill=#FFFFFF
+checkFill=#BCC4D0
 textPrimary=#EDEEF0
 textSecondary=#EDEEF099
 textOnHighlight=#EDEEF0

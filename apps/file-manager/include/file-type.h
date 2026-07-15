@@ -1,9 +1,9 @@
 #pragma once
 
 // file-type - classifies filenames into a fixed set of types and maps each
-// type to a display name and sprite. extension lists live in file-type.c.
+// type to a display name and icon glyph. extension lists live in file-type.c.
 
-#include "sprite-regions.h"
+#include "ui/icon-ids.h"
 
 typedef enum {
    FILE_TYPE_FOLDER,
@@ -23,4 +23,4 @@ typedef enum {
 
 FileType    classifyFileType(const char *name, int isDir);
 const char *getFileTypeName(FileType type);
-int         getFileTypeSprite(FileType type);
+IconId      getFileTypeIcon(FileType type);

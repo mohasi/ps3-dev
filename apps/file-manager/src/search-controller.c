@@ -126,10 +126,10 @@ int handleSearchBack(void)
 void drawSearchTitle(void)   { drawLabel(&searchTitle); }
 void drawSearchResults(void) { drawSearchList(); }
 
-void initSearchController(Font *font, GfxTexture sprites, Audio *clickSfx, Audio *checkSfx,
+void initSearchController(Font *font, Audio *clickSfx, Audio *checkSfx,
                           int listY, int rowHeight, int fontSize, void (*onOptions)(void))
 {
-   initSearchList(font, sprites, clickSfx, checkSfx, listY, rowHeight, fontSize, onSearchActivate, onSearchExit, onOptions);
+   initSearchList(font, clickSfx, checkSfx, listY, rowHeight, fontSize, onSearchActivate, onSearchExit, onOptions);
    initLabel(&searchTitle, font, 70, 133, AUTO, AUTO, 24, activeTheme->textPrimary, TEXT_NOWRAP, "Search Results");
 }
 

@@ -34,6 +34,7 @@
    <Compile Include="Packer.cs" />
    <Compile Include="SheetWriter.cs" />
    <Compile Include="HeaderWriter.cs" />
+   <Compile Include="IconFontWriter.cs" />
   </ItemGroup>
   <ItemGroup>
    <None Include="README.md" />

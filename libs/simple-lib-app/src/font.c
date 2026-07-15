@@ -745,6 +745,63 @@ void renderFontRaw(TextTexture *tt, Font *f, int size, const char *text, uint32_
    renderImpl(tt, f, size, text, color, maxWidth, wrap, NULL, NULL, NULL, TEXT_ALIGN_LEFT, 1);
 }
 
+// renders ONE glyph at `size` px into its own tightly-cropped white texture (each pixel [A,R,G,B] with
+// RGB = 255 and A = coverage). Unlike renderFont this uses no line box and no top crop, so tall glyphs
+// (icon fonts) are never clipped - the texture IS the glyph's own bitmap. *offsetX/*offsetY (may be NULL)
+// receive the glyph ink's position relative to the em-box top-left, so glyphs of the same size drawn at a
+// common anchor line up exactly as the font intends (no scaling/fitting needed). 0 + fills the outputs on
+// success, -1 on failure; free *out with freeGfxTexture. Rasterise once at init (never per frame).
+int renderGlyphTexture(Font *f, int size, uint32_t code, GfxTexture *out, int *offsetX, int *offsetY)
+{
+   if (!f->open || size <= 0) return -1;
+
+   cellFontSetScalePixel(&f->font, (float)size, (float)size);
+   cellFontBindRenderer(&f->font, &fontRenderer);
+   cellFontSetupRenderScalePixel(&f->font, (float)size, (float)size);
+
+   // a scratch surface with room around the glyph so the renderer never scissor-clips it; we read the
+   // glyph's own bitmap (transInfo.Image), not the surface, so its exact size only needs to fit here.
+   int surfDim = size * 3 + 8;
+   uint8_t *surfBuf = (uint8_t *)malloc((size_t)surfDim * surfDim * 4);
+   if (!surfBuf) return -1;
+   memset(surfBuf, 0, (size_t)surfDim * surfDim * 4);
+
+   CellFontRenderSurface surf;
+   cellFontRenderSurfaceInit(&surf, surfBuf, surfDim * 4, 4, surfDim, surfDim);
+   cellFontRenderSurfaceSetScissor(&surf, 0, 0, surfDim, surfDim);
+
+   CellFontGlyphMetrics metrics;
+   CellFontImageTransInfo transInfo;
+   int ret = cellFontRenderCharGlyphImage(&f->font, code, &surf, (float)size, (float)(size * 2), &metrics, &transInfo);
+   if (ret != CELL_OK) { free(surfBuf); return -1; }
+
+   int w = transInfo.imageWidth, h = transInfo.imageHeight;
+   if (w <= 0 || h <= 0) { free(surfBuf); return -1; }
+
+   uint32_t *argb = (uint32_t *)malloc((size_t)w * h * 4);
+   if (!argb) { free(surfBuf); return -1; }
+   const uint8_t *coverage = (const uint8_t *)transInfo.Image;
+   for (int y = 0; y < h; y++)
+      for (int x = 0; x < w; x++)
+         argb[y * w + x] = ((uint32_t)coverage[y * transInfo.imageWidthByte + x] << 24) | 0x00FFFFFFu;
+
+   uint32_t offset = uploadGfxTexture(argb, w, h, w * 4);
+   free(argb);
+   free(surfBuf);
+   if (!offset) return -1;
+
+   out->offset = offset;
+   out->w = w;
+   out->h = h;
+   out->pitch = (int)(((uint32_t)(w * 4) + 63u) & ~63u);
+
+   // where the ink sits inside the em box: ink top-left = (bearingX, ascent - bearingY) from the em top.
+   int ascentPx = (f->unitsPerEm > 0) ? (int)ceilf((float)f->hheaAscent * (float)size / (float)f->unitsPerEm) : size;
+   if (offsetX) *offsetX = (int)(metrics.Horizontal.bearingX + 0.5f);
+   if (offsetY) *offsetY = ascentPx - (int)(metrics.Horizontal.bearingY + 0.5f);
+   return 0;
+}
+
 static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uint32_t color, int maxWidth, TextWrap wrap, const TextShadow *shadow, TextEnd *end, TextReveal *reveal, int align, int rawMode)
 {
    if (end) memset(end, 0, sizeof *end);

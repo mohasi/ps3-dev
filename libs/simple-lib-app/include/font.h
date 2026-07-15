@@ -64,6 +64,11 @@ typedef struct {
 
 int   initFont(void);
 void  termFont(void);
+// renders one glyph at `size` px into its own tight white texture (RGB=255, alpha=coverage) with no line
+// box or top crop, so tall glyphs are never clipped - for icon rendering. *offsetX/*offsetY (may be NULL)
+// give the ink's position within the em box, so same-size glyphs drawn at one anchor align per the font.
+// 0 + fills the outputs on success, -1 on failure; free *out with freeGfxTexture. Rasterise once.
+int   renderGlyphTexture(Font *f, int size, uint32_t code, GfxTexture *out, int *offsetX, int *offsetY);
 Font  openSystemFont(int type);
 Font  openFontFile(const char *path);
 // Opens a TTF/OTF directly from a memory buffer (no temp file). Makes its own copy, so

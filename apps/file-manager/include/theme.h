@@ -33,7 +33,7 @@ typedef struct {
    uint32_t separator;
 
    // checkbox
-   uint32_t checkBorder, checkFill;
+   uint32_t checkFill;   // the whole checkbox colour (box outline + tick)
 
    // text
    uint32_t textPrimary;       // main labels

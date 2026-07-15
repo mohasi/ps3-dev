@@ -18,19 +18,21 @@ static const char *names[FILE_TYPE_COUNT] = {
    [FILE_TYPE_GENERIC]    = "File",
 };
 
-static const int sprites[FILE_TYPE_COUNT] = {
-   [FILE_TYPE_FOLDER]     = SPRITE_FOLDER,
-   [FILE_TYPE_TEXT]       = SPRITE_TEXT,
-   [FILE_TYPE_AUDIO]      = SPRITE_AUDIO,
-   [FILE_TYPE_VIDEO]      = SPRITE_VIDEO,
-   [FILE_TYPE_IMAGE]      = SPRITE_IMAGE,
-   [FILE_TYPE_EXECUTABLE] = SPRITE_EXECUTABLE,
-   [FILE_TYPE_COMPRESSED] = SPRITE_COMPRESSED,
-   [FILE_TYPE_DISC_ISO]   = SPRITE_DISC_ISO,
-   [FILE_TYPE_PACKAGE]    = SPRITE_PACKAGE,
-   [FILE_TYPE_DOCUMENT]   = SPRITE_DOCUMENT,
-   [FILE_TYPE_DATABASE]   = SPRITE_DATABASE,
-   [FILE_TYPE_GENERIC]    = SPRITE_GENERIC,
+// icon-font glyph per type. package has no dedicated glyph in the set, so it uses the generic file icon;
+// give it its own glyph in Fontello and update this table if wanted.
+static const IconId icons[FILE_TYPE_COUNT] = {
+   [FILE_TYPE_FOLDER]     = ICON_FOLDER_EMPTY,
+   [FILE_TYPE_TEXT]       = ICON_DOC_TEXT,
+   [FILE_TYPE_AUDIO]      = ICON_FILE_AUDIO,
+   [FILE_TYPE_VIDEO]      = ICON_FILE_VIDEO,
+   [FILE_TYPE_IMAGE]      = ICON_FILE_IMAGE,
+   [FILE_TYPE_EXECUTABLE] = ICON_COG,
+   [FILE_TYPE_COMPRESSED] = ICON_FILE_ARCHIVE,
+   [FILE_TYPE_DISC_ISO]   = ICON_CD,
+   [FILE_TYPE_PACKAGE]    = ICON_DOC,
+   [FILE_TYPE_DOCUMENT]   = ICON_DOC_TEXT,
+   [FILE_TYPE_DATABASE]   = ICON_DATABASE,
+   [FILE_TYPE_GENERIC]    = ICON_DOC,
 };
 
 // extension -> FileType. each row is a NULL-terminated list of extensions and
@@ -65,5 +67,5 @@ FileType classifyFileType(const char *name, int isDir)
    return FILE_TYPE_GENERIC;
 }
 
-const char *getFileTypeName(FileType type)   { return names[type]; }
-int         getFileTypeSprite(FileType type) { return sprites[type]; }
+const char *getFileTypeName(FileType type) { return names[type]; }
+IconId      getFileTypeIcon(FileType type) { return icons[type]; }

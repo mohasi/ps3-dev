@@ -3,7 +3,7 @@
 #include "audio.h"
 #include "font.h"
 #include "ftp.h"
-#include "ui/image.h"
+#include "ui/icon-font.h"
 #include "ui/label.h"
 #include "ui/console-glyphs.h"
 #include "ui/breadcrumb.h"
@@ -23,16 +23,14 @@
 #include "overlays/text-editor-overlay.h"
 #include "overlays/hex-viewer-overlay.h"
 #include "file-actions.h"
-#include "sprite-regions.h"
 #include "theme.h"
 #include "pad.h"
 #include "string-utilities.h"   // appendStr / appendUint64 / formatIpv4 for the FTP button label
 #include "network.h"
 
 static Font pop;
-static GfxTexture sprites;
-static Image titleFolderIcon;
-static Image clockIcon;
+static Icon  titleFolderIcon;
+static Icon  clockIcon;
 static Label titleLabel;
 static Breadcrumb breadcrumb;
 static Audio clickSfx;
@@ -45,16 +43,15 @@ static Audio checkSfx;
 #define BOX_W        1832
 #define BOX_H          56
 #define TITLE_ICON_X   40
-#define TITLE_ICON_Y   30
-#define TITLE_ICON_W   70
-#define TITLE_ICON_H   58
+#define TITLE_ICON_Y   28
+#define TITLE_ICON_SIZE 56
+#define TITLE_ICON_COLOR 0xFF2F6FD0   // brand blue for the open-folder logo, fixed across themes
 #define TITLE_TEXT_X  136
 #define TITLE_TEXT_Y   44
 #define TITLE_TEXT_SIZE 32
 #define CLOCK_ICON_X  1848   // where the old baked clock icon sat, top-right
 #define CLOCK_ICON_Y    47
-#define CLOCK_ICON_W    36
-#define CLOCK_ICON_H    37
+#define CLOCK_ICON_H    37   // the clock glyph is drawn in a CLOCK_ICON_H square box
 #define DIVIDER_X      51
 #define DIVIDER_W    (1869 - 51)
 #define DIVIDER_TOP_Y  932
@@ -132,30 +129,30 @@ static KeyGridTheme makeKeyGridTheme(void)
 static void initHome(void)
 {
    pop      = openSystemFont(FONT_POP);
-   sprites  = loadGfxTexture("/dev_hdd0/game/FILEMGR01/USRDIR/sprites.png");
    clickSfx = loadAudio("/dev_hdd0/game/FILEMGR01/USRDIR/click.wav", AUDIO_MEMORY);
    checkSfx = loadAudio("/dev_hdd0/game/FILEMGR01/USRDIR/check.wav", AUDIO_MEMORY);
 
-   initImage(&titleFolderIcon, sprites, TITLE_ICON_X, TITLE_ICON_Y, TITLE_ICON_W, TITLE_ICON_H, spriteRegions[SPRITE_TITLE_FOLDER], GFX_FILTER_LINEAR);
-   initImage(&clockIcon, sprites, CLOCK_ICON_X, CLOCK_ICON_Y, CLOCK_ICON_W, CLOCK_ICON_H, spriteRegions[SPRITE_CLOCK], GFX_FILTER_LINEAR);
+   initIcon(&titleFolderIcon, ICON_FOLDER_OPEN, TITLE_ICON_SIZE);
+   initIcon(&clockIcon, ICON_CLOCK, CLOCK_ICON_H);
    initLabel(&titleLabel, &pop, TITLE_TEXT_X, TITLE_TEXT_Y, AUTO, AUTO, TITLE_TEXT_SIZE, activeTheme->textPrimary, TEXT_NOWRAP, "PS3 File Manager");
    initBreadcrumb(&breadcrumb, &pop, 70, 135, activeTheme->textPrimary, 20);
    initClockWidget(&pop, 1675, 55, 21);
    initFreeSpaceWidget(&pop, 1668, 951, 20, 210);
    initFooterWidget(&pop);
-   initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 258, 860, 74, 24, &breadcrumb);   // name width leaves room for the permissions column
-   initSearchController(&pop, sprites, &clickSfx, &checkSfx, 258, 74, 24, openSidepanel);
-   initSidepanel(sprites, &clickSfx, onSidepanelAction);
+   initFileList(&pop, &clickSfx, &checkSfx, 177, 258, 860, 74, 24, &breadcrumb);   // name width leaves room for the permissions column
+   initSearchController(&pop, &clickSfx, &checkSfx, 258, 74, 24, openSidepanel);
+   initSidepanel(&clickSfx, onSidepanelAction);
    initConfirmOverlay(&clickSfx);
    initProgressOverlay(&clickSfx);
-   initAudioPlayerOverlay(sprites);
-   initVideoPlayerOverlay(sprites);
-   initTextEditorOverlay(sprites);
-   initHexViewerOverlay(sprites);
+   initAudioPlayerOverlay();
+   initVideoPlayerOverlay();
+   initTextEditorOverlay();
+   initHexViewerOverlay();
    KeyGridTheme keyGridTheme = makeKeyGridTheme();
    initKeyboard(keyGridTheme);
    initHexPad(keyGridTheme);
    addFooterButton(PAD_BTN_TRIANGLE, GLYPH_TRIANGLE, "Options", openSidepanel);
+   addFooterButton(PAD_BTN_R1, GLYPH_R1, "Theme", NULL);   // hint only; handleThemeSwitch owns the R1 press
    addFooterButton(PAD_BTN_START, GLYPH_START, "Search", launchSearch);
    addFooterButton(PAD_BTN_SELECT, GLYPH_SELECT, "Start FTP Server", toggleFtpServer);
 
@@ -195,17 +192,15 @@ static void applyThemeToHome(void)
    rethemeProgressOverlay();
 }
 
-// L1 / R1 cycle the theme (wrapping) and apply it instantly. modal overlays and the on-screen
-// keyboard/hex-pad own L1/R1 themselves, so this only runs on the bare home screen.
+// R1 cycles to the next theme (wrapping) and applies it instantly. modal overlays and the on-screen
+// keyboard/hex-pad own R1 themselves, so this only runs on the bare home screen.
 static void handleThemeSwitch(void)
 {
    int count = getThemeCount();
    if (count < 2) return;
+   if (!isPadButtonPressed(PAD_BTN_R1)) return;
 
-   int direction = isPadButtonPressed(PAD_BTN_R1) ? 1 : (isPadButtonPressed(PAD_BTN_L1) ? -1 : 0);
-   if (!direction) return;
-
-   setActiveThemeIndex((getActiveThemeIndex() + direction + count) % count);
+   setActiveThemeIndex((getActiveThemeIndex() + 1) % count);
    applyThemeToHome();
    playAudioOnce(&clickSfx);
 }
@@ -260,8 +255,8 @@ static void drawHome(void)
 {
    fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), activeTheme->appBg);
    drawGfxBox(BOX_X, BOX_Y, BOX_W, BOX_H, activeTheme->borderThickness, activeTheme->panelFill, activeTheme->panelBorder);
-   drawImage(&titleFolderIcon);
-   drawImage(&clockIcon);
+   drawIcon(&titleFolderIcon, TITLE_ICON_X, TITLE_ICON_Y, TITLE_ICON_COLOR);
+   drawIcon(&clockIcon, CLOCK_ICON_X, CLOCK_ICON_Y, activeTheme->textPrimary);
    drawLabel(&titleLabel);
    fillGfxRectangle(DIVIDER_X, DIVIDER_TOP_Y, DIVIDER_W, 2, activeTheme->divider);
    fillGfxRectangle(DIVIDER_X, DIVIDER_BOT_Y, DIVIDER_W, 2, activeTheme->divider);
@@ -304,11 +299,6 @@ static void termHome(void)
    termFreeSpaceWidget();
    termBreadcrumb(&breadcrumb);
    freeLabel(&titleLabel);
-
-   // release the screen's own textures (the RSX is already idle after the
-   // widget teardown above, but make sure before reclaiming their VRAM).
-   finishGfx();
-   freeGfxTexture(&sprites);
 
    freeAudio(&clickSfx);
    freeAudio(&checkSfx);

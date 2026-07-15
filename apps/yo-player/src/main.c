@@ -22,6 +22,7 @@
 #include "settings.h"
 #include "downloads.h"
 #include "ui/console-glyphs.h"
+#include "ui/icon-font.h"
 #include "ui/stats.h"
 #include "bridge-client.h"
 #include "dbg.h"
@@ -47,6 +48,7 @@ int main(int argc, char **argv)
    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
    if (initAudio() != 0) return 1;
    if (initFont() != 0) return 1;
+   if (initIconFont() != 0) logError("[yt] embedded icon font failed to load; icons will be blank\n");
    initPad();
    enableScreenshot();
 

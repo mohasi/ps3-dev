@@ -7,11 +7,10 @@
 #include "audio.h"
 #include "colors.h"
 #include "ui/label.h"
-#include "ui/image.h"
+#include "ui/icon-font.h"
 #include "theme.h"
 #include "button-repeat.h"
 #include "string-utilities.h"
-#include "sprite-regions.h"
 
 #define SIDEPANEL_MAX_ACTIONS 9
 #define PANEL_WIDTH      474
@@ -23,8 +22,7 @@
 #define TOP_NO_HEADER    18  // top inset for the first row when no header is drawn
 #define ICON_X           35
 #define ICON_Y           70
-#define ICON_W           70
-#define ICON_H           84
+#define HEADER_ICON_SIZE 64  // header file-type glyph font size
 #define TEXT_X           133
 #define TEXT_RIGHT_PAD   8
 #define TITLE_Y          75
@@ -61,14 +59,12 @@ static SelectionActionHandler actionHandler;
 static Label headerTitle, headerSubtitle, headerDetail;
 static Label rowTitles[SIDEPANEL_MAX_ACTIONS];
 static Label rowSubtitles[SIDEPANEL_MAX_ACTIONS];
-static Image headerIcon;
-static Image rowIcons[SIDEPANEL_MAX_ACTIONS];
-static GfxTexture spritesheet;
+static Icon  headerIcon;
+static Icon  rowIcons[SIDEPANEL_MAX_ACTIONS];
 static Audio *clickSfx;
 
-void initSidepanel(GfxTexture sprites, Audio *sfx, SelectionActionHandler handler)
+void initSidepanel(Audio *sfx, SelectionActionHandler handler)
 {
-   spritesheet   = sprites;
    clickSfx      = sfx;
    actionHandler = handler;
 
@@ -98,7 +94,7 @@ void setSidepanelContent(const SelectionSummary *s, const SelectionAction *a, in
    for (int i = 0; i < actionCount; i++) {
       setLabelText(&rowTitles[i],    getActionTitle(actions[i]));
       setLabelText(&rowSubtitles[i], getActionSubtitle(actions[i]));
-      initImage(&rowIcons[i], spritesheet, 0, 0, ROW_ICON_SIZE, ROW_ICON_SIZE, getActionIcon(actions[i]), GFX_FILTER_LINEAR);
+      initIcon(&rowIcons[i], getActionIcon(actions[i]), ROW_ICON_SIZE);
    }
 
    // snapshot the header from the summary as it is right now; the panel
@@ -112,7 +108,7 @@ void setSidepanelContent(const SelectionSummary *s, const SelectionAction *a, in
    setLabelText(&headerSubtitle, strOrEmpty(summary.subtitle));
    setLabelText(&headerDetail,   strOrEmpty(summary.detail));
 
-   initImage(&headerIcon, spritesheet, 0, 0, ICON_W, ICON_H, summary.icon, GFX_FILTER_LINEAR);
+   initIcon(&headerIcon, summary.icon, HEADER_ICON_SIZE);
 }
 
 // labels capture their colour at init, so a live theme switch needs this (the slab/highlight read the
@@ -182,7 +178,7 @@ static void draw(void)
    fillGfxRectangle(px, 0, PANEL_BORDER, sh, activeTheme->menuBorder);
 
    if (hasHeader) {
-      drawImageAt(&headerIcon, px + ICON_X, ICON_Y);
+      drawIcon(&headerIcon, px + ICON_X, ICON_Y, activeTheme->textPrimary);
       drawLabelAt(&headerTitle,    px + TEXT_X, TITLE_Y);
       drawLabelAt(&headerSubtitle, px + TEXT_X, SUBTITLE_Y);
       drawLabelAt(&headerDetail,   px + TEXT_X, DETAIL_Y);
@@ -194,7 +190,7 @@ static void draw(void)
       int rowY = rowOriginY + i * ROW_HEIGHT;
       if (i == selectedIndex)
          drawGfxBox(rowX, rowY, ROW_WIDTH, ROW_HEIGHT, activeTheme->borderThickness, activeTheme->highlightFill, activeTheme->highlightBorder);
-      drawImageAt(&rowIcons[i],    rowX + ROW_ICON_OFFSET, rowY + ROW_ICON_OFFSET);
+      drawIcon(&rowIcons[i],       rowX + ROW_ICON_OFFSET, rowY + ROW_ICON_OFFSET, activeTheme->textPrimary);
       drawLabelAt(&rowTitles[i],    rowX + ROW_TEXT_X, rowY + ROW_TITLE_Y);
       drawLabelAt(&rowSubtitles[i], rowX + ROW_TEXT_X, rowY + ROW_SUBTITLE_Y);
    }

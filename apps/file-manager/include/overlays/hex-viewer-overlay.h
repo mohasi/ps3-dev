@@ -4,11 +4,10 @@
 // the file a page at a time (never loads it whole), so it stays safe on huge
 // files. Opens for any file type without a more specific viewer.
 
-#include "gfx.h"
 #include "overlay.h"
 
-// One-time setup (fonts, labels, header icon sprite). Call once during home screen init.
-void initHexViewerOverlay(GfxTexture sprites);
+// One-time setup (fonts, labels, header icon). Call once during home screen init.
+void initHexViewerOverlay(void);
 
 // re-applies the active theme to the pre-rendered labels, for a live theme switch.
 void rethemeHexViewerOverlay(void);

@@ -9,7 +9,7 @@
 #include "audio.h"
 #include "selection-actions.h"
 
-void initSearchController(Font *font, GfxTexture sprites, Audio *clickSfx, Audio *checkSfx,
+void initSearchController(Font *font, Audio *clickSfx, Audio *checkSfx,
                           int listY, int rowHeight, int fontSize, void (*onOptions)(void));
 void rethemeSearchController(void);   // recolour the results view + search title for a live theme switch
 void termSearchController(void);

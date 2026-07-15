@@ -17,13 +17,12 @@
 #include "audio.h"
 #include "colors.h"
 #include "ui/label.h"
-#include "ui/image.h"
+#include "ui/icon-font.h"
 #include "ui/volume-meter.h"
 #include "thread.h"             // spawnJoinableThread, joinThread
 #include "dir-playlist.h"       // folder scan + prev/next-with-wrap navigation
 #include "vfs.h"               // getBaseName, MAX_PATH_LEN
 #include "string-utilities.h"   // strCopy
-#include "sprite-regions.h"
 #include "dbg.h"                // logError
 
 #include <string.h>
@@ -58,8 +57,8 @@
 #define TIME_SIDE_SIZE     20
 
 // icon (top, centred)
-#define ICON_W             84
-#define ICON_H             100
+#define ICON_SIZE          92   // header file glyph font size
+#define ICON_BOX_H         100  // vertical space the glyph occupies, for laying out the name below
 
 // seek bar geometry (yo-player style: flat track + fill with a slim scrubber handle)
 #define BAR_H              8
@@ -109,9 +108,8 @@ static struct {
 static VolumeMeter volumeMeter;
 static int volumeLevel = VOLUME_DEFAULT;
 
-// sprite-sheet UI pieces (lazy-initialised in init, reused across opens)
-static GfxTexture sprites;
-static Image  iconImg;
+// header file glyph (lazy-initialised in init, reused across opens)
+static Icon  iconImg;
 
 // fonts/labels (kept across re-opens; their text textures grow as needed)
 static Font  font;
@@ -138,12 +136,11 @@ Overlay audioPlayerOverlay = { show, hide, update, draw, term, OVERLAY_TERMINATE
 // setup
 // ============================================================================
 
-void initAudioPlayerOverlay(GfxTexture spritesheet)
+void initAudioPlayerOverlay(void)
 {
-   sprites = spritesheet;
-   font    = openSystemFont(FONT_POP);
+   font = openSystemFont(FONT_POP);
 
-   initImage(&iconImg, sprites, 0, 0, ICON_W, ICON_H, spriteRegions[SPRITE_AUDIO], GFX_FILTER_LINEAR);
+   initIcon(&iconImg, ICON_FILE_AUDIO, ICON_SIZE);
 
    initLabel(&nameLabel,       &font, 0, 0, 1400, AUTO, NAME_SIZE,        COLOR_NAME,     TEXT_NOWRAP_ELLIPSIS, "");
    initLabel(&subtitleLabel,   &font, 0, 0, 1400, AUTO, SUBTITLE_SIZE,    COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
@@ -151,7 +148,7 @@ void initAudioPlayerOverlay(GfxTexture spritesheet)
    initLabel(&timeCenterLabel, &font, 0, 0, 600,  AUTO, TIME_CENTER_SIZE, COLOR_TIME,     TEXT_NOWRAP,          "");
    initLabel(&timeLeftLabel,   &font, 0, 0, 200,  AUTO, TIME_SIDE_SIZE,   COLOR_TIME_DIM, TEXT_NOWRAP,          "");
    initLabel(&timeRightLabel,  &font, 0, 0, 200,  AUTO, TIME_SIDE_SIZE,   COLOR_TIME_DIM, TEXT_NOWRAP,          "");
-   initVolumeMeter(&volumeMeter, &font, sprites, spriteRegions[SPRITE_SPEAKER], COLOR_SEEK_FILL, volumeLevel);
+   initVolumeMeter(&volumeMeter, &font, COLOR_SEEK_FILL, volumeLevel);
    ready = 1;
 }
 
@@ -161,9 +158,9 @@ static void layoutPlayer(void)
    int w = state.screenW, h = state.screenH;
    state.centerX = w / 2;
 
-   state.iconX = state.centerX - ICON_W / 2;
+   state.iconX = state.centerX;   // the glyph is centred on this at draw time
    state.iconY = (int)(h * 0.16f);
-   state.nameY = state.iconY + ICON_H + 18;
+   state.nameY = state.iconY + ICON_BOX_H + 18;
 
    state.waveLeft    = (int)(w * 0.17f);
    state.waveRight   = w - state.waveLeft;
@@ -540,7 +537,7 @@ static void draw(void)
    fillGfxRectangle(0, 0, state.screenW, state.screenH, COLOR_SCRIM);
 
    // icon + name show immediately, even while the clip is still decoding on the worker
-   drawImageAt(&iconImg, state.iconX, state.iconY);
+   drawIconCentered(&iconImg, state.iconX, state.iconY, COLOR_NAME);
    drawLabelAt(&nameLabel, state.centerX - nameLabel.tt.tex.w / 2, state.nameY);
 
    // track title (from tags) as a centred subtitle under the filename, when present

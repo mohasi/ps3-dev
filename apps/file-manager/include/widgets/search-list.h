@@ -22,7 +22,7 @@ typedef void (*SearchExit)(void);
 // this cannot ride the file-list footer buttons (doing so double-dispatched Cross to the hidden list).
 typedef void (*SearchOptions)(void);
 
-void initSearchList(Font *font, GfxTexture spritesheet, Audio *clickSfx, Audio *checkSfx, int y, int rowHeight,
+void initSearchList(Font *font, Audio *clickSfx, Audio *checkSfx, int y, int rowHeight,
                     int fontSize, SearchActivate onActivate, SearchExit onExit, SearchOptions onOptions);
 void rethemeSearchList(void);   // recolour persistent labels + checkboxes for a live theme switch
 void termSearchList(void);

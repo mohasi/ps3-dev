@@ -8,15 +8,14 @@
 #include "gfx.h"
 #include "font.h"
 #include "ui/label.h"
-#include "ui/image.h"
+#include "ui/icon-font.h"
 #include "button-repeat.h"
 
 #define VOLUME_METER_PILLS 15   // meter height in pills; also the max volume level
 
 typedef struct {
    Label    numberLabel;
-   Image    speaker;
-   int      hasSpeaker;       // 0 when no sprite sheet was available; the glyph is skipped
+   Icon     speakerOff, speakerLow, speakerHigh;   // glyph below the pills, chosen by level at draw
    uint32_t fillColor;
    int      level;            // 0..VOLUME_METER_PILLS
    uint64_t shownUs;          // last change, for the auto-hide (0 = hidden)
@@ -24,8 +23,8 @@ typedef struct {
    ButtonRepeat repeat;       // up/down auto-repeat state (handleVolumeMeterInput)
 } VolumeMeter;
 
-// speakerSprite comes from the app's sprite sheet; pass a zero-width `sprites` texture to skip the glyph.
-void initVolumeMeter(VolumeMeter *meter, Font *font, GfxTexture sprites, SpriteRegion speakerSprite, uint32_t fillColor, int level);
+// draws the muted/low/high speaker glyph by level; needs initIconFont() done first.
+void initVolumeMeter(VolumeMeter *meter, Font *font, uint32_t fillColor, int level);
 
 // standard placement: pills at 7% of the screen width, the column centred vertically.
 void layoutVolumeMeter(VolumeMeter *meter, int screenW, int screenH);

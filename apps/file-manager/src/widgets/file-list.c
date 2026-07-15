@@ -3,11 +3,10 @@
 #include "widgets/list-row-chrome.h"   // shared drawListRowSeparator / drawListRowHighlight
 #include "app.h"   // requestAppExit: Circle at root offers to quit
 #include "ui/label.h"
-#include "ui/image.h"
+#include "ui/icon-font.h"
 #include "ui/breadcrumb.h"
 #include "ui/checkbox.h"
 #include "widgets/footer-widget.h"
-#include "sprite-regions.h"
 #include "theme.h"
 #include "folder-sizer.h"
 #include "file-type.h"
@@ -102,8 +101,8 @@ static int delTopmost;
 #define MARKED_ROW_ALPHA 0x80   // 50% opacity for rows pending a cut or copy
 
 static Checkbox checkboxes[FILE_LIST_PAGE_SIZE];
-static Image fileIcons[FILE_TYPE_COUNT];
-static Image usbIcon;   // badge composited onto USB device folders at root
+static Icon fileIcons[FILE_TYPE_COUNT];   // icon-font glyph per file type, tinted at draw
+static Icon hddIcon;   // drive glyph shown for removable (USB) devices at root
 static Breadcrumb *breadcrumb;
 static Audio *clickSfx;
 static Audio *checkSfx;
@@ -462,7 +461,7 @@ static void syncFooterButtons(void)
    setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);   // Circle stays enabled: at root it offers to exit the app
 }
 
-void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check, int x, int y, int maxWidth, int rowHeight, int fontSize, Breadcrumb *bc)
+void initFileList(Font *font, Audio *click, Audio *check, int x, int y, int maxWidth, int rowHeight, int fontSize, Breadcrumb *bc)
 {
    uint32_t color = activeTheme->textPrimary;   // row + header labels all use the primary text colour
    breadcrumb = bc;
@@ -489,9 +488,8 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
    addFooterButton(PAD_BTN_SQUARE, GLYPH_SQUARE, "Mark",  NULL);
 
    for (int t = 0; t < FILE_TYPE_COUNT; t++)
-      initImage(&fileIcons[t], spritesheet, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);
-   initImage(&usbIcon, spritesheet, 0, 0, spriteRegions[SPRITE_USB].w, spriteRegions[SPRITE_USB].h,
-             spriteRegions[SPRITE_USB], GFX_FILTER_LINEAR);   // native size; centred on the folder at draw
+      initIcon(&fileIcons[t], getFileTypeIcon(t), 35);
+   initIcon(&hddIcon, ICON_HDD, 35);
 
    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
       int ry = y + i * rowHeight;
@@ -502,7 +500,7 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
       initLabel(&sizeLabels[i], font, COLUMN_SIZE_X, ry + 25, COLUMN_SIZE_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
       initLabel(&modifiedLabels[i], font, COLUMN_MODIFIED_X, ry + 25, COLUMN_MODIFIED_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
       initLabel(&permissionLabels[i], font, COLUMN_PERMISSIONS_X, ry + 25, COLUMN_PERMISSIONS_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-      initCheckbox(&checkboxes[i], 71, cy, 25, activeTheme->checkBorder, activeTheme->checkFill);
+      initCheckbox(&checkboxes[i], 71, cy, activeTheme->checkFill);
    }
 
    loadDir("/");
@@ -519,8 +517,7 @@ void rethemeFileList(void)
       setLabelColor(&typeLabels[i],       activeTheme->textPrimary);
       setLabelColor(&modifiedLabels[i],   activeTheme->textPrimary);
       setLabelColor(&permissionLabels[i], activeTheme->textPrimary);
-      checkboxes[i].borderColor = activeTheme->checkBorder;
-      checkboxes[i].fillColor   = activeTheme->checkFill;
+      checkboxes[i].color = activeTheme->checkFill;
    }
    setLabelColor(&counterLabel, activeTheme->textPrimary);
    for (int i = 0; i < COLUMN_HEADER_COUNT; i++)
@@ -631,14 +628,9 @@ void drawFileList(void)
       drawCheckboxAlpha(&checkboxes[i], entries[idx].checked, alpha);
 
       // draw type icon (and a centred USB badge for removable devices at root)
-      int iconY = listY + i * listRowHeight + (listRowHeight - 43) / 2;
-      moveImage(&fileIcons[entries[idx].type], 120, iconY);
-      drawImageAlpha(&fileIcons[entries[idx].type], alpha);
-      if (entries[idx].isUsb) {
-         int usbW = spriteRegions[SPRITE_USB].w, usbH = spriteRegions[SPRITE_USB].h;
-         moveImage(&usbIcon, 120 + (35 - usbW) / 2, iconY + (43 - usbH) / 2 + 4);
-         drawImageAlpha(&usbIcon, alpha);
-      }
+      int iconY = listY + i * listRowHeight + (listRowHeight - 35) / 2;
+      Icon *rowIcon = entries[idx].isUsb ? &hddIcon : &fileIcons[entries[idx].type];
+      drawIconAlpha(rowIcon, 120, iconY, activeTheme->textPrimary, alpha);
 
       // draw labels
       drawLabelAlpha(&labels[i], alpha);
@@ -665,6 +657,8 @@ void termFileList(void)
    }
    freeLabel(&counterLabel);
    for (int i = 0; i < COLUMN_HEADER_COUNT; i++) freeLabel(&columnHeaderLabels[i]);
+   for (int t = 0; t < FILE_TYPE_COUNT; t++) freeIcon(&fileIcons[t]);
+   freeIcon(&hddIcon);
 
    free(entries);
    entries = NULL;
@@ -718,7 +712,7 @@ const SelectionSummary *getSelectionSummary(void)
       summary.title    = title;
       summary.subtitle = subtitle;
       summary.detail   = detail;
-      summary.icon     = spriteRegions[SPRITE_GENERIC_MULTI];
+      summary.icon     = ICON_DOCS;
       return &summary;
    }
 
@@ -728,7 +722,7 @@ const SelectionSummary *getSelectionSummary(void)
       summary.title    = "";
       summary.subtitle = "";
       summary.detail   = "";
-      summary.icon     = spriteRegions[SPRITE_GENERIC];
+      summary.icon     = ICON_DOC;
       return &summary;
    }
 
@@ -747,7 +741,7 @@ const SelectionSummary *getSelectionSummary(void)
    summary.title    = e->name;
    summary.subtitle = getFileTypeName(e->type);
    summary.detail   = detail;
-   summary.icon     = spriteRegions[getFileTypeSprite(e->type)];
+   summary.icon     = getFileTypeIcon(e->type);
    return &summary;
 }
 

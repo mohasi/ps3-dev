@@ -14,6 +14,9 @@
 #include "theme.h"
 #include "ui/stats.h"
 #include "ui/console-glyphs.h"
+#include "ui/icon-font.h"
+#include "ui/checkbox.h"
+#include "dbg.h"
 #include "bridge-client.h"
 
 #define PROCESS_PRIORITY_DEFAULT 1001
@@ -41,6 +44,8 @@ int main(int argc, char **argv)
    initPad();
    enableScreenshot();
    loadConsoleGlyphs();   // decode the console's own button glyphs for footer/keyboard hints
+   if (initIconFont() != 0) logError("[icons] embedded icon font failed to load; icons will be blank\n");
+   initCheckboxIcons();   // rasterise the checkbox box/check glyphs once
 
    initStats(5, 5, 14, COLOR_AMBER_300);
 
@@ -60,6 +65,8 @@ int main(int argc, char **argv)
    changeScreen(NULL);
    termStats();
    freeConsoleGlyphs();
+   freeCheckboxIcons();
+   freeIconFont();
    termAudio();
    termFont();
    termGfx();

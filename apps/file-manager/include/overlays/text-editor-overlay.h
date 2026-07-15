@@ -4,11 +4,10 @@
 // whole file into memory and shows a scrollable, line-numbered view in a
 // bordered panel, with its own Edit/Save/Exit footer row. No search yet.
 
-#include "gfx.h"
 #include "overlay.h"
 
-// One-time setup (fonts, labels, header icon sprite). Call once during home screen init.
-void initTextEditorOverlay(GfxTexture sprites);
+// One-time setup (fonts, labels, header icon). Call once during home screen init.
+void initTextEditorOverlay(void);
 
 // re-applies the active theme to the pre-rendered labels, for a live theme switch.
 void rethemeTextEditorOverlay(void);

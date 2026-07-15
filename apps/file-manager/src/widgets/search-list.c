@@ -3,10 +3,9 @@
 #include "widgets/list-row-chrome.h"   // shared drawListRowSeparator / drawListRowHighlight
 #include "gfx.h"
 #include "ui/label.h"
-#include "ui/image.h"
+#include "ui/icon-font.h"
 #include "ui/checkbox.h"
 #include "file-type.h"
-#include "sprite-regions.h"
 #include "theme.h"
 #include "button-repeat.h"
 #include "tree-walk.h"
@@ -76,7 +75,7 @@ static SearchActivate activateCb;
 static SearchExit     exitCb;
 static SearchOptions  optionsCb;
 
-static Image     fileIcons[FILE_TYPE_COUNT];
+static Icon      fileIcons[FILE_TYPE_COUNT];   // icon-font glyph per file type, tinted at draw
 static Label     nameLabels[PAGE_SIZE], locationLabels[PAGE_SIZE], typeLabels[PAGE_SIZE], sizeLabels[PAGE_SIZE];
 static Checkbox  checkboxes[PAGE_SIZE];
 static Label     nameHeader, locationHeader, typeHeader, sizeHeader, statusLabel;
@@ -363,14 +362,14 @@ const SelectionSummary *getSearchSelectionSummary(void)
    if (count > 1) {
       snprintf(title, sizeof title, "%d items", count);
       subtitle[0] = '\0';
-      summary.icon = spriteRegions[SPRITE_GENERIC_MULTI];
+      summary.icon = ICON_DOCS;
    } else {
       // the single target: the lone checked row, else the highlighted one.
       int idx = selectedIndex;
       if (countChecked() == 1) for (int i = 0; i < resultCount; i++) if (results[i].checked) { idx = i; break; }
       strCopy(title, sizeof title, getBaseName(results[idx].path));
       strCopy(subtitle, sizeof subtitle, getFileTypeName(results[idx].type));
-      summary.icon = spriteRegions[getFileTypeSprite(results[idx].type)];
+      summary.icon = getFileTypeIcon(results[idx].type);
    }
    summary.title    = title;
    summary.subtitle = subtitle;
@@ -499,9 +498,8 @@ void drawSearchList(void)
 
       drawCheckboxAlpha(&checkboxes[i], results[idx].checked, alpha);
 
-      int iconY = rowY + (listRowHeight - 43) / 2;
-      moveImage(&fileIcons[results[idx].type], ICON_X, iconY);
-      drawImageAlpha(&fileIcons[results[idx].type], alpha);
+      int iconY = rowY + (listRowHeight - 35) / 2;
+      drawIconAlpha(&fileIcons[results[idx].type], ICON_X, iconY, activeTheme->textPrimary, alpha);
 
       drawLabelAlpha(&nameLabels[i], alpha);
       drawLabelAlpha(&locationLabels[i], alpha);
@@ -516,7 +514,7 @@ void drawSearchList(void)
 // setup
 // ============================================================================
 
-void initSearchList(Font *font, GfxTexture sprites, Audio *click, Audio *check, int y, int rowHeight,
+void initSearchList(Font *font, Audio *click, Audio *check, int y, int rowHeight,
                     int fontSize, SearchActivate onActivate, SearchExit onExit, SearchOptions onOptions)
 {
    uint32_t color = activeTheme->textPrimary;   // headers + result-row labels all use the primary text colour
@@ -529,7 +527,7 @@ void initSearchList(Font *font, GfxTexture sprites, Audio *click, Audio *check, 
    optionsCb     = onOptions;
 
    for (int t = 0; t < FILE_TYPE_COUNT; t++)
-      initImage(&fileIcons[t], sprites, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);
+      initIcon(&fileIcons[t], getFileTypeIcon(t), 35);
 
    initLabel(&nameHeader,     font, NAME_HEADER_X, COLUMN_HEADER_Y, NAME_W,  AUTO, fontSize, color, TEXT_NOWRAP, "Name");
    initLabel(&locationHeader, font, LOCATION_X, COLUMN_HEADER_Y, LOCATION_W, AUTO, fontSize, color, TEXT_NOWRAP, "Location");
@@ -544,7 +542,7 @@ void initSearchList(Font *font, GfxTexture sprites, Audio *click, Audio *check, 
       initLabel(&locationLabels[i], font, LOCATION_X, ry + 25, LOCATION_W, AUTO, fontSize, color, TEXT_NOWRAP_ELLIPSIS, NULL);
       initLabel(&typeLabels[i],     font, TYPE_X,     ry + 25, TYPE_W,     AUTO, fontSize, color, TEXT_NOWRAP,          NULL);
       initLabel(&sizeLabels[i],     font, SIZE_X,     ry + 25, SIZE_W,     AUTO, fontSize, color, TEXT_NOWRAP,          NULL);
-      initCheckbox(&checkboxes[i], CHECKBOX_X, cy, 25, activeTheme->checkBorder, activeTheme->checkFill);
+      initCheckbox(&checkboxes[i], CHECKBOX_X, cy, activeTheme->checkFill);
    }
 }
 
@@ -556,8 +554,7 @@ void rethemeSearchList(void)
       setLabelColor(&locationLabels[i], activeTheme->textPrimary);
       setLabelColor(&typeLabels[i],     activeTheme->textPrimary);
       setLabelColor(&sizeLabels[i],     activeTheme->textPrimary);
-      checkboxes[i].borderColor = activeTheme->checkBorder;
-      checkboxes[i].fillColor   = activeTheme->checkFill;
+      checkboxes[i].color = activeTheme->checkFill;
    }
    setLabelColor(&nameHeader,     activeTheme->textPrimary);
    setLabelColor(&locationHeader, activeTheme->textPrimary);
@@ -580,4 +577,5 @@ void termSearchList(void)
    freeLabel(&typeHeader);
    freeLabel(&sizeHeader);
    freeLabel(&statusLabel);
+   for (int t = 0; t < FILE_TYPE_COUNT; t++) freeIcon(&fileIcons[t]);
 }

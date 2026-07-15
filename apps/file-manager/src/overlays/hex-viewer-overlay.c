@@ -20,13 +20,12 @@
 #include "font.h"
 #include "colors.h"
 #include "ui/label.h"
-#include "ui/image.h"
+#include "ui/icon-font.h"
 #include "ui/button.h"
 #include "ui/scrollbar.h"
 #include "ui/hex-pad.h"
 #include "ui/console-glyphs.h"
 #include "overlays/editor-footer.h"   // shared Edit/Save/Exit row
-#include "sprite-regions.h"
 #include "theme.h"
 #include "button-repeat.h"
 #include "dynarray.h"
@@ -44,8 +43,7 @@
 // worth forcing into one component).
 #define HEADER_ICON_X     39
 #define HEADER_ICON_Y     37
-#define HEADER_ICON_W     40
-#define HEADER_ICON_H     46
+#define HEADER_ICON_SIZE  42
 #define HEADER_NAME_X     98
 #define HEADER_NAME_Y     49
 #define HEADER_NAME_SIZE  24
@@ -124,7 +122,7 @@ static struct {
 
 static Font  monoFont;     // hex/ASCII body + gutter + column header
 static Font  headerFont;   // filename header
-static Image headerIcon;
+static Icon headerIcon;
 static Label headerNameLabel;
 static Label headerStarLabel;
 static Scrollbar scrollbar;
@@ -518,7 +516,7 @@ static void draw(void)
 {
    fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), activeTheme->appBg);   // opaque: this is a full viewer screen, not a dialog over the list
 
-   drawImage(&headerIcon);
+   drawIcon(&headerIcon, HEADER_ICON_X, HEADER_ICON_Y, activeTheme->textPrimary);
    drawLabel(&headerNameLabel);
    if (state.dirty) drawLabel(&headerStarLabel);
 
@@ -581,7 +579,7 @@ static void term(void)
 
 Overlay hexViewerOverlay = { show, hide, update, draw, term, OVERLAY_TERMINATED };
 
-void initHexViewerOverlay(GfxTexture sprites)
+void initHexViewerOverlay(void)
 {
    monoFont   = openFontFile(FONT_PATH);
    headerFont = openSystemFont(FONT_POP);
@@ -599,8 +597,7 @@ void initHexViewerOverlay(GfxTexture sprites)
    // hex area instead of stretching all the way up to (and touching) it.
    addressBgWidth = (addressAreaX - GUTTER_BG_X) + ADDRESS_CHARS * charWidth + (COLUMN_GAP_CHARS * charWidth) / 2;
 
-   initImage(&headerIcon, sprites, HEADER_ICON_X, HEADER_ICON_Y, HEADER_ICON_W, HEADER_ICON_H,
-             spriteRegions[SPRITE_GENERIC], GFX_FILTER_LINEAR);
+   initIcon(&headerIcon, ICON_DOC, HEADER_ICON_SIZE);
    initLabelRaw(&headerNameLabel, &headerFont, HEADER_NAME_X, HEADER_NAME_Y, HEADER_NAME_WIDTH, AUTO,
                 HEADER_NAME_SIZE, activeTheme->textPrimary, TEXT_NOWRAP_ELLIPSIS, "");
    initLabel(&headerStarLabel, &headerFont, 0, 0, 20, AUTO, HEADER_NAME_SIZE, COLOR_RED, TEXT_NOWRAP, "*");   // unsaved-changes accent

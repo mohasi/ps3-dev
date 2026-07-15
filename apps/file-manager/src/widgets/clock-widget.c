@@ -2,6 +2,7 @@
 // chrome drawn by the home screen, since filled shapes here can't anti-alias - see SPRITE_CLOCK)
 #include "widgets/clock-widget.h"
 #include "ui/label.h"
+#include "theme.h"
 #include "timer.h"
 #include <cell/rtc.h>
 
@@ -34,11 +35,16 @@ static void refresh(void *ctx)
    setLabelText(&label, buf);
 }
 
-void initClockWidget(Font *font, int x, int y, int size, uint32_t color)
+void initClockWidget(Font *font, int x, int y, int size)
 {
-   initLabel(&label, font, x, y, AUTO, AUTO, size, color, TEXT_NOWRAP, NULL);
+   initLabel(&label, font, x, y, AUTO, AUTO, size, activeTheme->textPrimary, TEXT_NOWRAP, NULL);
    initTimer(&timer, 1000000, refresh, NULL);
    refresh(NULL);
+}
+
+void rethemeClockWidget(void)
+{
+   setLabelColor(&label, activeTheme->textPrimary);
 }
 
 void updateClockWidget(void)

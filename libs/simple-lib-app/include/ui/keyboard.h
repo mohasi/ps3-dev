@@ -12,13 +12,15 @@
 // state - both no-op while closed, same convention as stats.h.
 
 #include "gfx.h"
+#include "ui/key-grid.h"   // KeyGridTheme (flat/metro palette)
 
 // backspace, space, tab, and return report as ordinary characters
 // ('\b', ' ', '\t', '\n'), so callers can treat every key the same way -
 // append/erase from a text buffer.
 typedef void (*KeyboardKeyCallback)(char key);
 
-void initKeyboard(GfxTexture sprites, SpriteRegion panelSprite, int panelCap);
+void initKeyboard(KeyGridTheme theme);
+void rethemeKeyboard(KeyGridTheme theme);   // recolour for a live theme switch
 void termKeyboard(void);
 
 void openKeyboard(KeyboardKeyCallback onKey);

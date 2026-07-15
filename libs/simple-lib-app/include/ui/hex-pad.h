@@ -7,10 +7,12 @@
 // L2-held "hand focus to the document underneath" behavior).
 
 #include "gfx.h"
+#include "ui/key-grid.h"   // KeyGridTheme (flat/metro palette)
 
 typedef void (*HexPadKeyCallback)(char key);   // '0'-'9', 'A'-'F', or '\b'
 
-void initHexPad(GfxTexture sprites, SpriteRegion panelSprite, int panelCap);
+void initHexPad(KeyGridTheme theme);
+void rethemeHexPad(KeyGridTheme theme);   // recolour for a live theme switch
 void termHexPad(void);
 
 void openHexPad(HexPadKeyCallback onKey);

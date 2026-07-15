@@ -1,107 +1,210 @@
-// progress-overlay - centered modal with a framed progress bar and a Cancel
-// button, driving a background file task (see file-task.h).
+// progress-overlay - flat/metro modal driving a background file task (see file-task.h).
+// shows a big percentage, a themed progress bar, and live stats derived from the byte progress plus a
+// timer: size done/total, transfer speed, elapsed time and an estimated time remaining. all colours
+// come from the active theme (see theme.h). circle cancels.
 #include "overlays/progress-overlay.h"
 #include "file-task.h"
 #include "gfx.h"
 #include "pad.h"
 #include "font.h"
 #include "audio.h"
-#include "colors.h"
 #include "ui/label.h"
 #include "ui/image.h"
 #include "ui/console-glyphs.h"
-#include "ui/slice.h"
-#include "ui/dialog-panel.h"
-#include "ui/progress-bar.h"
 #include "string-utilities.h"
-#include "sprite-regions.h"
+#include "format.h"
+#include "theme.h"
+#include <sys/sys_time.h>
 
-#define DIALOG_W       640
-#define DIALOG_H       280
-#define HIGHLIGHT_CAP  7    // highlight sprite (16x16) 9-slice corner cap
-#define TEXT_RIGHT_PAD 20
+#define DIALOG_W       720
+#define DIALOG_H       300
+#define CONTENT_X      54   // left/right content margin
 
-// title / subtitle (dialog-relative)
-#define TITLE_X        45
-#define TITLE_Y        50
-#define TITLE_SIZE     24
-#define SUBTITLE_X     45
-#define SUBTITLE_Y     100
+#define TITLE_Y        44
+#define TITLE_SIZE     26
+#define PERCENT_Y      36   // big percentage, right-aligned to the content edge
+#define PERCENT_SIZE   40
+#define SUBTITLE_Y     90
 #define SUBTITLE_SIZE  18
 
-// progress bar (dialog-relative). FRAME is the 8x8 9-slice border; the fill is
-// the 10x10 PROGRESS 9-slice, inset by BAR_PAD on every side so it never sits
-// flush against the frame edge. the percentage label sits PCT_GAP past the frame.
-#define FRAME_X        45
-#define FRAME_Y        150
-#define FRAME_W        487
-#define FRAME_H        24
-#define FRAME_CAP      3    // frame sprite is 8px; cap<4 leaves a stretchable middle
-#define BAR_PAD        5
-#define PROGRESS_CAP   4    // progress sprite is 10px
-#define PCT_GAP        18
-#define PCT_W          (DIALOG_W - FRAME_X - FRAME_W - PCT_GAP - TEXT_RIGHT_PAD)
-#define PCT_SIZE       20
+#define BAR_Y          128
+#define BAR_H          20
 
-// separator (dialog-relative)
-#define SEP_X          45
-#define SEP_Y          196
-#define SEP_W          550
-#define SEP_H          2
+#define STATS_Y        164   // first stats line; the second sits STATS_GAP below
+#define STATS_GAP      28
+#define STATS_SIZE     17
 
-// cancel button (circle icon + label, centered as a group)
-#define CANCEL_ICON    32   // rendered height of the XMB circle glyph
-#define CANCEL_Y       218
+// cancel hint (circle glyph + label, centered as a group along the bottom)
+#define CANCEL_GLYPH   28
+#define CANCEL_Y       242
 #define CANCEL_GAP     10
 #define CANCEL_SIZE    18
 
-#define COLOR_DIALOG_BG 0xFF001636
-#define COLOR_SUBTITLE  0x80FFFFFF
+#define STAT_SEP       "   \xE2\x80\xA2   "   // "   •   ", the dot between stats
 
-static Font font;
+static Font   font;
 static Audio *clickSfx;
 
-static DialogPanel panel;
-static ProgressBar bar;
-static Slice     separator;
-static Image     circleIcon;
-static Label     titleLabel, subtitleLabel, cancelLabel;
+static Image circleIcon;
+static Label titleLabel, percentLabel, subtitleLabel, statsTop, statsBottom, cancelLabel;
 
 static ProgressDoneCallback onDoneCb;
-static int      cancelling;  // cancel requested, awaiting the worker to exit
+static int      cancelling;    // cancel requested, awaiting the worker to exit
+static uint64_t startUs;       // task start, for elapsed / speed / remaining
+static uint64_t lastStatsSec;  // last second the stats lines were rebuilt (throttle to 1 Hz)
+static int      percent;
 
-void initProgressOverlay(GfxTexture sprites, Audio *sfx)
+// busy (indeterminate) mode: no task, driven by the owner's polled callbacks (see startBusyProgress).
+static int          busy;
+static BusyStatusFn busyStatusFn;
+static BusyDoneFn   busyDoneFn;
+static void       (*busyCancelFn)(void);
+
+void initProgressOverlay(Audio *sfx)
 {
    clickSfx = sfx;
    font     = openSystemFont(FONT_POP);
 
-   initDialogPanel(&panel, sprites, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP);
-   initProgressBar(&bar, sprites, &font, FRAME_W, FRAME_H, spriteRegions[SPRITE_FRAME], FRAME_CAP,
-                   spriteRegions[SPRITE_PROGRESS], PROGRESS_CAP, BAR_PAD, PCT_W, PCT_SIZE, COLOR_WHITE, PCT_GAP);
-   initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
-   initGlyphIcon(&circleIcon, GLYPH_CIRCLE, CANCEL_ICON);
+   initGlyphIcon(&circleIcon, GLYPH_CIRCLE, CANCEL_GLYPH);
 
-   initLabel(&titleLabel,    &font, 0, 0, DIALOG_W - TITLE_X - TEXT_RIGHT_PAD,    AUTO, TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&subtitleLabel, &font, 0, 0, DIALOG_W - SUBTITLE_X - TEXT_RIGHT_PAD, AUTO, SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&cancelLabel,   &font, 0, 0, 120, AUTO, CANCEL_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Cancel");
+   int textW = DIALOG_W - CONTENT_X * 2;
+   initLabel(&titleLabel,    &font, 0, 0, textW, AUTO, TITLE_SIZE,    activeTheme->textPrimary,   TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&percentLabel,  &font, 0, 0, 160,   AUTO, PERCENT_SIZE,  activeTheme->textPrimary,   TEXT_NOWRAP,          "");
+   initLabel(&subtitleLabel, &font, 0, 0, textW, AUTO, SUBTITLE_SIZE, activeTheme->textSecondary, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&statsTop,      &font, 0, 0, textW, AUTO, STATS_SIZE,    activeTheme->textSecondary, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&statsBottom,   &font, 0, 0, textW, AUTO, STATS_SIZE,    activeTheme->textSecondary, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&cancelLabel,   &font, 0, 0, 120,   AUTO, CANCEL_SIZE,   activeTheme->textPrimary,   TEXT_NOWRAP,          "Cancel");
+}
+
+void startBusyProgress(const char *title, BusyStatusFn status, BusyDoneFn done,
+                       void (*onCancel)(void), ProgressDoneCallback onDone)
+{
+   busy         = 1;
+   busyStatusFn = status;
+   busyDoneFn   = done;
+   busyCancelFn = onCancel;
+   onDoneCb     = onDone;
+   cancelling   = 0;
+   setLabelText(&titleLabel,    strOrEmpty(title));
+   setLabelText(&subtitleLabel, "");
+   showOverlay(&progressOverlay);
 }
 
 void startProgress(const char *title, const char *subtitle, TaskBody run, ProgressDoneCallback onDone)
 {
-   onDoneCb   = onDone;
-   cancelling = 0;
+   busy         = 0;
+   onDoneCb     = onDone;
+   cancelling   = 0;
+   percent      = 0;
+   startUs      = sys_time_get_system_time();
+   lastStatsSec = (uint64_t)-1;   // force the first stats build
    setLabelText(&titleLabel,    strOrEmpty(title));
    setLabelText(&subtitleLabel, strOrEmpty(subtitle));
+   setLabelText(&percentLabel,  "0%");
+   setLabelText(&statsTop,      "");
+   setLabelText(&statsBottom,   "");
 
    startTask(run);
-   showOverlay(&progressOverlay);  // dialog shows from 0% while the task runs
+   showOverlay(&progressOverlay);
+}
+
+// labels capture their colour at init, so a live theme switch needs this (the scrim/panel/bar read the
+// theme live and follow for free). runs while the dialog is hidden; the next open renders in the new
+// colour. see applyThemeToHome.
+void rethemeProgressOverlay(void)
+{
+   setLabelColor(&titleLabel,    activeTheme->textPrimary);
+   setLabelColor(&percentLabel,  activeTheme->textPrimary);
+   setLabelColor(&subtitleLabel, activeTheme->textSecondary);
+   setLabelColor(&statsTop,      activeTheme->textSecondary);
+   setLabelColor(&statsBottom,   activeTheme->textSecondary);
+   setLabelColor(&cancelLabel,   activeTheme->textPrimary);
 }
 
 static void show(void) { progressOverlay.status = OVERLAY_VISIBLE; }
 static void hide(void) { progressOverlay.status = OVERLAY_HIDDEN; }
 
+// "M:SS", or "H:MM:SS" past an hour.
+static void formatDuration(uint64_t seconds, char *buf, int cap)
+{
+   uint64_t h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60;
+   int o = 0;
+   if (h > 0) {
+      o = appendUint64(buf, cap, o, h);
+      buf[o++] = ':';
+      if (m < 10) buf[o++] = '0';
+   }
+   o = appendUint64(buf, cap, o, m);
+   buf[o++] = ':';
+   if (s < 10) buf[o++] = '0';
+   o = appendUint64(buf, cap, o, s);
+   buf[o] = '\0';
+}
+
+// rebuild the two stats lines from the current byte progress + elapsed time.
+static void updateStats(uint64_t done, uint64_t total, uint64_t elapsedSec)
+{
+   char doneStr[24], totalStr[24], speedStr[24], line[96];
+   uint64_t speed = elapsedSec > 0 ? done / elapsedSec : 0;
+
+   // top: "342 MB of 1.4 GB   •   28 MB/s"
+   formatSize(done, doneStr);
+   formatSize(total, totalStr);
+   formatSize(speed, speedStr);
+   int o = 0;
+   appendStr(line, sizeof line, &o, doneStr);
+   appendStr(line, sizeof line, &o, " of ");
+   appendStr(line, sizeof line, &o, totalStr);
+   appendStr(line, sizeof line, &o, STAT_SEP);
+   appendStr(line, sizeof line, &o, speedStr);
+   appendStr(line, sizeof line, &o, "/s");
+   line[o] = '\0';
+   setLabelText(&statsTop, line);
+
+   // bottom: "Elapsed 0:12   •   ~0:45 left" (or "estimating..." until there's a rate)
+   char elapsedStr[16];
+   formatDuration(elapsedSec, elapsedStr, sizeof elapsedStr);
+   o = 0;
+   appendStr(line, sizeof line, &o, "Elapsed ");
+   appendStr(line, sizeof line, &o, elapsedStr);
+   appendStr(line, sizeof line, &o, STAT_SEP);
+   if (speed > 0 && total > done) {
+      char remainStr[16];
+      formatDuration((total - done) / speed, remainStr, sizeof remainStr);
+      appendStr(line, sizeof line, &o, "~");
+      appendStr(line, sizeof line, &o, remainStr);
+      appendStr(line, sizeof line, &o, " left");
+   } else {
+      appendStr(line, sizeof line, &o, "estimating...");
+   }
+   line[o] = '\0';
+   setLabelText(&statsBottom, line);
+}
+
+// busy mode: poll the owner's status/done each frame; circle asks the owner to stop.
+static void updateBusy(void)
+{
+   if (busyDoneFn && busyDoneFn()) {
+      ProgressDoneCallback cb = onDoneCb;
+      int cancelled = cancelling;
+      onDoneCb = NULL;
+      busy = 0;
+      hideOverlay(&progressOverlay);
+      if (cb) cb(cancelled);
+      return;
+   }
+   if (busyStatusFn) setLabelText(&subtitleLabel, strOrEmpty(busyStatusFn()));
+   if (!cancelling && isPadButtonPressed(PAD_BTN_CIRCLE)) {
+      playAudioOnce(clickSfx);
+      cancelling = 1;
+      if (busyCancelFn) busyCancelFn();
+   }
+}
+
 static void update(void)
 {
+   if (busy) { updateBusy(); return; }
+
    // task finished: tear down and hand back to the caller on the main thread.
    if (!isTaskRunning()) {
       int cancelled = isCancelRequested();
@@ -113,6 +216,23 @@ static void update(void)
       return;
    }
 
+   // live metrics: percentage every frame (cheap), stats lines throttled to once a second.
+   uint64_t total = getTotalBytes();
+   uint64_t done  = getProcessedBytes();
+   percent = total > 0 ? (int)((done * 100) / total) : 0;
+
+   char pctStr[8];
+   int o = appendUint64(pctStr, sizeof pctStr, 0, (uint64_t)percent);
+   pctStr[o++] = '%';
+   pctStr[o] = '\0';
+   setLabelText(&percentLabel, pctStr);
+
+   uint64_t elapsedSec = (sys_time_get_system_time() - startUs) / 1000000ULL;
+   if (elapsedSec != lastStatsSec) {
+      lastStatsSec = elapsedSec;
+      updateStats(done, total, elapsedSec);
+   }
+
    if (!cancelling && isPadButtonPressed(PAD_BTN_CIRCLE)) {
       playAudioOnce(clickSfx);
       cancelling = 1;
@@ -121,35 +241,69 @@ static void update(void)
    }
 }
 
+static void drawProgressBar(int x, int y, int width)
+{
+   int t = activeTheme->borderThickness;
+   drawGfxBox(x, y, width, BAR_H, t, activeTheme->progressTrack, activeTheme->dialogBorder);
+   int innerW = width - t * 2;
+   int fillW = (int)((int64_t)innerW * percent / 100);
+   if (fillW > 0) fillGfxRectangle(x + t, y + t, fillW, BAR_H - t * 2, activeTheme->progressFill);
+}
+
+#define BUSY_H 190   // shorter dialog for busy mode (no bar/stats)
+
+// centered circle-glyph + label cancel hint along the bottom of a dialogX/dialogY/w/h box.
+static void drawCancelHint(int dialogX, int dialogY, int w, int cancelY)
+{
+   int groupW = circleIcon.w + CANCEL_GAP + cancelLabel.tt.tex.w;
+   int gx = dialogX + (w - groupW) / 2;
+   drawImageAt(&circleIcon,  gx, dialogY + cancelY + (CANCEL_GLYPH - circleIcon.h) / 2);
+   drawLabelAt(&cancelLabel, gx + circleIcon.w + CANCEL_GAP, dialogY + cancelY + (CANCEL_GLYPH - CANCEL_SIZE) / 2);
+}
+
+static void drawBusy(void)
+{
+   int dialogX = (getGfxScreenWidth()  - DIALOG_W) / 2;
+   int dialogY = (getGfxScreenHeight() - BUSY_H)   / 2;
+
+   fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), activeTheme->scrim);
+   drawGfxBox(dialogX, dialogY, DIALOG_W, BUSY_H, activeTheme->borderThickness, activeTheme->dialogFill, activeTheme->dialogBorder);
+
+   drawLabelAt(&titleLabel,    dialogX + CONTENT_X, dialogY + TITLE_Y);
+   drawLabelAt(&subtitleLabel, dialogX + CONTENT_X, dialogY + SUBTITLE_Y);
+   drawCancelHint(dialogX, dialogY, DIALOG_W, BUSY_H - 48);
+}
+
 static void draw(void)
 {
-   drawDialogPanel(&panel);
-   int dialogX = panel.x, dialogY = panel.y;
+   if (busy) { drawBusy(); return; }
 
-   drawLabelAt(&titleLabel,    dialogX + TITLE_X,    dialogY + TITLE_Y);
-   drawLabelAt(&subtitleLabel, dialogX + SUBTITLE_X, dialogY + SUBTITLE_Y);
+   int dialogX = (getGfxScreenWidth()  - DIALOG_W) / 2;
+   int dialogY = (getGfxScreenHeight() - DIALOG_H) / 2;
 
-   uint64_t total = getTotalBytes();
-   uint64_t done  = getProcessedBytes();
-   int pct = total > 0 ? (int)((done * 100) / total) : 0;
-   drawProgressBarAt(&bar, dialogX + FRAME_X, dialogY + FRAME_Y, pct);
+   // scrim + flat panel
+   fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), activeTheme->scrim);
+   drawGfxBox(dialogX, dialogY, DIALOG_W, DIALOG_H, activeTheme->borderThickness, activeTheme->dialogFill, activeTheme->dialogBorder);
 
-   moveSlice(&separator, dialogX + SEP_X, dialogY + SEP_Y);
-   drawSlice(&separator);
+   drawLabelAt(&titleLabel,    dialogX + CONTENT_X, dialogY + TITLE_Y);
+   drawLabelAt(&percentLabel,  dialogX + DIALOG_W - CONTENT_X - percentLabel.tt.tex.w, dialogY + PERCENT_Y);
+   drawLabelAt(&subtitleLabel, dialogX + CONTENT_X, dialogY + SUBTITLE_Y);
 
-   // single Cancel button: circle icon + label, centered as a group
-   float tw = measureFontText(&font, CANCEL_SIZE, "Cancel");
-   int groupW = circleIcon.w + CANCEL_GAP + (int)tw;
-   int gx = dialogX + (DIALOG_W - groupW) / 2;
-   drawImageAt(&circleIcon,  gx, dialogY + CANCEL_Y);
-   drawLabelAt(&cancelLabel, gx + circleIcon.w + CANCEL_GAP, dialogY + CANCEL_Y + (CANCEL_ICON - CANCEL_SIZE) / 2);
+   drawProgressBar(dialogX + CONTENT_X, dialogY + BAR_Y, DIALOG_W - CONTENT_X * 2);
+
+   drawLabelAt(&statsTop,    dialogX + CONTENT_X, dialogY + STATS_Y);
+   drawLabelAt(&statsBottom, dialogX + CONTENT_X, dialogY + STATS_Y + STATS_GAP);
+
+   drawCancelHint(dialogX, dialogY, DIALOG_W, CANCEL_Y);
 }
 
 static void term(void)
 {
    freeLabel(&titleLabel);
+   freeLabel(&percentLabel);
    freeLabel(&subtitleLabel);
-   freeProgressBar(&bar);
+   freeLabel(&statsTop);
+   freeLabel(&statsBottom);
    freeLabel(&cancelLabel);
    closeFont(&font);
    progressOverlay.status = OVERLAY_TERMINATED;

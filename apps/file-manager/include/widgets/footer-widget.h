@@ -13,6 +13,7 @@ void addFooterButton(PadButton padButton, ConsoleGlyph glyph, const char *text, 
 void setFooterButtonEnabled(PadButton padButton, int enabled);
 void setFooterButtonVisible(PadButton padButton, int visible);
 void setFooterButtonText(PadButton padButton, const char *text);
+void rethemeFooterWidget(void);   // recolour all button labels for a live theme switch
 void updateFooterWidget(void);
 void drawFooterWidget(void);
 void termFooterWidget(void);

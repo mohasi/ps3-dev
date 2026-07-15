@@ -517,6 +517,26 @@ void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb)
    batchVertCount += 6;
 }
 
+// metro-style border: four edges drawn inward, so the outline stays within the w x h bounds.
+void strokeGfxRectangle(int x, int y, int w, int h, int thickness, uint32_t argb)
+{
+   if (thickness <= 0 || w <= 0 || h <= 0) return;
+   if (thickness * 2 > w) thickness = w / 2;
+   if (thickness * 2 > h) thickness = h / 2;
+
+   fillGfxRectangle(x, y, w, thickness, argb);                              // top
+   fillGfxRectangle(x, y + h - thickness, w, thickness, argb);              // bottom
+   fillGfxRectangle(x, y + thickness, thickness, h - 2 * thickness, argb);  // left
+   fillGfxRectangle(x + w - thickness, y + thickness, thickness, h - 2 * thickness, argb);  // right
+}
+
+// metro panel: filled interior with a border on top (the flat replacement for a rounded 9-slice sprite).
+void drawGfxBox(int x, int y, int w, int h, int thickness, uint32_t fill, uint32_t border)
+{
+   fillGfxRectangle(x, y, w, h, fill);
+   strokeGfxRectangle(x, y, w, h, thickness, border);
+}
+
 // vertices are in pixel coords (origin top-left), converted to clip space internally.
 void drawGfxTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32_t c1, float x2, float y2, uint32_t c2)
 {

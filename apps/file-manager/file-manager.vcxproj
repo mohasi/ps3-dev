@@ -53,6 +53,7 @@
    <ClCompile Include="src\file-actions.c" />
    <ClCompile Include="src\folder-sizer.c" />
    <ClCompile Include="src\file-type.c" />
+   <ClCompile Include="src\theme.c" />
    <ClCompile Include="src\search-controller.c" />
    <ClCompile Include="src\screens\home.c" />
    <ClCompile Include="src\overlays\sidepanel.c" />
@@ -82,6 +83,7 @@
    <ClInclude Include="include\search-controller.h" />
    <ClInclude Include="include\screens\home.h" />
    <ClInclude Include="include\overlays\sidepanel.h" />
+   <ClInclude Include="include\overlays\editor-footer.h" />
    <ClInclude Include="include\overlays\confirm-overlay.h" />
    <ClInclude Include="include\overlays\progress-overlay.h" />
    <ClInclude Include="include\overlays\image-viewer-overlay.h" />
@@ -93,14 +95,17 @@
    <ClInclude Include="include\widgets\footer-widget.h" />
    <ClInclude Include="include\widgets\free-space-widget.h" />
    <ClInclude Include="include\widgets\file-list.h" />
+   <ClInclude Include="include\widgets\list-row-chrome.h" />
    <ClInclude Include="include\widgets\search-list.h" />
    <ClInclude Include="include\sprite-regions.h" />
+   <ClInclude Include="include\theme.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="file-manager.conf" />
    <None Include="PARAM.SFO" />
    <None Include="PARAM.SFO.xml" />
    <None Include="res\sprites.png" />
+   <None Include="res\themes.txt" />
    <None Include="res\check.wav" />
    <None Include="res\click.wav" />
    <None Include="res\JetBrainsMono-Regular.ttf" />

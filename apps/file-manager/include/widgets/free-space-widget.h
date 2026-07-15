@@ -4,7 +4,8 @@
 
 #include "font.h"
 
-void initFreeSpaceWidget(Font *font, int x, int y, int size, uint32_t color, int width);
+void initFreeSpaceWidget(Font *font, int x, int y, int size, int width);
+void rethemeFreeSpaceWidget(void);   // reapply the active theme for a live switch
 void updateFreeSpaceWidget(void);
 
 // report free space for the volume that owns path (the directory in view); the

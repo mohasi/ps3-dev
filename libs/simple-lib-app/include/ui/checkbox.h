@@ -1,27 +1,35 @@
 #pragma once
 
-// checkbox - pre-rendered checked/unchecked image pair, drawn by state
+// checkbox - flat/metro square, drawn in code by state: empty = border only, checked = accent-filled.
 
-#include "ui/image.h"
+#include "gfx.h"
 
 typedef struct {
-   Image unchecked, checked;
+   int x, y, size;
+   uint32_t borderColor, fillColor;
 } Checkbox;
 
-static inline void initCheckbox(Checkbox *cb, GfxTexture sprites, int x, int y, int size,
-                                 SpriteRegion uncheckedSprite, SpriteRegion checkedSprite)
+static inline void initCheckbox(Checkbox *cb, int x, int y, int size, uint32_t borderColor, uint32_t fillColor)
 {
-   initImage(&cb->unchecked, sprites, x, y, size, size, uncheckedSprite, GFX_FILTER_LINEAR);
-   initImage(&cb->checked,   sprites, x, y, size, size, checkedSprite,   GFX_FILTER_LINEAR);
+   cb->x = x;
+   cb->y = y;
+   cb->size = size;
+   cb->borderColor = borderColor;
+   cb->fillColor = fillColor;
 }
 
 static inline void moveCheckbox(Checkbox *cb, int x, int y)
 {
-   moveImage(&cb->unchecked, x, y);
-   moveImage(&cb->checked, x, y);
+   cb->x = x;
+   cb->y = y;
 }
 
 static inline void drawCheckboxAlpha(Checkbox *cb, int isChecked, int alpha)
 {
-   drawImageAlpha(isChecked ? &cb->checked : &cb->unchecked, alpha);
+   uint32_t border = (cb->borderColor & 0x00FFFFFFu) | ((uint32_t)alpha << 24);
+   strokeGfxRectangle(cb->x, cb->y, cb->size, cb->size, 2, border);
+   if (isChecked) {
+      uint32_t fill = (cb->fillColor & 0x00FFFFFFu) | ((uint32_t)alpha << 24);
+      fillGfxRectangle(cb->x + 4, cb->y + 4, cb->size - 8, cb->size - 8, fill);   // inset so the border stays visible
+   }
 }

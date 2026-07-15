@@ -1,52 +1,40 @@
-// confirm-overlay - centered modal yes/no dialog over a dimmed screen.
+// confirm-overlay - centered modal yes/no dialog over a dimmed screen, flat/metro style.
+// each choice is a face button (cross / optional square / circle): a flat box with the pad glyph and
+// its label. all buttons look the same - you press the matching pad button, there is no focus to move.
+// the panel sizes itself to the content: width fits the widest of title / message / button row (a long
+// message wraps at MAX_CONTENT), height stacks title + message + buttons. all colours come from the
+// active theme, so it follows a theme switch (see theme.h).
 #include "overlays/confirm-overlay.h"
 #include "gfx.h"
 #include "pad.h"
 #include "font.h"
 #include "audio.h"
-#include "colors.h"
 #include "ui/label.h"
 #include "ui/image.h"
 #include "ui/console-glyphs.h"
-#include "ui/slice.h"
-#include "ui/dialog-panel.h"
 #include "string-utilities.h"
-#include "sprite-regions.h"
+#include "theme.h"
 
-#define DIALOG_W       640
-#define DIALOG_H       266
-#define HIGHLIGHT_CAP  7    // highlight sprite (16x16) 9-slice corner cap
-#define TEXT_RIGHT_PAD 20
+// content sizing (the text block, before the CONTENT_X padding on each side)
+#define CONTENT_X      54   // left/right padding between the panel edge and content
+#define MIN_CONTENT    320  // keep short prompts from looking cramped
+#define MAX_CONTENT    760  // past this the message wraps instead of widening the panel
 
-// icon + title/message (dialog-relative)
-#define WARNING_X      53
-#define WARNING_Y      50
-#define WARNING_W      75
-#define WARNING_H      70
-#define BUTTON_ICON    32   // rendered height of the XMB button glyphs (width follows aspect)
-#define TITLE_X        168
-#define TITLE_Y        50
-#define TITLE_SIZE     24
-#define MESSAGE_X      170
-#define MESSAGE_Y      100
+// vertical stack (dialog-relative), all measured from the real rendered text heights
+#define TOP_PAD        44   // title top
+#define TITLE_MSG_GAP  16
+#define MSG_BUTTON_GAP 30
+#define BOTTOM_PAD     32
+#define TITLE_SIZE     26
 #define MESSAGE_SIZE   18
-#define BUTTON_SIZE    18
 
-// button row: glyphs sit on one line, each followed by its label. the whole set
-// is centered as a group (see draw), so only the row height and spacing are fixed.
-#define BUTTON_ROW_Y   196  // y of the glyph row
-#define ICON_LABEL_GAP 12   // space between a glyph and its own label
-#define BUTTON_GAP     60   // space between one button's label and the next glyph
-#define LABEL_DROP     ((BUTTON_ICON - BUTTON_SIZE) / 2)   // center the label on the glyph
-
-// separator (dialog-relative)
-#define SEP_X          45
-#define SEP_Y          158
-#define SEP_W          550
-#define SEP_H          2
-
-#define COLOR_DIALOG_BG 0xFF001636
-#define COLOR_SUBTITLE  0x80FFFFFF
+// button bar: just glyph + label per choice (no boxes - they aren't clickable/focusable, you press the
+// matching pad button), centered as a group along the bottom
+#define BUTTON_GLYPH    28   // rendered height of the pad glyph
+#define BUTTON_SIZE     18   // button label text size
+#define BUTTON_ROW_H    32   // height of the glyph/label band, for vertical centering
+#define GLYPH_LABEL_GAP 10   // space between a glyph and its label
+#define BUTTON_GAP      44   // space between one button's label and the next glyph
 
 static Font            font;
 static Audio          *clickSfx;
@@ -55,30 +43,58 @@ static int             showSquare;  // 1 when the middle button is visible
 static int             showCircle;  // 1 when the circle button is visible (0 = single-OK alert)
 static int             armed;       // 0 on the frame we open so the opening press is ignored
 
-static DialogPanel panel;
-static Slice     separator;
-static Image     warningIcon, crossIcon, squareIcon, circleIcon;
-static Label     titleLabel, messageLabel, yesLabel, squareLabel, noLabel;
+static Image crossIcon, squareIcon, circleIcon;
+static Label titleLabel, messageLabel, yesLabel, squareLabel, noLabel;
 
-void initConfirmOverlay(GfxTexture sprites, Audio *sfx)
+// content-fitted geometry, recomputed by layout() each time the dialog opens
+static int   dialogW, dialogH, messageY, buttonRowY;
+static int   buttonCount, buttonWidths[3], buttonRowWidth;
+static Image *buttonIcons[3];
+static Label *buttonLabels[3];
+
+void initConfirmOverlay(Audio *sfx)
 {
    clickSfx = sfx;
    font     = openSystemFont(FONT_POP);
 
-   initDialogPanel(&panel, sprites, DIALOG_W, DIALOG_H, COLOR_DIALOG_BG, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP);
-   initSlice(&separator, sprites, 0, 0, SEP_W, SEP_H, spriteRegions[SPRITE_SEPARATOR], 1);
+   initGlyphIcon(&crossIcon,  GLYPH_CROSS,  BUTTON_GLYPH);
+   initGlyphIcon(&squareIcon, GLYPH_SQUARE, BUTTON_GLYPH);
+   initGlyphIcon(&circleIcon, GLYPH_CIRCLE, BUTTON_GLYPH);
 
-   initImage(&warningIcon, sprites, 0, 0, WARNING_W, WARNING_H, spriteRegions[SPRITE_WARNING], GFX_FILTER_LINEAR);
-   initGlyphIcon(&crossIcon,  GLYPH_CROSS,  BUTTON_ICON);
-   initGlyphIcon(&squareIcon, GLYPH_SQUARE, BUTTON_ICON);
-   initGlyphIcon(&circleIcon, GLYPH_CIRCLE, BUTTON_ICON);
+   // width params are the wrap/measure bounds; the panel then shrinks to the actual rendered width.
+   initLabel(&titleLabel,   &font, 0, 0, MAX_CONTENT, AUTO, TITLE_SIZE,   activeTheme->textPrimary,   TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&messageLabel, &font, 0, 0, MAX_CONTENT, AUTO, MESSAGE_SIZE, activeTheme->textSecondary, TEXT_WRAP,            "");
+   initLabel(&yesLabel,     &font, 0, 0, MAX_CONTENT, AUTO, BUTTON_SIZE,  activeTheme->textPrimary,   TEXT_NOWRAP,          "");
+   initLabel(&squareLabel,  &font, 0, 0, MAX_CONTENT, AUTO, BUTTON_SIZE,  activeTheme->textPrimary,   TEXT_NOWRAP,          "");
+   initLabel(&noLabel,      &font, 0, 0, MAX_CONTENT, AUTO, BUTTON_SIZE,  activeTheme->textPrimary,   TEXT_NOWRAP,          "");
+}
 
-   int textW = DIALOG_W - TITLE_X - TEXT_RIGHT_PAD;
-   initLabel(&titleLabel,   &font, 0, 0, textW, AUTO, TITLE_SIZE,   COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&messageLabel, &font, 0, 0, textW, AUTO, MESSAGE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&yesLabel,     &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
-   initLabel(&squareLabel,  &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
-   initLabel(&noLabel,      &font, 0, 0, 120,   AUTO, BUTTON_SIZE,  COLOR_WHITE, TEXT_NOWRAP,          "");
+// fit the panel to the current text: collect the visible buttons, then size width to the widest row
+// and height to the stacked title/message/buttons.
+static void layout(void)
+{
+   buttonCount = 0;
+   buttonIcons[buttonCount] = &crossIcon;  buttonLabels[buttonCount] = &yesLabel;    buttonCount++;
+   if (showSquare) { buttonIcons[buttonCount] = &squareIcon; buttonLabels[buttonCount] = &squareLabel; buttonCount++; }
+   if (showCircle) { buttonIcons[buttonCount] = &circleIcon; buttonLabels[buttonCount] = &noLabel;     buttonCount++; }
+
+   buttonRowWidth = 0;
+   for (int i = 0; i < buttonCount; i++) {
+      buttonWidths[i] = buttonIcons[i]->w + GLYPH_LABEL_GAP + buttonLabels[i]->tt.tex.w;
+      buttonRowWidth += buttonWidths[i];
+   }
+   buttonRowWidth += (buttonCount - 1) * BUTTON_GAP;
+
+   int contentW = titleLabel.tt.tex.w;
+   if (messageLabel.tt.tex.w > contentW) contentW = messageLabel.tt.tex.w;
+   if (buttonRowWidth        > contentW) contentW = buttonRowWidth;
+   if (contentW < MIN_CONTENT) contentW = MIN_CONTENT;
+   if (contentW > MAX_CONTENT) contentW = MAX_CONTENT;
+   dialogW = contentW + CONTENT_X * 2;
+
+   messageY   = TOP_PAD + titleLabel.tt.tex.h + TITLE_MSG_GAP;
+   buttonRowY = messageY + messageLabel.tt.tex.h + MSG_BUTTON_GAP;
+   dialogH    = buttonRowY + BUTTON_ROW_H + BOTTOM_PAD;
 }
 
 void askConfirm(const char *title, const char *message,
@@ -93,7 +109,20 @@ void askConfirm(const char *title, const char *message,
    setLabelText(&yesLabel,     strOrEmpty(crossText));
    setLabelText(&squareLabel,  strOrEmpty(squareText));
    setLabelText(&noLabel,      strOrEmpty(circleText));
+   layout();
    showOverlay(&confirmOverlay);
+}
+
+// labels capture their colour at init, so a live theme switch needs this (the scrim/panel read the
+// theme live and follow for free). runs while the dialog is hidden; the next open renders in the new
+// colour. see applyThemeToHome.
+void rethemeConfirmOverlay(void)
+{
+   setLabelColor(&titleLabel,   activeTheme->textPrimary);
+   setLabelColor(&messageLabel, activeTheme->textSecondary);
+   setLabelColor(&yesLabel,     activeTheme->textPrimary);
+   setLabelColor(&squareLabel,  activeTheme->textPrimary);
+   setLabelColor(&noLabel,      activeTheme->textPrimary);
 }
 
 static void show(void) { armed = 0; confirmOverlay.status = OVERLAY_VISIBLE; }
@@ -116,40 +145,32 @@ static void update(void)
    else if (showCircle && isPadButtonPressed(PAD_BTN_CIRCLE))   resolve(CONFIRM_CIRCLE);
 }
 
+// one choice: pad glyph + its label, vertically centered in the button band. no box - you just press
+// the matching face button, there is nothing to click or focus.
+static void drawButton(int x, int rowY, Image *glyph, Label *label)
+{
+   drawImageAt(glyph, x, rowY + (BUTTON_ROW_H - glyph->h) / 2);
+   drawLabelAt(label, x + glyph->w + GLYPH_LABEL_GAP, rowY + (BUTTON_ROW_H - BUTTON_SIZE) / 2 - 2);
+}
+
 static void draw(void)
 {
-   drawDialogPanel(&panel);
-   int dialogX = panel.x, dialogY = panel.y;
+   int dialogX = (getGfxScreenWidth()  - dialogW) / 2;
+   int dialogY = (getGfxScreenHeight() - dialogH) / 2;
 
-   drawImageAt(&warningIcon,  dialogX + WARNING_X, dialogY + WARNING_Y);
-   drawLabelAt(&titleLabel,   dialogX + TITLE_X,   dialogY + TITLE_Y);
-   drawLabelAt(&messageLabel, dialogX + MESSAGE_X, dialogY + MESSAGE_Y);
+   // scrim + flat panel
+   fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), activeTheme->scrim);
+   drawGfxBox(dialogX, dialogY, dialogW, dialogH, activeTheme->borderThickness, activeTheme->dialogFill, activeTheme->dialogBorder);
 
-   moveSlice(&separator, dialogX + SEP_X, dialogY + SEP_Y);
-   drawSlice(&separator);
+   drawLabelAt(&titleLabel,   dialogX + CONTENT_X, dialogY + TOP_PAD);
+   drawLabelAt(&messageLabel, dialogX + CONTENT_X, dialogY + messageY);
 
-   // gather the visible buttons (cross, optional square, circle) and center them
-   // as a group: each button is glyph + gap + label, BUTTON_GAP apart, with the
-   // leftover width split evenly on both sides.
-   Image *icons[3];
-   Label *labels[3];
-   int n = 0;
-   icons[n] = &crossIcon;  labels[n] = &yesLabel;  n++;
-   if (showSquare) { icons[n] = &squareIcon; labels[n] = &squareLabel; n++; }
-   if (showCircle) { icons[n] = &circleIcon; labels[n] = &noLabel;  n++; }
-
-   int widths[3], total = 0;
-   for (int i = 0; i < n; i++) {
-      widths[i] = icons[i]->w + ICON_LABEL_GAP + (int)measureFontText(&font, BUTTON_SIZE, labels[i]->text);
-      total += widths[i];
-   }
-   total += (n - 1) * BUTTON_GAP;
-
-   int x = dialogX + (DIALOG_W - total) / 2;
-   for (int i = 0; i < n; i++) {
-      drawImageAt(icons[i],  x,                              dialogY + BUTTON_ROW_Y);
-      drawLabelAt(labels[i], x + icons[i]->w + ICON_LABEL_GAP, dialogY + BUTTON_ROW_Y + LABEL_DROP);
-      x += widths[i] + BUTTON_GAP;
+   // button row centered as a group along the bottom
+   int x = dialogX + (dialogW - buttonRowWidth) / 2;
+   int rowY = dialogY + buttonRowY;
+   for (int i = 0; i < buttonCount; i++) {
+      drawButton(x, rowY, buttonIcons[i], buttonLabels[i]);
+      x += buttonWidths[i] + BUTTON_GAP;
    }
 }
 

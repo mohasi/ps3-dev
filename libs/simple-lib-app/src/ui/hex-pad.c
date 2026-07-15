@@ -27,12 +27,13 @@ static const char *getPadKeyLabelText(char key)
 
 static KeyGridPicker padGrid;
 
-void initHexPad(GfxTexture sprites, SpriteRegion panelSprite, int panelCap)
+void initHexPad(KeyGridTheme theme)
 {
-   initKeyGrid(&padGrid, sprites, panelSprite, panelCap, PAD_ROWS, PAD_COLS, KEY_CELL_W, KEY_CELL_H,
-               FONT_SIZE, &PAD_GRID[0][0], getPadKeyLabelText, NULL, NULL, 0);
+   initKeyGrid(&padGrid, PAD_ROWS, PAD_COLS, KEY_CELL_W, KEY_CELL_H,
+               FONT_SIZE, &PAD_GRID[0][0], getPadKeyLabelText, NULL, NULL, 0, theme);
 }
 
+void rethemeHexPad(KeyGridTheme theme) { rethemeKeyGrid(&padGrid, theme); }
 void termHexPad(void) { termKeyGrid(&padGrid); }
 
 void openHexPad(HexPadKeyCallback onKey) { openKeyGrid(&padGrid, onKey); }

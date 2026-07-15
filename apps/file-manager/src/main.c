@@ -11,6 +11,7 @@
 #include "font.h"
 #include "screen-manager.h"
 #include "screens/home.h"
+#include "theme.h"
 #include "ui/stats.h"
 #include "ui/console-glyphs.h"
 #include "bridge-client.h"
@@ -29,6 +30,7 @@ int main(int argc, char **argv)
    initRtc();
    mountDevBlind();
    initVfs();
+   initThemes();   // built-in + themes.txt palettes; must precede any screen that reads activeTheme
 
    initNet();
    registerWithBridge("app", "file-manager");

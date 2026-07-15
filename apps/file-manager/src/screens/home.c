@@ -1,12 +1,10 @@
 #include "screens/home.h"
 #include "gfx.h"
 #include "audio.h"
-#include "colors.h"
 #include "font.h"
 #include "ftp.h"
 #include "ui/image.h"
 #include "ui/label.h"
-#include "ui/slice.h"
 #include "ui/console-glyphs.h"
 #include "ui/breadcrumb.h"
 #include "ui/keyboard.h"
@@ -26,6 +24,8 @@
 #include "overlays/hex-viewer-overlay.h"
 #include "file-actions.h"
 #include "sprite-regions.h"
+#include "theme.h"
+#include "pad.h"
 #include "string-utilities.h"   // appendStr / appendUint64 / formatIpv4 for the FTP button label
 #include "network.h"
 
@@ -34,19 +34,16 @@ static GfxTexture sprites;
 static Image titleFolderIcon;
 static Image clockIcon;
 static Label titleLabel;
-static NineSlice breadcrumbBox;
 static Breadcrumb breadcrumb;
 static Audio clickSfx;
 static Audio checkSfx;
 
 // the whole screen background is a solid fill (no background.png) with the header/footer chrome
 // drawn on top, so everything here can be moved, restyled, and themed freely
-#define COLOR_APP_BG   0xFF001636u   // flat navy the old background.png used everywhere
-#define BOX_X          44   // breadcrumb container (was baked into the background); now a nine-slice
+#define BOX_X          44   // breadcrumb container (was a rounded sprite); now a flat metro box
 #define BOX_Y         117
 #define BOX_W        1832
-#define BOX_H          46
-#define BOX_CAP        14   // rounded-corner cap of the breadcrumb-box sprite
+#define BOX_H          56
 #define TITLE_ICON_X   40
 #define TITLE_ICON_Y   30
 #define TITLE_ICON_W   70
@@ -62,7 +59,6 @@ static Audio checkSfx;
 #define DIVIDER_W    (1869 - 51)
 #define DIVIDER_TOP_Y  932
 #define DIVIDER_BOT_Y  988
-#define COLOR_DIVIDER  0xFF232D43u   // exact colour of the old baked divider lines (bg is solid, so opaque)
 
 // Sets the SELECT button label to "<prefix> / <ip>:<port>", or just "<prefix>"
 // if the local IP can't be resolved.
@@ -119,6 +115,20 @@ static void openSidepanel(void)
    showOverlay(&sidepanel);
 }
 
+// the on-screen keyboard / hex-pad palette, from the active theme (the docked slab uses the side-menu
+// colours; the selected key uses the row-highlight colours).
+static KeyGridTheme makeKeyGridTheme(void)
+{
+   KeyGridTheme theme;
+   theme.panelFill          = activeTheme->menuFill;
+   theme.panelBorder        = activeTheme->menuBorder;
+   theme.keyHighlightFill   = activeTheme->highlightFill;
+   theme.keyHighlightBorder = activeTheme->highlightBorder;
+   theme.keyText            = activeTheme->textPrimary;
+   theme.borderThickness    = activeTheme->borderThickness;
+   return theme;
+}
+
 static void initHome(void)
 {
    pop      = openSystemFont(FONT_POP);
@@ -126,25 +136,25 @@ static void initHome(void)
    clickSfx = loadAudio("/dev_hdd0/game/FILEMGR01/USRDIR/click.wav", AUDIO_MEMORY);
    checkSfx = loadAudio("/dev_hdd0/game/FILEMGR01/USRDIR/check.wav", AUDIO_MEMORY);
 
-   initNineSlice(&breadcrumbBox, sprites, BOX_X, BOX_Y, BOX_W, BOX_H, spriteRegions[SPRITE_BREADCRUMB_BOX], BOX_CAP, BOX_CAP);
    initImage(&titleFolderIcon, sprites, TITLE_ICON_X, TITLE_ICON_Y, TITLE_ICON_W, TITLE_ICON_H, spriteRegions[SPRITE_TITLE_FOLDER], GFX_FILTER_LINEAR);
    initImage(&clockIcon, sprites, CLOCK_ICON_X, CLOCK_ICON_Y, CLOCK_ICON_W, CLOCK_ICON_H, spriteRegions[SPRITE_CLOCK], GFX_FILTER_LINEAR);
-   initLabel(&titleLabel, &pop, TITLE_TEXT_X, TITLE_TEXT_Y, AUTO, AUTO, TITLE_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, "PS3 File Manager");
-   initBreadcrumb(&breadcrumb, &pop, 70, 130, COLOR_WHITE, sprites, spriteRegions[SPRITE_CHEVRON], 20);
-   initClockWidget(&pop, 1675, 55, 21, COLOR_WHITE);
-   initFreeSpaceWidget(&pop, 1668, 951, 20, 0x64FFFFFF, 210);
+   initLabel(&titleLabel, &pop, TITLE_TEXT_X, TITLE_TEXT_Y, AUTO, AUTO, TITLE_TEXT_SIZE, activeTheme->textPrimary, TEXT_NOWRAP, "PS3 File Manager");
+   initBreadcrumb(&breadcrumb, &pop, 70, 135, activeTheme->textPrimary, 20);
+   initClockWidget(&pop, 1675, 55, 21);
+   initFreeSpaceWidget(&pop, 1668, 951, 20, 210);
    initFooterWidget(&pop);
-   initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 244, 860, 74, 24, COLOR_WHITE, &breadcrumb);   // name width leaves room for the permissions column
-   initSearchController(&pop, sprites, &clickSfx, &checkSfx, 244, 74, 24, COLOR_WHITE, openSidepanel);
+   initFileList(&pop, sprites, &clickSfx, &checkSfx, 177, 258, 860, 74, 24, &breadcrumb);   // name width leaves room for the permissions column
+   initSearchController(&pop, sprites, &clickSfx, &checkSfx, 258, 74, 24, openSidepanel);
    initSidepanel(sprites, &clickSfx, onSidepanelAction);
-   initConfirmOverlay(sprites, &clickSfx);
-   initProgressOverlay(sprites, &clickSfx);
+   initConfirmOverlay(&clickSfx);
+   initProgressOverlay(&clickSfx);
    initAudioPlayerOverlay(sprites);
    initVideoPlayerOverlay(sprites);
    initTextEditorOverlay(sprites);
    initHexViewerOverlay(sprites);
-   initKeyboard(sprites, spriteRegions[SPRITE_HIGHLIGHT], 7);   // 7 = highlight sprite's 9-slice corner cap
-   initHexPad(sprites, spriteRegions[SPRITE_HIGHLIGHT], 7);
+   KeyGridTheme keyGridTheme = makeKeyGridTheme();
+   initKeyboard(keyGridTheme);
+   initHexPad(keyGridTheme);
    addFooterButton(PAD_BTN_TRIANGLE, GLYPH_TRIANGLE, "Options", openSidepanel);
    addFooterButton(PAD_BTN_START, GLYPH_START, "Search", launchSearch);
    addFooterButton(PAD_BTN_SELECT, GLYPH_SELECT, "Start FTP Server", toggleFtpServer);
@@ -162,6 +172,43 @@ static void initHome(void)
 }
 
 static void resumeHome(void) {}
+
+// pushes the active theme into every persistent label/checkbox on the home screen. the chrome drawn
+// live from activeTheme (background, boxes, highlights, separators, bars) re-themes for free; this
+// covers only the pre-rendered pieces that captured a colour at init.
+static void applyThemeToHome(void)
+{
+   setLabelColor(&titleLabel, activeTheme->textPrimary);
+   rethemeBreadcrumb(&breadcrumb, activeTheme->textPrimary);
+   rethemeClockWidget();
+   rethemeFreeSpaceWidget();
+   rethemeFileList();
+   rethemeSearchController();
+   rethemeFooterWidget();
+   KeyGridTheme keyGridTheme = makeKeyGridTheme();
+   rethemeKeyboard(keyGridTheme);
+   rethemeHexPad(keyGridTheme);
+   rethemeTextEditorOverlay();
+   rethemeHexViewerOverlay();
+   rethemeSidepanel();
+   rethemeConfirmOverlay();
+   rethemeProgressOverlay();
+}
+
+// L1 / R1 cycle the theme (wrapping) and apply it instantly. modal overlays and the on-screen
+// keyboard/hex-pad own L1/R1 themselves, so this only runs on the bare home screen.
+static void handleThemeSwitch(void)
+{
+   int count = getThemeCount();
+   if (count < 2) return;
+
+   int direction = isPadButtonPressed(PAD_BTN_R1) ? 1 : (isPadButtonPressed(PAD_BTN_L1) ? -1 : 0);
+   if (!direction) return;
+
+   setActiveThemeIndex((getActiveThemeIndex() + direction + count) % count);
+   applyThemeToHome();
+   playAudioOnce(&clickSfx);
+}
 
 static inline int anyOverlayVisible(void)
 {
@@ -194,6 +241,7 @@ static void updateHome(void)
    updateHexPad();
 
    if (!overlayWasVisible) {
+      if (!isKeyboardOpen() && !isHexPadOpen()) handleThemeSwitch();
       updateClockWidget();
       setFreeSpacePath(getCurrentPath());   // report the volume the user is in
       updateFreeSpaceWidget();
@@ -210,13 +258,13 @@ static void updateHome(void)
 
 static void drawHome(void)
 {
-   fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), COLOR_APP_BG);
-   drawNineSlice(&breadcrumbBox);
+   fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), activeTheme->appBg);
+   drawGfxBox(BOX_X, BOX_Y, BOX_W, BOX_H, activeTheme->borderThickness, activeTheme->panelFill, activeTheme->panelBorder);
    drawImage(&titleFolderIcon);
    drawImage(&clockIcon);
    drawLabel(&titleLabel);
-   fillGfxRectangle(DIVIDER_X, DIVIDER_TOP_Y, DIVIDER_W, 2, COLOR_DIVIDER);
-   fillGfxRectangle(DIVIDER_X, DIVIDER_BOT_Y, DIVIDER_W, 2, COLOR_DIVIDER);
+   fillGfxRectangle(DIVIDER_X, DIVIDER_TOP_Y, DIVIDER_W, 2, activeTheme->divider);
+   fillGfxRectangle(DIVIDER_X, DIVIDER_BOT_Y, DIVIDER_W, 2, activeTheme->divider);
    if (isSearchActive()) drawSearchTitle(); else drawBreadcrumb(&breadcrumb);
    drawClockWidget();
    drawFreeSpaceWidget();

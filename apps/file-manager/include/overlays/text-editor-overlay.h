@@ -7,8 +7,11 @@
 #include "gfx.h"
 #include "overlay.h"
 
-// One-time setup (fonts, labels, panel sprite). Call once during home screen init.
+// One-time setup (fonts, labels, header icon sprite). Call once during home screen init.
 void initTextEditorOverlay(GfxTexture sprites);
+
+// re-applies the active theme to the pre-rendered labels, for a live theme switch.
+void rethemeTextEditorOverlay(void);
 
 // Opens the viewer on the given absolute text file path. Returns 0 on success,
 // or -1 if the file could not be read or is larger than MAX_EDITABLE_FILE_SIZE

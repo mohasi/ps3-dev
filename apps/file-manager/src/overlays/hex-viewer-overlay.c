@@ -22,11 +22,12 @@
 #include "ui/label.h"
 #include "ui/image.h"
 #include "ui/button.h"
-#include "ui/slice.h"
 #include "ui/scrollbar.h"
 #include "ui/hex-pad.h"
 #include "ui/console-glyphs.h"
+#include "overlays/editor-footer.h"   // shared Edit/Save/Exit row
 #include "sprite-regions.h"
+#include "theme.h"
 #include "button-repeat.h"
 #include "dynarray.h"
 #include "vfs.h"
@@ -58,7 +59,6 @@
 #define PANEL_Y       102
 #define PANEL_W       1846
 #define PANEL_H       883
-#define HIGHLIGHT_CAP 7
 
 #define FONT_SIZE  22
 #define ROW_HEIGHT 48
@@ -82,29 +82,15 @@
 // scrolls; byte rows start one ROW_HEIGHT below it.
 #define HEX_PAGE_SIZE (((SEPARATOR_Y - PANEL_Y) - PANEL_PAD) / ROW_HEIGHT - 1)
 
-#define FOOTER_X          51
-#define FOOTER_Y         1018
-#define FOOTER_TEXT_SIZE  20
-#define FOOTER_BUTTON_GAP 50
-#define FOOTER_ICON_H     32   // console button glyphs are scaled to this height, aspect preserved
 
 #define SCROLLBAR_X           1847
 #define SCROLLBAR_Y            129
 #define SCROLLBAR_W             14
 #define SCROLLBAR_H            762
 #define SCROLLBAR_THUMB_W       10
-#define SCROLLBAR_THUMB_CAP      5
 #define SCROLLBAR_THUMB_MIN_H   40
 
 #define GUTTER_BG_X (PANEL_X + 5)   // 5px clear of the panel's border
-
-#define COLOR_SCRIM            0xFF000000u
-#define COLOR_PANEL_BG         0xFF01142Bu
-#define COLOR_SEPARATOR        0x40FFFFFFu
-#define COLOR_ACTIVE_BG        0xFF031B38u
-#define COLOR_ADDRESS          0xFF647185u
-#define COLOR_ADDRESS_ACTIVE   COLOR_WHITE
-#define COLOR_HEADER_TEXT      0xFF647185u
 
 static const char HEX_DIGITS[] = "0123456789ABCDEF";
 
@@ -141,11 +127,8 @@ static Font  headerFont;   // filename header
 static Image headerIcon;
 static Label headerNameLabel;
 static Label headerStarLabel;
-static NineSlice panel;
 static Scrollbar scrollbar;
-static Button exitFooterButton;
-static Button editFooterButton;
-static Button saveFooterButton;
+static EditorFooter footer;
 
 static Label addressHeaderLabel;   // "Offset"
 static Label hexHeaderLabel;       // "00 01 02 ... 0F"
@@ -533,15 +516,14 @@ static void update(void)
 
 static void draw(void)
 {
-   fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), COLOR_SCRIM);
+   fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), activeTheme->appBg);   // opaque: this is a full viewer screen, not a dialog over the list
 
    drawImage(&headerIcon);
    drawLabel(&headerNameLabel);
    if (state.dirty) drawLabel(&headerStarLabel);
 
-   fillGfxRectangle(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, COLOR_PANEL_BG);
-   drawNineSlice(&panel);
-   fillGfxRectangle(SEPARATOR_X1, SEPARATOR_Y, SEPARATOR_X2 - SEPARATOR_X1, SEPARATOR_H, COLOR_SEPARATOR);
+   drawGfxBox(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, activeTheme->borderThickness, activeTheme->panelFill, activeTheme->panelBorder);
+   fillGfxRectangle(SEPARATOR_X1, SEPARATOR_Y, SEPARATOR_X2 - SEPARATOR_X1, SEPARATOR_H, activeTheme->separator);
 
    int headerRowY = PANEL_Y + PANEL_PAD;
    drawLabelAt(&addressHeaderLabel, addressAreaX, getCenteredLabelY(&addressHeaderLabel, headerRowY, ROW_HEIGHT));
@@ -555,11 +537,11 @@ static void draw(void)
       int isCurrent = (state.scrollTop + i == state.cursorRow);
 
       if (isCurrent) {
-         fillGfxRectangle(GUTTER_BG_X, rowY, addressBgWidth, ROW_HEIGHT, COLOR_ACTIVE_BG);
+         fillGfxRectangle(GUTTER_BG_X, rowY, addressBgWidth, ROW_HEIGHT, activeTheme->highlightFill);
          int hexCellX = hexAreaX + state.cursorCol * BYTE_CELL_CHARS * charWidth;
-         fillGfxRectangle(hexCellX, rowY, 2 * charWidth, ROW_HEIGHT, COLOR_ACTIVE_BG);
+         fillGfxRectangle(hexCellX, rowY, 2 * charWidth, ROW_HEIGHT, activeTheme->highlightFill);
          int asciiCellX = asciiAreaX + state.cursorCol * charWidth;
-         fillGfxRectangle(asciiCellX, rowY, charWidth, ROW_HEIGHT, COLOR_ACTIVE_BG);
+         fillGfxRectangle(asciiCellX, rowY, charWidth, ROW_HEIGHT, activeTheme->highlightFill);
       }
 
       Label *addressLabel = isCurrent ? &activeAddressLabels[i] : &addressLabels[i];
@@ -569,12 +551,12 @@ static void draw(void)
    }
 
    drawScrollbar(&scrollbar, (int)getTotalRowCount(), HEX_PAGE_SIZE, state.scrollTop);
-   setButtonState(&editFooterButton, (isHexPadOpen() || state.fileSize == 0) ? BUTTON_DISABLED : BUTTON_ENABLED);
-   setButtonState(&saveFooterButton, (state.dirty && !state.pendingNibble) ? BUTTON_ENABLED : BUTTON_DISABLED);
-   setButtonState(&exitFooterButton, isHexPadOpen() ? BUTTON_DISABLED : BUTTON_ENABLED);   // Circle closes the pad, not the viewer, while it's open
-   drawButton(&editFooterButton);
-   drawButton(&saveFooterButton);
-   drawButton(&exitFooterButton);
+   // Circle closes the pad (not the viewer) while it's open, so Edit/Exit disable then.
+   setEditorFooterStates(&footer,
+                         (isHexPadOpen() || state.fileSize == 0) ? BUTTON_DISABLED : BUTTON_ENABLED,
+                         (state.dirty && !state.pendingNibble) ? BUTTON_ENABLED : BUTTON_DISABLED,
+                         isHexPadOpen() ? BUTTON_DISABLED : BUTTON_ENABLED);
+   drawEditorFooter(&footer);
 }
 
 static void term(void)
@@ -591,9 +573,7 @@ static void term(void)
    freeLabel(&headerStarLabel);
    freeLabel(&addressHeaderLabel);
    freeLabel(&hexHeaderLabel);
-   freeButton(&exitFooterButton);
-   freeButton(&editFooterButton);
-   freeButton(&saveFooterButton);
+   freeEditorFooter(&footer);
    closeFont(&monoFont);
    closeFont(&headerFont);
    hexViewerOverlay.status = OVERLAY_TERMINATED;
@@ -622,36 +602,15 @@ void initHexViewerOverlay(GfxTexture sprites)
    initImage(&headerIcon, sprites, HEADER_ICON_X, HEADER_ICON_Y, HEADER_ICON_W, HEADER_ICON_H,
              spriteRegions[SPRITE_GENERIC], GFX_FILTER_LINEAR);
    initLabelRaw(&headerNameLabel, &headerFont, HEADER_NAME_X, HEADER_NAME_Y, HEADER_NAME_WIDTH, AUTO,
-                HEADER_NAME_SIZE, COLOR_WHITE, TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&headerStarLabel, &headerFont, 0, 0, 20, AUTO, HEADER_NAME_SIZE, COLOR_RED, TEXT_NOWRAP, "*");
+                HEADER_NAME_SIZE, activeTheme->textPrimary, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&headerStarLabel, &headerFont, 0, 0, 20, AUTO, HEADER_NAME_SIZE, COLOR_RED, TEXT_NOWRAP, "*");   // unsaved-changes accent
 
-   initNineSlice(&panel, sprites, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
-   initScrollbar(&scrollbar, sprites, SCROLLBAR_X, SCROLLBAR_Y, SCROLLBAR_W, SCROLLBAR_H,
-                 spriteRegions[SPRITE_VERTICAL_PILL], SCROLLBAR_THUMB_W, SCROLLBAR_THUMB_CAP, SCROLLBAR_THUMB_MIN_H);
+   initScrollbar(&scrollbar, SCROLLBAR_X, SCROLLBAR_Y, SCROLLBAR_W, SCROLLBAR_H,
+                 SCROLLBAR_THUMB_W, SCROLLBAR_THUMB_MIN_H, activeTheme->scrollTrack, activeTheme->scrollThumb);
 
-   Image editIcon;
-   Label editLabel;
-   initGlyphIcon(&editIcon, GLYPH_CROSS, FOOTER_ICON_H);
-   initLabel(&editLabel, &headerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Edit");
-   initButton(&editFooterButton, editIcon, editLabel, BUTTON_ENABLED);   // opening the keyboard is handled directly in update()
-   moveButton(&editFooterButton, FOOTER_X, FOOTER_Y);
+   initEditorFooter(&footer, &headerFont);   // Edit/Save/Exit; states are driven per-frame in draw()
 
-   Image saveIcon;
-   Label saveLabel;
-   initGlyphIcon(&saveIcon, GLYPH_START, FOOTER_ICON_H);
-   initLabel(&saveLabel, &headerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Save");
-   initButton(&saveFooterButton, saveIcon, saveLabel, BUTTON_DISABLED);   // saving is handled directly in update()
-   moveButton(&saveFooterButton, FOOTER_X + getButtonWidth(&editFooterButton) + FOOTER_BUTTON_GAP, FOOTER_Y);
-
-   Image exitIcon;
-   Label exitLabel;
-   initGlyphIcon(&exitIcon, GLYPH_CIRCLE, FOOTER_ICON_H);
-   initLabel(&exitLabel, &headerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, "Exit");
-   initButton(&exitFooterButton, exitIcon, exitLabel, BUTTON_ENABLED);
-   moveButton(&exitFooterButton, FOOTER_X + getButtonWidth(&editFooterButton) + FOOTER_BUTTON_GAP
-                                          + getButtonWidth(&saveFooterButton) + FOOTER_BUTTON_GAP, FOOTER_Y);
-
-   initLabel(&addressHeaderLabel, &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, COLOR_HEADER_TEXT, TEXT_NOWRAP, "Offset");
+   initLabel(&addressHeaderLabel, &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, activeTheme->textSecondary, TEXT_NOWRAP, "Offset");
 
    char columnHeaderText[HEX_AREA_CHARS + 1];
    int pos = 0;
@@ -661,12 +620,29 @@ void initHexViewerOverlay(GfxTexture sprites)
       columnHeaderText[pos++] = ' ';
    }
    columnHeaderText[pos] = '\0';
-   initLabel(&hexHeaderLabel, &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, COLOR_HEADER_TEXT, TEXT_NOWRAP, columnHeaderText);
+   initLabel(&hexHeaderLabel, &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, activeTheme->textSecondary, TEXT_NOWRAP, columnHeaderText);
 
    for (int i = 0; i < HEX_PAGE_SIZE; i++) {
-      initLabel(&addressLabels[i],       &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, COLOR_ADDRESS,        TEXT_NOWRAP, "");
-      initLabel(&activeAddressLabels[i], &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, COLOR_ADDRESS_ACTIVE, TEXT_NOWRAP, "");
-      initLabel(&hexLabels[i],           &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, COLOR_WHITE,          TEXT_NOWRAP, "");
-      initLabelRaw(&asciiLabels[i],      &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, COLOR_WHITE,          TEXT_NOWRAP, "");
+      initLabel(&addressLabels[i],       &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, activeTheme->textSecondary, TEXT_NOWRAP, "");
+      initLabel(&activeAddressLabels[i], &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, activeTheme->textPrimary,   TEXT_NOWRAP, "");
+      initLabel(&hexLabels[i],           &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, activeTheme->textPrimary,   TEXT_NOWRAP, "");
+      initLabelRaw(&asciiLabels[i],      &monoFont, 0, 0, AUTO, AUTO, FONT_SIZE, activeTheme->textPrimary,   TEXT_NOWRAP, "");
    }
+}
+
+// pushes the active theme into the pre-rendered labels, for a live theme switch (chrome drawn live
+// from activeTheme re-themes for free; these labels captured their colour at init).
+void rethemeHexViewerOverlay(void)
+{
+   setLabelColor(&headerNameLabel,     activeTheme->textPrimary);
+   setLabelColor(&addressHeaderLabel,  activeTheme->textSecondary);
+   setLabelColor(&hexHeaderLabel,      activeTheme->textSecondary);
+   for (int i = 0; i < HEX_PAGE_SIZE; i++) {
+      setLabelColor(&addressLabels[i],       activeTheme->textSecondary);
+      setLabelColor(&activeAddressLabels[i], activeTheme->textPrimary);
+      setLabelColor(&hexLabels[i],           activeTheme->textPrimary);
+      setLabelColor(&asciiLabels[i],         activeTheme->textPrimary);
+   }
+   rethemeScrollbar(&scrollbar, activeTheme->scrollTrack, activeTheme->scrollThumb);
+   rethemeEditorFooter(&footer);
 }

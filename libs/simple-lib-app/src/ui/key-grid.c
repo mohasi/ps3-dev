@@ -1,17 +1,12 @@
 // key-grid - see ui/key-grid.h
 #include "ui/key-grid.h"
-#include "colors.h"
 
 #define PANEL_PAD     16
 #define SCREEN_MARGIN 16   // clear of the screen's right/bottom edges
 
-#define COLOR_PANEL_BG      0xFF01142Bu
-#define COLOR_KEY_HIGHLIGHT 0xFF1E5AA8u   // clearly brighter than the panel so the selected key pops
-
-void initKeyGrid(KeyGridPicker *kg, GfxTexture sprites, SpriteRegion panelSprite, int panelCap,
-                  int rows, int cols, int cellW, int cellH, int baseFontSize, const char *grid,
-                  KeyGridLabelTextFn labelText, KeyGridFontSizeFn fontSizeFor,
-                  const KeyGridExtraBinding *extraBindings, int extraBindingCount)
+void initKeyGrid(KeyGridPicker *kg, int rows, int cols, int cellW, int cellH, int baseFontSize,
+                  const char *grid, KeyGridLabelTextFn labelText, KeyGridFontSizeFn fontSizeFor,
+                  const KeyGridExtraBinding *extraBindings, int extraBindingCount, KeyGridTheme theme)
 {
    kg->rows             = rows;
    kg->cols             = cols;
@@ -21,19 +16,27 @@ void initKeyGrid(KeyGridPicker *kg, GfxTexture sprites, SpriteRegion panelSprite
    kg->grid             = grid;
    kg->extraBindings    = extraBindings;
    kg->extraBindingCount = extraBindingCount;
+   kg->theme            = theme;
    kg->panelW = PANEL_PAD * 2 + cols * cellW;
    kg->panelH = PANEL_PAD * 2 + rows * cellH;
 
    kg->font = openSystemFont(FONT_POP);
-   initNineSlice(&kg->panel, sprites, 0, 0, kg->panelW, kg->panelH, panelSprite, panelCap, panelCap);
 
    for (int row = 0; row < rows; row++) {
       for (int col = 0; col < cols; col++) {
          char key  = grid[row * cols + col];
          int  size = fontSizeFor ? fontSizeFor(key) : baseFontSize;
-         initLabelRaw(&kg->keyLabels[row][col], &kg->font, 0, 0, AUTO, AUTO, size, COLOR_WHITE, TEXT_NOWRAP, labelText(key));
+         initLabelRaw(&kg->keyLabels[row][col], &kg->font, 0, 0, AUTO, AUTO, size, theme.keyText, TEXT_NOWRAP, labelText(key));
       }
    }
+}
+
+void rethemeKeyGrid(KeyGridPicker *kg, KeyGridTheme theme)
+{
+   kg->theme = theme;
+   for (int row = 0; row < kg->rows; row++)
+      for (int col = 0; col < kg->cols; col++)
+         setLabelColor(&kg->keyLabels[row][col], theme.keyText);
 }
 
 void termKeyGrid(KeyGridPicker *kg)
@@ -51,7 +54,6 @@ void openKeyGrid(KeyGridPicker *kg, KeyGridCallback onKey)
    kg->cursorCol = 0;
    kg->panelX = getGfxScreenWidth()  - kg->panelW - SCREEN_MARGIN;
    kg->panelY = getGfxScreenHeight() - kg->panelH - SCREEN_MARGIN;
-   moveNineSlice(&kg->panel, kg->panelX, kg->panelY);
    kg->isOpen = 1;
    kg->armed  = 0;
 }
@@ -62,8 +64,7 @@ int  isKeyGridOpen(KeyGridPicker *kg) { return kg->isOpen; }
 int isKeyGridBackgroundFocused(KeyGridPicker *kg)
 {
    if (!kg->isOpen) return 0;
-   PadButtonState l2 = getPadButtonState(PAD_BTN_L2);
-   return l2 == PAD_BUTTON_STATE_PRESSED || l2 == PAD_BUTTON_STATE_HELD;
+   return isPadButtonDown(PAD_BTN_L2);
 }
 
 void updateKeyGrid(KeyGridPicker *kg)
@@ -103,15 +104,14 @@ void drawKeyGrid(KeyGridPicker *kg)
 {
    if (!kg->isOpen || isKeyGridBackgroundFocused(kg)) return;
 
-   fillGfxRectangle(kg->panelX, kg->panelY, kg->panelW, kg->panelH, COLOR_PANEL_BG);
-   drawNineSlice(&kg->panel);
+   drawGfxBox(kg->panelX, kg->panelY, kg->panelW, kg->panelH, kg->theme.borderThickness, kg->theme.panelFill, kg->theme.panelBorder);
 
    for (int row = 0; row < kg->rows; row++) {
       int cellY = kg->panelY + PANEL_PAD + row * kg->cellH;
       for (int col = 0; col < kg->cols; col++) {
          int cellX = kg->panelX + PANEL_PAD + col * kg->cellW;
          if (row == kg->cursorRow && col == kg->cursorCol)
-            fillGfxRectangle(cellX, cellY, kg->cellW, kg->cellH, COLOR_KEY_HIGHLIGHT);
+            drawGfxBox(cellX, cellY, kg->cellW, kg->cellH, kg->theme.borderThickness, kg->theme.keyHighlightFill, kg->theme.keyHighlightBorder);
 
          Label *l = &kg->keyLabels[row][col];
          drawLabelAt(l, cellX + (kg->cellW - l->tt.tex.w) / 2, cellY + (kg->cellH - l->tt.tex.h) / 2);

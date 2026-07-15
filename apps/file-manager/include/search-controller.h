@@ -10,7 +10,8 @@
 #include "selection-actions.h"
 
 void initSearchController(Font *font, GfxTexture sprites, Audio *clickSfx, Audio *checkSfx,
-                          int listY, int rowHeight, int fontSize, uint32_t color, void (*onOptions)(void));
+                          int listY, int rowHeight, int fontSize, void (*onOptions)(void));
+void rethemeSearchController(void);   // recolour the results view + search title for a live theme switch
 void termSearchController(void);
 
 int  isSearchActive(void);     // home: choose the search view over the file list in update/draw

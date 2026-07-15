@@ -4,9 +4,15 @@
 #include "string-utilities.h"
 #include <string.h>
 
-static const int BREADCRUMB_CHEVRON_GAP = 14;
+static const int BREADCRUMB_SEPARATOR_GAP = 14;
 
-void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, SpriteRegion chevronSrc, int fontSize)
+// the "›" drawn between segments, rendered dimmer than the text so it reads as chrome, not a name.
+static void renderSeparator(Breadcrumb *b)
+{
+   renderFont(&b->separatorTex, b->font, b->fontSize, "\xE2\x80\xBA", (b->textColor & 0x00FFFFFF) | 0x80000000, AUTO, TEXT_NOWRAP);
+}
+
+void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, int fontSize)
 {
    memset(b, 0, sizeof(*b));
    b->font = font;
@@ -14,16 +20,16 @@ void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor,
    b->y = y;
    b->fontSize = fontSize;
    b->textColor = textColor;
-   b->chevronTex = chevronTex;
-   b->chevronW = chevronSrc.w;
-   b->chevronH = chevronSrc.h;
-   if (chevronTex.w > 0 && chevronTex.h > 0) {
-      b->chevronU0 = (float)chevronSrc.x / (float)chevronTex.w;
-      b->chevronV0 = (float)chevronSrc.y / (float)chevronTex.h;
-      b->chevronU1 = (float)(chevronSrc.x + chevronSrc.w) / (float)chevronTex.w;
-      b->chevronV1 = (float)(chevronSrc.y + chevronSrc.h) / (float)chevronTex.h;
-   }
+   renderSeparator(b);   // never changes with the path, so render it once
    setBreadcrumbPath(b, "/");
+}
+
+void rethemeBreadcrumb(Breadcrumb *b, uint32_t textColor)
+{
+   b->textColor = textColor;
+   freeTextTexture(&b->separatorTex);
+   renderSeparator(b);
+   b->dirty = 1;   // segments re-render in the new colour on the next draw
 }
 
 static void rebuild(Breadcrumb *b)
@@ -73,15 +79,14 @@ void drawBreadcrumb(Breadcrumb *b)
    int cx = b->x;
 
    for (int i = 0; i < b->depth; i++) {
-      if (i > 0 && b->chevronW > 0) {
-         int chevronY = b->y + (b->segTex[0].tex.h - b->chevronH) / 2;
-         drawGfxTexture(cx, chevronY, b->chevronW, b->chevronH, b->chevronTex, b->chevronU0, b->chevronV0, b->chevronU1, b->chevronV1, COLOR_WHITE, GFX_FILTER_LINEAR);
-         cx += b->chevronW + BREADCRUMB_CHEVRON_GAP;
+      if (i > 0 && b->separatorTex.tex.w > 0) {
+         drawGfxTexture(cx, b->y - 2, b->separatorTex.tex.w, b->separatorTex.tex.h, b->separatorTex.tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
+         cx += b->separatorTex.tex.w + BREADCRUMB_SEPARATOR_GAP;
       }
 
       if (b->segTex[i].tex.w > 0) {
          drawGfxTexture(cx, b->y, b->segTex[i].tex.w, b->segTex[i].tex.h, b->segTex[i].tex, 0.0f, 0.0f, 1.0f, 1.0f, COLOR_WHITE, GFX_FILTER_NEAREST);
-         cx += b->segTex[i].tex.w + BREADCRUMB_CHEVRON_GAP;
+         cx += b->segTex[i].tex.w + BREADCRUMB_SEPARATOR_GAP;
       }
    }
 }
@@ -90,6 +95,7 @@ void termBreadcrumb(Breadcrumb *b)
 {
    for (int i = 0; i < BREADCRUMB_MAX_DEPTH; i++)
       freeTextTexture(&b->segTex[i]);
+   freeTextTexture(&b->separatorTex);
    b->depth = 0;
    b->dirty = 0;
 }

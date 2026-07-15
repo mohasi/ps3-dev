@@ -29,6 +29,10 @@ void initLabelRaw(Label *l, Font *font, int x, int y, int width, int height, int
 
 void setLabelText(Label *l, const char *text);
 
+// re-renders the label in a new colour (for a live theme switch). a no-op when the colour is
+// unchanged; otherwise re-rasterises the current text so the change shows without new text.
+void setLabelColor(Label *l, uint32_t color);
+
 // releases the label's text-texture VRAM; the label can be reused afterwards
 // (setLabelText re-renders it).
 void freeLabel(Label *l);

@@ -1,13 +1,14 @@
 // file-list - scrollable directory listing widget
 #include "widgets/file-list.h"
+#include "widgets/list-row-chrome.h"   // shared drawListRowSeparator / drawListRowHighlight
 #include "app.h"   // requestAppExit: Circle at root offers to quit
 #include "ui/label.h"
 #include "ui/image.h"
-#include "ui/slice.h"
 #include "ui/breadcrumb.h"
 #include "ui/checkbox.h"
 #include "widgets/footer-widget.h"
 #include "sprite-regions.h"
+#include "theme.h"
 #include "folder-sizer.h"
 #include "file-type.h"
 #include "clipboard.h"
@@ -39,7 +40,6 @@
 #define NAME_LEN           256
 #define INITIAL_CAPACITY   256
 #define HISTORY_MAX        16
-#define HIGHLIGHT_CAP      7    // highlight sprite (16x16) 9-slice corner cap
 
 typedef struct {
    char name[NAME_LEN];
@@ -79,7 +79,7 @@ static Label counterLabel;
 
 // column headers, rendered here rather than baked into background.png so columns can be moved
 // and added freely (Name sits over the checkbox/icon block, the rest match the row columns)
-#define COLUMN_HEADER_Y 198
+#define COLUMN_HEADER_Y 212
 static const struct { int x; const char *text; } COLUMN_HEADERS[] = {
    { 88, "Name" }, { COLUMN_TYPE_X, "Type" }, { COLUMN_SIZE_X, "Size" },
    { COLUMN_MODIFIED_X, "Modified" }, { COLUMN_PERMISSIONS_X, "Permissions" }
@@ -104,8 +104,6 @@ static int delTopmost;
 static Checkbox checkboxes[FILE_LIST_PAGE_SIZE];
 static Image fileIcons[FILE_TYPE_COUNT];
 static Image usbIcon;   // badge composited onto USB device folders at root
-static Slice separators[FILE_LIST_PAGE_SIZE];
-static NineSlice hover;
 static Breadcrumb *breadcrumb;
 static Audio *clickSfx;
 static Audio *checkSfx;
@@ -464,8 +462,9 @@ static void syncFooterButtons(void)
    setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);   // Circle stays enabled: at root it offers to exit the app
 }
 
-void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check, int x, int y, int maxWidth, int rowHeight, int fontSize, uint32_t color, Breadcrumb *bc)
+void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check, int x, int y, int maxWidth, int rowHeight, int fontSize, Breadcrumb *bc)
 {
+   uint32_t color = activeTheme->textPrimary;   // row + header labels all use the primary text colour
    breadcrumb = bc;
    clickSfx = click;
    checkSfx = check;
@@ -482,7 +481,6 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
 
    setMountsChangedCallback(refreshMounts);   // pollMounts() refreshes the root listing on USB hotplug
 
-   initNineSlice(&hover, spritesheet, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
    initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
    for (int i = 0; i < COLUMN_HEADER_COUNT; i++)
       initLabel(&columnHeaderLabels[i], font, COLUMN_HEADERS[i].x, COLUMN_HEADER_Y, 240, AUTO, fontSize, color, TEXT_NOWRAP, COLUMN_HEADERS[i].text);
@@ -504,12 +502,29 @@ void initFileList(Font *font, GfxTexture spritesheet, Audio *click, Audio *check
       initLabel(&sizeLabels[i], font, COLUMN_SIZE_X, ry + 25, COLUMN_SIZE_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
       initLabel(&modifiedLabels[i], font, COLUMN_MODIFIED_X, ry + 25, COLUMN_MODIFIED_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
       initLabel(&permissionLabels[i], font, COLUMN_PERMISSIONS_X, ry + 25, COLUMN_PERMISSIONS_W, AUTO, fontSize, color, TEXT_NOWRAP, NULL);
-      initCheckbox(&checkboxes[i], spritesheet, 71, cy, 25, spriteRegions[SPRITE_CHECKBOX], spriteRegions[SPRITE_CHECKBOX_CHECKED]);
-      initSlice(&separators[i], spritesheet, 47, ry - 1, 1884 - 47, 2, spriteRegions[SPRITE_SEPARATOR], 1);
+      initCheckbox(&checkboxes[i], 71, cy, 25, activeTheme->checkBorder, activeTheme->checkFill);
    }
 
    loadDir("/");
    syncFooterButtons();
+}
+
+// recolours every persistent label + checkbox for a live theme switch (the row highlight, separators
+// and checkbox marks are drawn live from activeTheme, so they need no help here).
+void rethemeFileList(void)
+{
+   for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
+      setLabelColor(&labels[i],           activeTheme->textPrimary);
+      setLabelColor(&sizeLabels[i],       activeTheme->textPrimary);
+      setLabelColor(&typeLabels[i],       activeTheme->textPrimary);
+      setLabelColor(&modifiedLabels[i],   activeTheme->textPrimary);
+      setLabelColor(&permissionLabels[i], activeTheme->textPrimary);
+      checkboxes[i].borderColor = activeTheme->checkBorder;
+      checkboxes[i].fillColor   = activeTheme->checkFill;
+   }
+   setLabelColor(&counterLabel, activeTheme->textPrimary);
+   for (int i = 0; i < COLUMN_HEADER_COUNT; i++)
+      setLabelColor(&columnHeaderLabels[i], activeTheme->textPrimary);
 }
 
 // square: tap toggles the focused row, hold toggles the whole directory.
@@ -584,28 +599,30 @@ static int entryIsMarked(int idx)
    return isOnClipboard(full);
 }
 
+// per-slot wrappers over the shared row chrome (see widgets/list-row-chrome.h).
+static void drawRowSeparator(int slot) { drawListRowSeparator(listY + slot * listRowHeight); }
+static void drawRowHighlight(int slot) { drawListRowHighlight(listY + slot * listRowHeight, listRowHeight); }
+
 void drawFileList(void)
 {
    for (int i = 0; i < COLUMN_HEADER_COUNT; i++) drawLabel(&columnHeaderLabels[i]);
 
-   // hide top separator when the first visible row is selected (hover replaces it)
+   // hide top separator when the first visible row is selected (highlight replaces it)
    if (entryCount == 0 || selectedIndex != scrollOffset) {
-      drawSlice(&separators[0]);
+      drawRowSeparator(0);
    }
 
    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
       int idx = scrollOffset + i;
       if (idx >= entryCount) break;
 
-      // hide separators adjacent to the selected row (hover covers that area)
+      // hide separators adjacent to the selected row (highlight covers that area)
       if (i > 0 && idx != selectedIndex && idx - 1 != selectedIndex) {
-         drawSlice(&separators[i]);
+         drawRowSeparator(i);
       }
 
-      // draw hover background for selected row
       if (idx == selectedIndex) {
-         moveNineSlice(&hover, 42, listY + i * listRowHeight);
-         drawNineSlice(&hover);
+         drawRowHighlight(i);
       }
 
       // rows on the clipboard (cut or copy) render ghosted at 50% opacity

@@ -1,6 +1,7 @@
 // free-space-widget - hdd free space label refreshed periodically
 #include "widgets/free-space-widget.h"
 #include "ui/label.h"
+#include "theme.h"
 #include "timer.h"
 #include "vfs.h"
 #include "string-utilities.h"
@@ -41,11 +42,16 @@ void setFreeSpacePath(const char *path)
    refresh(NULL);
 }
 
-void initFreeSpaceWidget(Font *font, int x, int y, int size, uint32_t color, int width)
+void initFreeSpaceWidget(Font *font, int x, int y, int size, int width)
 {
-   initLabel(&label, font, x, y, width, AUTO, size, color, TEXT_NOWRAP, NULL);
+   initLabel(&label, font, x, y, width, AUTO, size, activeTheme->textSecondary, TEXT_NOWRAP, NULL);
    initTimer(&timer, 10000000, refresh, NULL);
    refresh(NULL);
+}
+
+void rethemeFreeSpaceWidget(void)
+{
+   setLabelColor(&label, activeTheme->textSecondary);
 }
 
 void updateFreeSpaceWidget(void)

@@ -1,9 +1,9 @@
 // footer-widget - bottom action row of icon + label buttons
 #include "widgets/footer-widget.h"
-#include "colors.h"
 #include "ui/button.h"
 #include "ui/image.h"
 #include "ui/label.h"
+#include "theme.h"
 
 #define FOOTER_MAX_BUTTONS      8
 #define FOOTER_X               51
@@ -49,7 +49,7 @@ void addFooterButton(PadButton padButton, ConsoleGlyph glyph, const char *text, 
    Image icon;
    Label label;
    initGlyphIcon(&icon, glyph, FOOTER_GLYPH_HEIGHT);
-   initLabel(&label, footerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, COLOR_WHITE, TEXT_NOWRAP, text);
+   initLabel(&label, footerFont, 0, 0, AUTO, AUTO, FOOTER_TEXT_SIZE, activeTheme->textPrimary, TEXT_NOWRAP, text);
 
    entry->padButton = padButton;
    entry->onPress   = onPress;
@@ -76,6 +76,12 @@ void setFooterButtonText(PadButton padButton, const char *text)
    FooterEntry *entry = findFooterEntry(padButton);
    if (!entry) return;
    setLabelText(&entry->button.label, text);
+}
+
+void rethemeFooterWidget(void)
+{
+   for (int i = 0; i < entryCount; i++)
+      setLabelColor(&entries[i].button.label, activeTheme->textPrimary);
 }
 
 void updateFooterWidget(void)

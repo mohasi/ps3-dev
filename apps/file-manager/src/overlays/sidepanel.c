@@ -8,7 +8,7 @@
 #include "colors.h"
 #include "ui/label.h"
 #include "ui/image.h"
-#include "ui/slice.h"
+#include "theme.h"
 #include "button-repeat.h"
 #include "string-utilities.h"
 #include "sprite-regions.h"
@@ -45,11 +45,7 @@
 #define ROW_SUBTITLE_Y   57
 #define ROW_TITLE_SIZE   22
 #define ROW_SUBTITLE_SIZE 16
-#define HIGHLIGHT_CAP    7    // highlight sprite (16x16) 9-slice corner cap
 
-#define COLOR_PANEL_BG     0xFF01142B
-#define COLOR_PANEL_BORDER 0xFF4A566F
-#define COLOR_SUBTITLE     0x80FFFFFF
 
 static float x;
 static Anims anims;
@@ -67,7 +63,6 @@ static Label rowTitles[SIDEPANEL_MAX_ACTIONS];
 static Label rowSubtitles[SIDEPANEL_MAX_ACTIONS];
 static Image headerIcon;
 static Image rowIcons[SIDEPANEL_MAX_ACTIONS];
-static NineSlice hover;
 static GfxTexture spritesheet;
 static Audio *clickSfx;
 
@@ -77,17 +72,15 @@ void initSidepanel(GfxTexture sprites, Audio *sfx, SelectionActionHandler handle
    clickSfx      = sfx;
    actionHandler = handler;
 
-   initNineSlice(&hover, sprites, 0, 0, ROW_WIDTH, ROW_HEIGHT, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
-
    font = openSystemFont(FONT_POP);
    int headerLabelW = PANEL_WIDTH - TEXT_X    - TEXT_RIGHT_PAD;
    int rowLabelW    = ROW_WIDTH   - ROW_TEXT_X - TEXT_RIGHT_PAD;
-   initLabel(&headerTitle,    &font, 0, 0, headerLabelW, AUTO, TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&headerSubtitle, &font, 0, 0, headerLabelW, AUTO, SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP,          "");
-   initLabel(&headerDetail,   &font, 0, 0, headerLabelW, AUTO, DETAIL_SIZE,   COLOR_SUBTITLE, TEXT_NOWRAP,          "");
+   initLabel(&headerTitle,    &font, 0, 0, headerLabelW, AUTO, TITLE_SIZE,    activeTheme->textPrimary,   TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&headerSubtitle, &font, 0, 0, headerLabelW, AUTO, SUBTITLE_SIZE, activeTheme->textSecondary, TEXT_NOWRAP,          "");
+   initLabel(&headerDetail,   &font, 0, 0, headerLabelW, AUTO, DETAIL_SIZE,   activeTheme->textSecondary, TEXT_NOWRAP,          "");
    for (int i = 0; i < SIDEPANEL_MAX_ACTIONS; i++) {
-      initLabel(&rowTitles[i],    &font, 0, 0, rowLabelW, AUTO, ROW_TITLE_SIZE,    COLOR_WHITE,    TEXT_NOWRAP_ELLIPSIS, "");
-      initLabel(&rowSubtitles[i], &font, 0, 0, rowLabelW, AUTO, ROW_SUBTITLE_SIZE, COLOR_SUBTITLE, TEXT_NOWRAP_ELLIPSIS, "");
+      initLabel(&rowTitles[i],    &font, 0, 0, rowLabelW, AUTO, ROW_TITLE_SIZE,    activeTheme->textPrimary,     TEXT_NOWRAP_ELLIPSIS, "");
+      initLabel(&rowSubtitles[i], &font, 0, 0, rowLabelW, AUTO, ROW_SUBTITLE_SIZE, activeTheme->textOnHighlight, TEXT_NOWRAP_ELLIPSIS, "");
    }
 }
 
@@ -120,6 +113,19 @@ void setSidepanelContent(const SelectionSummary *s, const SelectionAction *a, in
    setLabelText(&headerDetail,   strOrEmpty(summary.detail));
 
    initImage(&headerIcon, spritesheet, 0, 0, ICON_W, ICON_H, summary.icon, GFX_FILTER_LINEAR);
+}
+
+// labels capture their colour at init, so a live theme switch needs this (the slab/highlight read the
+// theme live and follow for free). see applyThemeToHome.
+void rethemeSidepanel(void)
+{
+   setLabelColor(&headerTitle,    activeTheme->textPrimary);
+   setLabelColor(&headerSubtitle, activeTheme->textSecondary);
+   setLabelColor(&headerDetail,   activeTheme->textSecondary);
+   for (int i = 0; i < SIDEPANEL_MAX_ACTIONS; i++) {
+      setLabelColor(&rowTitles[i],    activeTheme->textPrimary);
+      setLabelColor(&rowSubtitles[i], activeTheme->textOnHighlight);
+   }
 }
 
 static void show(void)
@@ -172,8 +178,8 @@ static void draw(void)
    int sw = getGfxScreenWidth();
    int sh = getGfxScreenHeight();
 
-   fillGfxRectangle(px, 0, sw - px, sh, COLOR_PANEL_BG);
-   fillGfxRectangle(px, 0, PANEL_BORDER, sh, COLOR_PANEL_BORDER);
+   fillGfxRectangle(px, 0, sw - px, sh, activeTheme->menuFill);
+   fillGfxRectangle(px, 0, PANEL_BORDER, sh, activeTheme->menuBorder);
 
    if (hasHeader) {
       drawImageAt(&headerIcon, px + ICON_X, ICON_Y);
@@ -186,10 +192,8 @@ static void draw(void)
    int rowOriginY = hasHeader ? HEADER_HEIGHT : TOP_NO_HEADER;
    for (int i = 0; i < actionCount; i++) {
       int rowY = rowOriginY + i * ROW_HEIGHT;
-      if (i == selectedIndex) {
-         moveNineSlice(&hover, rowX, rowY);
-         drawNineSlice(&hover);
-      }
+      if (i == selectedIndex)
+         drawGfxBox(rowX, rowY, ROW_WIDTH, ROW_HEIGHT, activeTheme->borderThickness, activeTheme->highlightFill, activeTheme->highlightBorder);
       drawImageAt(&rowIcons[i],    rowX + ROW_ICON_OFFSET, rowY + ROW_ICON_OFFSET);
       drawLabelAt(&rowTitles[i],    rowX + ROW_TEXT_X, rowY + ROW_TITLE_Y);
       drawLabelAt(&rowSubtitles[i], rowX + ROW_TEXT_X, rowY + ROW_SUBTITLE_Y);

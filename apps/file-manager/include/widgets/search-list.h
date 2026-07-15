@@ -23,7 +23,8 @@ typedef void (*SearchExit)(void);
 typedef void (*SearchOptions)(void);
 
 void initSearchList(Font *font, GfxTexture spritesheet, Audio *clickSfx, Audio *checkSfx, int y, int rowHeight,
-                    int fontSize, uint32_t color, SearchActivate onActivate, SearchExit onExit, SearchOptions onOptions);
+                    int fontSize, SearchActivate onActivate, SearchExit onExit, SearchOptions onOptions);
+void rethemeSearchList(void);   // recolour persistent labels + checkboxes for a live theme switch
 void termSearchList(void);
 
 // starts a case-insensitive recursive name search under `root` for `query`, replacing any previous

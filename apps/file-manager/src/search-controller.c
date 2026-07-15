@@ -7,6 +7,7 @@
 #include "overlays/confirm-overlay.h"  // askConfirm / ConfirmChoice
 #include "osk-input.h"                 // oskInputBegin
 #include "ui/label.h"
+#include "theme.h"
 #include "pad.h"
 #include "path.h"                      // MAX_PATH_LEN
 #include "string-utilities.h"          // strCopy / strEq
@@ -126,10 +127,16 @@ void drawSearchTitle(void)   { drawLabel(&searchTitle); }
 void drawSearchResults(void) { drawSearchList(); }
 
 void initSearchController(Font *font, GfxTexture sprites, Audio *clickSfx, Audio *checkSfx,
-                          int listY, int rowHeight, int fontSize, uint32_t color, void (*onOptions)(void))
+                          int listY, int rowHeight, int fontSize, void (*onOptions)(void))
 {
-   initSearchList(font, sprites, clickSfx, checkSfx, listY, rowHeight, fontSize, color, onSearchActivate, onSearchExit, onOptions);
-   initLabel(&searchTitle, font, 70, 128, AUTO, AUTO, 24, color, TEXT_NOWRAP, "Search Results");
+   initSearchList(font, sprites, clickSfx, checkSfx, listY, rowHeight, fontSize, onSearchActivate, onSearchExit, onOptions);
+   initLabel(&searchTitle, font, 70, 133, AUTO, AUTO, 24, activeTheme->textPrimary, TEXT_NOWRAP, "Search Results");
+}
+
+void rethemeSearchController(void)
+{
+   rethemeSearchList();
+   setLabelColor(&searchTitle, activeTheme->textPrimary);
 }
 
 void termSearchController(void)

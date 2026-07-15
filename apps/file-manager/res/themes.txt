@@ -1,0 +1,109 @@
+# ==========================================================================
+#  File Manager themes
+# ==========================================================================
+#  Each [Name] block is one theme. The block's name becomes its slug (lower
+#  case, spaces -> hyphens) - e.g. [Original Blue] is "original-blue", which
+#  is what you put in settings.txt to start in it, and what L1/R1 cycles.
+#
+#  Colours are #RRGGBB, or #RRGGBBAA when you need transparency (AA is the
+#  alpha and comes last: 00 = clear, FF = solid; omit it for solid). Every
+#  block inherits Original Blue, so it only lists the colours it changes.
+#
+#  Two files are read and merged each launch: the shipped res/themes.txt (the
+#  built-ins) and YOUR copy at /dev_hdd0/tmp/file-manager/themes.txt, seeded
+#  from the built-ins on first launch and never overwritten again. In your
+#  copy: edit a block to override that built-in, delete a block to fall back to
+#  the shipped version, or add a new [Name] block for a theme of your own.
+#
+#  Keys:
+#    appBg            whole-screen background
+#    divider          thin header / footer divider lines
+#    panelFill        raised panel fill (breadcrumb bar, dialog body)
+#    panelBorder      raised panel border
+#    menuFill         side-menu slab fill
+#    menuBorder       side-menu slab border
+#    highlightFill    selected-row fill
+#    highlightBorder  selected-row border
+#    separator        hairline between rows
+#    checkBorder      checkbox outline
+#    checkFill        checkbox tick (when checked)
+#    textPrimary      main label text
+#    textSecondary    dim subtitle text
+#    textOnHighlight  subtitle text over a highlighted row
+#    scrim            dim layer behind a pop-up dialog
+#    dialogFill       dialog body fill
+#    dialogBorder     dialog body border
+#    progressTrack    progress bar background
+#    progressFill     progress bar fill
+#    scrollTrack      scrollbar track
+#    scrollThumb      scrollbar thumb
+# ==========================================================================
+
+[Original Blue]
+appBg=#001636
+divider=#232D43
+panelFill=#04182F
+panelBorder=#2E4E78
+menuFill=#01142B
+menuBorder=#4A566F
+highlightFill=#12386A
+highlightBorder=#4A7CC0
+separator=#203350
+checkBorder=#4A7CC0
+checkFill=#FFFFFF
+textPrimary=#FFFFFF
+textSecondary=#FFFFFF80
+textOnHighlight=#FFFFFFCC
+scrim=#000000C8
+dialogFill=#04182F
+dialogBorder=#2E4E78
+progressTrack=#0A2547
+progressFill=#2F6FD0
+scrollTrack=#0A2547
+scrollThumb=#3E6DA8
+
+[Light]
+appBg=#EAEEF4
+divider=#C3CCD8
+panelFill=#FFFFFF
+panelBorder=#B2C0D4
+menuFill=#F3F6FA
+menuBorder=#B2C0D4
+highlightFill=#CFE0F5
+highlightBorder=#5A8FD0
+separator=#D2DAE6
+checkBorder=#5A8FD0
+checkFill=#2E6FC0
+textPrimary=#10233B
+textSecondary=#10233B99
+textOnHighlight=#10233B
+scrim=#00000080
+dialogFill=#FFFFFF
+dialogBorder=#B2C0D4
+progressTrack=#D8E2EF
+progressFill=#2E6FC0
+scrollTrack=#D8E2EF
+scrollThumb=#9DB4CE
+
+[Dark]
+appBg=#121316
+divider=#2A2C31
+panelFill=#1B1D22
+panelBorder=#3A3D45
+menuFill=#17181C
+menuBorder=#3A3D45
+highlightFill=#244A73
+highlightBorder=#3E77B5
+separator=#2A2C31
+checkBorder=#3E77B5
+checkFill=#FFFFFF
+textPrimary=#EDEEF0
+textSecondary=#EDEEF099
+textOnHighlight=#EDEEF0
+scrim=#000000C8
+dialogFill=#1B1D22
+dialogBorder=#3A3D45
+progressTrack=#2A2C31
+progressFill=#3E77B5
+scrollTrack=#23252A
+scrollThumb=#4A4E58

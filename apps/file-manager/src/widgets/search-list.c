@@ -1,12 +1,13 @@
 // search-list - see widgets/search-list.h
 #include "widgets/search-list.h"
+#include "widgets/list-row-chrome.h"   // shared drawListRowSeparator / drawListRowHighlight
 #include "gfx.h"
 #include "ui/label.h"
 #include "ui/image.h"
-#include "ui/slice.h"
 #include "ui/checkbox.h"
 #include "file-type.h"
 #include "sprite-regions.h"
+#include "theme.h"
 #include "button-repeat.h"
 #include "tree-walk.h"
 #include "clipboard.h"           // begin/addToClipboard, isOnClipboard - copy/cut + ghost rows
@@ -25,23 +26,23 @@
 
 #define PAGE_SIZE      9
 #define MAX_RESULTS  400   // bounds memory (~400 * sizeof(SearchEntry)); a truncated search is logged
-#define HIGHLIGHT_CAP   7
 #define QUERY_MAX      96
 #define MARKED_ROW_ALPHA 0x80   // 50% opacity for rows pending a cut or copy (matches file-list)
 
 // columns: checkbox, type icon, name, full location, type, size. no modified/permissions - the
 // location is the point of a search result and takes the room they would need.
-#define CHECKBOX_X   71
-#define ICON_X      120
-#define NAME_X      177
-#define NAME_W      470
+#define CHECKBOX_X     71
+#define ICON_X        120
+#define NAME_HEADER_X  88   // "Name" header sits over the checkbox/icon zone, matching the file list
+#define NAME_X        177
+#define NAME_W        470
 #define LOCATION_X  680
 #define LOCATION_W  840
 #define TYPE_X     1560
 #define TYPE_W      140    // same as file-list
 #define SIZE_X     1750   // 190px past TYPE_X, the same type->size gap as file-list
 #define SIZE_W      130    // same as file-list
-#define COLUMN_HEADER_Y 198
+#define COLUMN_HEADER_Y 212
 #define STATUS_X     55
 #define STATUS_Y    953
 
@@ -75,13 +76,10 @@ static SearchActivate activateCb;
 static SearchExit     exitCb;
 static SearchOptions  optionsCb;
 
-static NineSlice hover;
 static Image     fileIcons[FILE_TYPE_COUNT];
 static Label     nameLabels[PAGE_SIZE], locationLabels[PAGE_SIZE], typeLabels[PAGE_SIZE], sizeLabels[PAGE_SIZE];
 static Checkbox  checkboxes[PAGE_SIZE];
-static Slice     separators[PAGE_SIZE];
 static Label     nameHeader, locationHeader, typeHeader, sizeHeader, statusLabel;
-static Label     progressLabel, cancelHint;   // centered progress panel shown while the walk runs
 
 static ButtonRepeat scrollUpRepeat, scrollDownRepeat;
 
@@ -192,6 +190,17 @@ static void stopSearch(void)
    resultCount = 0;
 }
 
+// status line + completion test polled by the busy progress overlay while the walk runs.
+static const char *searchStatus(void)
+{
+   static char text[32];
+   int length = appendUint64(text, sizeof text, 0, (uint64_t)resultCount);
+   appendStr(text, sizeof text, &length, " found");
+   text[length] = '\0';
+   return text;
+}
+static int searchFinished(void) { return !searching; }
+
 void beginSearch(const char *searchRoot, const char *searchQuery)
 {
    stopSearch();   // clear any previous search first
@@ -215,7 +224,10 @@ void beginSearch(const char *searchRoot, const char *searchQuery)
    cancel = 0;
    searching = 1;
    threadActive = (spawnJoinableThread(&workerTid, worker, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "search") == 0);
-   if (!threadActive) { searching = 0; logError("[search] worker spawn failed\n"); }
+   if (!threadActive) { searching = 0; logError("[search] worker spawn failed\n"); return; }
+
+   // the walk is modal: the busy progress overlay shows the live count + cancel while it runs.
+   startBusyProgress("Searching...", searchStatus, searchFinished, pauseSearch, NULL);
 }
 
 // ============================================================================
@@ -280,12 +292,7 @@ static void handleCheckInput(int hasSelection)
 void updateSearchList(void)
 {
    if (!armed) { armed = 1; return; }   // swallow the keyboard-confirm press that opened this search
-
-   // while the walk runs, the progress panel is modal: Circle cancels it (keeping what was found).
-   if (searching) {
-      if (isPadButtonPressed(PAD_BTN_CIRCLE)) pauseSearch();
-      return;
-   }
+   if (searching) return;               // the busy progress overlay owns the walk (status + cancel)
 
    int count = resultCount;
 
@@ -468,23 +475,6 @@ static void drawStatus(int count)
    drawLabel(&statusLabel);
 }
 
-// centered modal panel shown while the walk runs: live match count + a cancel hint.
-static void drawProgressPanel(int count)
-{
-   int w = 560, h = 150;
-   int x = (getGfxScreenWidth() - w) / 2;
-   int y = (getGfxScreenHeight() - h) / 2;
-   fillGfxRectangle(x, y, w, h, 0xE6001028u);
-   fillGfxRectangle(x, y, w, 2, 0xFF32415Fu);
-   fillGfxRectangle(x, y + h - 2, w, 2, 0xFF32415Fu);
-
-   char text[48];
-   snprintf(text, sizeof text, "Searching...  %d found", count);
-   setLabelText(&progressLabel, text);
-   drawLabelAt(&progressLabel, x + (w - progressLabel.tt.tex.w) / 2, y + 42);
-   drawLabelAt(&cancelHint,    x + (w - cancelHint.tt.tex.w) / 2,    y + 92);
-}
-
 void drawSearchList(void)
 {
    int count = resultCount;
@@ -501,8 +491,8 @@ void drawSearchList(void)
       if (idx >= count) break;
 
       int rowY = listY + i * listRowHeight;
-      if (i > 0 && idx != selectedIndex && idx - 1 != selectedIndex) drawSlice(&separators[i]);
-      if (idx == selectedIndex) { moveNineSlice(&hover, 42, rowY); drawNineSlice(&hover); }
+      if (i > 0 && idx != selectedIndex && idx - 1 != selectedIndex) drawListRowSeparator(rowY);
+      if (idx == selectedIndex) drawListRowHighlight(rowY, listRowHeight);
 
       // rows on the clipboard (cut or copy) render ghosted, like file-list
       int alpha = isOnClipboard(results[idx].path) ? MARKED_ROW_ALPHA : 0xFF;
@@ -519,8 +509,7 @@ void drawSearchList(void)
       drawLabelAlpha(&sizeLabels[i], alpha);
    }
 
-   if (searching) drawProgressPanel(count);
-   else           drawStatus(count);
+   if (!searching) drawStatus(count);   // while the walk runs, the busy progress overlay covers this
 }
 
 // ============================================================================
@@ -528,8 +517,9 @@ void drawSearchList(void)
 // ============================================================================
 
 void initSearchList(Font *font, GfxTexture sprites, Audio *click, Audio *check, int y, int rowHeight,
-                    int fontSize, uint32_t color, SearchActivate onActivate, SearchExit onExit, SearchOptions onOptions)
+                    int fontSize, SearchActivate onActivate, SearchExit onExit, SearchOptions onOptions)
 {
+   uint32_t color = activeTheme->textPrimary;   // headers + result-row labels all use the primary text colour
    clickSfx      = click;
    checkSfx      = check;
    listY         = y;
@@ -538,17 +528,14 @@ void initSearchList(Font *font, GfxTexture sprites, Audio *click, Audio *check, 
    exitCb        = onExit;
    optionsCb     = onOptions;
 
-   initNineSlice(&hover, sprites, 47, y, 1882 - 47, rowHeight, spriteRegions[SPRITE_HIGHLIGHT], HIGHLIGHT_CAP, HIGHLIGHT_CAP);
    for (int t = 0; t < FILE_TYPE_COUNT; t++)
       initImage(&fileIcons[t], sprites, 0, 0, 35, 43, spriteRegions[getFileTypeSprite(t)], GFX_FILTER_LINEAR);
 
-   initLabel(&nameHeader,     font, NAME_X,     COLUMN_HEADER_Y, NAME_W,     AUTO, fontSize, color, TEXT_NOWRAP, "Name");
+   initLabel(&nameHeader,     font, NAME_HEADER_X, COLUMN_HEADER_Y, NAME_W,  AUTO, fontSize, color, TEXT_NOWRAP, "Name");
    initLabel(&locationHeader, font, LOCATION_X, COLUMN_HEADER_Y, LOCATION_W, AUTO, fontSize, color, TEXT_NOWRAP, "Location");
    initLabel(&typeHeader,     font, TYPE_X,     COLUMN_HEADER_Y, TYPE_W,     AUTO, fontSize, color, TEXT_NOWRAP, "Type");
    initLabel(&sizeHeader,     font, SIZE_X,     COLUMN_HEADER_Y, SIZE_W,     AUTO, fontSize, color, TEXT_NOWRAP, "Size");
    initLabel(&statusLabel,    font, STATUS_X,   STATUS_Y,        400,        AUTO, 20,       color, TEXT_NOWRAP, "");
-   initLabel(&progressLabel,  font, 0, 0, 500, AUTO, 28, color,        TEXT_NOWRAP, "");
-   initLabel(&cancelHint,     font, 0, 0, 400, AUTO, 20, 0x99FFFFFFu,  TEXT_NOWRAP, "Circle to Cancel");
 
    for (int i = 0; i < PAGE_SIZE; i++) {
       int ry = y + i * rowHeight;
@@ -557,9 +544,26 @@ void initSearchList(Font *font, GfxTexture sprites, Audio *click, Audio *check, 
       initLabel(&locationLabels[i], font, LOCATION_X, ry + 25, LOCATION_W, AUTO, fontSize, color, TEXT_NOWRAP_ELLIPSIS, NULL);
       initLabel(&typeLabels[i],     font, TYPE_X,     ry + 25, TYPE_W,     AUTO, fontSize, color, TEXT_NOWRAP,          NULL);
       initLabel(&sizeLabels[i],     font, SIZE_X,     ry + 25, SIZE_W,     AUTO, fontSize, color, TEXT_NOWRAP,          NULL);
-      initCheckbox(&checkboxes[i], sprites, CHECKBOX_X, cy, 25, spriteRegions[SPRITE_CHECKBOX], spriteRegions[SPRITE_CHECKBOX_CHECKED]);
-      initSlice(&separators[i], sprites, 47, ry - 1, 1884 - 47, 2, spriteRegions[SPRITE_SEPARATOR], 1);
+      initCheckbox(&checkboxes[i], CHECKBOX_X, cy, 25, activeTheme->checkBorder, activeTheme->checkFill);
    }
+}
+
+// recolours every persistent label + checkbox for a live theme switch (chrome is drawn live).
+void rethemeSearchList(void)
+{
+   for (int i = 0; i < PAGE_SIZE; i++) {
+      setLabelColor(&nameLabels[i],     activeTheme->textPrimary);
+      setLabelColor(&locationLabels[i], activeTheme->textPrimary);
+      setLabelColor(&typeLabels[i],     activeTheme->textPrimary);
+      setLabelColor(&sizeLabels[i],     activeTheme->textPrimary);
+      checkboxes[i].borderColor = activeTheme->checkBorder;
+      checkboxes[i].fillColor   = activeTheme->checkFill;
+   }
+   setLabelColor(&nameHeader,     activeTheme->textPrimary);
+   setLabelColor(&locationHeader, activeTheme->textPrimary);
+   setLabelColor(&typeHeader,     activeTheme->textPrimary);
+   setLabelColor(&sizeHeader,     activeTheme->textPrimary);
+   setLabelColor(&statusLabel,    activeTheme->textPrimary);
 }
 
 void termSearchList(void)
@@ -576,6 +580,4 @@ void termSearchList(void)
    freeLabel(&typeHeader);
    freeLabel(&sizeHeader);
    freeLabel(&statusLabel);
-   freeLabel(&progressLabel);
-   freeLabel(&cancelHint);
 }

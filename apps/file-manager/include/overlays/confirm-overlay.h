@@ -18,7 +18,7 @@ typedef enum {
 
 typedef void (*ConfirmCallback)(ConfirmChoice choice);
 
-void initConfirmOverlay(GfxTexture spritesheet, Audio *clickSfx);
+void initConfirmOverlay(Audio *clickSfx);
 
 // shows a modal prompt and reports which button was pressed. it carries up to
 // three buttons - cross, an optional middle square, and circle - each with its
@@ -28,5 +28,7 @@ void initConfirmOverlay(GfxTexture spritesheet, Audio *clickSfx);
 void askConfirm(const char *title, const char *message,
                 const char *crossText, const char *squareText, const char *circleText,
                 ConfirmCallback onResult);
+
+void rethemeConfirmOverlay(void);   // recolour the dialog text for a live theme switch
 
 extern Overlay confirmOverlay;

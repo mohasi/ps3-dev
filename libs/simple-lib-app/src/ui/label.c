@@ -31,14 +31,26 @@ void initLabelRaw(Label *l, Font *font, int x, int y, int width, int height, int
    initLabelCommon(l, font, x, y, width, height, size, color, wrap, 1, text);
 }
 
+// re-rasterises the current text/colour into the texture (raw = no {i}/{b}/{color=} markup parsing).
+static void renderLabel(Label *l)
+{
+   if (l->raw) renderFontRaw(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
+   else        renderFont(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
+}
+
 void setLabelText(Label *l, const char *text)
 {
    if (strncmp(l->text, text, LABEL_MAX_TEXT) == 0) return;
-
    strCopy(l->text, LABEL_MAX_TEXT, text);
+   renderLabel(l);
+}
 
-   if (l->raw) renderFontRaw(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
-   else        renderFont(&l->tt, l->font, l->size, l->text, l->color, l->width, l->wrap);
+void setLabelColor(Label *l, uint32_t color)
+{
+   if (l->color == color) return;
+   l->color = color;
+   if (l->text[0] == '\0') return;   // nothing rendered yet; the next setLabelText will use the new colour
+   renderLabel(l);
 }
 
 void freeLabel(Label *l)

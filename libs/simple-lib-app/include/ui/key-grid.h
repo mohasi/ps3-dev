@@ -12,11 +12,19 @@
 #include "pad.h"
 #include "font.h"
 #include "ui/label.h"
-#include "ui/slice.h"
 #include "button-repeat.h"
 
 #define KEY_GRID_MAX_ROWS 5
 #define KEY_GRID_MAX_COLS 14
+
+// flat/metro palette for the grid, supplied by the app (the lib stays theme-agnostic): the docked
+// panel is a filled box with a border, the selected cell a filled box in the highlight colours.
+typedef struct {
+   uint32_t panelFill, panelBorder;
+   uint32_t keyHighlightFill, keyHighlightBorder;
+   uint32_t keyText;
+   int      borderThickness;
+} KeyGridTheme;
 
 typedef void (*KeyGridCallback)(char key);
 
@@ -43,9 +51,9 @@ typedef struct {
    const KeyGridExtraBinding *extraBindings;
    int extraBindingCount;
 
-   Font      font;
-   NineSlice panel;
-   Label     keyLabels[KEY_GRID_MAX_ROWS][KEY_GRID_MAX_COLS];
+   Font         font;
+   KeyGridTheme theme;
+   Label        keyLabels[KEY_GRID_MAX_ROWS][KEY_GRID_MAX_COLS];
 
    int cursorRow, cursorCol;
    int isOpen;
@@ -60,10 +68,10 @@ typedef struct {
 
 // grid/labelText/fontSizeFor/extraBindings are all borrowed references - the caller must keep
 // them alive for the picker's lifetime (they're static data in every current caller).
-void initKeyGrid(KeyGridPicker *kg, GfxTexture sprites, SpriteRegion panelSprite, int panelCap,
-                  int rows, int cols, int cellW, int cellH, int baseFontSize, const char *grid,
-                  KeyGridLabelTextFn labelText, KeyGridFontSizeFn fontSizeFor,
-                  const KeyGridExtraBinding *extraBindings, int extraBindingCount);
+void initKeyGrid(KeyGridPicker *kg, int rows, int cols, int cellW, int cellH, int baseFontSize,
+                  const char *grid, KeyGridLabelTextFn labelText, KeyGridFontSizeFn fontSizeFor,
+                  const KeyGridExtraBinding *extraBindings, int extraBindingCount, KeyGridTheme theme);
+void rethemeKeyGrid(KeyGridPicker *kg, KeyGridTheme theme);   // recolour for a live theme switch
 void termKeyGrid(KeyGridPicker *kg);
 
 void openKeyGrid(KeyGridPicker *kg, KeyGridCallback onKey);

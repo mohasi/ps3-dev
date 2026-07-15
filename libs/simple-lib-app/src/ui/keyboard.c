@@ -40,12 +40,13 @@ static const KeyGridExtraBinding EXTRA_BINDINGS[] = { { PAD_BTN_TRIANGLE, ' ' } 
 
 static KeyGridPicker keyGrid;
 
-void initKeyboard(GfxTexture sprites, SpriteRegion panelSprite, int panelCap)
+void initKeyboard(KeyGridTheme theme)
 {
-   initKeyGrid(&keyGrid, sprites, panelSprite, panelCap, KEYBOARD_ROWS, KEYBOARD_COLS, KEY_CELL_W, KEY_CELL_H,
-               FONT_SIZE, &KEY_GRID[0][0], getKeyLabelText, getKeyFontSize, EXTRA_BINDINGS, 1);
+   initKeyGrid(&keyGrid, KEYBOARD_ROWS, KEYBOARD_COLS, KEY_CELL_W, KEY_CELL_H,
+               FONT_SIZE, &KEY_GRID[0][0], getKeyLabelText, getKeyFontSize, EXTRA_BINDINGS, 1, theme);
 }
 
+void rethemeKeyboard(KeyGridTheme theme) { rethemeKeyGrid(&keyGrid, theme); }
 void termKeyboard(void) { termKeyGrid(&keyGrid); }
 
 void openKeyboard(KeyboardKeyCallback onKey) { openKeyGrid(&keyGrid, onKey); }

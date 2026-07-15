@@ -12,9 +12,7 @@
 typedef struct {
    char segments[BREADCRUMB_MAX_DEPTH][BREADCRUMB_MAX_NAME];
    TextTexture segTex[BREADCRUMB_MAX_DEPTH];
-   GfxTexture chevronTex;
-   float chevronU0, chevronV0, chevronU1, chevronV1;
-   int chevronW, chevronH;
+   TextTexture separatorTex;   // the ">" drawn between segments (metro style, no sprite)
    int depth;
    int x, y;
    int fontSize;
@@ -23,7 +21,8 @@ typedef struct {
    int dirty;
 } Breadcrumb;
 
-void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, GfxTexture chevronTex, SpriteRegion chevronSrc, int fontSize);
+void initBreadcrumb(Breadcrumb *b, Font *font, int x, int y, uint32_t textColor, int fontSize);
+void rethemeBreadcrumb(Breadcrumb *b, uint32_t textColor);   // re-render in a new colour (live theme switch)
 void setBreadcrumbPath(Breadcrumb *b, const char *path);
 void drawBreadcrumb(Breadcrumb *b);
 void termBreadcrumb(Breadcrumb *b);

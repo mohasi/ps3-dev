@@ -33,6 +33,7 @@ ps3-dev/
 │   ├── xml-to-sfo/             generates PARAM.SFO from XML
 │   ├── nid-dump/               dumps firmware NIDs for symbol resolution
 │   ├── renpy-to-ps3/           packages Ren'Py visual novels to run on PS3
+│   ├── rco-studio/             GUI for editing PS3 XMB resource files (RCOs)
 │   └── scetool/                PRX signing tool + keys
 ├── out/                        build outputs (.sprx plugins, .pkg apps)
 └── README.md
@@ -185,4 +186,10 @@ See `tools/nid-dump/README.md`.
 ### renpy-to-ps3
 Packages Ren'Py visual-novel games into a runnable PS3 build. See
 `tools/renpy-to-ps3/README.md`.
+
+### rco-studio
+Dark-theme WPF GUI for editing PS3 XMB resource files (RCOs). Drives bundled rcomage +
+GimConv to dump RCOs to editable png/wav/xml, add or edit resources, and recompile with
+byte-exact verify. Non-destructive (pristine copies + revert), with sets and shareable
+`.rcopatch` patches for whole-theme workflows. See `tools/rco-studio/README.md`.
 

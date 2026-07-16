@@ -1,0 +1,313 @@
+<Window x:Class="RcoStudio.MainWindow"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Title="RCO Studio"
+      Width="1020"
+      Height="640"
+      WindowStartupLocation="CenterScreen"
+      Background="{StaticResource BgBase}"
+      AllowDrop="True"
+      Drop="OnDrop">
+
+   <Window.Resources>
+     <Style TargetType="TabItem">
+       <Setter Property="Foreground" Value="{StaticResource FgText}" />
+       <Setter Property="Template">
+         <Setter.Value>
+            <ControlTemplate TargetType="TabItem">
+              <Border x:Name="tabBorder"
+                    Padding="10,4"
+                    Margin="0,0,1,0"
+                    Background="{StaticResource BgSurface}">
+                <ContentPresenter ContentSource="Header" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                  <Setter TargetName="tabBorder" Property="Background" Value="{StaticResource BgHover}" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+         </Setter.Value>
+       </Setter>
+     </Style>
+
+     <Style TargetType="GridViewColumnHeader">
+       <Setter Property="Foreground" Value="{StaticResource FgTextDim}" />
+       <Setter Property="Template">
+         <Setter.Value>
+            <ControlTemplate TargetType="GridViewColumnHeader">
+              <Grid>
+                <Border x:Name="headerBorder"
+                      Background="{StaticResource BgSurface}"
+                      BorderBrush="{StaticResource BrBorder}"
+                      BorderThickness="0,0,1,1"
+                      Padding="8,4">
+                  <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
+                </Border>
+                <Thumb x:Name="PART_HeaderGripper" HorizontalAlignment="Right" Width="8" Cursor="SizeWE">
+                  <Thumb.Template>
+                     <ControlTemplate TargetType="Thumb">
+                       <Border Background="Transparent" />
+                     </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Grid>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="headerBorder" Property="Background" Value="{StaticResource BgHover}" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+         </Setter.Value>
+       </Setter>
+     </Style>
+     <Style TargetType="ListViewItem">
+       <Setter Property="Foreground" Value="{StaticResource FgText}" />
+       <Setter Property="Template">
+         <Setter.Value>
+            <ControlTemplate TargetType="ListViewItem">
+              <Border x:Name="row" Background="Transparent" Padding="4,3">
+                <GridViewRowPresenter Content="{TemplateBinding Content}"
+                                  Columns="{TemplateBinding GridView.ColumnCollection}" />
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="row" Property="Background" Value="{StaticResource BgHover}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                  <Setter TargetName="row" Property="Background" Value="{StaticResource BgHighlight}" />
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+         </Setter.Value>
+       </Setter>
+       <Style.Triggers>
+         <DataTrigger Binding="{Binding Status}" Value="Failed">
+            <Setter Property="Foreground" Value="#e06060" />
+         </DataTrigger>
+         <DataTrigger Binding="{Binding Status}" Value="Compiled">
+            <Setter Property="Foreground" Value="#7dc87d" />
+         </DataTrigger>
+       </Style.Triggers>
+     </Style>
+   </Window.Resources>
+
+   <Grid Margin="10">
+     <Grid.RowDefinitions>
+       <RowDefinition Height="*" />
+       <RowDefinition Height="Auto" />
+     </Grid.RowDefinitions>
+
+     <TabControl Grid.Row="0"
+              Background="{StaticResource BgBase}"
+              BorderBrush="{StaticResource BrBorder}"
+              BorderThickness="1"
+              Padding="0">
+       <TabItem Header="RCOs">
+         <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="210" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Margin="8,8,8,10">
+              <TextBox x:Name="searchBox" Style="{StaticResource DarkTextBox}" TextChanged="OnSearchChanged" />
+              <TextBlock x:Name="searchPlaceholder"
+                      Text="search across all dumped rcos — image/sound names and menu text"
+                      Foreground="{StaticResource FgTextDim}"
+                      Margin="6,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" />
+            </Grid>
+
+            <ListView x:Name="jobList"
+                   Grid.Row="1"
+                   Background="{StaticResource BgBase}"
+                   BorderThickness="0"
+                   SelectionMode="Extended"
+                   SelectionChanged="OnJobSelectionChanged"
+                   MouseDoubleClick="OnRowDoubleClick"
+                   GridViewColumnHeader.Click="OnColumnHeaderClick">
+              <ListView.View>
+                <GridView>
+                  <GridViewColumn x:Name="checkColumn" Width="30">
+                     <GridViewColumn.Header>
+                       <CheckBox x:Name="checkAllBox" Click="OnCheckAll" />
+                     </GridViewColumn.Header>
+                     <GridViewColumn.CellTemplate>
+                       <DataTemplate>
+                          <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                       </DataTemplate>
+                     </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+                  <GridViewColumn x:Name="nameColumn" Header="Name" Width="280">
+                     <GridViewColumn.CellTemplate>
+                       <DataTemplate>
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="rowEditedBadge" Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                    Foreground="#d9a334" VerticalAlignment="Center" Margin="0,0,5,0"
+                                    Visibility="Collapsed" ToolTip="this RCO has changes you have not compiled away" />
+                            <TextBlock x:Name="rowName" Text="{Binding Name}" />
+                          </StackPanel>
+                          <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding HasEdits}" Value="True">
+                              <Setter TargetName="rowEditedBadge" Property="Visibility" Value="Visible" />
+                              <Setter TargetName="rowName" Property="Foreground" Value="#d9a334" />
+                            </DataTrigger>
+                          </DataTemplate.Triggers>
+                       </DataTemplate>
+                     </GridViewColumn.CellTemplate>
+                  </GridViewColumn>
+                  <GridViewColumn x:Name="statusColumn" Header="Status" Width="100" DisplayMemberBinding="{Binding Status}" />
+                  <GridViewColumn x:Name="infoColumn" Header="Info" Width="440" DisplayMemberBinding="{Binding Detail}" />
+                </GridView>
+              </ListView.View>
+            </ListView>
+            <TextBlock x:Name="emptyHint"
+                    Grid.Row="1"
+                    Text="drop .rco files here&#10;they dump automatically — double-click a row to open its folder"
+                    TextAlignment="Center"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    FontSize="15"
+                    LineHeight="26"
+                    Foreground="{StaticResource FgTextDim}"
+                    IsHitTestVisible="False" />
+
+            <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="{StaticResource BrBorder}" />
+
+            <Grid Grid.Row="3">
+              <ListBox x:Name="previewList"
+                    Background="{StaticResource BgBase}"
+                    BorderThickness="0"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    MouseDoubleClick="OnPreviewDoubleClick"
+                    PreviewMouseRightButtonDown="OnPreviewRightButtonDown"
+                    AllowDrop="True"
+                    Drop="OnPreviewDrop">
+                <ListBox.ContextMenu>
+                  <ContextMenu Opened="OnPreviewMenuOpening">
+                     <MenuItem x:Name="editMenuItem" Header="Edit" Click="OnPreviewEdit" />
+                     <MenuItem x:Name="compareMenuItem" Header="Diff" Click="OnPreviewCompare"
+                            ToolTip="show what you changed, against how this file looked when the RCO was dumped" />
+                     <MenuItem x:Name="revertMenuItem" Header="Revert" Click="OnPreviewRevert"
+                            ToolTip="undo your change, restoring the resource to how it was when this RCO was dumped" />
+                  </ContextMenu>
+                </ListBox.ContextMenu>
+                <ListBox.ItemContainerStyle>
+                  <Style TargetType="ListBoxItem">
+                     <Setter Property="Template">
+                       <Setter.Value>
+                          <ControlTemplate TargetType="ListBoxItem">
+                            <Border x:Name="tile" Background="Transparent">
+                              <ContentPresenter />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                              <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="tile" Property="Background" Value="{StaticResource BgHover}" />
+                              </Trigger>
+                              <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="tile" Property="Background" Value="{StaticResource BgHighlight}" />
+                              </Trigger>
+                            </ControlTemplate.Triggers>
+                          </ControlTemplate>
+                       </Setter.Value>
+                     </Setter>
+                  </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                     <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                     <StackPanel Width="88" Margin="4" ToolTip="{Binding ToolTipText}">
+                       <Border x:Name="tileBorder" Width="68" Height="68" HorizontalAlignment="Center"
+                             Background="{StaticResource BgSurface}"
+                             BorderBrush="{StaticResource BrBorder}" BorderThickness="1">
+                          <Grid>
+                            <Image Source="{Binding Thumbnail}" Stretch="Uniform" Margin="3" />
+                            <TextBlock Text="{Binding Glyph}" FontFamily="Segoe MDL2 Assets" FontSize="26"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Foreground="{StaticResource FgTextDim}" />
+                            <Border x:Name="editedBadge" Visibility="Collapsed" Background="#d9a334"
+                                  HorizontalAlignment="Right" VerticalAlignment="Top" Padding="2"
+                                  ToolTip="edited by you">
+                              <TextBlock Text="&#xE70F;" FontFamily="Segoe MDL2 Assets" FontSize="10" Foreground="#1e1e1e" />
+                            </Border>
+                            <Border x:Name="lossyBadge" Visibility="Collapsed" Background="#c0603a"
+                                  HorizontalAlignment="Left" VerticalAlignment="Top" Padding="2,0"
+                                  ToolTip="lossy format: editing re-encodes with some quality loss (DXT image or VAG sound)">
+                              <TextBlock Text="~" FontSize="12" FontWeight="Bold" Foreground="#ffffff" />
+                            </Border>
+                          </Grid>
+                       </Border>
+                       <TextBlock x:Name="tileCaption" Text="{Binding Caption}" FontSize="10" Foreground="{StaticResource FgText}"
+                               TextTrimming="CharacterEllipsis" TextAlignment="Center" Margin="0,3,0,0" />
+                     </StackPanel>
+                     <DataTemplate.Triggers>
+                       <DataTrigger Binding="{Binding IsEdited}" Value="True">
+                          <Setter TargetName="tileBorder" Property="BorderBrush" Value="#d9a334" />
+                          <Setter TargetName="editedBadge" Property="Visibility" Value="Visible" />
+                          <Setter TargetName="tileCaption" Property="Foreground" Value="#d9a334" />
+                       </DataTrigger>
+                       <DataTrigger Binding="{Binding IsLossy}" Value="True">
+                          <Setter TargetName="lossyBadge" Property="Visibility" Value="Visible" />
+                       </DataTrigger>
+                     </DataTemplate.Triggers>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <TextBlock x:Name="previewHint"
+                      Text="select a dumped rco to browse its files — double-click opens (sounds play), right-click to Edit or Revert"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                      Foreground="{StaticResource FgTextDim}" IsHitTestVisible="False" />
+            </Grid>
+         </Grid>
+       </TabItem>
+       <TabItem Header="Logs">
+         <TextBox x:Name="logBox"
+               Style="{StaticResource DarkTextBox}"
+               VerticalContentAlignment="Top"
+               BorderThickness="0"
+               IsReadOnly="True"
+               FontFamily="Consolas"
+               FontSize="12"
+               VerticalScrollBarVisibility="Auto"
+               TextWrapping="NoWrap"
+               HorizontalScrollBarVisibility="Auto" />
+       </TabItem>
+     </TabControl>
+
+     <!-- sits on the tab strip, over the TabControl (declared after it, so it draws on top) -->
+     <TextBlock x:Name="busyText" Grid.Row="0" Visibility="Collapsed"
+             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,6,10,0"
+             Foreground="{StaticResource BrAccent}" />
+
+     <DockPanel Grid.Row="1" Margin="0,10,0,0" LastChildFill="False">
+       <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+         <Button x:Name="addButton" Content="Add RCOs…" Style="{StaticResource FlatButton}" Click="OnAddRcos" />
+         <Button x:Name="compileButton" Content="Compile" IsEnabled="False" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnCompile"
+              ToolTip="compile the checked RCOs" />
+         <Button x:Name="clearButton" Content="Clear" IsEnabled="False" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnClear"
+              ToolTip="clear the checked RCOs from the list" />
+         <Button x:Name="saveSetButton" Content="Save Set…" Style="{StaticResource FlatButton}" Margin="24,0,0,0" Click="OnSaveSet" />
+         <Button x:Name="loadSetButton" Content="Load Set…" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnLoadSet" />
+         <Button x:Name="exportPatchButton" Content="Export Patch…" Style="{StaticResource FlatButton}" Margin="24,0,0,0" Click="OnExportPatch"
+              ToolTip="bundle only your changed files into a shareable .rcopatch" />
+         <Button x:Name="applyPatchButton" Content="Apply Patch…" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnApplyPatch"
+              ToolTip="copy a .rcopatch's files into your own dumps, then compile" />
+       </StackPanel>
+
+       <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+         <TextBlock VerticalAlignment="Center">
+           <Hyperlink Foreground="{StaticResource BrAccent}" Click="OnOpenDumps" TextDecorations="None">Open Dumps</Hyperlink>
+         </TextBlock>
+         <TextBlock Margin="14,0,0,0" VerticalAlignment="Center">
+           <Hyperlink Foreground="{StaticResource BrAccent}" Click="OnOpenCompiled" TextDecorations="None">Open Compiled</Hyperlink>
+         </TextBlock>
+       </StackPanel>
+     </DockPanel>
+   </Grid>
+</Window>

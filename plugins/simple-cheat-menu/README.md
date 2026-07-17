@@ -6,14 +6,24 @@ make them work. It can also download cheats for the game you're in and, if you
 let it, let you vote on which cheats actually work — all from the console, no PC
 needed.
 
-## What it is
+## Features
 
-- A single VSH plugin (a small program that loads into the console's menu, the
-  XMB). Nothing is added into the game itself.
-- The menu is drawn with PAF — the XMB's own on-screen toolkit — so it paints on
-  top of the game the same way the quit/power menu does.
-- Cheats are simple text files, one per game, matched to the game by its title id
-  (the code on the disc, like `BCES01742`).
+- **In-game menu** — a short press of the PS button opens it over any running game.
+- **Live toggling** — turn cheats on and off while you play; turning one off puts
+  the game back exactly how it was.
+- **Verified writes** — every toggle is read back, so a cheat only shows ON if it
+  really took effect; one that can't apply or revert shows **FAIL**.
+- **Fit-for-your-version score** — a crowd confidence badge coloured for your exact
+  game version (green confirmed, amber unproven, red only worked elsewhere), with
+  the most reliable cheats sorted to the top.
+- **AoB (byte-pattern) cheats** — cheats that search for a pattern instead of a
+  fixed address, with the same live scan-and-verify.
+- **Automatic downloads** — cheats for the game you launch are fetched in the
+  background; re-download the latest any time with Triangle.
+- **Vote and contribute** — mark cheats working or failed to improve everyone's
+  scores, and submit new cheats to the shared database.
+- **Tiny footprint** — one VSH plugin, no PC, nothing injected into the game, and
+  no memory used until you first open the menu.
 
 ## Using it
 
@@ -137,30 +147,23 @@ Source cheats are kept human-editable in the repo's `source/` folder; a host-sid
 script merges the votes and produces the compiled per-game files the console
 downloads.
 
-## Build & deploy
+## Submitting new cheats
 
-Build and deploy through the **ps3 MCP tool** (see the workspace `CLAUDE.md`):
+Cheats live in the companion repo: **https://github.com/mohasi/game-cheats**. To
+add one:
 
-1. `build` with kind `plugins`, name `simple-cheat-menu` — produces the signed
-   plugin. Poll the job until it finishes with exit code 0.
-2. `deploy` with name `simple-cheat-menu` and `restartXmb=true` to install it and
-   load it straight away.
+1. Find (or create) `source/<TITLEID>.txt` for the game, using the id the XMB
+   reports (e.g. `BCES01742.txt`). For a brand-new game, start the file with a
+   `# Game Title` line.
+2. If the file says **DO NOT EDIT** and has a `same-as:` line, that game shares
+   another serial's cheats — open that file instead and edit there.
+3. Add your cheat as a `name:` line followed by its code lines (see the format
+   above). Don't add `score` lines — those are written automatically from votes.
+4. Never touch the `compiled/` folder; it's regenerated from `source/`.
+5. Open a pull request. Brand-new cheats (pure additions) merge automatically once
+   validation passes; edits to existing cheats are human-reviewed first.
 
-Cheat data lives under `/dev_hdd0/tmp/simple-cheat-menu/`: per-game files in
-`cheats/`, and `settings.txt` with `mode=` (`offline`, `fetch`, or `contribute`).
-The plugin creates that folder and a default `settings.txt` (mode `contribute`) on
-first run, so there's a file to edit.
-
-## Constraints & notes
-
-- **A bad cheat must never lock the console.** The engine best-effort makes a cheat
-  work, but a wrong or mis-ordered cheat may at worst do nothing or crash the game
-  back to the XMB — it must never hard-lock the machine. Verified writes, undo on
-  failure, and treating every downloaded cheat as untrusted input all serve that.
-- **Memory is scarce in the XMB.** A VSH plugin has very little room, so everything
-  lives in one 64KB block, taken only when first needed and never freed while the
-  console runs.
-- Logs use the `[cht]` tag in `/dev_hdd0/tmp/dbg.txt`, forwarded to the debug
-  bridge.
-</content>
-</invoke>
+After merging, the reconcile step recompiles every affected game, so your cheat
+starts downloading to consoles on their next fetch. Please only submit cheats you've
+actually tested, and keep names short and clear (no game-name prefix) so they fit
+the on-screen row.

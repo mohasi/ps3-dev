@@ -288,10 +288,14 @@
      <DockPanel Grid.Row="1" Margin="0,10,0,0" LastChildFill="False">
        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
          <Button x:Name="addButton" Content="Add RCOs…" Style="{StaticResource FlatButton}" Click="OnAddRcos" />
-         <Button x:Name="compileButton" Content="Compile" IsEnabled="False" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnCompile"
-              ToolTip="compile the checked RCOs" />
          <Button x:Name="clearButton" Content="Clear" IsEnabled="False" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnClear"
               ToolTip="clear the checked RCOs from the list" />
+         <Button x:Name="compileButton" Content="Compile" IsEnabled="False" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnCompile"
+              ToolTip="compile the checked RCOs" />
+         <Button x:Name="deployButton" Content="Deploy" IsEnabled="False" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnDeploy"
+              ToolTip="upload the checked compiled RCOs to the PS3's dev_blind over FTP" />
+         <Button x:Name="migrateButton" Content="Migrate &#x3C; 4.89" IsEnabled="False" Style="{StaticResource FlatButton}" Margin="24,0,0,0" Click="OnMigrateOverrides"
+              ToolTip="re-base the layout overrides of pre-4.89 mods onto current firmware (4.93)" />
          <Button x:Name="saveSetButton" Content="Save Set…" Style="{StaticResource FlatButton}" Margin="24,0,0,0" Click="OnSaveSet" />
          <Button x:Name="loadSetButton" Content="Load Set…" Style="{StaticResource FlatButton}" Margin="8,0,0,0" Click="OnLoadSet" />
          <Button x:Name="exportPatchButton" Content="Export Patch…" Style="{StaticResource FlatButton}" Margin="24,0,0,0" Click="OnExportPatch"
@@ -302,10 +306,10 @@
 
        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
          <TextBlock VerticalAlignment="Center">
-           <Hyperlink Foreground="{StaticResource BrAccent}" Click="OnOpenDumps" TextDecorations="None">Open Dumps</Hyperlink>
+           <Hyperlink Foreground="{StaticResource BrAccent}" Click="OnOpenDumps" TextDecorations="None" ToolTip="open the dumps folder">Dumps</Hyperlink>
          </TextBlock>
          <TextBlock Margin="14,0,0,0" VerticalAlignment="Center">
-           <Hyperlink Foreground="{StaticResource BrAccent}" Click="OnOpenCompiled" TextDecorations="None">Open Compiled</Hyperlink>
+           <Hyperlink Foreground="{StaticResource BrAccent}" Click="OnOpenCompiled" TextDecorations="None" ToolTip="open the compiled folder">Compiled</Hyperlink>
          </TextBlock>
        </StackPanel>
      </DockPanel>

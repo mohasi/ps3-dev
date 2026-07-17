@@ -38,6 +38,12 @@ namespace RcoStudio
             "# full path to a compare tool. used by right-click > Compare with dumped, which opens",
             "# it with the dumped copy on the left and your edited file on the right.",
             "# empty or not installed = that menu entry is greyed out."
+         } },
+         new Setting { Key = "ps3ip", Default = "", Description = new[]
+         {
+            "# the PS3's IP address on your network, for Deploy (uploads compiled RCOs to",
+            "# dev_blind over FTP). the console needs an FTP server running (e.g. simple-ftp).",
+            "# empty = Deploy asks you to set it."
          } }
       };
 
@@ -51,6 +57,9 @@ namespace RcoStudio
 
       // full path to a compare tool exe (WinMerge and friends); empty = no configured tool
       public static string DiffTool { get { return Get("diffTool"); } }
+
+      // the PS3's IP address for Deploy over FTP; empty = not set
+      public static string Ps3Ip { get { return Get("ps3ip"); } }
 
       // creates settings.txt with documented defaults, or appends any setting added since it
       // was written. call once at startup, so the file describes the current version whether

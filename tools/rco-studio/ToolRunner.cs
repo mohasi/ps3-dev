@@ -30,7 +30,8 @@ namespace RcoStudio
       // a copy of every file exactly as the dump produced it. it is what "edited" is
       // measured against, what Revert restores from, and where compile puts the raw
       // .gim/.vag back from after re-encoding edited images and sounds onto them.
-      private const string PristineDirName = ".pristine";
+      // the leading dot keeps it out of the rco listing and the preview.
+      private const string PristineDirName = ".original";
 
       // a dump replaces the whole pristine folder while the preview may be reading it. windows
       // will not delete a file someone has open, so without taking turns the swap throws and
@@ -357,6 +358,16 @@ namespace RcoStudio
       }
 
       private static string GetPristineDir(string dumpDir) { return Path.Combine(dumpDir, PristineDirName); }
+
+      // a dump made before the folder was renamed keeps its edit-tracking and revert without a
+      // re-dump: move the old .pristine into place if the new .original isn't there yet
+      public static void MigrateOriginalFolder(string dumpDir)
+      {
+         string old = Path.Combine(dumpDir, ".pristine");
+         string current = GetPristineDir(dumpDir);
+         try { if (Directory.Exists(old) && !Directory.Exists(current)) Directory.Move(old, current); }
+         catch { }
+      }
 
       // the dump as rcomage and our converters produced it, before any edit.
       // built alongside and swapped in at the end: filling the real folder in place would leave

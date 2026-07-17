@@ -191,5 +191,7 @@ Packages Ren'Py visual-novel games into a runnable PS3 build. See
 Dark-theme WPF GUI for editing PS3 XMB resource files (RCOs). Drives bundled rcomage +
 GimConv to dump RCOs to editable png/wav/xml, add or edit resources, and recompile with
 byte-exact verify. Non-destructive (pristine copies + revert), with sets and shareable
-`.rcopatch` patches for whole-theme workflows. See `tools/rco-studio/README.md`.
+`.rcopatch` patches for whole-theme workflows, one-click migration of pre-4.89 mods onto
+current firmware, and FTP deploy straight to the console's dev_blind. See
+`tools/rco-studio/README.md`.
 

@@ -86,11 +86,15 @@ namespace RcoStudio
       private void UpdateActionLabels()
       {
          bool busy = pendingWork > 0;
-         bool anyChecked = CheckedJobs().Count > 0;
+         List<RcoJob> checkedJobs = CheckedJobs();
+         bool anyChecked = checkedJobs.Count > 0;
+         bool anyCheckedCompiled = checkedJobs.Exists(job => job.Status == JobStatus.Compiled);
          bool anyJobs = jobs.Count > 0;
 
          compileButton.IsEnabled = anyChecked && !busy;
          clearButton.IsEnabled = anyChecked && !busy;
+         deployButton.IsEnabled = anyCheckedCompiled && !busy;   // only compiled rows can be deployed
+         migrateButton.IsEnabled = anyChecked && !busy;          // edits dump xml -- keep it off the queue's toes
 
          // saving a set or exporting a patch both read the list, so they need one. applying a
          // patch does not: on an empty list it still names the rcos the patch wants.
@@ -271,6 +275,83 @@ namespace RcoStudio
          Log(queued > 0 ? "compile queued for " + queued + " rco(s)" : "nothing to compile");
       }
 
+      // section: deploying compiled rcos to the ps3's dev_blind over ftp
+      private void OnDeploy(object sender, RoutedEventArgs e)
+      {
+         var targets = new List<RcoJob>();
+         foreach (RcoJob job in CheckedJobs())
+            if (job.Status == JobStatus.Compiled) targets.Add(job);
+         if (targets.Count == 0) { MessageBox.Show(this, "Check some compiled RCOs first — only compiled RCOs can be deployed.", "Deploy", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+
+         string ip = AppSettings.Ps3Ip;
+         if (ip == "") { MessageBox.Show(this, "Set your PS3's IP address (ps3ip) in settings.txt first.", "Deploy", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+
+         string error;
+         if (!Ps3Deploy.CanReach(ip, out error)) { MessageBox.Show(this, "Couldn't reach the PS3 at " + ip + " over FTP.\n\n" + error + "\n\nIs the console on, on your network, and running an FTP server?", "Deploy", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+
+         var choice = MessageBox.Show(this,
+            "Upload " + targets.Count + " compiled RCO(s) to dev_blind on " + ip + "?\n\n" +
+            "This replaces the live XMB resources. A bad RCO can stop the XMB from loading — there is no undo. Continue?",
+            "Deploy", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+         if (choice != MessageBoxResult.OK) return;
+
+         QueueWork(() => DeployJobs(targets, ip));
+      }
+
+      private void DeployJobs(List<RcoJob> targets, string ip)
+      {
+         int deployed = 0;
+         foreach (RcoJob job in targets)
+         {
+            string localRco = Path.Combine(ToolRunner.CompiledDir, job.Name + ".rco");
+            if (!File.Exists(localRco)) { Log("[warn] " + job.Name + ": no compiled rco to deploy"); continue; }
+            try { Ps3Deploy.Upload(ip, localRco, job.Name); Log("deployed " + job.Name + " to dev_blind"); deployed++; }
+            catch (Exception exception) { Log("[error] " + job.Name + ": deploy failed: " + exception.Message); }
+         }
+         int done = deployed;   // captured by the marshalled dialog below
+         Dispatcher.BeginInvoke(new Action(() => MessageBox.Show(this,
+            "Deployed " + done + " RCO(s). Restart the XMB to take effect.", "Deploy", MessageBoxButton.OK, MessageBoxImage.Information)));
+      }
+
+      // section: migrating layout overrides onto current firmware (bundled 4.93 data)
+      private void OnMigrateOverrides(object sender, RoutedEventArgs e)
+      {
+         List<RcoJob> targets = CheckedJobs();
+         if (targets.Count == 0) { MessageBox.Show(this, "Check the mod RCOs you want to migrate first.", "Migrate Overrides", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+         if (!OverrideMigration.DataAvailable) { MessageBox.Show(this, "The bundled firmware override data is missing from the tools folder.", "Migrate Overrides", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+
+         var choice = MessageBox.Show(this,
+            "Re-base the layout overrides of " + targets.Count + " checked RCO(s) onto current firmware (4.93)?\n\n" +
+            "Only the six override fields are changed; your images, positions and colours are left as they are, and it is revertable.",
+            "Migrate Overrides", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+         if (choice != MessageBoxResult.OK) return;
+
+         int updatedRcos = 0, updatedObjects = 0, unmatchedRcos = 0;
+         foreach (RcoJob job in targets)
+         {
+            if (!Directory.Exists(job.DumpDir)) continue;
+            try
+            {
+               OverrideMigration.Result result = OverrideMigration.Migrate(job, Log);
+               if (!result.RcoInData) { Log("[warn] " + job.Name + ": not in the firmware data (a custom RCO?) — skipped"); unmatchedRcos++; continue; }
+
+               if (result.ObjectsUpdated > 0) updatedRcos++;
+               updatedObjects += result.ObjectsUpdated;
+               Log(job.Name + ": " + result.ObjectsUpdated + " updated, " + result.ObjectsAlreadyCurrent + " already current" +
+                   (result.Unmatched.Count > 0 ? ", " + result.Unmatched.Count + " not in firmware: " + string.Join(", ", result.Unmatched.ToArray()) : ""));
+            }
+            catch (Exception exception) { Log("[error] " + job.Name + ": migrate failed: " + exception.Message); }
+         }
+
+         RefreshPreview();
+         RefreshEditedFlags();
+         MessageBox.Show(this,
+            "Updated " + updatedObjects + " object(s) across " + updatedRcos + " RCO(s)." +
+            (unmatchedRcos > 0 ? "\n\n" + unmatchedRcos + " checked RCO(s) weren't in the firmware data (see the log)." : "") +
+            "\n\nCompile to build the migrated RCOs.",
+            "Migrate Overrides", MessageBoxButton.OK, MessageBoxImage.Information);
+      }
+
       // section: clearing
       private void OnClear(object sender, RoutedEventArgs e)
       {
@@ -373,6 +454,8 @@ namespace RcoStudio
          {
             string name = Path.GetFileName(dumpDir);
             if (name.StartsWith(".") || !File.Exists(Path.Combine(dumpDir, name + ".xml"))) continue;
+
+            ToolRunner.MigrateOriginalFolder(dumpDir);   // dumps from before the .pristine -> .original rename
 
             RcoJob job = NewJob(name);
             job.RcoPath = ToolRunner.ReadSavedSourcePath(dumpDir);

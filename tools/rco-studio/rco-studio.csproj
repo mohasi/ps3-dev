@@ -62,6 +62,8 @@
       <DependentUpon>AddImageWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="AppSettings.cs" />
+    <Compile Include="OverrideMigration.cs" />
+    <Compile Include="Ps3Deploy.cs" />
     <Compile Include="PatchFile.cs" />
     <Compile Include="PreviewItem.cs" />
     <Compile Include="RcoJob.cs" />

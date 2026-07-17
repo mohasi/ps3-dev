@@ -72,6 +72,29 @@ whole VAG blocks automatically; your original WAV is never modified.
 The search box matches resource names and text content across *every* dumped RCO. Dump the
 whole firmware resource folder once and "which RCO has X?" becomes instant.
 
+## Migrate < 4.89
+
+Firmware 4.89 shifted the "override" pointers that objects use to read the XMB layout tables,
+which broke the positioning of every mod made before it. **Migrate < 4.89** re-bases the
+checked mods onto current firmware: for each object it copies the six override fields from the
+matching object in bundled 4.93 data, matched by RCO and object name. Everything else — your
+images, positions, colours — is left exactly as you made it, only the overrides move.
+
+It's bundled, so there's no folder to point at; objects Sony removed between firmwares are
+reported in the log, the change is revertable, and re-running it does nothing (idempotent).
+Then Compile as normal. It targets current firmware (4.93); a mod already on current firmware
+is untouched.
+
+## Deploy to the PS3
+
+**Deploy** uploads the checked *compiled* RCOs straight to the console's `dev_blind` over FTP,
+so you can try a theme without swapping files by hand. Set your console's IP as `ps3ip` in
+`settings.txt`, and run an FTP server on it (e.g. simple-ftp). Deploy lights up once a checked
+row is compiled; it checks the console is reachable, warns before writing (a bad RCO can stop
+the XMB loading — there is no undo), uploads to `/dev_blind/vsh/resource/`, and tells you to
+restart the XMB. No backups are kept: if the XMB won't load, the FTP server won't either, so a
+backup couldn't be pushed back anyway.
+
 ## Sets and patches
 
 - **Save Set… / Load Set…** — a `.rcoset` is just the list of source RCO paths a theme spans,
@@ -92,6 +115,7 @@ A tool that isn't installed simply greys out its menu entry, so the defaults are
 - `imageEditor` — editor for right-click **Edit** on an image (default: Paint.NET).
 - `textEditor` — editor for right-click **Edit** on an XML/TXT file (default: Notepad++).
 - `diffTool` — compare tool for right-click **Diff** (default: WinMerge).
+- `ps3ip` — the console's IP address, used by **Deploy** (empty by default).
 
 ## GIM format fidelity
 
@@ -108,6 +132,9 @@ a real PS3, and a full dump→edit→compile→re-dump round trip compares byte-
   warns first, because edits belong to the file they were made against and can't carry over.
 - Some OSK images (index8, paletted) can't be decoded by GimConv and show as raw tiles; they
   still round-trip untouched.
+- All the firmware's text languages are named, including the four the stock rcomage table
+  didn't cover (Polish, Portuguese-BR, English-UK, Turkish), added to the bundled `miscmap.ini`.
+- Each dump keeps its pristine copy in a hidden `.original` folder inside the dump; leave it be.
 
 ## Build
 

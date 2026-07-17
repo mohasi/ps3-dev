@@ -64,10 +64,15 @@ namespace CellStreamServer
             using (Process probe = Process.Start(startInfo))
             {
                ChildProcessJob.Assign(probe);      // reaped with the server if it dies mid-probe
-               probe.StandardError.ReadToEnd();    // a probe that fills its pipe would otherwise hang
+               string errorText = probe.StandardError.ReadToEnd();   // a probe that fills its pipe would otherwise hang
                probe.StandardOutput.ReadToEnd();
                if (!probe.WaitForExit(ProbeTimeoutMs)) { try { probe.Kill(); } catch { } return false; }
-               return probe.ExitCode == 0;
+               if (probe.ExitCode == 0) return true;
+
+               // hardware the PC lacks is expected to fail here - but so is a too-old driver, and that one a
+               // user needs told. log the reason (last real line of ffmpeg's output) so it isn't a silent no.
+               Server.Log("encoders: " + encoder.Name + " unavailable" + describeProbeFailure(errorText));
+               return false;
             }
          }
          catch (Exception exception)
@@ -75,6 +80,25 @@ namespace CellStreamServer
             Server.Log("encoders: could not test " + encoder.Name + ": " + exception.Message);
             return false;
          }
+      }
+
+      // ffmpeg's boilerplate trailer ("nothing was written", "conversion failed") hides the real cause,
+      // which comes first (driver too old, no device, codec not built in). return the first meaningful
+      // line as ": <reason>", skipping the generic trailer; empty if it said nothing useful.
+      private static readonly string[] GenericTrailers = { "Nothing was written", "Conversion failed", "Error opening output", "frame=", "[out#" };
+
+      private static string describeProbeFailure(string errorText)
+      {
+         if (string.IsNullOrEmpty(errorText)) return "";
+         foreach (string raw in errorText.Replace("\r", "").Split('\n'))
+         {
+            string line = raw.Trim();
+            if (line.Length == 0) continue;
+            bool generic = false;
+            foreach (string trailer in GenericTrailers) if (line.IndexOf(trailer, StringComparison.OrdinalIgnoreCase) >= 0) { generic = true; break; }
+            if (!generic) return ": " + line;
+         }
+         return "";
       }
 
       // the chosen encoder is remembered, so the next run starts on the one that worked

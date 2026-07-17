@@ -166,13 +166,17 @@ namespace CellStreamServer
                 " -color_range tv -colorspace bt709 -forced_idr 1 -f h264 -flush_packets 1 pipe:1";
       }
 
-      // NVIDIA: same idea, scaling on the CUDA side.
+      // NVIDIA: on a laptop with switchable graphics the desktop is driven by the Intel chip, so the d3d11
+      // capture device is Intel. Given only that device, ffmpeg tries to DERIVE nvenc's CUDA device from the
+      // Intel one and fails ("no encode device"). The fix is to hand nvenc its OWN cuda device (which only ever
+      // enumerates the NVIDIA GPU): ddagrab captures on d3d11 (dx), the frame is scaled on the CPU (same chain
+      // as the CPU encoder), and nvenc encodes on cuda (cu). -filter_hw_device dx keeps ddagrab on d3d11 while
+      // the cuda device stays free for the encoder. -pix_fmt yuv420p matches the known-good CPU path's colours.
       private string BuildNvencArguments()
       {
-         return "-hide_banner -loglevel warning -init_hw_device d3d11va=dx -init_hw_device cuda=cu@dx -filter_hw_device dx" +
-                " -filter_complex ddagrab=framerate=" + fps + ",hwmap=derive_device=cuda,scale_cuda=w=" + outputWidth +
-                ":h=" + outputHeight + ":format=nv12:range=tv" +
-                " -c:v h264_nvenc -preset p1 -tune ull -rc vbr" + GetRateArguments() +
+         return "-hide_banner -loglevel warning -init_hw_device d3d11va=dx -init_hw_device cuda=cu -filter_hw_device dx" +
+                GetCpuCaptureChain() +
+                " -c:v h264_nvenc -preset p1 -tune ull -rc vbr -pix_fmt yuv420p" + GetRateArguments() +
                 " -intra-refresh 1 -single-slice-intra-refresh 1" +
                 " -color_range tv -colorspace bt709 -forced-idr 1 -f h264 -flush_packets 1 pipe:1";
       }

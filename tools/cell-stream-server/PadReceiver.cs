@@ -26,7 +26,8 @@ namespace CellStreamServer
       private readonly DesktopInput desktopInput = new DesktopInput();
       private readonly VirtualGamepad gamepad = new VirtualGamepad();
       private readonly Stopwatch reportTimer = Stopwatch.StartNew();
-      private long packetsReceived, packetsLost, tripTotalUs;
+      private long packetsReceived, packetsLost;
+      private long intervalTripUs, intervalPackets;   // trip time is averaged over the last report window, not all time
       private long lastPacketId = -1;
       private int lastButtons;
       private bool gamepadMode, gamepadUnavailable;
@@ -71,7 +72,8 @@ namespace CellStreamServer
          if (lastPacketId >= 0 && packetId > lastPacketId + 1) packetsLost += packetId - lastPacketId - 1;
          lastPacketId = packetId;
          packetsReceived++;
-         tripTotalUs += Math.Max(0, StreamSender.NowUs - sentUs);
+         intervalTripUs += Math.Max(0, StreamSender.NowUs - sentUs);
+         intervalPackets++;
 
          if (gamepadMode) gamepad.Send(buttons, leftX, leftY, rightX, rightY);
          else desktopInput.Apply(buttons, leftX, leftY, rightX, rightY);
@@ -90,7 +92,9 @@ namespace CellStreamServer
          {
             reportTimer.Restart();
             string state = "sticks L(" + leftX + "," + leftY + ") R(" + rightX + "," + rightY + ")";
-            long tripMs = packetsReceived > 0 ? tripTotalUs / packetsReceived / 1000 : 0;
+            long tripMs = intervalPackets > 0 ? intervalTripUs / intervalPackets / 1000 : 0;
+            intervalTripUs = 0;
+            intervalPackets = 0;
             if (state != lastReportedState || packetsLost > 0)
             {
                lastReportedState = state;

@@ -29,6 +29,17 @@ trimmed build (~8MB — only the encoders and filters this needs, not the full ~
 falls back to the one on `PATH` if it is not next to the exe. The ViGEmBus driver is installed on demand,
 the first time a PS3 asks for gamepad mode.
 
+### Rebuilding the bundled ffmpeg
+
+`build-ffmpeg.sh` (next to the source) cross-builds `ffmpeg.exe` from scratch in WSL — run it, then copy
+its output over `ffmpeg.exe`. It has the full step-by-step in its header comment. The one thing that isn't
+obvious and cost a real user their GPU: **nvenc and amf refuse to run if the bundled ffmpeg is newer than
+the user's GPU driver.** ffmpeg's NVIDIA header (`nv-codec-headers`) sets the minimum driver a user must
+have; the newest header demands a driver only weeks old, so most NVIDIA cards — even recently updated
+ones — silently fall back to CPU. The script therefore pins that header to the *oldest* tag ffmpeg still
+accepts (`n12.1.14.0`, min NVIDIA driver 531.61 from early 2023) and does the same for AMD's AMF. Bump
+ffmpeg only with that trade-off in mind.
+
 ## How it works
 
 - **Video** — ffmpeg `ddagrab` (Windows' GPU screen capture) → GPU scaler → H.264, tuned for latency:

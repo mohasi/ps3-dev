@@ -147,6 +147,32 @@ Source cheats are kept human-editable in the repo's `source/` folder; a host-sid
 script merges the votes and produces the compiled per-game files the console
 downloads.
 
+## Credits
+
+**The cheats are not this project's work.** They come from the **Artemis PS3 cheat
+database**, and each code was found and written by an individual code creator — the
+reverse engineering, the memory hunting and the testing are all theirs. **334
+creators** are credited across 17,037 cheats.
+
+Every cheat carries an `author:` line naming its original creator, restored from the
+Artemis records and kept all the way through to the file your console downloads.
+
+Thanks to:
+
+- **Artemis PS3** by [bucanero](https://github.com/bucanero/ArtemisPS3) — the
+  maintained fork the database was imported from.
+- **ArtemisPS3** by [Dnawrkshp](https://github.com/Dnawrkshp/ArtemisPS3) — the
+  original project.
+- The [Project Artemis initiative](http://www.gamehacking.org/artemis) and the
+  gamehacking.org community.
+- Every code creator listed in the `author:` lines.
+
+This project contributes the console-side plugin, the cleaned-up and restructured
+database, and the community scoring that tracks which cheats work on which game
+version. The codes themselves belong to their authors. Full credits and the list of
+top contributors are in the [game-cheats
+README](https://github.com/mohasi/game-cheats#credits).
+
 ## Submitting new cheats
 
 Cheats live in the companion repo: **https://github.com/mohasi/game-cheats**. To

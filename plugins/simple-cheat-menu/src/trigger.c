@@ -242,7 +242,7 @@ static void menuThread(uint64_t arg)
       // then let the rows return. votes originate from a menu button, so the menu is normally still open.
       int voteResult = consumeVoteResult();
       if (voteResult) {
-         if (menuOpen) { overlaySetUpdating(voteResult == 1 ? "Vote sent" : "Couldn't send vote"); voteDismissTicks = VOTE_DISMISS_TICKS; }
+         if (menuOpen) { overlaySetUpdating(voteResult == 1 ? "Vote submitted. Thank you" : "Couldn't send vote"); voteDismissTicks = VOTE_DISMISS_TICKS; }
          else overlaySetUpdating(0);
       }
       if (voteDismissTicks > 0 && --voteDismissTicks == 0) overlaySetUpdating(0);

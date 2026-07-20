@@ -1,0 +1,14 @@
+ps3-dev
+Copyright 2026 Mohammed Asif
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This repository also includes third-party components that are distributed under
+their own licenses, which continue to apply to those components:
+
+  - BearSSL (libs/simple-lib-https/bearssl) - MIT License,
+    see libs/simple-lib-https/bearssl/LICENSE.txt
+  - Ogg Vorbis headers (libs/simple-lib-av) - BSD License, by Xiph.Org
+
+The Cell SDK under sdk/ is Sony's own material and is not covered by this
+license.

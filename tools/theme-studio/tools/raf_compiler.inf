@@ -1,0 +1,23 @@
+# SCE CONFIDENTIAL
+# Copyright (C) 2009 Sony Computer Entertainment Inc.
+# All Rights Reserved.
+#
+
+# Geometry
+[BIN]raf_geom.exe --enable-scaled-skinning --inv-bind-mats-out [OUT].edge.invbind [IN].dae [OUT].edge
+
+# Skeleton
+[BIN]raf_anim.exe -skel [IN].dae [OUT].skel
+
+# Animation
+[BIN]raf_anim.exe -anim [IN].dae [SKEL].skel [OUT].anim
+
+# Texture(jpeg)
+cp [INFILE] [OUTFILE]
+
+# Texture(dds)
+[BIN]dds2gtf.exe [IN].dds -o [OUT].gtf
+
+# Script
+[BIN]raf_script.exe [IN].js ; mv [IN].jsx [OUT].jsx
+

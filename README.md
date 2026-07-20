@@ -34,6 +34,7 @@ ps3-dev/
 │   ├── nid-dump/               dumps firmware NIDs for symbol resolution
 │   ├── renpy-to-ps3/           packages Ren'Py visual novels to run on PS3
 │   ├── rco-studio/             GUI for editing PS3 XMB resource files (RCOs)
+│   ├── theme-studio/           GUI to author PS3 static + dynamic 3D themes (.p3t)
 │   └── scetool/                PRX signing tool + keys
 ├── out/                        build outputs (.sprx plugins, .pkg apps)
 └── README.md
@@ -194,4 +195,16 @@ byte-exact verify. Non-destructive (pristine copies + revert), with sets and sha
 `.rcopatch` patches for whole-theme workflows, one-click migration of pre-4.89 mods onto
 current firmware, and FTP deploy straight to the console's dev_blind. See
 `tools/rco-studio/README.md`.
+
+### theme-studio
+WPF editor for PS3 themes, including true **dynamic 3D themes** — models, motion and lights scripted
+in Sony's PSJS — which Sony's own theme creator never supported. Builds custom backgrounds, icons,
+cursors and menu sounds into a `.p3t`, with a live preview that plays the scene as you type,
+self-contained one-file projects, worked script examples, and FTP deploy. See
+`tools/theme-studio/README.md`.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Vendored third-party components
+(BearSSL, Ogg Vorbis) keep their own licenses.
 

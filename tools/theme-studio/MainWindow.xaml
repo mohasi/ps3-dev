@@ -1,0 +1,247 @@
+<Window x:Class="ThemeStudio.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Theme Studio" Height="780" Width="1050" Background="#1e1e1e" WindowStartupLocation="CenterScreen">
+
+  <!-- a wizard: numbered stages across the top, Save and the two arrows on the right of the same
+       row. layout follows dev/tools/UI-GUIDELINES.md -->
+  <Grid Margin="20">
+    <TabControl x:Name="tabs" SelectionChanged="onTabChanged">
+
+      <TabItem Tag="1" Header="Start">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <TextBlock Text="Start" Style="{StaticResource Heading}"/>
+            <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,16"
+                       Text="Begin a new theme, or carry on with one you already have. Work through the stages along the top; Save keeps your progress at any point."/>
+            <WrapPanel>
+              <Border Style="{StaticResource Card}" Width="{StaticResource CardWidth}">
+                <StackPanel>
+                  <TextBlock Text="Create new project" Style="{StaticResource Heading}"/>
+                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,16"
+                             Text="Starts an empty theme. You will be asked where to keep it when you first save."/>
+                  <Button Content="Create new project" Click="onNew" HorizontalAlignment="Left" Margin="0"/>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource Card}" Width="{StaticResource CardWidth}">
+                <StackPanel>
+                  <TextBlock Text="Open existing project" Style="{StaticResource Heading}"/>
+                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,16"
+                             Text="Opens a .themeproj you saved earlier. A finished .p3t cannot be opened -- building is one way."/>
+                  <Button Content="Open existing project" Click="onOpen" HorizontalAlignment="Left" Margin="0"/>
+                </StackPanel>
+              </Border>
+            </WrapPanel>
+            <TextBlock x:Name="projectLabel" Style="{StaticResource Hint}" Margin="0,8,0,0"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Tag="2" Header="Details">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <WrapPanel>
+            <Border Style="{StaticResource Card}" Width="{StaticResource CardWidth}">
+              <StackPanel>
+                <TextBlock Text="Theme details" Style="{StaticResource Heading}"/>
+                <TextBlock Text="Name" Style="{StaticResource Label}"/>
+                <TextBox x:Name="nameBox" Margin="{StaticResource GapAfterField}"/>
+                <TextBlock Text="Author" Style="{StaticResource Label}"/>
+                <TextBox x:Name="authorBox" Margin="{StaticResource GapAfterField}"/>
+                <TextBlock Text="Version" Style="{StaticResource Label}"/>
+                <TextBox x:Name="versionBox" Margin="{StaticResource GapAfterField}"/>
+                <TextBlock Text="Comment" Style="{StaticResource Label}"/>
+                <TextBox x:Name="commentBox"/>
+              </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Width="{StaticResource CardWidth}">
+              <StackPanel>
+                <TextBlock Text="Menu appearance" Style="{StaticResource Heading}"/>
+                <TextBlock Text="Colour" Style="{StaticResource Label}"/>
+                <ComboBox x:Name="colorBox" ItemTemplate="{StaticResource ColourChoiceRow}"/>
+                <TextBlock Style="{StaticResource Hint}" Margin="{StaticResource GapAfterField}"
+                           TextWrapping="Wrap"
+                           Text="Tints the side menu (the panel that opens on Triangle) and any default icons you did not replace. Once you set a background it no longer colours the main screen, so it is easy to miss."/>
+                <TextBlock Text="Font" Style="{StaticResource Label}"/>
+                <ComboBox x:Name="fontBox" SelectedIndex="0">
+                  <ComboBoxItem Content="Standard (Rodin)"/>
+                  <ComboBoxItem Content="Rounded (Maru Gothic in Japanese)"/>
+                  <ComboBoxItem Content="Rimouski (Pop in Japanese)"/>
+                </ComboBox>
+              </StackPanel>
+            </Border>
+          </WrapPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Tag="3" Header="Pictures">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel x:Name="picturePanel"/>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Tag="4" Header="Icons">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel x:Name="iconPanel"/>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Tag="5" Header="Pointers">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel x:Name="pointerPanel"/>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Tag="6" Header="Sounds">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel x:Name="soundPanel"/>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- one background stage, two kinds of background, one skeleton. everything that belongs to
+           the whole stage sits in the top row, so the two panels below start at the same line. -->
+      <TabItem Tag="7" Header="Backgrounds">
+        <DockPanel>
+          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16" LastChildFill="False">
+            <RadioButton DockPanel.Dock="Left" x:Name="picturesToggle" Style="{StaticResource Toggle}"
+                         Content="Static Images" GroupName="backgroundKind" Checked="onBackgroundKindChanged"/>
+            <RadioButton DockPanel.Dock="Left" x:Name="sceneToggle" Style="{StaticResource Toggle}"
+                         Content="3D Scene" GroupName="backgroundKind" Checked="onBackgroundKindChanged"/>
+
+            <ComboBox DockPanel.Dock="Right" x:Name="showTypeBox" Width="200"
+                      SelectionChanged="onShowTypeChanged">
+              <ComboBoxItem Content="At random each startup"/>
+              <ComboBoxItem Content="By calendar date"/>
+              <ComboBoxItem Content="By time of day"/>
+            </ComboBox>
+            <TextBlock DockPanel.Dock="Right" x:Name="showTypeLabel" Text="Display Mode"
+                       Margin="0,0,8,0"/>
+
+          </DockPanel>
+
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="360"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Grid.Column="0" Margin="0,0,16,0">
+              <!-- one row of equal buttons, so the edges line up whichever kind is showing. Edit is
+                   only for 3D objects (a picture has nothing to edit), so it appears in scene mode
+                   and the row goes from two columns to three. -->
+              <UniformGrid x:Name="primaryButtons" DockPanel.Dock="Bottom" Rows="1" Columns="2" Margin="0,8,0,0">
+                <Button Content="Add" Click="onAddPrimary" Margin="0,0,8,0"/>
+                <Button x:Name="editButton" Content="Edit" Click="onEditSelected" Margin="0,0,8,0"
+                        Visibility="Collapsed"/>
+                <Button Content="Remove" Click="onRemoveSelected" Margin="0"/>
+              </UniformGrid>
+              <TextBlock DockPanel.Dock="Bottom" x:Name="coverageLabel" Style="{StaticResource Hint}"
+                         Margin="0,8,0,0" Visibility="Collapsed"/>
+              <Grid>
+                <ListBox x:Name="backgroundList" SelectionChanged="onBackgroundSelected"/>
+                <ListBox x:Name="actorList" Visibility="Collapsed" Style="{StaticResource SceneList}"
+                         MouseDoubleClick="onEditSelected"/>
+              </Grid>
+            </DockPanel>
+
+            <Grid Grid.Column="1">
+              <Border x:Name="picturesDetail" Background="{StaticResource BgCard}"
+                      BorderBrush="{StaticResource BrBorder}" BorderThickness="1">
+                <DockPanel Margin="16">
+                  <!-- only shown once the pictures are set to take turns by date or by hour;
+                       at random each startup there is nothing per picture to say -->
+                  <DockPanel x:Name="timingRow" DockPanel.Dock="Bottom" Margin="0,16,0,0"
+                             Visibility="Collapsed">
+                    <Button DockPanel.Dock="Right" x:Name="timingButton" Click="onSetTiming" Margin="0"/>
+                    <TextBlock x:Name="timingHint" Style="{StaticResource Hint}" Margin="0,0,16,0"/>
+                  </DockPanel>
+                  <Grid>
+                    <TextBlock x:Name="backgroundNote" Style="{StaticResource Hint}"
+                               VerticalAlignment="Center" HorizontalAlignment="Center"
+                               Text="Add a picture to see it here."/>
+                    <Image x:Name="backgroundPreview" Stretch="Uniform"/>
+                  </Grid>
+                </DockPanel>
+              </Border>
+
+              <!-- the script and whatever the compiler last said about it, kept together so the
+                   answer never appears over the pictures, and never has to go to the log -->
+              <DockPanel x:Name="sceneDetail" Visibility="Collapsed">
+                <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                  <Button DockPanel.Dock="Right" Content="Validate" Click="onCheckScript" Margin="0"/>
+                  <Button DockPanel.Dock="Right" x:Name="exampleButton" Content="Insert example"
+                          Style="{StaticResource Dropdown}" Click="onShowExamples"/>
+                  <TextBlock x:Name="scriptStatus" Style="{StaticResource Hint}" Margin="0,0,16,0"/>
+                </DockPanel>
+                <TextBox x:Name="scriptBox" AcceptsReturn="True" AcceptsTab="True"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                         FontFamily="Consolas" Background="#1a1a1a"
+                         TextChanged="onScriptChanged" PreviewKeyDown="onScriptKeyDown"/>
+              </DockPanel>
+            </Grid>
+          </Grid>
+        </DockPanel>
+      </TabItem>
+
+      <TabItem x:Name="previewTab" Tag="8" Header="Preview">
+        <DockPanel>
+          <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <!-- the dots stand for lights and are the editor's own, not part of the theme, so
+                 they can be switched off to see the background exactly as the console draws it -->
+            <CheckBox DockPanel.Dock="Right" x:Name="markersToggle" Content="Show lights"
+                      IsChecked="False" Margin="16,0,0,0" Visibility="Collapsed"
+                      Checked="onMarkersToggled" Unchecked="onMarkersToggled"/>
+            <TextBlock DockPanel.Dock="Right" x:Name="cameraReadout" Style="{StaticResource Hint}"/>
+            <TextBlock Style="{StaticResource Hint}"
+                       Text="Left and right arrow keys move along the menu."/>
+          </DockPanel>
+          <Border BorderBrush="{StaticResource BrBorder}"
+                BorderThickness="1" Focusable="True"
+                x:Name="previewFrame" PreviewKeyDown="onPreviewKeyDown" MouseDown="onPreviewClicked">
+          <Viewbox Stretch="Uniform">
+            <Canvas x:Name="previewCanvas" Width="1920" Height="1080" ClipToBounds="True"/>
+          </Viewbox>
+          </Border>
+        </DockPanel>
+      </TabItem>
+
+      <TabItem Tag="9" Header="Finish">
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="Finish" Style="{StaticResource Heading}"/>
+            <WrapPanel Margin="0,0,0,16">
+              <Border Style="{StaticResource Card}" Width="{StaticResource CardWidth}">
+                <StackPanel>
+                  <TextBlock Text="Build" Style="{StaticResource Heading}"/>
+                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,16"
+                             Text="Turns everything you have set up into a finished .p3t theme file on this computer."/>
+                  <Button x:Name="buildButton" Content="Build" Click="onBuild" HorizontalAlignment="Left" Margin="0"/>
+                </StackPanel>
+              </Border>
+              <Border Style="{StaticResource Card}" Width="{StaticResource CardWidth}">
+                <StackPanel>
+                  <TextBlock Text="Deploy" Style="{StaticResource Heading}"/>
+                  <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,16"
+                             Text="Builds, then sends the theme straight to your PS3 over the network. The console needs to be on, with an FTP server running."/>
+                  <TextBlock Text="PS3 address on your network" Style="{StaticResource Label}"/>
+                  <TextBox x:Name="ps3AddressBox" LostKeyboardFocus="onPs3AddressChanged"
+                           Margin="{StaticResource GapAfterField}"/>
+                  <Button x:Name="deployButton" Content="Deploy" Click="onDeploy" HorizontalAlignment="Left" Margin="0"/>
+                </StackPanel>
+              </Border>
+            </WrapPanel>
+            <TextBlock Text="Output" Style="{StaticResource Heading}"/>
+          </StackPanel>
+          <TextBox x:Name="logBox" IsReadOnly="True" AcceptsReturn="True"
+                   VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11"
+                   Background="#1a1a1a"/>
+        </DockPanel>
+      </TabItem>
+    </TabControl>
+
+    <!-- sits in the stage strip's row, at the far end of it -->
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+      <Button Content="Save" Click="onSave" Margin="0"/>
+    </StackPanel>
+  </Grid>
+</Window>

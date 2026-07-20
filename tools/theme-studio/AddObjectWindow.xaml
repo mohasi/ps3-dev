@@ -1,0 +1,38 @@
+<Window x:Class="ThemeStudio.AddObjectWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add object" Width="580" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" Background="#1e1e1e" ShowInTaskbar="False">
+  <StackPanel Margin="{StaticResource PadPage}">
+    <TextBlock x:Name="headingText" Text="Add an object to the scene" Style="{StaticResource Heading}"/>
+    <TextBlock x:Name="hintText" Style="{StaticResource Hint}" Margin="0,0,0,16"
+               Text="Choose the model, its texture and its lighting. You can change any of them later with Edit."/>
+
+    <TextBlock Text="Name" Style="{StaticResource Label}"/>
+    <TextBox x:Name="nameBox" TextChanged="onNameChanged" Margin="{StaticResource GapAfterField}"/>
+
+    <TextBlock Text="Model" Style="{StaticResource Label}"/>
+    <DockPanel Margin="{StaticResource GapAfterField}">
+      <Button DockPanel.Dock="Right" Content="Browse" Click="onPickModel" Margin="8,0,0,0" Width="90"/>
+      <TextBox x:Name="modelBox" IsReadOnly="True"/>
+    </DockPanel>
+
+    <TextBlock Text="Texture (optional)" Style="{StaticResource Label}"/>
+    <DockPanel Margin="{StaticResource GapAfterField}">
+      <Button DockPanel.Dock="Right" Content="Browse" Click="onPickTexture" Margin="8,0,0,0" Width="90"/>
+      <Button DockPanel.Dock="Right" Content="Clear" Click="onClearTexture" Margin="8,0,0,0" Width="70"/>
+      <TextBox x:Name="textureBox" IsReadOnly="True"/>
+    </DockPanel>
+
+    <TextBlock Text="Lighting" Style="{StaticResource Label}"/>
+    <ComboBox x:Name="effectBox" Margin="{StaticResource GapAfterField}"/>
+
+    <TextBlock x:Name="modelInfo" Style="{StaticResource Hint}" Margin="0,0,0,16"
+               Text="Choose a model to begin."/>
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button Content="Cancel" Click="onCancel" IsCancel="True"/>
+      <Button x:Name="addButton" Content="Add" Click="onAccept" Margin="0" IsDefault="True" IsEnabled="False"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

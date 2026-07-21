@@ -21,6 +21,7 @@ namespace RcoStudio
       private readonly ObservableCollection<RcoJob> jobs = new ObservableCollection<RcoJob>();
       private readonly BlockingCollection<Action> workQueue = new BlockingCollection<Action>();
       private readonly ObservableCollection<PreviewItem> previewItems = new ObservableCollection<PreviewItem>();
+      private readonly ObservableCollection<PropertyRow> propertyRows = new ObservableCollection<PropertyRow>();
       private readonly DispatcherTimer searchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
       private int previewVersion;   // bumped whenever the preview should restart; stale loads check it
 
@@ -31,6 +32,8 @@ namespace RcoStudio
          jobList.ItemsSource = jobs;
          jobs.CollectionChanged += OnJobsChanged;
          previewList.ItemsSource = previewItems;
+         propertyList.ItemsSource = propertyRows;
+         previewList.SelectionChanged += (sender, e) => RefreshProperties();
          searchTimer.Tick += (sender, e) => { searchTimer.Stop(); RefreshPreview(); };
 
          var worker = new Thread(WorkLoop) { IsBackground = true };
@@ -858,6 +861,154 @@ namespace RcoStudio
             RefreshEditedFlags();
          }
          catch (Exception exception) { Log("[warn] revert failed: " + exception.Message); }
+      }
+
+      // section: the properties panel beside the preview
+
+      private void RefreshProperties()
+      {
+         propertyRows.Clear();
+         var item = previewList.SelectedItem as PreviewItem;
+         propertiesHint.Visibility = item == null ? Visibility.Visible : Visibility.Collapsed;
+         if (item == null) return;
+
+         // the dump can be cleared or re-dumped while a tile is selected
+         try { foreach (PropertyRow row in DescribeResource(item)) propertyRows.Add(row); }
+         catch (IOException) { }
+         catch (UnauthorizedAccessException) { }
+      }
+
+      private static List<PropertyRow> DescribeResource(PreviewItem item)
+      {
+         var rows = new List<PropertyRow> { new PropertyRow("Name", Path.GetFileNameWithoutExtension(item.FilePath)) };
+
+         string extension = Path.GetExtension(item.FilePath).ToLowerInvariant();
+         string gimFile = extension == ".gim" ? item.FilePath : ToolRunner.GetGimFor(item.FilePath);
+         if (gimFile != "") AddImageRows(rows, item, gimFile);
+         else if (extension == ".wav") AddSoundRows(rows, item);
+         else AddDocumentRows(rows, item, extension);
+         return rows;
+      }
+
+      // an image's real format lives in the gim, not the png beside it: the png is a decoded
+      // working copy, and compile re-encodes it back into exactly the format shown here
+      private static void AddImageRows(List<PropertyRow> rows, PreviewItem item, string gimFile)
+      {
+         rows.Add(new PropertyRow("Type", "Image (GIM)"));
+         ToolRunner.GimInfo info = ToolRunner.ReadGimInfo(gimFile);
+         if (!info.Valid) { rows.Add(new PropertyRow("Format", "unrecognised header")); return; }
+
+         // size and format are the two that change what you do: a replacement png has to match
+         // the dimensions, and DXT means your edit is re-compressed rather than kept intact.
+         // depth and pixel order are not shown -- depth follows from the format, and every
+         // gim in the firmware uses the same pixel order.
+         rows.Add(new PropertyRow("Format", info.FormatName));
+         rows.Add(new PropertyRow("Size", info.Width + " × " + info.Height));
+         rows.Add(new PropertyRow("Re-encoding", info.IsDxt ? "lossy (DXT)" : "lossless"));
+         rows.Add(new PropertyRow("GIM size", FormatBytes(GetFileLength(gimFile))));
+
+         if (gimFile.Equals(item.FilePath, StringComparison.OrdinalIgnoreCase))
+            rows.Add(new PropertyRow("Editable", "no — GimConv cannot decode this one"));
+         else
+            rows.Add(new PropertyRow("PNG size", FormatBytes(GetFileLength(item.FilePath))));
+      }
+
+      private static void AddSoundRows(List<PropertyRow> rows, PreviewItem item)
+      {
+         rows.Add(new PropertyRow("Type", "Sound (VAG)"));
+         ToolRunner.WavFormat wav = ToolRunner.ReadWavFormat(item.FilePath);
+         if (wav.Channels > 0)
+         {
+            string channels = wav.Channels == 1 ? "1 (mono)" : wav.Channels == 2 ? "2 (stereo)" : wav.Channels.ToString();
+            rows.Add(new PropertyRow("Channels", channels));
+            rows.Add(new PropertyRow("Depth", wav.BitsPerSample + "-bit"));
+            if (wav.SampleRate > 0)
+            {
+               rows.Add(new PropertyRow("Sample rate", wav.SampleRate + " Hz"));
+               int bytesPerSecond = wav.SampleRate * wav.Channels * (wav.BitsPerSample / 8);
+               if (bytesPerSecond > 0)
+                  rows.Add(new PropertyRow("Length", ((double)wav.DataLength / bytesPerSecond).ToString("0.0") + " s"));
+            }
+         }
+         rows.Add(new PropertyRow("Re-encoding", "lossy (VAG)"));
+         rows.Add(new PropertyRow("WAV size", FormatBytes(GetFileLength(item.FilePath))));
+      }
+
+      private static void AddDocumentRows(List<PropertyRow> rows, PreviewItem item, string extension)
+      {
+         rows.Add(new PropertyRow("Type", extension == ".xml" ? "XML document" : "Text document"));
+         rows.Add(new PropertyRow("Size", FormatBytes(GetFileLength(item.FilePath))));
+      }
+
+      private static long GetFileLength(string file)
+      {
+         try { return File.Exists(file) ? new FileInfo(file).Length : 0; }
+         catch (IOException) { return 0; }
+      }
+
+      private static string FormatBytes(long bytes)
+      {
+         if (bytes >= 1024 * 1024) return (bytes / 1024.0 / 1024.0).ToString("0.0") + " MB";
+         if (bytes >= 1024) return (bytes / 1024.0).ToString("0.0") + " KB";
+         return bytes + " B";
+      }
+
+      // section: reverting a whole rco from the row's right-click menu
+
+      // right-click acts on the rows already selected, so an existing multi-selection survives.
+      // clicking outside it selects the row under the cursor first, like the preview tiles.
+      private void OnJobRightButtonDown(object sender, MouseButtonEventArgs e)
+      {
+         var element = e.OriginalSource as DependencyObject;
+         while (element != null && !(element is ListViewItem)) element = System.Windows.Media.VisualTreeHelper.GetParent(element);
+         var row = element as ListViewItem;
+         if (row != null && !row.IsSelected) { jobList.SelectedItems.Clear(); row.IsSelected = true; }
+      }
+
+      private List<RcoJob> GetSelectedEditedJobs()
+      {
+         var targets = new List<RcoJob>();
+         foreach (RcoJob job in jobList.SelectedItems)
+            if (!job.Removed && Directory.Exists(job.DumpDir) && job.HasEdits) targets.Add(job);
+         return targets;
+      }
+
+      private void OnJobMenuOpening(object sender, RoutedEventArgs e)
+      {
+         List<RcoJob> targets = GetSelectedEditedJobs();
+         revertAllMenuItem.IsEnabled = targets.Count > 0 && pendingWork == 0;
+         revertAllMenuItem.Header = targets.Count > 1 ? "Revert all changes in " + targets.Count + " RCOs" : "Revert all changes";
+      }
+
+      private void OnJobRevertAll(object sender, RoutedEventArgs e)
+      {
+         List<RcoJob> targets = GetSelectedEditedJobs();
+         if (targets.Count == 0) return;
+
+         // this throws away every edit in the dump, including resources added since, and there
+         // is no undo -- name what goes so the choice is an informed one
+         int editCount = 0;
+         int addedCount = 0;
+         foreach (RcoJob job in targets)
+         {
+            editCount += ToolRunner.FindEditedFiles(job.DumpDir).Count;
+            addedCount += ToolRunner.FindAddedResources(job).Count;
+         }
+         string what = targets.Count == 1 ? targets[0].Name : targets.Count + " RCOs";
+         string addedNote = addedCount > 0 ? "\n\nThat includes " + addedCount + " image(s)/sound(s) you added, which will be deleted." : "";
+         var choice = MessageBox.Show(this,
+            "Undo all " + editCount + " change(s) in " + what + ", restoring everything to how it was when dumped?" +
+            addedNote + "\n\nThis cannot be undone.",
+            "Revert all changes", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+         if (choice != MessageBoxResult.OK) return;
+
+         foreach (RcoJob job in targets)
+         {
+            try { ToolRunner.RevertAll(job, Log); }
+            catch (Exception exception) { Log("[warn] could not revert " + job.Name + ": " + exception.Message); }
+         }
+         RefreshPreview();
+         RefreshEditedFlags();
       }
 
       // section: the amber marker on a row. checked off the dump on a background thread, since

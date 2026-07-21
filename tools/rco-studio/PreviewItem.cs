@@ -14,4 +14,13 @@ namespace RcoStudio
       public bool IsEdited { get; set; }           // amber border + pencil badge on the tile
       public bool IsLossy { get; set; }            // DXT image / VAG sound: editing re-encodes lossily
    }
+
+   // one label/value line in the properties panel beside the preview
+   public class PropertyRow
+   {
+      public string Label { get; set; }
+      public string Value { get; set; }
+
+      public PropertyRow(string label, string value) { Label = label; Value = value; }
+   }
 }

@@ -127,7 +127,14 @@
                    SelectionMode="Extended"
                    SelectionChanged="OnJobSelectionChanged"
                    MouseDoubleClick="OnRowDoubleClick"
+                   PreviewMouseRightButtonDown="OnJobRightButtonDown"
                    GridViewColumnHeader.Click="OnColumnHeaderClick">
+              <ListView.ContextMenu>
+                <ContextMenu Opened="OnJobMenuOpening">
+                  <MenuItem x:Name="revertAllMenuItem" Header="Revert all changes" Click="OnJobRevertAll"
+                         ToolTip="undo every edit in this RCO at once, restoring it to how it was when dumped" />
+                </ContextMenu>
+              </ListView.ContextMenu>
               <ListView.View>
                 <GridView>
                   <GridViewColumn x:Name="checkColumn" Width="30">
@@ -177,7 +184,12 @@
             <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch" Background="{StaticResource BrBorder}" />
 
             <Grid Grid.Row="3">
-              <ListBox x:Name="previewList"
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+
+              <ListBox x:Name="previewList" Grid.Column="0"
                     Background="{StaticResource BgBase}"
                     BorderThickness="0"
                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -259,10 +271,44 @@
                   </DataTemplate>
                 </ListBox.ItemTemplate>
               </ListBox>
-              <TextBlock x:Name="previewHint"
+              <TextBlock x:Name="previewHint" Grid.Column="0"
                       Text="select a dumped rco to browse its files — double-click opens (sounds play), right-click to Edit or Revert"
                       HorizontalAlignment="Center" VerticalAlignment="Center"
                       Foreground="{StaticResource FgTextDim}" IsHitTestVisible="False" />
+
+              <!-- details of whichever tile is selected: for an image, the gim it re-encodes into -->
+              <Border Grid.Column="1" Width="228" Background="{StaticResource BgSurface}"
+                   BorderBrush="{StaticResource BrBorder}" BorderThickness="1,0,0,0">
+                <Grid Margin="10,8,10,8">
+                  <Grid.RowDefinitions>
+                     <RowDefinition Height="Auto" />
+                     <RowDefinition Height="*" />
+                  </Grid.RowDefinitions>
+                  <TextBlock Grid.Row="0" Text="Properties" FontWeight="Bold" Margin="0,0,0,6"
+                          Foreground="{StaticResource FgText}" />
+                  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                     <ItemsControl x:Name="propertyList">
+                       <ItemsControl.ItemTemplate>
+                          <DataTemplate>
+                            <Grid Margin="0,0,0,3">
+                              <Grid.ColumnDefinitions>
+                                 <ColumnDefinition Width="88" />
+                                 <ColumnDefinition Width="*" />
+                              </Grid.ColumnDefinitions>
+                              <TextBlock Grid.Column="0" Text="{Binding Label}" FontSize="11"
+                                      Foreground="{StaticResource FgTextDim}" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="11"
+                                      Foreground="{StaticResource FgText}" TextWrapping="Wrap" />
+                            </Grid>
+                          </DataTemplate>
+                       </ItemsControl.ItemTemplate>
+                     </ItemsControl>
+                  </ScrollViewer>
+                  <TextBlock x:Name="propertiesHint" Grid.Row="1" Text="select a file to see its details"
+                          FontSize="11" TextWrapping="Wrap" VerticalAlignment="Top"
+                          Foreground="{StaticResource FgTextDim}" IsHitTestVisible="False" />
+                </Grid>
+              </Border>
             </Grid>
          </Grid>
        </TabItem>

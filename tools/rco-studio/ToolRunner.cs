@@ -234,16 +234,17 @@ namespace RcoStudio
       // not a whole number of them ("premature end") rather than padding it itself
       private const int VagSamplesPerBlock = 28;
 
-      private struct WavFormat
+      public struct WavFormat
       {
          public int Channels;
+         public int SampleRate;
          public int BitsPerSample;
          public int DataOffset;     // first byte of sample data
          public int DataLength;     // bytes of sample data
       }
 
       // reads a wav's fmt/data chunks. Channels is 0 when this is not a wav we understand.
-      private static WavFormat ReadWavFormat(string wavFile)
+      public static WavFormat ReadWavFormat(string wavFile)
       {
          var wav = new WavFormat();
          byte[] data = File.ReadAllBytes(wavFile);
@@ -260,6 +261,7 @@ namespace RcoStudio
             if (chunkId == "fmt " && body + 16 <= data.Length)
             {
                wav.Channels = BitConverter.ToUInt16(data, body + 2);
+               wav.SampleRate = BitConverter.ToInt32(data, body + 4);
                wav.BitsPerSample = BitConverter.ToUInt16(data, body + 14);
             }
             else if (chunkId == "data")
@@ -331,10 +333,9 @@ namespace RcoStudio
          var counts = new SortedDictionary<string, int>();
          foreach (string gimFile in Directory.GetFiles(dumpDir, "*.gim"))
          {
-            int format, pixelOrder; bool bigEndian;
-            if (!ReadGimFormat(gimFile, out format, out pixelOrder, out bigEndian)) continue;
-            string name = Enum.IsDefined(typeof(GimFormat), format) ? ((GimFormat)format).ToString() : "format " + format;
-            counts[name] = counts.ContainsKey(name) ? counts[name] + 1 : 1;
+            GimInfo info = ReadGimInfo(gimFile);
+            if (!info.Valid) continue;
+            counts[info.FormatName] = counts.ContainsKey(info.FormatName) ? counts[info.FormatName] + 1 : 1;
          }
          var parts = new List<string>();
          foreach (KeyValuePair<string, int> entry in counts) parts.Add(entry.Key + " x" + entry.Value);
@@ -539,50 +540,81 @@ namespace RcoStudio
       // gim pixel formats, from the header's image block
       public enum GimFormat { Rgba5650 = 0, Rgba5551 = 1, Rgba4444 = 2, Rgba8888 = 3, Index4 = 4, Index8 = 5, Dxt1 = 8, Dxt3 = 9, Dxt5 = 10 }
 
-      // reads a gim's pixel format and storage order from its header image block.
-      // returns false when the header is unrecognised or holds no image block (format stays -1).
-      // the file is untrusted (a patch can carry any bytes), so the block walk is bounds-checked.
-      private static bool ReadGimFormat(string gimFile, out int format, out int pixelOrder, out bool bigEndian)
+      // what a dumped .gim says about itself. Valid is false when the header is unrecognised
+      // or holds no image block, and every other field is then meaningless.
+      public class GimInfo
       {
-         format = -1; pixelOrder = -1; bigEndian = true;
-         byte[] data = File.ReadAllBytes(gimFile);
-         if (data.Length > 0x60 && data[0] == '.' && data[1] == 'G') bigEndian = true;
-         else if (data.Length > 0x60 && data[0] == 'M' && data[1] == 'I') bigEndian = false;
-         else return false;
+         public bool Valid;
+         public int Format = -1;
+         public int PixelOrder = -1;
+         public bool BigEndian = true;
+         public int Width;
+         public int Height;
+
+         public string FormatName
+         {
+            get { return Enum.IsDefined(typeof(GimFormat), Format) ? ((GimFormat)Format).ToString() : "format " + Format; }
+         }
+
+         // DXT is block-compressed, so re-encoding an edited png loses a little quality
+         public bool IsDxt
+         {
+            get { return Format == (int)GimFormat.Dxt1 || Format == (int)GimFormat.Dxt3 || Format == (int)GimFormat.Dxt5; }
+         }
+      }
+
+      // reads a gim's format, storage order and dimensions from its header image block.
+      // the file is untrusted (a patch can carry any bytes), so the block walk is bounds-checked.
+      public static GimInfo ReadGimInfo(string gimFile)
+      {
+         var info = new GimInfo();
+         byte[] data;
+         try { data = File.ReadAllBytes(gimFile); }
+         catch (IOException) { return info; }
+
+         if (data.Length > 0x60 && data[0] == '.' && data[1] == 'G') info.BigEndian = true;
+         else if (data.Length > 0x60 && data[0] == 'M' && data[1] == 'I') info.BigEndian = false;
+         else return info;
 
          // walk blocks: 2/3 are containers (descend), 4 is the image block we want
          int offset = 0x10;
-         while (offset + 0x18 <= data.Length)
+         while (offset + 0x20 <= data.Length)
          {
-            int blockId = ReadU16(data, offset, bigEndian);
+            int blockId = ReadU16(data, offset, info.BigEndian);
             if (blockId == 2 || blockId == 3) { offset += 0x10; continue; }
             if (blockId == 4)
             {
-               format = ReadU16(data, offset + 0x14, bigEndian);
-               pixelOrder = ReadU16(data, offset + 0x16, bigEndian);
-               return true;
+               info.Format = ReadU16(data, offset + 0x14, info.BigEndian);
+               info.PixelOrder = ReadU16(data, offset + 0x16, info.BigEndian);
+               info.Width = ReadU16(data, offset + 0x18, info.BigEndian);
+               info.Height = ReadU16(data, offset + 0x1A, info.BigEndian);
+               info.Valid = true;
+               return info;
             }
             // a block size that doesn't advance offset inside the buffer would loop forever or
             // overflow offset negative and index out of bounds -- reject the file instead
-            int blockSize = ReadU32(data, offset + 4, bigEndian);
+            int blockSize = ReadU32(data, offset + 4, info.BigEndian);
             if (blockSize <= 0 || blockSize > data.Length - offset) break;
             offset += blockSize;
          }
-         return false;   // no image block found
+         return info;   // no image block found
+      }
+
+      // the gim a dumped png was decoded from ("" when there is none)
+      public static string GetGimFor(string pngFile)
+      {
+         if (!pngFile.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) return "";
+         string gimFile = Path.ChangeExtension(pngFile, ".gim");
+         return File.Exists(gimFile) ? gimFile : "";
       }
 
       // true when editing this resource re-encodes into a lossy console format:
       // DXT-compressed images or any sound (VAG is a lossy ADPCM codec)
       public static bool IsLossyFormat(string editableFile)
       {
-         string extension = Path.GetExtension(editableFile).ToLowerInvariant();
-         if (extension == ".wav") return true;
-         if (extension != ".png") return false;
-         string gimFile = Path.ChangeExtension(editableFile, ".gim");
-         if (!File.Exists(gimFile)) return false;
-         int format, pixelOrder; bool bigEndian;
-         if (!ReadGimFormat(gimFile, out format, out pixelOrder, out bigEndian)) return false;
-         return format == (int)GimFormat.Dxt1 || format == (int)GimFormat.Dxt3 || format == (int)GimFormat.Dxt5;
+         if (editableFile.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) return true;
+         string gimFile = GetGimFor(editableFile);
+         return gimFile != "" && ReadGimInfo(gimFile).IsDxt;
       }
 
       // undoes an edit by restoring the pristine copy taken at dump time. that is the dumped
@@ -601,6 +633,25 @@ namespace RcoStudio
 
          if (editableFile.Equals(Path.Combine(job.DumpDir, job.Name + ".xml"), StringComparison.OrdinalIgnoreCase))
             foreach (string added in FindAddedResources(job)) RemoveAddedResource(added, job, log);
+      }
+
+      // undoes every change in a dump at once, putting the rco back to how it was dumped.
+      // added resources go first: the restored xml has no entries for them, so leaving them
+      // behind would strand files no tree points at. returns how many changes were undone.
+      public static int RevertAll(RcoJob job, Action<string> log)
+      {
+         int reverted = 0;
+         foreach (string added in FindAddedResources(job)) { RemoveAddedResource(added, job, log); reverted++; }
+
+         foreach (string file in FindEditedFiles(job.DumpDir))
+         {
+            string pristineFile = GetPristineCopy(file);
+            if (pristineFile == "") continue;   // an added resource, already removed above
+            lock (pristineLock) File.Copy(pristineFile, file, true);
+            reverted++;
+         }
+         log("reverted " + reverted + " change(s) in " + job.Name + " to dumped state");
+         return reverted;
       }
 
       // the png/wav files in a dump that the user added -- no pristine copy means the dump
@@ -652,15 +703,15 @@ namespace RcoStudio
       // (-bppX) and storage order (-N = normal; GimConv's default is psp 'faster' order)
       private static string ReadGimConvFlags(string gimFile, Action<string> log)
       {
-         int format, pixelOrder; bool bigEndian;
-         if (!ReadGimFormat(gimFile, out format, out pixelOrder, out bigEndian))
+         GimInfo info = ReadGimInfo(gimFile);
+         if (!info.Valid)
          { log("[warn] " + Path.GetFileName(gimFile) + ": unrecognised gim header, using ps3 defaults"); return " -rcops3 -bpp32 -N"; }
 
-         string flags = GetGimConvFlags(format, pixelOrder, bigEndian);
+         string flags = GetGimConvFlags(info.Format, info.PixelOrder, info.BigEndian);
          if (flags == "")
          {
-            log("[warn] " + Path.GetFileName(gimFile) + ": format " + format + " not re-encodable, using full colour");
-            return (bigEndian ? " -rcops3" : "") + (pixelOrder == 0 ? " -N" : "") + " -bpp32";
+            log("[warn] " + Path.GetFileName(gimFile) + ": format " + info.Format + " not re-encodable, using full colour");
+            return (info.BigEndian ? " -rcops3" : "") + (info.PixelOrder == 0 ? " -N" : "") + " -bpp32";
          }
          return flags;
       }

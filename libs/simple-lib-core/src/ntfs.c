@@ -2095,25 +2095,27 @@ int mountNtfs(NtfsVolume *vol, int drive)
    if (vol->writable && checkLogFileClean(vol) == NTFS_LOG_DIRTY)   // W9a: honor a dirty journal
       vol->writable = 0;
 
-   // Cache $Bitmap's runlist so cluster (de)allocation reads/writes bitmap sectors directly via the
-   // runlist, instead of re-opening and re-reading $Bitmap's MFT record on every written block. Writes
-   // only; if it can't be cached (a pathologically fragmented bitmap) fall back to a read-only mount
-   // rather than carry a second bitmap-access path.
+   // Cache $Bitmap's runlist so the free-cluster scan and cluster (de)allocation reach bitmap sectors
+   // directly, instead of re-opening and re-reading $Bitmap's MFT record on every block. Cached on
+   // read-only mounts too: countNtfsFreeClusters below uses it, and gating this on `writable` meant
+   // any read-only volume paid the slow path. If it can't be cached (a pathologically fragmented
+   // bitmap) writes are refused and the scan falls back to the file engine.
    vol->bitmapRunCount = 0;
-   if (vol->writable) {
-      if (readMftRecord(vol, MFT_RECORD_BITMAP, mftRecord) == 0) {
-         NtfsRunEntry runs[NTFS_MFT_RUNS_MAX]; int runCount = 0; uint64_t realSize, validSize, allocSize;
-         if (gatherRuns(vol, mftRecord, MFT_RECORD_BITMAP, ATTR_DATA, 0, 0, runs, NTFS_MFT_RUNS_MAX, &runCount,
-                        &realSize, &validSize, &allocSize) == 0) {
-            for (int i = 0; i < runCount; i++) vol->bitmapRuns[i] = runs[i];
-            vol->bitmapRunCount = runCount;
-         }
+   vol->bitmapDataSize = 0;
+   if (readMftRecord(vol, MFT_RECORD_BITMAP, mftRecord) == 0) {
+      NtfsRunEntry runs[NTFS_MFT_RUNS_MAX]; int runCount = 0; uint64_t realSize, validSize, allocSize;
+      if (gatherRuns(vol, mftRecord, MFT_RECORD_BITMAP, ATTR_DATA, 0, 0, runs, NTFS_MFT_RUNS_MAX, &runCount,
+                     &realSize, &validSize, &allocSize) == 0) {
+         for (int i = 0; i < runCount; i++) vol->bitmapRuns[i] = runs[i];
+         vol->bitmapRunCount = runCount;
+         vol->bitmapDataSize = realSize;   // bounds the scan: never read past $Bitmap's own data
       }
-      if (vol->bitmapRunCount == 0) vol->writable = 0;   // can't cache $Bitmap -> refuse writes
    }
+   if (vol->bitmapRunCount == 0) vol->writable = 0;   // can't cache $Bitmap -> refuse writes
 
    if (countNtfsFreeClusters(vol, &vol->freeClusters) != 0)   // seed once; maintained on alloc/free thereafter
       vol->freeClusters = 0;
+
    return NTFS_MOUNT_OK;
 }
 
@@ -2615,9 +2617,24 @@ static int readBitmapBytes(NtfsVolume *vol, uint64_t pos, uint8_t *out, uint32_t
       if (lcn < 0) return -1;
       uint32_t inCluster = (uint32_t)(at % bytesPerCluster), offsetInSec = inCluster % sectorSize;
       uint64_t lba = vol->partitionOffset + (uint64_t)lcn * vol->sectorsPerCluster + (inCluster - offsetInSec) / sectorSize;
+      uint32_t remaining = count - copied;
+
+      // Whole-sector fast path: take as many contiguous sectors as the run and the request allow in a
+      // single read, straight into the caller's buffer. The free-cluster scan moves megabytes through
+      // here and on the PS3 every read is a USB round-trip (~1.2ms measured), so reads-per-byte is what
+      // decides mount time - one sector at a time cost 17s on a 120GB volume.
+      uint64_t runBytes = contiguous * bytesPerCluster - inCluster;
+      if (offsetInSec == 0 && remaining >= sectorSize && runBytes >= sectorSize && isDmaAligned(out + copied)) {
+         uint32_t take = remaining < runBytes ? remaining : (uint32_t)runBytes;
+         take -= take % sectorSize;
+         if (readSectors(vol->storageHandle, lba, take / sectorSize, out + copied) != 0) return -1;
+         copied += take;
+         continue;
+      }
+
       if (readSectors(vol->storageHandle, lba, 1, bitmapScratch) != 0) return -1;
       uint32_t take = sectorSize - offsetInSec;
-      if (take > count - copied) take = count - copied;
+      if (take > remaining) take = remaining;
       memCopy(out + copied, bitmapScratch + offsetInSec, (int)take);
       copied += take;
    }
@@ -5318,13 +5335,15 @@ int closeNtfs(NtfsFile *file)
    return rc;
 }
 
-// Counts the zero (free) bits in $Bitmap's $DATA, exactly clusterCount bits (bit 0 of byte 0 = cluster
-// 0, LSB first). Read in chunks via the file engine; padding bits past the count are ignored. This is
-// the full-volume scan: run once at mount to seed vol->freeClusters, then maintained incrementally by
-// allocateClusters / setClusterBits. Returns 0 with *out set, or -1.
-static int countNtfsFreeClusters(NtfsVolume *vol, uint64_t *out)
+// Free (zero) bits per nibble value, so the scan costs one lookup per nibble instead of eight
+// shift-and-test steps over hundreds of millions of clusters.
+static const uint8_t zeroBitsPerNibble[16] = { 4, 3, 3, 2, 3, 2, 2, 1, 3, 2, 2, 1, 2, 1, 1, 0 };
+
+// Walks $Bitmap through the file engine. Correct but costs two device reads per 512 bytes (readNtfs
+// re-reads $Bitmap's MFT record every call), so it is only the fallback for a $Bitmap too fragmented
+// to cache a runlist for - a volume that is refused writes anyway.
+static int countFreeClustersViaFileEngine(NtfsVolume *vol, uint64_t clusterCount, uint64_t *out)
 {
-   uint64_t clusterCount = vol->totalSectors / vol->sectorsPerCluster;
    NtfsFile bitmap;
    if (openFileByRef(&bitmap, vol, MFT_RECORD_BITMAP) != 0) return -1;
 
@@ -5341,6 +5360,47 @@ static int countNtfsFreeClusters(NtfsVolume *vol, uint64_t *out)
       }
    }
    if (got < 0) return -1;
+   *out = freeClusters;
+   return 0;
+}
+
+// Counts the zero (free) bits in $Bitmap's $DATA, exactly clusterCount bits (bit 0 of byte 0 = cluster
+// 0, LSB first). Run once at mount to seed vol->freeClusters, then maintained incrementally by
+// allocateClusters / setClusterBits. Returns 0 with *out set, or -1.
+//
+// Reads through the cached $Bitmap runlist in fileBounce-sized blocks. Mount blocks on this, and the
+// cost grows with the volume, so reads-per-byte is what decides how long a large drive takes to appear.
+static int countNtfsFreeClusters(NtfsVolume *vol, uint64_t *out)
+{
+   uint64_t clusterCount = vol->totalSectors / vol->sectorsPerCluster;
+   if (vol->bitmapRunCount == 0) return countFreeClustersViaFileEngine(vol, clusterCount, out);
+
+   uint64_t wholeBytes = clusterCount / 8;
+   uint32_t tailBits   = (uint32_t)(clusterCount % 8);
+   if (vol->bitmapDataSize && wholeBytes > vol->bitmapDataSize) {   // $Bitmap shorter than the volume it
+      wholeBytes = vol->bitmapDataSize;                             // describes: count what exists, no more
+      tailBits   = 0;
+   }
+
+   // whole bytes, in the largest blocks the bounce buffer allows
+   uint64_t freeClusters = 0;
+   for (uint64_t at = 0; at < wholeBytes; ) {
+      uint32_t want = NTFS_READ_BOUNCE;
+      if (wholeBytes - at < want) want = (uint32_t)(wholeBytes - at);
+      if (readBitmapBytes(vol, at, fileBounce, want) != 0) return -1;
+      for (uint32_t i = 0; i < want; i++)
+         freeClusters += zeroBitsPerNibble[fileBounce[i] & 0xF] + zeroBitsPerNibble[fileBounce[i] >> 4];
+      at += want;
+   }
+
+   // trailing partial byte: bits past clusterCount are padding and must not be counted
+   if (tailBits) {
+      uint8_t last;
+      if (readBitmapBytes(vol, wholeBytes, &last, 1) != 0) return -1;
+      for (uint32_t bit = 0; bit < tailBits; bit++)
+         if (!((last >> bit) & 1)) freeClusters++;
+   }
+
    *out = freeClusters;
    return 0;
 }

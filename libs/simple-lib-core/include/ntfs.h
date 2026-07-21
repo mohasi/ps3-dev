@@ -53,6 +53,7 @@ typedef struct {
    int      mftRunCount;         // number of valid entries in mftRuns
    NtfsRunEntry bitmapRuns[NTFS_MFT_RUNS_MAX];   // decoded cluster-$Bitmap runlist, for direct alloc/free I/O
    int      bitmapRunCount;      // valid entries in bitmapRuns; 0 => uncached (volume forced read-only)
+   uint64_t bitmapDataSize;      // $Bitmap's $DATA real size; bounds the free-cluster scan (0 if uncached)
    uint64_t allocHint;           // next-free-cluster scan hint for allocateClusters (avoids rescanning the filled prefix)
    uint64_t freeClusters;        // free cluster count: seeded once at mount, maintained on alloc/free (O(1) getNtfsFree)
    uint32_t mftRecordSize;       // bytes per FILE record (from the signed power-of-two field)

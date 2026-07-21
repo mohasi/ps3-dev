@@ -1,21 +1,31 @@
 #pragma once
 
-// usb-storage - the device layer shared by the VFS and the filesystem-format backends.
+// storage-device - the lv2 storage layer shared by the VFS, the filesystem-format backends
+// and the disc dumper.
 //
-// "Is a USB mass-storage device present on port N, and what is it?" is a device-level fact,
-// independent of the filesystem on it (exFAT, NTFS, FAT32...). The VFS owns hotplug detection
-// using these helpers and offers each newly-present device to the format backends in turn; a
-// backend (exfat.c, later ntfs) only decides whether the device is its format. Keeping these
-// here - rather than inside one backend - is what lets the VFS treat every format uniformly.
+// "Is a device present, what is it, and give me its raw sectors" is device-level and
+// independent of the filesystem on it (exFAT, NTFS, FAT32...). The VFS owns USB hotplug
+// detection using these helpers and offers each newly-present device to the format backends
+// in turn; a backend (exfat.c, ntfs.c) only decides whether the device is its format. The
+// Blu-ray drive is the same kind of device with a fixed id, read the same way.
 //
 // Header-only (static inline) so it links into core, the app and the prx plugins without a
 // separate translation unit. Storage I/O goes through simple-lib-core's scCall trampolines.
+//
+// syscall numbers and argument order are taken verbatim from the in-tree references
+// (hb-samples/ManaGunZ/MGZ/source/bd/storage.h, apps/xai_plugin functions.cpp).
 
 #include <stdint.h>
 #include "syscall.h"
 
 #define USB_STORAGE_MAX_PORTS  8     // lv2 exposes USB mass-storage on ports 0..7
+#define STORAGE_OPEN           600   // sys_storage_open
+#define STORAGE_CLOSE          601   // sys_storage_close
+#define STORAGE_READ           602   // sys_storage_read
 #define STORAGE_GET_INFO       609   // sys_storage_get_device_info
+
+#define BD_DRIVE_DEVICE_ID     0x0101000000000006ULL   // the Blu-ray drive
+#define BD_SECTOR_SIZE         2048
 
 // USB mass-storage device id for a port (0-5 and 6+ use different bases) - from
 // apps/ManaGunZ/MGZ/source/exFAT.h USB_MASS_STORAGE(). port is clamped to the
@@ -52,4 +62,22 @@ static inline int isUsbDevicePresent(int port)
 {
    StorageDeviceInfo info;
    return getStorageInfo(getUsbDeviceId(port), &info) == 0;
+}
+
+static inline int openStorage(uint64_t deviceId, int *outStorageHandle)
+{
+   return (int)scCall4(STORAGE_OPEN, deviceId, 0, (uint64_t)(uintptr_t)outStorageHandle, 0);
+}
+
+static inline int closeStorage(int storageHandle)
+{
+   return (int)scCall1(STORAGE_CLOSE, (uint64_t)storageHandle);
+}
+
+// One raw sector read. `buffer` should be at least 32-byte aligned; outRead receives the
+// sector count actually transferred. Returns 0 on success, an lv2 error otherwise.
+static inline int readStorageRaw(int storageHandle, uint64_t sector, uint32_t count, void *buffer, uint32_t *outRead)
+{
+   return (int)scCall7(STORAGE_READ, (uint64_t)storageHandle, 0, sector, count,
+                       (uint64_t)(uintptr_t)buffer, (uint64_t)(uintptr_t)outRead, 0);
 }

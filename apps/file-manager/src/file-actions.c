@@ -1,6 +1,9 @@
 #include "file-actions.h"
 #include "widgets/file-list.h"
 #include "overlays/confirm-overlay.h"
+#include "overlays/progress-overlay.h"
+#include "overlays/properties-overlay.h"
+#include "disc-dump.h"
 #include "osk-input.h"
 #include "dbg.h"
 #include "path.h"
@@ -24,6 +27,33 @@ static void onRenameDone(const char *text)    { if (text) renameActiveTo(text); 
 static void onNewFileDone(const char *text)    { if (text) createFile(text); }
 static void onNewFolderDone(const char *text)  { if (text) createFolder(text); }
 static void onZipNameDone(const char *text)    { if (text) zipSelectionTo(text); }
+
+// a dump takes about an hour and a half for a full disc, so it is confirmed before it starts
+// and its outcome (including "some sectors could not be read") is always reported.
+static void onDiscDumpFinished(int cancelled)
+{
+   if (cancelled) return;
+   askConfirm(discDumpHadError() ? "Dump Failed" : "Dump Complete", getDiscDumpStatus(), "OK", NULL, NULL, NULL);
+}
+
+static void onDiscDumpConfirmed(ConfirmChoice choice)
+{
+   if (choice != CONFIRM_CROSS) return;
+   startProgress("Dumping disc...", getDiscDumpDestination(), runDiscDump, onDiscDumpFinished);
+}
+
+static void startDiscDump(void)
+{
+   char reason[160];
+   if (prepareDiscDump(reason, sizeof reason) != 0) {
+      askConfirm("Cannot Dump Disc", reason, "OK", NULL, NULL, NULL);
+      return;
+   }
+
+   char message[MAX_PATH_LEN + 96];
+   snprintf(message, sizeof message, "Copy the whole disc to %s? This can take over an hour.", getDiscDumpDestination());
+   askConfirm("Dump Disc", message, "Start", NULL, "Cancel", onDiscDumpConfirmed);
+}
 
 void dispatchAction(SelectionAction action)
 {
@@ -84,6 +114,17 @@ void dispatchAction(SelectionAction action)
       case ACTION_UNZIP:
          unzipActive();
          break;
+
+      case ACTION_DUMP_DISC:
+         startDiscDump();
+         break;
+
+      case ACTION_PROPERTIES: {
+         const char *name = getActiveEntryName();
+         char path[MAX_PATH_LEN];
+         if (name && joinPath(path, MAX_PATH_LEN, getCurrentPath(), name)) showProperties(path);
+         break;
+      }
 
       default:
          logInfo("[file-actions] %s: not implemented yet\n", getActionTitle(action));

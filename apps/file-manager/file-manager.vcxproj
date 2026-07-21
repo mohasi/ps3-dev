@@ -48,6 +48,7 @@
    <ClCompile Include="src\delete.c" />
    <ClCompile Include="src\zip-task.c" />
    <ClCompile Include="src\unzip-task.c" />
+   <ClCompile Include="src\disc-dump.c" />
    <ClCompile Include="src\selection-actions.c" />
    <ClCompile Include="src\file-actions.c" />
    <ClCompile Include="src\folder-sizer.c" />
@@ -63,6 +64,7 @@
    <ClCompile Include="src\overlays\video-player-overlay.c" />
    <ClCompile Include="src\overlays\text-editor-overlay.c" />
    <ClCompile Include="src\overlays\hex-viewer-overlay.c" />
+   <ClCompile Include="src\overlays\properties-overlay.c" />
    <ClCompile Include="src\widgets\clock-widget.c" />
    <ClCompile Include="src\widgets\footer-widget.c" />
    <ClCompile Include="src\widgets\free-space-widget.c" />
@@ -75,6 +77,7 @@
    <ClInclude Include="include\delete.h" />
    <ClInclude Include="include\zip-task.h" />
    <ClInclude Include="include\unzip-task.h" />
+   <ClInclude Include="include\disc-dump.h" />
    <ClInclude Include="include\selection-actions.h" />
    <ClInclude Include="include\file-actions.h" />
    <ClInclude Include="include\folder-sizer.h" />
@@ -90,6 +93,7 @@
    <ClInclude Include="include\overlays\video-player-overlay.h" />
    <ClInclude Include="include\overlays\text-editor-overlay.h" />
    <ClInclude Include="include\overlays\hex-viewer-overlay.h" />
+   <ClInclude Include="include\overlays\properties-overlay.h" />
    <ClInclude Include="include\widgets\clock-widget.h" />
    <ClInclude Include="include\widgets\footer-widget.h" />
    <ClInclude Include="include\widgets\free-space-widget.h" />

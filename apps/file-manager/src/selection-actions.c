@@ -6,9 +6,8 @@ typedef struct {
    IconId      icon;
 } ActionPresentation;
 
-// note: PROPERTIES borrows the gear glyph (no info glyph in the set yet); NEW_FILE/NEW_FOLDER show a
-// plain file/folder for now - a file+plus / folder+plus composite is the next step. Add glyphs in
-// Fontello and update here if wanted.
+// note: NEW_FILE/NEW_FOLDER show a plain file/folder for now - a file+plus / folder+plus composite
+// is the next step. Add glyphs in Fontello and update here if wanted.
 static const ActionPresentation table[ACTION_COUNT] = {
    [ACTION_COPY]       = { "Copy",       "Copy selected file(s) to clipboard.",   ICON_DOCS         },
    [ACTION_CUT]        = { "Cut",        "Cut selected file(s) to clipboard.",    ICON_SCISSORS     },
@@ -21,7 +20,8 @@ static const ActionPresentation table[ACTION_COUNT] = {
    [ACTION_ZIP]        = { "Zip",        "Compress selected file(s) to archive.", ICON_FILE_ARCHIVE },
    [ACTION_UNZIP]      = { "Unzip",      "Extract the selected archive.",         ICON_BOX          },
    [ACTION_MOUNT]      = { "Mount",      "Mount the selected disc image.",        ICON_CD           },
-   [ACTION_PROPERTIES] = { "Properties", "Show details about the selection.",     ICON_COG          },
+   [ACTION_DUMP_DISC]  = { "Dump Disc",  "Copy the disc to /dev_hdd0/dumps.",     ICON_CD           },
+   [ACTION_PROPERTIES] = { "Properties", "Show details and the SHA-1 of a file.", ICON_INFO_CIRCLED_ALT },
 };
 
 const char *getActionTitle(SelectionAction action)    { return table[action].title; }

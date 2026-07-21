@@ -17,29 +17,36 @@ typedef struct {
 
 static inline uint32_t rotateLeft32(uint32_t x, int n) { return (x << n) | (x >> (32 - n)); }
 
-static void processSha1Block(Sha1State *s, const uint8_t *block)
+// The message schedule is kept as a rolling 16-word window rather than the 80-word array the
+// RFC spells out (each new word only needs four of the last sixteen), and the four round
+// families are separate loops rather than one loop testing the round number 80 times. Same
+// output, several times the throughput - which matters when hashing a multi-GB file.
+#define SHA1_MIX(w, i)          (w[(i) & 15] = rotateLeft32(w[((i) + 13) & 15] ^ w[((i) + 8) & 15] ^ \
+                                                            w[((i) + 2) & 15] ^ w[(i) & 15], 1))
+#define SHA1_STEP(f, k, word)   do {                                     \
+      uint32_t t = rotateLeft32(a, 5) + (f) + e + (k) + (word);          \
+      e = d; d = c; c = rotateLeft32(b, 30); b = a; a = t;               \
+   } while (0)
+
+static inline void processSha1Block(Sha1State *s, const uint8_t *block)
 {
-   uint32_t w[80];
+   uint32_t w[16];
    for (int i = 0; i < 16; i++) {
       w[i] = ((uint32_t)block[i*4+0] << 24) | ((uint32_t)block[i*4+1] << 16) |
             ((uint32_t)block[i*4+2] << 8)  |  (uint32_t)block[i*4+3];
    }
-   for (int i = 16; i < 80; i++) w[i] = rotateLeft32(w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16], 1);
 
    uint32_t a = s->h[0], b = s->h[1], c = s->h[2], d = s->h[3], e = s->h[4];
-   for (int i = 0; i < 80; i++) {
-      uint32_t f, k;
-      if      (i < 20) { f = (b & c) | ((~b) & d);     k = 0x5A827999; }
-      else if (i < 40) { f = b ^ c ^ d;                k = 0x6ED9EBA1; }
-      else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; }
-      else             { f = b ^ c ^ d;                k = 0xCA62C1D6; }
-      uint32_t t = rotateLeft32(a, 5) + f + e + k + w[i];
-      e = d; d = c; c = rotateLeft32(b, 30); b = a; a = t;
-   }
+   for (int i = 0;  i < 16; i++) SHA1_STEP((b & c) | (~b & d),          0x5A827999, w[i]);
+   for (int i = 16; i < 20; i++) SHA1_STEP((b & c) | (~b & d),          0x5A827999, SHA1_MIX(w, i));
+   for (int i = 20; i < 40; i++) SHA1_STEP(b ^ c ^ d,                   0x6ED9EBA1, SHA1_MIX(w, i));
+   for (int i = 40; i < 60; i++) SHA1_STEP((b & c) | (b & d) | (c & d), 0x8F1BBCDC, SHA1_MIX(w, i));
+   for (int i = 60; i < 80; i++) SHA1_STEP(b ^ c ^ d,                   0xCA62C1D6, SHA1_MIX(w, i));
+
    s->h[0] += a; s->h[1] += b; s->h[2] += c; s->h[3] += d; s->h[4] += e;
 }
 
-static void initSha1(Sha1State *s)
+static inline void initSha1(Sha1State *s)
 {
    s->h[0] = 0x67452301; s->h[1] = 0xEFCDAB89; s->h[2] = 0x98BADCFE;
    s->h[3] = 0x10325476; s->h[4] = 0xC3D2E1F0;
@@ -47,7 +54,7 @@ static void initSha1(Sha1State *s)
    s->bufLen = 0;
 }
 
-static void updateSha1(Sha1State *s, const uint8_t *data, int len)
+static inline void updateSha1(Sha1State *s, const uint8_t *data, int len)
 {
    s->totalBits += (uint64_t)len * 8;
    while (len > 0) {
@@ -64,7 +71,7 @@ static void updateSha1(Sha1State *s, const uint8_t *data, int len)
    }
 }
 
-static void finalizeSha1(Sha1State *s, uint8_t out[20])
+static inline void finalizeSha1(Sha1State *s, uint8_t out[20])
 {
    uint64_t bits = s->totalBits;
    s->buf[s->bufLen++] = 0x80;
@@ -85,7 +92,7 @@ static void finalizeSha1(Sha1State *s, uint8_t out[20])
 }
 
 // convenience one-shot.
-static void hashSha1(const uint8_t *data, int len, uint8_t out[20])
+static inline void hashSha1(const uint8_t *data, int len, uint8_t out[20])
 {
    Sha1State s;
    initSha1(&s);

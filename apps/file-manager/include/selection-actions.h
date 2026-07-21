@@ -18,6 +18,7 @@ typedef enum {
    ACTION_ZIP,
    ACTION_UNZIP,
    ACTION_MOUNT,
+   ACTION_DUMP_DISC,
    ACTION_PROPERTIES,
    ACTION_COUNT
 } SelectionAction;

@@ -59,5 +59,6 @@ typedef enum {
    ICON_BLOCK             = 0xE818,
    ICON_SPIN6             = 0xE839,
    ICON_HDD               = 0xF0A0,
-   ICON_FOLDER_OPEN       = 0xE819
+   ICON_FOLDER_OPEN       = 0xE819,
+   ICON_INFO_CIRCLED_ALT  = 0xF086
 } IconId;

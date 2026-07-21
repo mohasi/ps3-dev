@@ -15,6 +15,7 @@
 #include "delete.h"
 #include "zip-task.h"
 #include "unzip-task.h"
+#include "disc-dump.h"
 #include "vfs.h"
 #include "file-task.h"
 #include "dynarray.h"
@@ -72,7 +73,7 @@ static Label counterLabel;
 #define COLUMN_SIZE_X        1270
 #define COLUMN_SIZE_W         130
 #define COLUMN_MODIFIED_X    1440
-#define COLUMN_MODIFIED_W     190
+#define COLUMN_MODIFIED_W     216   // fits "DD/MM/YY HH:MM" (14 chars) with ~2 chars of slack
 #define COLUMN_PERMISSIONS_X 1680
 #define COLUMN_PERMISSIONS_W  175
 
@@ -324,15 +325,6 @@ static void refreshMounts(void)
    if (!found) selectedIndex = prevIndex > 0 ? prevIndex - 1 : 0;
    if (selectedIndex >= entryCount) selectedIndex = entryCount > 0 ? entryCount - 1 : 0;
    scrollToSelected();
-}
-
-// "drwxr-xr-x"-style text from st_mode permission bits: type char, then owner/group/other rwx triplets
-static void formatPermissions(char *out, uint32_t mode, int isDir)
-{
-   out[0] = isDir ? 'd' : '-';
-   for (int bit = 0; bit < 9; bit++)
-      out[1 + bit] = (mode & (0400u >> bit)) ? "rwx"[bit % 3] : '-';
-   out[10] = '\0';
 }
 
 static void rebuildLabels(void)
@@ -752,19 +744,32 @@ static int hasZipExtension(const char *name)
    return ext && strCmpICase(ext, "zip") == 0;
 }
 
-// true when the active row is the entire target - nothing else checked, and if the
-// active row itself is checked, that's fine too - and that row is a .zip file. unzip
-// operates on entries[selectedIndex] alone (see unzipActive), so this is also exactly
-// "unzip is offered": a checked row other than the active one disqualifies it, same as
-// two or more checked rows would.
-static int targetIsSingleZipFile(void)
+// true when the active row is the entire target - nothing else checked, and if the active row
+// itself is checked, that's fine too - and that row is a file rather than a folder. unzip and
+// properties both operate on entries[selectedIndex] alone, so a checked row other than the
+// active one disqualifies them, same as two or more checked rows would.
+static int targetIsSingleFile(void)
 {
    if (entryCount == 0) return 0;
    int checkedCount = countChecked(NULL);
    if (checkedCount > 1) return 0;
    if (checkedCount == 1 && !entries[selectedIndex].checked) return 0;
-   if (entries[selectedIndex].type == FILE_TYPE_FOLDER) return 0;
-   return hasZipExtension(entries[selectedIndex].name);
+   return entries[selectedIndex].type != FILE_TYPE_FOLDER;
+}
+
+static int targetIsSingleZipFile(void)
+{
+   return targetIsSingleFile() && hasZipExtension(entries[selectedIndex].name);
+}
+
+// dumping copies the whole disc, not a selection, so it is offered at the root with the dev_bdvd
+// row highlighted. A disc the firmware can't mount (a PS2 or data disc) has no row to highlight,
+// so there it is offered on any root row - that is the only place it can be offered at all.
+static int discDumpApplies(void)
+{
+   if (!strEq(currentPath, "/") || !isDiscInDrive()) return 0;
+   if (entryCount > 0 && strEq(entries[selectedIndex].name, "dev_bdvd")) return 1;
+   return !isDir("/dev_bdvd");
 }
 
 // cut, copy and delete apply to any non-empty selection (one row or many).
@@ -774,10 +779,14 @@ static int targetIsSingleZipFile(void)
 // is non-empty. zip and unzip are opposites of the same single-zip-target check:
 // unzip needs exactly that one target and it to be a zip (zipping a lone zip is
 // pointless, and unzip only ever acts on the active row - see targetIsSingleZipFile);
-// zip is offered in every other non-empty case. order is cut, copy, paste, delete,
-// rename, zip, unzip.
+// zip is offered in every other non-empty case; properties needs that same single-file target and
+// sits last. order is cut, copy, paste, delete, rename, zip, unzip, dump disc, new file, new
+// folder, properties.
 const SelectionAction *getAvailableActions(int *outCount)
 {
+   // 9 is the most that can ever be offered: zip and unzip are mutually exclusive, and dump disc
+   // (root only, a folder row) and properties (a file row) can never both apply. 9 is also all the
+   // sidepanel can show.
    static SelectionAction list[9];
    int n = 0;
    if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
@@ -785,9 +794,11 @@ const SelectionAction *getAvailableActions(int *outCount)
    if (entryCount > 0)     { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
    if (entryCount > 0 && !targetIsSingleZipFile()) list[n++] = ACTION_ZIP;
    if (targetIsSingleZipFile())                    list[n++] = ACTION_UNZIP;
+   if (discDumpApplies())                          list[n++] = ACTION_DUMP_DISC;
    // creation always applies to the current directory, even when it is empty.
    list[n++] = ACTION_NEW_FILE;
    list[n++] = ACTION_NEW_FOLDER;
+   if (targetIsSingleFile())                       list[n++] = ACTION_PROPERTIES;
    *outCount = n;
    return list;
 }

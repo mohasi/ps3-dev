@@ -22,6 +22,7 @@
 #include "overlays/video-player-overlay.h"
 #include "overlays/text-editor-overlay.h"
 #include "overlays/hex-viewer-overlay.h"
+#include "overlays/properties-overlay.h"
 #include "file-actions.h"
 #include "theme.h"
 #include "pad.h"
@@ -143,6 +144,7 @@ static void initHome(void)
    initSearchController(&pop, &clickSfx, &checkSfx, 258, 74, 24, openSidepanel);
    initSidepanel(&clickSfx, onSidepanelAction);
    initConfirmOverlay(&clickSfx);
+   initPropertiesOverlay(&clickSfx);
    initProgressOverlay(&clickSfx);
    initAudioPlayerOverlay();
    initVideoPlayerOverlay();
@@ -189,6 +191,7 @@ static void applyThemeToHome(void)
    rethemeHexViewerOverlay();
    rethemeSidepanel();
    rethemeConfirmOverlay();
+   rethemePropertiesOverlay();
    rethemeProgressOverlay();
 }
 
@@ -214,7 +217,8 @@ static inline int anyOverlayVisible(void)
       || isOverlayVisible(&audioPlayerOverlay)
       || isOverlayVisible(&videoPlayerOverlay)
       || isOverlayVisible(&textEditorOverlay)
-      || isOverlayVisible(&hexViewerOverlay);
+      || isOverlayVisible(&hexViewerOverlay)
+      || isOverlayVisible(&propertiesOverlay);
 }
 
 static void updateHome(void)
@@ -232,6 +236,7 @@ static void updateHome(void)
    updateOverlay(&videoPlayerOverlay);
    updateOverlay(&textEditorOverlay);
    updateOverlay(&hexViewerOverlay);
+   updateOverlay(&propertiesOverlay);
    updateKeyboard();
    updateHexPad();
 
@@ -273,6 +278,7 @@ static void drawHome(void)
    drawKeyboard();
    drawHexPad();
    drawOverlay(&sidepanel);
+   drawOverlay(&propertiesOverlay);
    drawOverlay(&confirmOverlay);
    drawOverlay(&progressOverlay);
 }
@@ -284,6 +290,7 @@ static void termHome(void)
    stopFtpServer();
    termKeyboard();
    termHexPad();
+   termOverlay(&propertiesOverlay);
    termOverlay(&hexViewerOverlay);
    termOverlay(&textEditorOverlay);
    termOverlay(&videoPlayerOverlay);

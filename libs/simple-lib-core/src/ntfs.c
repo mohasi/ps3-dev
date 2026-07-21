@@ -15,20 +15,15 @@
 
 #include "ntfs.h"
 #include "vfs.h"               // VfsOps + probe/release backend registration
-#include "usb-storage.h"       // getUsbDeviceId / StorageDeviceInfo / getStorageInfo (shared device layer)
+#include "storage-device.h"    // device ids, info + raw sector I/O (shared lv2 storage layer)
 #include "syscall.h"           // scCall1/2/4/7
 #include "thread.h"            // sys_lwmutex helpers (lock/unlock)
 #include "string-utilities.h"  // memCopy, memSet, utf16ToUtf8, strCmpICase
 #include <sys/timer.h>         // sys_timer_usleep
 #include <cell/rtc.h>          // cellRtcGetCurrentClock: hardware UTC clock (converted to NTFS FILETIME per spec)
 
-// ===========================================================================
-// lv2 storage syscalls (identical numbers/arg order to exfat.c; the device
-// layer is shared, only the filesystem on top differs).
-// ===========================================================================
-#define STORAGE_OPEN       600
-#define STORAGE_CLOSE      601
-#define STORAGE_READ       602
+// lv2 storage syscalls. open/close/read live in storage-device.h (shared device layer);
+// only the write path is per-backend.
 #define STORAGE_WRITE      603
 
 #define STORAGE_BUSY       0x80010002u   // lv2 "device not ready" (settling / ejected)
@@ -539,25 +534,6 @@
 #define WCI_NAME_SIZE_OFFSET           24   // uint16: name size in bytes
 #define WCI_NAME_OFFSET                26   // UTF-16LE name (no terminator)
 #define WCI_REPARSE_MIN                26   // through the name-size field (name may be empty)
-
-// ===========================================================================
-// lv2 storage I/O (mirrors exfat.c verbatim - shared device semantics).
-// ===========================================================================
-static int openStorage(uint64_t deviceId, int *outFd)
-{
-   return (int)scCall4(STORAGE_OPEN, deviceId, 0, (uint64_t)(uintptr_t)outFd, 0);
-}
-
-static int closeStorage(int storageHandle)
-{
-   return (int)scCall1(STORAGE_CLOSE, (uint64_t)storageHandle);
-}
-
-static int readStorageRaw(int storageHandle, uint64_t sector, uint32_t count, void *buffer, uint32_t *outRead)
-{
-   return (int)scCall7(STORAGE_READ, (uint64_t)storageHandle, 0, sector, count,
-                       (uint64_t)(uintptr_t)buffer, (uint64_t)(uintptr_t)outRead, 0);
-}
 
 // Reads `count` sectors at `lba` into a 32-byte-aligned buffer, retrying while the device reports
 // "not ready" (hotplug settling). Returns 0 on success, -1 on a hard error.

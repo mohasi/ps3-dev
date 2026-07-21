@@ -16,7 +16,7 @@
 
 #include <stdint.h>
 #include <sys/sys_time.h>       // sys_time_get_system_time (pollMounts self-throttle)
-#include "usb-storage.h"        // isUsbDevicePresent + port count (format-agnostic hotplug)
+#include "storage-device.h"     // isUsbDevicePresent + port count (format-agnostic hotplug)
 #include "exfat.h"              // initExfat (brought up as part of the VFS)
 #include "ntfs.h"               // initNtfs (brought up as part of the VFS)
 #include "thread.h"             // sys_ppu_thread_t + spawn/join/sleep helpers

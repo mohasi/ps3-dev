@@ -12,17 +12,14 @@
 
 #include "exfat.h"
 #include "vfs.h"              // VfsOps + probe/release backend registration
-#include "usb-storage.h"     // getUsbDeviceId / StorageDeviceInfo / getStorageInfo (shared device layer)
+#include "storage-device.h"   // device ids, info + raw sector I/O (shared lv2 storage layer)
 #include "syscall.h"          // scCall1/2/4/7
 #include "thread.h"           // sys_lwmutex helpers (lock/unlock)
 #include "string-utilities.h" // memCopy, memSet, utf16ToUtf8, strCmpICase
 #include <sys/timer.h>        // sys_timer_usleep
 #include <cell/rtc.h>         // cellRtcGetCurrentClock (real entry timestamps in UTC; needs RTC loaded)
 
-#define STORAGE_OPEN       600
-#define STORAGE_CLOSE      601
-#define STORAGE_READ       602
-#define STORAGE_WRITE      603
+#define STORAGE_WRITE      603   // the write path is exFAT-only; open/close/read come from storage-device.h
 
 #define STORAGE_BUSY       0x80010002u   // lv2 "device not ready" (settling / ejected)
 #define SYSIO_RETRY        8
@@ -58,24 +55,8 @@
 // yet finite, so a hostile partition entry can't steer a scan read to an arbitrary 64-bit sector.
 #define EXFAT_SCAN_LBA_CAP (1ull << 36)
 
-// getUsbDeviceId / StorageDeviceInfo / getStorageInfo now live in usb-storage.h (the device layer
-// shared with the VFS). The read/write data path below stays here - it's the exFAT backend's.
-
-static int openStorage(uint64_t deviceId, int *outFd)
-{
-   return (int)scCall4(STORAGE_OPEN, deviceId, 0, (uint64_t)(uintptr_t)outFd, 0);
-}
-
-static int closeStorage(int storageHandle)
-{
-   return (int)scCall1(STORAGE_CLOSE, (uint64_t)storageHandle);
-}
-
-static int readStorageRaw(int storageHandle, uint64_t sector, uint32_t count, void *buffer, uint32_t *outRead)
-{
-   return (int)scCall7(STORAGE_READ, (uint64_t)storageHandle, 0, sector, count,
-                       (uint64_t)(uintptr_t)buffer, (uint64_t)(uintptr_t)outRead, 0);
-}
+// device ids, info and raw sector I/O live in storage-device.h (the layer shared with the VFS
+// and the disc dumper). The write path below stays here - it's the exFAT backend's.
 
 // little-endian readers (exFAT is LE on disk, the PPU is big-endian).
 static uint16_t readLe16(const uint8_t *p) { return (uint16_t)(p[0] | (p[1] << 8)); }

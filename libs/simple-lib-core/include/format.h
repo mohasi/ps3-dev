@@ -32,6 +32,16 @@ static inline void formatSize(uint64_t bytes, char *buf)
    buf[p++] = ' '; buf[p++] = 'B'; buf[p] = '\0';
 }
 
+// "drwxr-xr-x"-style text from st_mode permission bits: type char, then owner/group/other
+// rwx triplets. out must hold at least 11 bytes.
+static inline void formatPermissions(char *out, uint32_t mode, int isDir)
+{
+   out[0] = isDir ? 'd' : '-';
+   for (int bit = 0; bit < 9; bit++)
+      out[1 + bit] = (mode & (0400u >> bit)) ? "rwx"[bit % 3] : '-';
+   out[10] = '\0';
+}
+
 // like formatSize, but appends a trailing '+' when the byte count is only a
 // lower bound (e.g. a folder walk that hit its time budget). buf must hold >= 24.
 static inline void formatSizeApprox(uint64_t bytes, int approx, char *buf)

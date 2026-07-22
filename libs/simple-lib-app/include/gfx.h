@@ -65,7 +65,16 @@ void freeGfxRenderTarget(GfxRenderTarget *rt);
 // needs the "Write Color Buffers" GPU option; on real PS3 local memory is readable directly.)
 const void *getGfxDisplayBuffer(int *w, int *h, int *pitch);
 
+// Every drawing call below spends vertices from a fixed per-frame pool: a filled rectangle or a
+// line costs 6, a triangle 3, a stroked rectangle 24, a circle 18-72 depending on its radius, and
+// a texture or glyph 6. The pool is refilled only by beginGfxFrame -- nothing reclaims it early,
+// not a texture change, not finishGfx, because the RSX reads those vertices asynchronously and the
+// memory cannot be reused until the frame is over. Past the pool, calls are dropped whole and a
+// warning is logged; a screen that draws in loops should ask how much is left rather than assume.
 void beginGfxFrame(void);
+int  getGfxVertexBudget(void);   // vertices one frame may spend in total
+int  getGfxVerticesUsed(void);   // how many this frame has spent so far
+
 void clearGfx(uint32_t argb);
 void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb);
 void strokeGfxRectangle(int x, int y, int w, int h, int thickness, uint32_t argb);
@@ -101,6 +110,11 @@ void  drawGfxYuvFrame(int x, int y, int w, int h, const void *yuvPlanes, int fra
 
 int getGfxScreenWidth(void);
 int getGfxScreenHeight(void);
+
+// the rsx clocks the console is actually running at. stock is 500 / 650 MHz;
+// an overclocked cfw reports higher values here.
+int getGfxCoreClockMhz(void);
+int getGfxMemoryClockMhz(void);
 
 // fits a w x h frame inside the screen preserving aspect ratio; returns the centred destination
 // rect (the letterbox for a video frame).

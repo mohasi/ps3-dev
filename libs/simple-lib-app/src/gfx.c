@@ -22,9 +22,19 @@
 #define CMD_BUFFER_SIZE   (0x10000)
 #define BYTES_PER_PIXEL   4
 
-// max quads per frame (6 verts each)
-#define MAX_QUADS         4096
+// max quads per frame (6 verts each). the batch costs 24 bytes per vertex in two
+// buffers, so this is 4.5 MB of the console's ~250 MB of graphics memory - cheap
+// enough that no screen in the tree should ever have to draw around it.
+#define MAX_QUADS         16384
 #define MAX_VERTS         (MAX_QUADS * 6)
+
+// what each shape costs out of that budget. composite shapes reserve their whole
+// cost before drawing any part, so a shape at the cap goes missing rather than
+// coming out half drawn.
+#define VERTS_PER_TRIANGLE     3
+#define VERTS_PER_RECT         6
+#define VERTS_PER_LINE         (VERTS_PER_TRIANGLE * 2)
+#define VERTS_PER_STROKED_RECT (VERTS_PER_RECT * 4)
 
 // RSX hard limit on texture/surface dimensions (mirrors image-loader.c's MAX_TEX_DIM)
 #define MAX_TEX_DIM       4096
@@ -70,7 +80,7 @@ static uint32_t   batchColOffset[FRAME_COUNT];
 static uint32_t   batchUvOffset[FRAME_COUNT];
 static int        batchVertCount = 0;
 static int        batchFlushStart = 0;
-static int        batchOverflowWarned = 0;   // logs the full-batch warning once per run
+static int        frameDroppedCalls = 0;     // draw calls the frame could not afford
 
 // shader state
 extern struct _CGprogram _binary_vpshader_vpo_start;
@@ -452,6 +462,7 @@ void beginGfxFrame(void)
 
    batchVertCount = 0;
    batchFlushStart = 0;
+   frameDroppedCalls = 0;
    batchTexOffset = whiteTexOffset;
    batchTexW = 1;
    batchTexH = 1;
@@ -490,23 +501,47 @@ static void ensureWhiteTex(void)
    }
 }
 
-// batch is full for this frame: drop the call. logged once per run - a persistently heavy screen
-// overflows every frame, and one line is enough to know MAX_VERTS needs raising.
+int getGfxVertexBudget(void) { return MAX_VERTS; }
+int getGfxVerticesUsed(void) { return batchVertCount; }
+
+// batch is full for this frame: drop the call whole. counted, not logged here -
+// the frame reports itself in endGfxFrame, so one overflowing screen cannot bury
+// the log under a line per dropped call.
 static int batchWouldOverflow(int vertsNeeded)
 {
    if (batchVertCount + vertsNeeded <= MAX_VERTS) return 0;
-   if (!batchOverflowWarned) {
-      logWarn("[gfx] batch full (%d verts/frame): dropping draw calls past the cap\n", MAX_VERTS);
-      batchOverflowWarned = 1;
-   }
+   frameDroppedCalls++;
    return 1;
+}
+
+// a frame that is merely close to the cap is one screen element away from
+// silently losing draws, so the warning comes while there is still headroom
+// rather than after the picture has already broken. rate limited, because a
+// heavy screen is heavy on every frame and the log is a file on disk.
+#define BUDGET_WARN_PERCENT     80
+#define BUDGET_WARN_INTERVAL_US 1000000
+
+static void reportFrameBudget(void)
+{
+   int usedPercent = batchVertCount * 100 / MAX_VERTS;
+   if (frameDroppedCalls == 0 && usedPercent < BUDGET_WARN_PERCENT) return;
+
+   static uint64_t lastWarnUs;
+   uint64_t now = sys_time_get_system_time();
+   if (now - lastWarnUs < BUDGET_WARN_INTERVAL_US) return;
+   lastWarnUs = now;
+
+   if (frameDroppedCalls > 0)
+      logWarn("[gfx] frame ran out of vertices (cap %d): %d draw calls dropped\n", MAX_VERTS, frameDroppedCalls);
+   else
+      logWarn("[gfx] frame used %d of %d vertices (%d%%)\n", batchVertCount, MAX_VERTS, usedPercent);
 }
 
 void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb)
 {
    if (!initialized) return;
    ensureWhiteTex();
-   if (batchWouldOverflow(6)) return;
+   if (batchWouldOverflow(VERTS_PER_RECT)) return;
 
    if (x < 0) { w += x; x = 0; }
    if (y < 0) { h += y; y = 0; }
@@ -526,13 +561,14 @@ void fillGfxRectangle(int x, int y, int w, int h, uint32_t argb)
    v[4] = (GfxVertex){ x1, y1, 0.0f, rgba, 0.0f, 0.0f };
    v[5] = (GfxVertex){ x0, y1, 0.0f, rgba, 0.0f, 0.0f };
 
-   batchVertCount += 6;
+   batchVertCount += VERTS_PER_RECT;
 }
 
 // metro-style border: four edges drawn inward, so the outline stays within the w x h bounds.
 void strokeGfxRectangle(int x, int y, int w, int h, int thickness, uint32_t argb)
 {
-   if (thickness <= 0 || w <= 0 || h <= 0) return;
+   if (!initialized || thickness <= 0 || w <= 0 || h <= 0) return;
+   if (batchWouldOverflow(VERTS_PER_STROKED_RECT)) return;   // all four edges or none
    if (thickness * 2 > w) thickness = w / 2;
    if (thickness * 2 > h) thickness = h / 2;
 
@@ -545,6 +581,7 @@ void strokeGfxRectangle(int x, int y, int w, int h, int thickness, uint32_t argb
 // metro panel: filled interior with a border on top (the flat replacement for a rounded 9-slice sprite).
 void drawGfxBox(int x, int y, int w, int h, int thickness, uint32_t fill, uint32_t border)
 {
+   if (batchWouldOverflow(VERTS_PER_RECT + VERTS_PER_STROKED_RECT)) return;   // fill and border together
    fillGfxRectangle(x, y, w, h, fill);
    strokeGfxRectangle(x, y, w, h, thickness, border);
 }
@@ -554,7 +591,7 @@ void drawGfxTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32
 {
    if (!initialized) return;
    ensureWhiteTex();
-   if (batchWouldOverflow(3)) return;
+   if (batchWouldOverflow(VERTS_PER_TRIANGLE)) return;
 
    float invW = 2.0f / (float)targetW;
    float invH = 2.0f / (float)targetH;
@@ -566,7 +603,7 @@ void drawGfxTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32
    v[0] = (GfxVertex){ nx0, ny0, 0.0f, argbToRgba(c0), 0.0f, 0.0f };
    v[1] = (GfxVertex){ nx1, ny1, 0.0f, argbToRgba(c1), 0.0f, 0.0f };
    v[2] = (GfxVertex){ nx2, ny2, 0.0f, argbToRgba(c2), 0.0f, 0.0f };
-   batchVertCount += 3;
+   batchVertCount += VERTS_PER_TRIANGLE;
 }
 
 // thick line via two triangles: builds a quad oriented along the line, expanded
@@ -575,6 +612,7 @@ void drawGfxTriangle(float x0, float y0, uint32_t c0, float x1, float y1, uint32
 void drawGfxLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb)
 {
    if (!initialized || thickness <= 0) return;
+   if (batchWouldOverflow(VERTS_PER_LINE)) return;   // both triangles or neither, so a line never tapers
    float dx = (float)(x1 - x0);
    float dy = (float)(y1 - y0);
    float len = sqrtf(dx * dx + dy * dy);
@@ -593,23 +631,36 @@ void drawGfxLine(int x0, int y0, int x1, int y1, int thickness, uint32_t argb)
    drawGfxTriangle(bx, by, argb, dx2, dy2, argb, cx, cy, argb);
 }
 
-#define CIRCLE_SEGMENTS 24
+// a circle is a fan of triangles, so its cost is its smoothness. segments finer
+// than a pixel of outline are invisible and were the single largest waste in the
+// tree (96 four-pixel bar caps at 24 segments each), so the count follows the
+// radius: a 2-pixel dot gets 6, anything from 24 pixels up gets the full 24.
+#define CIRCLE_MIN_SEGMENTS 6
+#define CIRCLE_MAX_SEGMENTS 24
+
+static int getCircleSegments(int radius)
+{
+   if (radius < CIRCLE_MIN_SEGMENTS) return CIRCLE_MIN_SEGMENTS;
+   if (radius > CIRCLE_MAX_SEGMENTS) return CIRCLE_MAX_SEGMENTS;
+   return radius;
+}
 
 void fillGfxCircle(int cx, int cy, int r, uint32_t argb)
 {
    if (!initialized || r <= 0) return;
    ensureWhiteTex();
-   if (batchWouldOverflow(CIRCLE_SEGMENTS * 3)) return;
+   int segments = getCircleSegments(r);
+   if (batchWouldOverflow(segments * VERTS_PER_TRIANGLE)) return;
 
    uint32_t rgba = argbToRgba(argb);
    float fcx = toClipX(cx);
    float fcy = toClipY(cy);
-   float step = 6.2831853f / (float)CIRCLE_SEGMENTS;
+   float step = 6.2831853f / (float)segments;
    float prevX = toClipX(cx + r);
    float prevY = fcy;
 
    GfxVertex *v = &batchVerts[backBuffer][batchVertCount];
-   for (int i = 1; i <= CIRCLE_SEGMENTS; ++i) {
+   for (int i = 1; i <= segments; ++i) {
       float angle = step * (float)i;
       float nx = toClipX(cx + (int)(cosf(angle) * (float)r));
       float ny = toClipY(cy + (int)(sinf(angle) * (float)r));
@@ -620,7 +671,7 @@ void fillGfxCircle(int cx, int cy, int r, uint32_t argb)
       prevX = nx;
       prevY = ny;
    }
-   batchVertCount += CIRCLE_SEGMENTS * 3;
+   batchVertCount += segments * VERTS_PER_TRIANGLE;
 }
 
 static void flushBatch(void)
@@ -685,7 +736,7 @@ void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
       batchTexLinear = filter;
    }
 
-   if (batchWouldOverflow(6)) return;
+   if (batchWouldOverflow(VERTS_PER_RECT)) return;
 
    float cx0 = (float)x / (float)targetW * 2.0f - 1.0f;
    float cy0 = 1.0f - (float)y / (float)targetH * 2.0f;
@@ -702,7 +753,7 @@ void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
    v[4] = (GfxVertex){ cx1, cy1, 0.0f, rgba, u1, v1 };
    v[5] = (GfxVertex){ cx0, cy1, 0.0f, rgba, u0, v1 };
 
-   batchVertCount += 6;
+   batchVertCount += VERTS_PER_RECT;
 }
 
 // ============================================================================
@@ -758,7 +809,7 @@ void drawGfxYuvFrame(int x, int y, int w, int h, const void *yuvPlanes, int fram
    if (!initialized || !yuvPlanes || frameW <= 0 || frameH <= 0) return;
 
    flushBatch();
-   if (batchWouldOverflow(6)) return;
+   if (batchWouldOverflow(VERTS_PER_RECT)) return;
 
    uint32_t planeOffset;
    if (cellGcmAddressToOffset((void *)yuvPlanes, &planeOffset) != CELL_OK) return;
@@ -773,7 +824,7 @@ void drawGfxYuvFrame(int x, int y, int w, int h, const void *yuvPlanes, int fram
    v[3] = (GfxVertex){ x1, y0, 0.0f, white, 1.0f, 0.0f };
    v[4] = (GfxVertex){ x1, y1, 0.0f, white, 1.0f, 1.0f };
    v[5] = (GfxVertex){ x0, y1, 0.0f, white, 0.0f, 1.0f };
-   batchVertCount += 6;
+   batchVertCount += VERTS_PER_RECT;
 
    cellGcmSetVertexProgram(CTX, shaderVp, shaderVpUcode);
    cellGcmSetFragmentProgram(CTX, shaderFpYuv, shaderFpYuvOffset);
@@ -806,6 +857,7 @@ void endGfxFrame(void)
    if (!initialized) return;
 
    flushBatch();
+   reportFrameBudget();
 
    waitFlip();
    cellGcmResetFlipStatus();
@@ -829,6 +881,20 @@ void finishGfx(void)
 
 int getGfxScreenWidth(void)  { return screenW; }
 int getGfxScreenHeight(void) { return screenH; }
+
+int getGfxCoreClockMhz(void)
+{
+   CellGcmConfig config;
+   cellGcmGetConfiguration(&config);
+   return (int)(config.coreFrequency / 1000000);
+}
+
+int getGfxMemoryClockMhz(void)
+{
+   CellGcmConfig config;
+   cellGcmGetConfiguration(&config);
+   return (int)(config.memoryFrequency / 1000000);
+}
 
 size_t getUsedVram(void)
 {

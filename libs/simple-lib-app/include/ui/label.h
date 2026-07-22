@@ -37,11 +37,14 @@ void setLabelColor(Label *l, uint32_t color);
 // (setLabelText re-renders it).
 void freeLabel(Label *l);
 void moveLabel(Label *l, int x, int y);
-void drawLabel(Label *l);
+
+// drawing only reads the label, so a screen can hold its labels const in the draw
+// path - which is where the rule against re-rasterising text is easiest to break.
+void drawLabel(const Label *l);
 
 // draws the label at a custom opacity (alpha 0-255), ignoring the label's own
 // alpha. used for ghosted/dimmed rows (e.g. files marked for cut).
-void drawLabelAlpha(Label *l, int alpha);
+void drawLabelAlpha(const Label *l, int alpha);
 
 // moves then draws in one call - handy when a label is repositioned every frame.
 static inline void drawLabelAt(Label *l, int x, int y) { moveLabel(l, x, y); drawLabel(l); }

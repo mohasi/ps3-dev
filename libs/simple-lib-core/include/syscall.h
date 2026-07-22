@@ -206,6 +206,69 @@ static inline void sysPower(uint64_t mode)
    (void)scCall4(379, mode, 0, 0, 0);
 }
 
+// cfw peek/poke of hypervisor (lv1) memory. syscall 11 is cobra's lv1 read,
+// syscall 9 the cfw lv1 write. these reach below the operating system - a wrong
+// address or value can hang the console outright, so only use them for values
+// that are known-good from working cfw source.
+static inline uint64_t peekLv1(uint64_t address)
+{
+   return (uint64_t)scCall1(11, address);
+}
+
+static inline void pokeLv1(uint64_t address, uint64_t value)
+{
+   (void)scCall2(9, address, value);
+   // make the write visible to the hardware before anything else happens
+   __asm__ volatile ("eieio\n sync\n" ::: "memory");
+}
+
+// thermal sensors. the console reports temperature per "zone": 0 = cell (cpu),
+// 1 = rsx (gpu). the syscon thermal tables also mention zone 0x14 (southbridge)
+// and 0x20 (voltage regulator), but hardware refuses both, so they are not here.
+typedef enum ThermalZone {
+   THERMAL_ZONE_CPU = 0,
+   THERMAL_ZONE_RSX = 1
+} ThermalZone;
+
+// lv2 syscall 383 - sys_game_get_temperature. the raw value is fixed point:
+// top byte = whole degrees celsius, next byte = 1/256ths. returns 0 on success.
+static inline int32_t getConsoleTemperature(ThermalZone zone, uint32_t *outRaw)
+{
+   *outRaw = 0;
+   return (int32_t)scCall2(383, (uint64_t)zone, (uint64_t)(uintptr_t)outRaw);
+}
+
+static inline int getTemperatureCelsius(uint32_t raw)      { return (int)(raw >> 24); }
+static inline int getTemperatureTenths(uint32_t raw)       { return (int)(((raw >> 16) & 0xff) * 10 / 256); }
+
+// what the fan controller is currently being driven by. duty is a pwm level,
+// 0-255; there is no rpm reading anywhere in the system (the fan has no sense
+// wire), so duty is the only fan number that exists.
+typedef enum FanMode {
+   FAN_MODE_FULL      = 0,
+   FAN_MODE_AUTOMATIC = 1,   // syscon steps the duty up as the console heats
+   FAN_MODE_MANUAL    = 2
+} FanMode;
+
+typedef struct FanPolicy {
+   uint8_t status;
+   uint8_t mode;
+   uint8_t duty;
+   uint8_t spare;
+} FanPolicy;
+
+// lv2 syscall 409 - sys_sm_get_fan_policy. gated behind the kernel's
+// manufacturing-mode check on stock lv2; webman patches that check before
+// calling. returns 0 on success, negative if refused.
+static inline int32_t getFanPolicy(FanPolicy *outPolicy)
+{
+   outPolicy->status = outPolicy->mode = outPolicy->duty = outPolicy->spare = 0;
+   return (int32_t)scCall5(409, 0, (uint64_t)(uintptr_t)&outPolicy->status, (uint64_t)(uintptr_t)&outPolicy->mode,
+                                  (uint64_t)(uintptr_t)&outPolicy->duty, (uint64_t)(uintptr_t)&outPolicy->spare);
+}
+
+static inline int getFanPercent(uint8_t duty) { return (duty * 100 + 127) / 255; }
+
 // lv2 syscall 461 - sys_prx_get_module_id_by_address.
 // returns the prx id of the module containing the given address.
 static inline int32_t getPrxModuleIdByAddress(void *addr)

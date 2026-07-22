@@ -12,6 +12,12 @@
 // variable each file silently got its own private copy.
 extern volatile int appExitRequested;
 
+// set while the XMB is open over the app (PS button). the app keeps running and
+// must keep calling appPoll, but anything that hogs the machine - busy worker
+// threads, uncapped rendering - has to back off or the XMB cannot draw and the
+// console looks hung.
+extern volatile int appSystemMenuOpen;
+
 void appRegisterExitCallback(void);
 void appPoll(void);
 void requestAppExit(void);   // exit from app code (e.g. a quit menu), same path as a system exit

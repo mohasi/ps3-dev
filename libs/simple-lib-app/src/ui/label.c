@@ -65,7 +65,7 @@ void moveLabel(Label *l, int x, int y)
    l->y = y;
 }
 
-void drawLabelAlpha(Label *l, int alpha)
+void drawLabelAlpha(const Label *l, int alpha)
 {
    if (l->tt.tex.w > 0) {
       uint32_t tint = ((uint32_t)(alpha & 0xFF) << 24) | 0x00FFFFFF;
@@ -73,4 +73,4 @@ void drawLabelAlpha(Label *l, int alpha)
    }
 }
 
-void drawLabel(Label *l) { drawLabelAlpha(l, (int)(l->color >> 24)); }
+void drawLabel(const Label *l) { drawLabelAlpha(l, (int)(l->color >> 24)); }

@@ -2,6 +2,7 @@
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       Title="RCO Studio"
+      Icon="rco-studio.ico"
       Width="1020"
       Height="640"
       WindowStartupLocation="CenterScreen"
@@ -137,9 +138,17 @@
               </ListView.ContextMenu>
               <ListView.View>
                 <GridView>
-                  <GridViewColumn x:Name="checkColumn" Width="30">
+                  <GridViewColumn x:Name="checkColumn" Width="34">
                      <GridViewColumn.Header>
-                       <CheckBox x:Name="checkAllBox" Click="OnCheckAll" />
+                       <CheckBox x:Name="checkAllBox" Click="OnCheckAll"
+                              ToolTip="tick to select every RCO, right-click to select just the edited ones">
+                         <CheckBox.ContextMenu>
+                           <ContextMenu>
+                             <MenuItem Header="Select all modified" Click="OnCheckModified"
+                                    ToolTip="Tick only the RCOs that have been modified" />
+                           </ContextMenu>
+                         </CheckBox.ContextMenu>
+                       </CheckBox>
                      </GridViewColumn.Header>
                      <GridViewColumn.CellTemplate>
                        <DataTemplate>

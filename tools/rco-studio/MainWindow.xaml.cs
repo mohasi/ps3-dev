@@ -142,6 +142,17 @@ namespace RcoStudio
          foreach (RcoJob job in jobs) job.IsChecked = check;
       }
 
+      private void OnCheckModified(object sender, RoutedEventArgs e)
+      {
+         bool allChecked = true;
+         foreach (RcoJob job in jobs)
+         {
+            job.IsChecked = job.HasEdits;
+            if (!job.IsChecked) allChecked = false;
+         }
+         checkAllBox.IsChecked = allChecked;
+      }
+
       // section: sorting by name on header click
       private ListSortDirection nameSortDirection = ListSortDirection.Descending;
 

@@ -63,6 +63,76 @@
      <Setter Property="VerticalContentAlignment" Value="Center" />
    </Style>
 
+   <!-- dark right-click menus (applies app-wide; no key) -->
+   <!-- fully templated so no system-light chrome shows through while the popup opens -->
+   <Style TargetType="ContextMenu">
+     <Setter Property="Foreground" Value="{StaticResource FgText}" />
+     <Setter Property="HasDropShadow" Value="False" />
+     <Setter Property="Template">
+       <Setter.Value>
+         <ControlTemplate TargetType="ContextMenu">
+            <Border Background="{StaticResource BgSurface}" BorderBrush="{StaticResource BrBorder}" BorderThickness="1" Padding="2">
+              <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+            </Border>
+         </ControlTemplate>
+       </Setter.Value>
+     </Setter>
+   </Style>
+
+   <!-- dark checkbox: centered accent tick, no system-light chrome -->
+   <Style TargetType="CheckBox">
+     <Setter Property="Foreground" Value="{StaticResource FgText}" />
+     <Setter Property="Template">
+       <Setter.Value>
+         <ControlTemplate TargetType="CheckBox">
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Border x:Name="box" Width="16" Height="16" VerticalAlignment="Center"
+                    Background="{StaticResource BgSurface}" BorderBrush="{StaticResource BrBorder}" BorderThickness="1">
+                <Path x:Name="tick" Data="M 3.5,8 L 6.5,11 L 12,4.5" Stroke="{StaticResource BrAccent}" StrokeThickness="2"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                      SnapsToDevicePixels="True" Visibility="Collapsed" />
+              </Border>
+              <ContentPresenter x:Name="label" VerticalAlignment="Center" Margin="6,0,0,0" />
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="True">
+                <Setter TargetName="tick" Property="Visibility" Value="Visible" />
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="box" Property="BorderBrush" Value="{StaticResource BrAccent}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.5" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+         </ControlTemplate>
+       </Setter.Value>
+     </Setter>
+   </Style>
+
+   <Style TargetType="MenuItem">
+     <Setter Property="Background" Value="Transparent" />
+     <Setter Property="Foreground" Value="{StaticResource FgText}" />
+     <Setter Property="Padding" Value="10,4" />
+     <Setter Property="Template">
+       <Setter.Value>
+         <ControlTemplate TargetType="MenuItem">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+              <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsHighlighted" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="{StaticResource BgHover}" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.5" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+         </ControlTemplate>
+       </Setter.Value>
+     </Setter>
+   </Style>
+
    <!-- minimal dark scrollbar (applies app-wide; no key) -->
    <Style x:Key="ScrollThumb" TargetType="Thumb">
      <Setter Property="Template">

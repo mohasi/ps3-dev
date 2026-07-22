@@ -14,6 +14,7 @@
     </TargetFrameworkProfile>
     <FileAlignment>512</FileAlignment>
     <StartupObject>RcoStudio.App</StartupObject>
+    <ApplicationIcon>rco-studio.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -71,6 +72,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />
+    <Resource Include="rco-studio.ico" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="tools\**\*">

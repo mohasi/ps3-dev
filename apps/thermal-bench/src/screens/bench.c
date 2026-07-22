@@ -43,7 +43,7 @@ static const StatRow KEY_ROWS[KEY_ENTRY_COUNT] = { STAT_CPU, STAT_RSX, STAT_FAN 
 static const int WINDOW_CHOICES[] = { 120, 300, 600, 1800 };
 #define WINDOW_CHOICE_COUNT (int)(sizeof WINDOW_CHOICES / sizeof WINDOW_CHOICES[0])
 
-#define HINT_TIME_INDEX    2   // the R1 hint, whose caption carries the current window
+#define HINT_TIME_INDEX    6   // the R1 hint, whose caption carries the current window
 #define KEY_SWATCH_WIDTH   26
 #define KEY_SWATCH_GAP      8
 #define KEY_ENTRY_GAP      34
@@ -244,7 +244,7 @@ static void initBench(void)
    margin       = screenW / 24;
    textSize     = screenH / 40;
    spacing      = textSize * 5 / 3;
-   headerTop    = margin - 20;                  // title, right-hand lines and stats all sit on this line
+   headerTop    = margin - 30;                  // title, right-hand lines and stats all sit on this line
    int valueColumnX = margin + textSize * 15 / 2;   // room for the longest name ("RSX Clock")
 
    initLabel(&title, &font, margin, headerTop, AUTO, AUTO, textSize + 8, COLOR_WHITE, TEXT_NOWRAP, "Thermal Bench");
@@ -271,16 +271,18 @@ static void initBench(void)
       initLabel(&keyLabels[entry], &font, 0, keyY, AUTO, AUTO, textSize, STAT_COLORS[KEY_ROWS[entry]], TEXT_NOWRAP, STAT_NAMES[KEY_ROWS[entry]]);
    layoutKey(screenW, keyY);
 
+   // the clock hints lead the row; each is a caption-less Select clustered with its d-pad glyph
    initButtonHints(&hints, &font, screenH - margin, textSize + 4, textSize, COLOR_SLATE_300);
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_START), "Units");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT), "");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_DPAD_UP), "Overclock RSX");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT), "");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_DPAD_RIGHT), "Overclock Mem");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_START), "Toggle Units");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_L1), "");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_R1), "Time window");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS), "Toggle Load");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE), "CPU");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "RSX");
-   // the system font has no d-pad art, so the directions are spelt in the caption
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT), "+Up/Down Overclock RSX");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT), "+Left/Right Overclock Mem");
 
    sampleCount = 0;
    lastSampleSecond = -SAMPLE_INTERVAL_SECONDS;

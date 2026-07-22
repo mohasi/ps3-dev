@@ -9,7 +9,7 @@
 #include "gfx.h"
 #include "ui/label.h"
 
-#define MAX_BUTTON_HINTS 8
+#define MAX_BUTTON_HINTS 12
 
 typedef struct {
    GfxTexture glyph;

@@ -28,6 +28,9 @@ static const uint16_t GLYPH_CODEPOINTS[GLYPH_COUNT] = {
    [GLYPH_CROSS] = 0xF881, [GLYPH_CIRCLE] = 0xF880, [GLYPH_SQUARE] = 0xF882, [GLYPH_TRIANGLE] = 0xF883,
    [GLYPH_L1]    = 0xF888, [GLYPH_R1]     = 0xF88B, [GLYPH_L2]     = 0xF889, [GLYPH_R2]       = 0xF88C,
    [GLYPH_SELECT] = 0xF88E, [GLYPH_START] = 0xF88F, [GLYPH_R3]     = 0xF88D,
+   // d-pad, in the font's own order: up, down, left, right (confirmed by decoding the
+   // glyphs - each is mirror-symmetric across its own axis with its lit arm brightest)
+   [GLYPH_DPAD_UP] = 0xF884, [GLYPH_DPAD_DOWN] = 0xF885, [GLYPH_DPAD_LEFT] = 0xF886, [GLYPH_DPAD_RIGHT] = 0xF887,
 };
 
 static GfxTexture glyphTextures[GLYPH_COUNT];

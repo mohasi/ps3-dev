@@ -25,6 +25,17 @@ namespace ThemeStudio
       private const double ColumnStart = 195;
       private const double IconSize = 100;
       private const double SelectedIconSize = 128;
+      // the console's clock bar, measured off a 1920x1080 capture of a real XMB. the time does not
+      // sit at the end of the bar: the console keeps a stretch of it clear for status icons.
+      // the bar runs off the right of the screen on the console, so it is drawn past the edge and
+      // clipped rather than stopping short with a rounded corner showing
+      private const double ClockBarRight = -6;
+      private const double ClockBarTop = 76;
+      private const double ClockBarWidth = 578;
+      private const double ClockBarHeight = 55;
+      private const double ClockFaceSize = 30;
+      private const double ClockClearEnd = 105;    // between the face and the end of the bar
+      private const double ClockFaceGap = 10;     // between the time and the face
 
       // each main-row entry opens a column of items; these are the groups they map to
       private static readonly Dictionary<string, string> ColumnGroupByRowId = new Dictionary<string, string> {
@@ -64,6 +75,67 @@ namespace ThemeStudio
          // icons draw over whatever the background turned out to be, exactly as on the console
          drawMainRow(canvas, project, selectedRowId);
          drawColumn(canvas, project, selectedRowId);
+         drawClock(canvas);
+      }
+
+      // the console's own clock: a pale bar along the top right, the date and time at its right-hand
+      // end, and a clock face after them. no theme can move or hide it, so the only reason to draw
+      // it is the one that matters here: it says which corner is already taken.
+      private static void drawClock(Canvas canvas)
+      {
+         double barLeft = ScreenWidth - ClockBarRight - ClockBarWidth;
+         // barely a panel on the console: an outline, with the background showing through it
+         var bar = new System.Windows.Shapes.Rectangle {
+            Width = ClockBarWidth, Height = ClockBarHeight, RadiusX = 4, RadiusY = 4,
+            Fill = new SolidColorBrush(Color.FromArgb(0x0C, 0xFF, 0xFF, 0xFF)),
+            Stroke = new SolidColorBrush(Color.FromArgb(0x59, 0xFF, 0xFF, 0xFF)), StrokeThickness = 1
+         };
+         Canvas.SetLeft(bar, barLeft);
+         Canvas.SetTop(bar, ClockBarTop);
+         canvas.Children.Add(bar);
+
+         // the console writes the day before the month. twelve or twenty four hour is a setting on
+         // the console that nothing here can read, so this follows the console it was drawn from.
+         DateTime now = DateTime.Now;
+         string when = now.Day + "/" + now.Month + "  " +
+                       now.ToString("H:mm", System.Globalization.CultureInfo.InvariantCulture);
+         TextBlock label = makeLabel(when, 30, 0.95);
+         label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+
+         double faceLeft = barLeft + ClockBarWidth - ClockClearEnd - ClockFaceSize;
+         double middle = ClockBarTop + ClockBarHeight / 2;
+         Canvas.SetLeft(label, faceLeft - ClockFaceGap - label.DesiredSize.Width);
+         Canvas.SetTop(label, middle - label.DesiredSize.Height / 2);
+         canvas.Children.Add(label);
+
+         drawClockFace(canvas, faceLeft, middle - ClockFaceSize / 2, now);
+      }
+
+      private static void drawClockFace(Canvas canvas, double left, double top, DateTime now)
+      {
+         var rim = new System.Windows.Shapes.Ellipse {
+            Width = ClockFaceSize, Height = ClockFaceSize, Stroke = Brushes.White,
+            StrokeThickness = 2, Opacity = 0.95
+         };
+         Canvas.SetLeft(rim, left);
+         Canvas.SetTop(rim, top);
+         canvas.Children.Add(rim);
+
+         double centreX = left + ClockFaceSize / 2;
+         double centreY = top + ClockFaceSize / 2;
+         drawHand(canvas, centreX, centreY, (now.Hour % 12 + now.Minute / 60.0) / 12.0, ClockFaceSize * 0.26);
+         drawHand(canvas, centreX, centreY, now.Minute / 60.0, ClockFaceSize * 0.38);
+      }
+
+      // turns is how far round from straight up, 0 to 1
+      private static void drawHand(Canvas canvas, double centreX, double centreY, double turns, double length)
+      {
+         double angle = turns * 2 * Math.PI;
+         canvas.Children.Add(new System.Windows.Shapes.Line {
+            X1 = centreX, Y1 = centreY,
+            X2 = centreX + Math.Sin(angle) * length, Y2 = centreY - Math.Cos(angle) * length,
+            Stroke = Brushes.White, StrokeThickness = 2, Opacity = 0.9
+         });
       }
 
       // background
@@ -161,16 +233,21 @@ namespace ThemeStudio
          canvas.Children.Add(element);
       }
 
-      private static void addLabel(Canvas canvas, string text, double x, double y, double fontSize,
-                                   double opacity, bool centred = true)
+      private static TextBlock makeLabel(string text, double fontSize, double opacity)
       {
-         var label = new TextBlock {
+         return new TextBlock {
             Text = text, FontSize = fontSize, FontFamily = menuFont,
             Foreground = Brushes.White, Opacity = opacity,
             Effect = new System.Windows.Media.Effects.DropShadowEffect {
                BlurRadius = 6, ShadowDepth = 1, Opacity = 0.9, Color = Colors.Black
             }
          };
+      }
+
+      private static void addLabel(Canvas canvas, string text, double x, double y, double fontSize,
+                                   double opacity, bool centred = true)
+      {
+         TextBlock label = makeLabel(text, fontSize, opacity);
          label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
          Canvas.SetLeft(label, centred ? x - label.DesiredSize.Width / 2 : x);
          Canvas.SetTop(label, centred ? y : y - label.DesiredSize.Height / 2);

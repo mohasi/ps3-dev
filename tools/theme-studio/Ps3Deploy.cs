@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 
@@ -11,19 +12,39 @@ namespace ThemeStudio
    {
       public const string ThemeDir = "/dev_hdd0/theme";
 
-      // true if the console answers a listing of the theme folder within a short timeout
-      public static bool CanReach(string ip, out string error)
+      // the console lists no more than this many themes. the extras are not rejected, they simply
+      // never appear, so a deploy that would push past it is stopped here instead.
+      public const int MaxThemes = 100;
+
+      // the themes already on the console. doubles as the reachability check: if this answers,
+      // the console is there.
+      public static bool TryListThemes(string ip, out List<string> themes, out string error)
       {
+         themes = new List<string>();
          error = "";
          try {
             FtpWebRequest request = newRequest(ip, "", WebRequestMethods.Ftp.ListDirectory);
-            request.Timeout = 4000;
-            using (request.GetResponse()) { }
+            request.Timeout = 8000;
+            using (WebResponse response = request.GetResponse())
+            using (var reader = new StreamReader(response.GetResponseStream())) {
+               string line;
+               while ((line = reader.ReadLine()) != null) {
+                  string name = Path.GetFileName(line.Trim());
+                  if (name.EndsWith(".p3t", StringComparison.OrdinalIgnoreCase)) themes.Add(name);
+               }
+            }
             return true;
          } catch (Exception exception) {
             error = exception.Message;
             return false;
          }
+      }
+
+      public static bool HoldsTheme(IEnumerable<string> themes, string fileName)
+      {
+         foreach (string theme in themes)
+            if (string.Equals(theme, fileName, StringComparison.OrdinalIgnoreCase)) return true;
+         return false;
       }
 
       public static void Upload(string ip, string localP3tPath)

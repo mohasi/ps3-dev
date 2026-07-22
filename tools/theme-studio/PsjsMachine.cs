@@ -18,6 +18,10 @@ namespace ThemeStudio
       public PsjsThing Camera { get; private set; }
       public bool Faulted { get; private set; }
 
+      // did the last Advance actually move anything? a scene at rest looks the same as it did
+      // last frame, so whoever is drawing it can skip the frame entirely.
+      public bool Changed { get; private set; }
+
       private PsjsMachine(Action<string> report) { this.report = report; }
 
       // builds the world from the scene, then runs the script's top level once. anything the
@@ -87,6 +91,7 @@ namespace ThemeStudio
       {
          if (Faulted) return;
          PsjsBudget.Begin();   // each frame gets its own allowance
+         Changed = false;
          now += seconds;
          scriptClock = now;
          fireDueTimers();
@@ -96,7 +101,8 @@ namespace ThemeStudio
 
       private void settleAt(double when)
       {
-         foreach (PsjsThing thing in things.Values) thing.SettleAt(when);
+         foreach (PsjsThing thing in things.Values)
+            if (thing.SettleAt(when)) Changed = true;
       }
 
       private void fireDueTimers()
@@ -115,6 +121,7 @@ namespace ThemeStudio
             scriptClock = due.NextAt;
             settleAt(scriptClock);
             if (due.Repeating) due.NextAt += due.Interval; else due.Live = false;
+            Changed = true;   // a timer can set anything, so assume the picture is now different
             try {
                due.Callback.Call(new object[0]);
             } catch (Exception error) {
@@ -360,10 +367,21 @@ namespace ThemeStudio
          return numbers.TryGetValue(name, out value) ? value : fallback;
       }
 
-      public void SettleAt(double now)
+      // true when something actually moved. a move is dropped once it arrives, so a scene that has
+      // finished everything it was asked to do costs nothing per frame.
+      public bool SettleAt(double now)
       {
-         foreach (KeyValuePair<string, PsjsEase> move in moves)
+         if (moves.Count == 0) return false;
+
+         List<string> arrived = null;
+         foreach (KeyValuePair<string, PsjsEase> move in moves) {
             vectors[move.Key] = move.Value.At(now);
+            if (!move.Value.HasArrived(now)) continue;
+            if (arrived == null) arrived = new List<string>();
+            arrived.Add(move.Key);
+         }
+         if (arrived != null) foreach (string name in arrived) moves.Remove(name);
+         return true;
       }
 
       public object GetMember(string name)
@@ -438,6 +456,8 @@ namespace ThemeStudio
       public PsjsVector From, To, Control;
       public double Start, Duration;
       public bool Bezier;
+
+      public bool HasArrived(double now) { return now >= Start + Duration; }
 
       public PsjsVector At(double now)
       {

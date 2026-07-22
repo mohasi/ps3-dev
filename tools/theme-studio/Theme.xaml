@@ -14,6 +14,9 @@
   <Color x:Key="ColorText">#cccccc</Color>
   <Color x:Key="ColorTextDim">#8a8a8a</Color>
   <Color x:Key="ColorHighlight">#3c5a78</Color>
+  <Color x:Key="ColorGreen">#3d7a35</Color>
+  <Color x:Key="ColorGreenBright">#4d9642</Color>
+  <Color x:Key="ColorGreenDim">#2f5f2a</Color>
 
   <SolidColorBrush x:Key="BgBase" Color="{StaticResource ColorBase}"/>
   <SolidColorBrush x:Key="BgCard" Color="{StaticResource ColorCard}"/>
@@ -24,6 +27,9 @@
   <SolidColorBrush x:Key="FgText" Color="{StaticResource ColorText}"/>
   <SolidColorBrush x:Key="FgTextDim" Color="{StaticResource ColorTextDim}"/>
   <SolidColorBrush x:Key="BgHighlight" Color="{StaticResource ColorHighlight}"/>
+  <SolidColorBrush x:Key="BgGreen" Color="{StaticResource ColorGreen}"/>
+  <SolidColorBrush x:Key="BgGreenBright" Color="{StaticResource ColorGreenBright}"/>
+  <SolidColorBrush x:Key="BgGreenDim" Color="{StaticResource ColorGreenDim}"/>
 
   <!-- the spacing scale, named so code-built rows use the same values as the xaml -->
   <sys:Double x:Key="SpaceLabel">4</sys:Double>
@@ -142,6 +148,36 @@
     </Setter>
   </Style>
 
+  <!-- the one button that keeps your work. it is green because it is the only thing on the strip
+       that is not a place to go, and it is the one you want to find without looking. -->
+  <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Setter Property="Background" Value="{StaticResource BgGreen}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource BgGreenBright}"/>
+    <Setter Property="Foreground" Value="White"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="face" Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                  Padding="{TemplateBinding Padding}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="face" Property="Background" Value="{StaticResource BgGreenBright}"/>
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="face" Property="Background" Value="{StaticResource BgGreenDim}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.5"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- a button with no face of its own, for an icon tile: the picture inside shows the hover, so
        the highlight never covers the clear cross on the tile's corner -->
   <ControlTemplate x:Key="PlainTile" TargetType="Button">
@@ -176,22 +212,29 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="TabItem">
-          <Border x:Name="face" Padding="14,7" Margin="0,0,1,0" Background="{StaticResource BgSurface}">
-            <StackPanel Orientation="Horizontal">
-              <Border x:Name="ring" Width="20" Height="20" CornerRadius="10" Margin="0,0,8,0"
-                      Background="Transparent" BorderThickness="1" BorderBrush="{StaticResource FgTextDim}">
-                <TextBlock x:Name="number" Text="{TemplateBinding Tag}" FontSize="11"
-                           Foreground="{StaticResource FgTextDim}" HorizontalAlignment="Center"/>
-              </Border>
-              <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
-            </StackPanel>
-          </Border>
+          <Grid>
+            <Border x:Name="face" Padding="14,7" Margin="0,0,1,0" Background="{StaticResource BgSurface}">
+              <StackPanel Orientation="Horizontal">
+                <Border x:Name="ring" Width="20" Height="20" CornerRadius="10" Margin="0,0,8,0"
+                        Background="Transparent" BorderThickness="1" BorderBrush="{StaticResource FgTextDim}">
+                  <TextBlock x:Name="number" Text="{TemplateBinding Tag}" FontSize="11"
+                             Foreground="{StaticResource FgTextDim}" HorizontalAlignment="Center"/>
+                </Border>
+                <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+              </StackPanel>
+            </Border>
+            <!-- a Border cannot draw a dashed edge, so the stage you are on is outlined by a
+                 rectangle laid over it -->
+            <Rectangle x:Name="dashes" Margin="0,0,1,0" Visibility="Collapsed"
+                       Stroke="{StaticResource FgTextDim}" StrokeThickness="1" StrokeDashArray="3 2"/>
+          </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
               <Setter TargetName="face" Property="Background" Value="{StaticResource BgHover}"/>
             </Trigger>
             <Trigger Property="IsSelected" Value="True">
               <Setter TargetName="face" Property="Background" Value="{StaticResource BgBase}"/>
+              <Setter TargetName="dashes" Property="Visibility" Value="Visible"/>
               <Setter TargetName="ring" Property="Background" Value="{StaticResource BgHighlight}"/>
               <Setter TargetName="ring" Property="BorderBrush" Value="{StaticResource BgHighlight}"/>
               <Setter TargetName="number" Property="Foreground" Value="White"/>

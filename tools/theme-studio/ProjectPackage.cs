@@ -38,9 +38,27 @@ namespace ThemeStudio
 
       public static string MakeWorkDir()
       {
-         string workDir = Path.Combine(Path.GetTempPath(), "theme-studio", Guid.NewGuid().ToString("N"));
+         string workDir = Path.Combine(WorkRoot, Guid.NewGuid().ToString("N"));
          Directory.CreateDirectory(workDir);
          return workDir;
+      }
+
+      private static string WorkRoot { get { return Path.Combine(Path.GetTempPath(), "theme-studio"); } }
+
+      // an editor that is killed, or crashes, never reaches Discard, so its unpacked project stays
+      // on disk for ever -- they had grown to 153MB before this existed. a day old is old enough
+      // to be certain it does not belong to another copy of the editor running right now.
+      public static void SweepLeftovers()
+      {
+         if (!Directory.Exists(WorkRoot)) return;
+         foreach (string folder in Directory.GetDirectories(WorkRoot)) {
+            try {
+               if (Directory.GetLastWriteTimeUtc(folder) < DateTime.UtcNow.AddDays(-1))
+                  Directory.Delete(folder, true);
+            } catch (Exception) {
+               // in use, or not ours to delete. it will be tried again next time.
+            }
+         }
       }
 
       // written to one side and swapped in, so a failure part way through cannot destroy the

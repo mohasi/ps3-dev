@@ -153,7 +153,7 @@ namespace ThemeStudio
 
             var geometry = new GeometryModel3D(mesh, makeMaterial(scene, actor, projectDir, brushCache));
             geometry.BackMaterial = geometry.Material;   // sony's models are not reliably wound
-            geometry.Transform = MakeTransform(position, rotation, scale);
+            geometry.Transform = new MatrixTransform3D(MakeMatrix(position, rotation, scale));
             view.Root.Children.Add(geometry);
             view.ShapeByActorId[actor.Id] = geometry;
          }
@@ -189,22 +189,24 @@ namespace ThemeStudio
          return material != null && SceneEffects.IsUnlit(material.Effect);
       }
 
-      // scale, then rotate, then move -- the order the console applies them
-      public static Transform3DGroup MakeTransform(Vec3 position, Vec3 rotation, Vec3 scale)
+      // scale, then rotate, then move -- the order the console applies them. one matrix rather than
+      // a group of transform objects, because the player recomputes this for every object on every
+      // frame and a matrix is four numbers being multiplied rather than five objects being built.
+      public static Matrix3D MakeMatrix(Vec3 position, Vec3 rotation, Vec3 scale)
       {
-         var transform = new Transform3DGroup();
-         transform.Children.Add(new ScaleTransform3D(scale.X, scale.Y, scale.Z));
-         addRotation(transform, new Vector3D(1, 0, 0), rotation.X);
-         addRotation(transform, new Vector3D(0, 1, 0), rotation.Y);
-         addRotation(transform, new Vector3D(0, 0, 1), rotation.Z);
-         transform.Children.Add(new TranslateTransform3D(position.X, position.Y, position.Z));
-         return transform;
+         var matrix = Matrix3D.Identity;
+         matrix.Scale(new Vector3D(scale.X, scale.Y, scale.Z));
+         turn(ref matrix, new Vector3D(1, 0, 0), rotation.X);
+         turn(ref matrix, new Vector3D(0, 1, 0), rotation.Y);
+         turn(ref matrix, new Vector3D(0, 0, 1), rotation.Z);
+         matrix.Translate(new Vector3D(position.X, position.Y, position.Z));
+         return matrix;
       }
 
-      private static void addRotation(Transform3DGroup transform, Vector3D axis, double radians)
+      private static void turn(ref Matrix3D matrix, Vector3D axis, double radians)
       {
          if (Math.Abs(radians) < 1e-9) return;
-         transform.Children.Add(new RotateTransform3D(new AxisAngleRotation3D(axis, radians * 180.0 / Math.PI)));
+         matrix.Rotate(new Quaternion(axis, radians * 180.0 / Math.PI));
       }
 
       private static string resolve(string projectDir, string storedPath)

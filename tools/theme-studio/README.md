@@ -20,7 +20,14 @@ XML-only projects (which stored fragile absolute paths) still open and are impor
 `ThemeBuild` checks every referenced file exists **before** writing anything, stages the assets into a
 folder named after the theme, runs p3tcompiler and leaves the `.p3t` there — one folder per theme, so
 projects sharing a directory never overwrite each other. `Ps3Deploy` uploads over FTP; Deploy builds
-first, since there is no telling whether the last build still matches the project.
+first, since there is no telling whether the last build still matches the project. It lists the
+console's theme folder before sending: the XMB shows **at most 100 themes**, and the ones past that are
+not refused, they simply never appear — so a deploy that would add a 101st is stopped and says why
+(replacing a theme already there costs no slot, so it is always allowed).
+
+Icons can be set one at a time or a set at once ("Import a set of icons"), matched to slots by
+filename — `icon_game.png` and so on, the same names the program's own `assets/default-icons` uses,
+which makes that folder a ready-made naming guide.
 
 Every child process goes through `ToolRun`, which does the three things these tools need: run from
 their own folder (they load sibling dlls), close stdin (p3tcompiler waits on Enter), and drain both
@@ -29,7 +36,12 @@ output streams at once (reading one to the end deadlocks when the other fills it
 ### The 3D scene
 
 `SceneProject` holds models, materials, actors, one camera and up to two lights; `SceneBuild` writes
-the scene XML and runs `raf_compiler` as part of a theme build. `DaeFile` reads COLLADA models for
+the scene XML and runs `raf_compiler` as part of a theme build. **An object is one model, one material
+and one texture** — that is the format, not a shortcut here; a model wanting several textures has to be
+cut into parts in the modelling program and added as one object per part, which is how Sony's own
+`raf_mustache` sample is built. `raf_compiler` reports how much of the console's texture, geometry and
+actor memory a scene uses and refuses to build past any of the three; all three figures go to the build
+log, with a warning from 90% on. `DaeFile` reads COLLADA models for
 both their extent (the auto-fit) and their triangles (the preview). A model with no placement of its
 own is sized to about a third of the screen and put in the bottom-right corner, clear of the XMB's
 menu — written into the script as visible lines, not applied silently (`ScenePlacement`).
@@ -48,10 +60,19 @@ geometry; until then a script should avoid rotating off-centre models.
 
 ### Motion
 
-Movement is written by hand in PSJS, Sony's JavaScript dialect. `PsjsSnippets` seeds a new scene with a
-commented starter naming its objects; "Insert example" offers ten worked examples, and Ctrl+Space
-suggests from the API plus the scene's objects. "Validate" runs Sony's own `raf_script.exe`
-(`PsjsCheck`) — the only authoritative verdict.
+Movement is written by hand in PSJS, Sony's JavaScript dialect, in an AvalonEdit editor
+(`lib/ICSharpCode.AvalonEdit.dll`, kept in the repo so the tool builds without fetching anything):
+numbered lines, and colours from `psjs.xshd`, which picks out the names PSJS actually has so a typo
+looks wrong before it is compiled. `PsjsEditor` suggests names, each shown with how it is called
+(`setPosition   (<x, y, z>, seconds, [easing], [shape])`): after a `.` only what that object really
+offers — read from the script's own `var view = new Camera(...)` lines, so a camera is never offered a
+scale — after `->` the parts of a point, and Ctrl+Space everything including this scene's own objects.
+PSJS has no libraries and no user types, so every name a script can use is known in advance, which is
+what makes suggesting them worth doing.
+
+`PsjsSnippets` seeds a new scene with a commented starter naming its objects, and "Insert example"
+offers ten worked examples. "Validate" runs Sony's own `raf_script.exe` (`PsjsCheck`) — the only
+authoritative verdict — and jumps to the line it complains about.
 
 ### What a script can do
 
@@ -104,8 +125,10 @@ show.
 
 ### Preview
 
-`XmbPreview` draws a rough XMB on a 1920x1080 canvas in the console's own fonts; when the background is
-the project's 3D scene, `ScenePreview` renders it with WPF 3D and composites the icons on top. It is a
+`XmbPreview` draws a rough XMB on a 1920x1080 canvas in the console's own fonts, including the clock in
+the top right — no theme can move or hide it, so the only reason to draw it is the one that matters
+here: it says which corner is already taken. When the background is the project's 3D scene,
+`ScenePreview` renders it with WPF 3D and composites the icons on top. It is a
 likeness, not a facsimile: placement, size, texture and motion are faithful, shading is not. Point
 lights draw a small coloured dot at their position (toggle with "Show lights"); the camera cannot
 appear in its own view, so it is reported in words.

@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using ICSharpCode.AvalonEdit.Document;
 
 namespace ThemeStudio
 {
@@ -266,7 +268,7 @@ namespace ThemeStudio
          scriptTextShown = text;
       }
 
-      private void onScriptChanged(object sender, TextChangedEventArgs e)
+      private void onScriptChanged(object sender, EventArgs e)
       {
          if (settingScriptText) return;
          scriptStatus.Text = "";
@@ -292,8 +294,9 @@ namespace ThemeStudio
       private void insertExample(PsjsExample example)
       {
          string text = example.Build(scene.Actors);
-         scriptBox.SelectedText = text;
-         scriptBox.CaretIndex += text.Length;
+         int at = scriptBox.SelectionStart;
+         scriptBox.Document.Replace(at, scriptBox.SelectionLength, text);
+         scriptBox.CaretOffset = at + text.Length;
          scriptBox.Focus();
       }
 
@@ -312,7 +315,32 @@ namespace ThemeStudio
          }
          string message;
          if (PsjsCheck.TryCompile(path, out message)) showScriptStatus(true, "the console will accept this");
-         else showScriptStatus(false, lastLine(message));
+         else showScriptProblem(message);
+      }
+
+      // the compiler says where it fell over ("scene.js:12: error: syntax error"). the line number
+      // is the useful part of that, so the message says it in words and the box goes there.
+      private void showScriptProblem(string complaint)
+      {
+         string text = lastLine(complaint);
+         Match found = Regex.Match(text, @":(\d+):\s*(?:error:)?\s*(.*)$");
+         int line;
+         if (!found.Success || !int.TryParse(found.Groups[1].Value, out line)) {
+            showScriptStatus(false, text);
+            return;
+         }
+
+         showScriptStatus(false, "line " + line + ": " + found.Groups[2].Value);
+         goToScriptLine(line);
+      }
+
+      private void goToScriptLine(int line)
+      {
+         if (line < 1 || line > scriptBox.Document.LineCount) return;   // a line the script does not have
+         DocumentLine found = scriptBox.Document.GetLineByNumber(line);
+         scriptBox.Focus();
+         scriptBox.Select(found.Offset, found.Length);
+         scriptBox.ScrollToLine(line);
       }
 
       private void showScriptStatus(bool good, string message)
@@ -328,43 +356,13 @@ namespace ThemeStudio
          return lines.Length > 0 ? lines[lines.Length - 1].Trim() : "there is a problem";
       }
 
-      // autocomplete: the api is small and fully documented, and the object names come from the
-      // list beside it, so a plain filtered popup covers everything worth suggesting.
+      // the popup offers itself after a dot or an arrow; Ctrl+Space asks for it anywhere else
       private void onScriptKeyDown(object sender, KeyEventArgs e)
       {
          if (e.Key == Key.Space && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control) {
-            showCompletions();
+            scriptEditor.ShowSuggestions();
             e.Handled = true;
          }
-      }
-
-      private void showCompletions()
-      {
-         string word = getWordBeforeCaret();
-         var matches = new List<string>();
-         foreach (string entry in PsjsSnippets.GetApiNames(scene.Actors))
-            if (word.Length == 0 || entry.StartsWith(word, StringComparison.OrdinalIgnoreCase))
-               matches.Add(entry);
-
-         if (matches.Count == 0) { log("nothing matches \"" + word + "\""); return; }
-         if (matches.Count == 1) { insertCompletion(word, matches[0]); return; }
-         log("suggestions: " + string.Join("   ", matches.ToArray()));
-      }
-
-      private string getWordBeforeCaret()
-      {
-         int caret = scriptBox.CaretIndex;
-         int start = caret;
-         while (start > 0 && (char.IsLetterOrDigit(scriptBox.Text[start - 1]) ||
-                              scriptBox.Text[start - 1] == '_')) start--;
-         return scriptBox.Text.Substring(start, caret - start);
-      }
-
-      private void insertCompletion(string word, string completion)
-      {
-         scriptBox.Select(scriptBox.CaretIndex - word.Length, word.Length);
-         scriptBox.SelectedText = completion;
-         scriptBox.CaretIndex = scriptBox.SelectionStart + completion.Length;
       }
    }
 }

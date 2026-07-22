@@ -38,6 +38,7 @@ namespace ThemeStudio
       private readonly List<Action> slotRefreshers = new List<Action>();
       private readonly List<string> previewRowIds = new List<string>();
       private int previewRow;
+      private readonly PsjsEditor scriptEditor;
 
       private const double CardWidth = 460;   // matches CardWidth in Theme.xaml
 
@@ -54,6 +55,8 @@ namespace ThemeStudio
       {
          InitializeComponent();
          AppSettings.Load();
+         ProjectPackage.SweepLeftovers();
+         scriptEditor = new PsjsEditor(scriptBox, delegate { return PsjsSnippets.GetApiNames(scene.Actors); });
          buildColourList();
          ps3AddressBox.Text = AppSettings.Ps3Ip;
          buildIconGrid();
@@ -177,6 +180,32 @@ namespace ThemeStudio
       }
 
       private void onMarkersToggled(object sender, RoutedEventArgs e) { showSceneHelpers(); }
+
+      // a scene nobody is looking at is still drawn thirty times a second, and drawing it costs a
+      // whole processor core -- so it runs only while this window is the one being used. it pauses
+      // rather than stops, so coming back carries on from where the animation was.
+      protected override void OnActivated(EventArgs e)
+      {
+         base.OnActivated(e);
+         showScenePaused();
+      }
+
+      protected override void OnDeactivated(EventArgs e)
+      {
+         base.OnDeactivated(e);
+         showScenePaused();
+      }
+
+      protected override void OnStateChanged(EventArgs e)
+      {
+         base.OnStateChanged(e);
+         showScenePaused();
+      }
+
+      private void showScenePaused()
+      {
+         if (scenePlayer != null) scenePlayer.SetRunning(IsActive && WindowState != WindowState.Minimized);
+      }
 
       // the scene starts playing when the preview comes into view and stops when it leaves, so it
       // always runs the script as written rather than as last saved, and costs nothing when hidden
@@ -546,7 +575,14 @@ namespace ThemeStudio
       {
          addSection(iconPanel, "Menu icons",
                     "Click a slot to choose a picture, or the cross to clear it. Anything left alone keeps " +
-                    "the console's own icon. 128x128, except the photo and video ones.");
+                    "the console's own icon. 128x128, except the photo and video ones. To set many at once, " +
+                    "name your pictures after the slots (icon_game.png, icon_music.png ...) and import them " +
+                    "together -- the program's own assets\\default-icons folder is a ready-made naming guide.");
+
+         var importButton = new Button { Content = "Import a set of icons", HorizontalAlignment = HorizontalAlignment.Left };
+         importButton.Click += onImportIcons;
+         iconPanel.Children.Add(importButton);
+
          foreach (string group in IconSlots.Groups) {
             iconPanel.Children.Add(new TextBlock {
                Text = group, FontSize = 13, FontWeight = FontWeights.SemiBold,
@@ -617,6 +653,51 @@ namespace ThemeStudio
          showIconSlot(slot.Id);
          warnUnlessSize(path, slot.Width, slot.Height, slot.Label + " icon");
          refreshPreview();
+      }
+
+      // a whole set of icons in one go, matched to slots by filename. anything that does not name
+      // a slot is left alone and said so, rather than guessed at.
+      private void onImportIcons(object sender, RoutedEventArgs e)
+      {
+         var dialog = new OpenFileDialog {
+            Title = "Choose the icons to import (Ctrl+A takes the whole folder)",
+            Filter = "png images (*.png)|*.png", Multiselect = true
+         };
+         if (dialog.ShowDialog() != true) return;
+
+         var skipped = new List<string>();
+         var wrongSize = new List<string>();
+         int imported = 0;
+
+         foreach (string path in dialog.FileNames) {
+            IconSlot slot = findSlotByFileName(path);
+            if (slot == null) { skipped.Add(Path.GetFileName(path)); continue; }
+
+            project.IconPaths[slot.Id] = path;
+            showIconSlot(slot.Id);
+            imported++;
+
+            int width, height;
+            if (ImageFile.TryReadSize(path, out width, out height) &&
+                (width != slot.Width || height != slot.Height))
+               wrongSize.Add(Path.GetFileName(path) + " is " + width + "x" + height);
+         }
+
+         log("imported " + imported + (imported == 1 ? " icon" : " icons"));
+         if (skipped.Count > 0)
+            log("   no slot goes by these names, so they were left out: " + string.Join(", ", skipped.ToArray()));
+         if (wrongSize.Count > 0)
+            log("   wrong size, so they will build but may look wrong: " + string.Join(", ", wrongSize.ToArray()));
+         refreshPreview();
+      }
+
+      // "icon_game.png", or "game.png" for anyone who dropped the prefix
+      private static IconSlot findSlotByFileName(string path)
+      {
+         string name = Path.GetFileNameWithoutExtension(path).ToLowerInvariant();
+         foreach (IconSlot slot in IconSlots.All)
+            if (slot.Id == name || slot.Id == "icon_" + name) return slot;
+         return null;
       }
 
       private void onClearIconSlot(object sender, RoutedEventArgs e)
@@ -813,10 +894,19 @@ namespace ThemeStudio
             return;
          }
 
+         List<string> onConsole;
          string error;
-         if (!Ps3Deploy.CanReach(ip, out error)) {
+         if (!Ps3Deploy.TryListThemes(ip, out onConsole, out error)) {
             log("cannot reach " + ip + ": " + error);
             log("check the console is on and running an FTP server (e.g. simple-ftp)");
+            return;
+         }
+
+         // replacing a theme already there costs no slot, so only a genuinely new one is stopped
+         string fileName = Path.GetFileName(p3tPath);
+         if (!Ps3Deploy.HoldsTheme(onConsole, fileName) && onConsole.Count >= Ps3Deploy.MaxThemes) {
+            log("not sent: the console is already holding " + onConsole.Count + " themes, and it lists at " +
+                "most " + Ps3Deploy.MaxThemes + " -- delete one on the console and try again");
             return;
          }
 

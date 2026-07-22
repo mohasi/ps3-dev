@@ -49,13 +49,27 @@ namespace ThemeStudio
          elapsed.Stop();
       }
 
+      // paused when the window is not the one being used: a scene nobody is watching still costs
+      // a whole core to draw. the stopwatch stops with it, so the scene carries on where it was
+      // rather than jumping forward by however long you were away.
+      public void SetRunning(bool running)
+      {
+         if (running == clock.IsEnabled) return;
+         if (running) { elapsed.Start(); clock.Start(); } else { clock.Stop(); elapsed.Stop(); }
+      }
+
       private void onTick(object sender, EventArgs e)
       {
          double seconds = elapsed.Elapsed.TotalSeconds;
          machine.Advance(seconds - lastSeconds);
          lastSeconds = seconds;
-         showFrame();
-         if (Ticked != null) Ticked();
+
+         // a scene between moves is the same picture as last frame, so drawing it again is work
+         // for nothing -- and most themes sit still most of the time
+         if (machine.Changed) {
+            showFrame();
+            if (Ticked != null) Ticked();
+         }
          if (machine.Faulted) Stop();   // a broken script freezes rather than repeating its error
       }
 
@@ -101,8 +115,12 @@ namespace ThemeStudio
 
       private void showShape(GeometryModel3D shape, PsjsThing thing)
       {
-         shape.Transform = ScenePreview.MakeTransform(toVec3(thing.Get("position")), toVec3(thing.Get("rotation")),
-                                                      toVec3(thing.Get("scale")));
+         // the matrix is replaced in place; building a new transform for every object every frame
+         // was the editor's own biggest per-frame cost
+         var placement = shape.Transform as MatrixTransform3D;
+         if (placement != null)
+            placement.Matrix = ScenePreview.MakeMatrix(toVec3(thing.Get("position")), toVec3(thing.Get("rotation")),
+                                                       toVec3(thing.Get("scale")));
          // an object switched off keeps its place in the scene but is not drawn, exactly as
          // "enable = false" does on the console
          bool inScene = view.Root.Children.Contains(shape);

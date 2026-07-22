@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<!-- colours for PSJS. the language is javascript plus vector literals, so this is javascript's
+     own set with Sony's names picked out: what a script can take hold of, and what it can set. -->
+<SyntaxDefinition name="PSJS" extensions=".js" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <Color name="Comment"  foreground="#6A9955"/>
+  <Color name="String"   foreground="#CE9178"/>
+  <Color name="Number"   foreground="#B5CEA8"/>
+  <Color name="Keyword"  foreground="#569CD6"/>
+  <Color name="Global"   foreground="#4EC9B0"/>
+  <Color name="Member"   foreground="#DCDCAA"/>
+  <Color name="Constant" foreground="#C586C0"/>
+  <Color name="Reach"    foreground="#D4D4D4" fontWeight="bold"/>
+
+  <RuleSet ignoreCase="false">
+
+    <Span color="Comment" begin="//"/>
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/"/>
+
+    <Span color="String">
+      <Begin>"</Begin>
+      <End>"</End>
+      <RuleSet>
+        <Span begin="\\" end="."/>
+      </RuleSet>
+    </Span>
+    <Span color="String">
+      <Begin>'</Begin>
+      <End>'</End>
+      <RuleSet>
+        <Span begin="\\" end="."/>
+      </RuleSet>
+    </Span>
+
+    <Keywords color="Keyword">
+      <Word>var</Word>
+      <Word>function</Word>
+      <Word>return</Word>
+      <Word>if</Word>
+      <Word>else</Word>
+      <Word>for</Word>
+      <Word>while</Word>
+      <Word>do</Word>
+      <Word>break</Word>
+      <Word>continue</Word>
+      <Word>switch</Word>
+      <Word>case</Word>
+      <Word>default</Word>
+      <Word>new</Word>
+      <Word>delete</Word>
+      <Word>typeof</Word>
+      <Word>true</Word>
+      <Word>false</Word>
+      <Word>null</Word>
+      <Word>undefined</Word>
+    </Keywords>
+
+    <!-- everything a script can take hold of. these are the only objects there are: a script
+         cannot make new ones. -->
+    <Keywords color="Global">
+      <Word>Actor</Word>
+      <Word>Camera</Word>
+      <Word>Light</Word>
+      <Word>System</Word>
+      <Word>Date</Word>
+      <Word>Math</Word>
+      <Word>IntervalTimer</Word>
+      <Word>OneShotTimer</Word>
+    </Keywords>
+
+    <Keywords color="Constant">
+      <Word>INTERPOLATION_LINEAR</Word>
+      <Word>INTERPOLATION_BEZIER</Word>
+    </Keywords>
+
+    <Keywords color="Member">
+      <Word>setPosition</Word>
+      <Word>setRotation</Word>
+      <Word>setDirection</Word>
+      <Word>setUp</Word>
+      <Word>setScale</Word>
+      <Word>setColor</Word>
+      <Word>setUVScale</Word>
+      <Word>setUVOffset</Word>
+      <Word>setAttenuation</Word>
+      <Word>setAnimWeight</Word>
+      <Word>setAnimSpeed</Word>
+      <Word>setAnimTime</Word>
+      <Word>getAnimWeight</Word>
+      <Word>getAnimSpeed</Word>
+      <Word>getAnimTime</Word>
+      <Word>getAnimIndex</Word>
+      <Word>printPerf</Word>
+      <Word>printHeap</Word>
+      <Word>position</Word>
+      <Word>rotation</Word>
+      <Word>direction</Word>
+      <Word>scale</Word>
+      <Word>color</Word>
+      <Word>enable</Word>
+      <Word>uv_scale</Word>
+      <Word>uv_offset</Word>
+      <Word>attenuation</Word>
+      <Word>aspect</Word>
+      <Word>yfov</Word>
+      <Word>ymag</Word>
+      <Word>timer</Word>
+      <Word>resolution</Word>
+      <Word>interval</Word>
+      <Word>hours</Word>
+      <Word>minutes</Word>
+      <Word>seconds</Word>
+      <Word>year</Word>
+      <Word>month</Word>
+      <Word>day</Word>
+    </Keywords>
+
+    <!-- reads one part of a point in space: thing.position->y -->
+    <Rule color="Reach">-&gt;</Rule>
+
+    <Rule color="Number">\b0[xX][0-9a-fA-F]+|\b\d+(\.[0-9]+)?</Rule>
+
+  </RuleSet>
+</SyntaxDefinition>

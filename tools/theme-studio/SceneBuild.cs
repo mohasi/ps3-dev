@@ -24,6 +24,10 @@ namespace ThemeStudio
          get { return Math.Max(TexturePercent, Math.Max(GeometryPercent, ActorPercent)); }
       }
 
+      // 90% is not a rule of Sony's -- the compiler simply refuses past 100 -- but a theme that
+      // close has no room for the next picture, and finding that out at build time is too late
+      public bool IsNearlyFull { get { return Worst >= 90; } }
+
       public override string ToString()
       {
          return string.Format(CultureInfo.InvariantCulture,
@@ -86,6 +90,8 @@ namespace ThemeStudio
          result.Succeeded = true;
          result.OutputPath = producedPath;
          if (result.Budget.WasReported) log(result.Budget.ToString());
+         if (result.Budget.IsNearlyFull)
+            log("warning: this scene is nearly at the console's limit -- adding much more will not build");
          log("built " + producedPath + " (" + new FileInfo(producedPath).Length + " bytes)");
          return result;
       }

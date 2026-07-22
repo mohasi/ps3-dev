@@ -33,6 +33,16 @@
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="WindowsBase" />
+    <!-- the script editor. kept in the repo rather than restored from the internet, so the tool
+         builds the same way in ten years as it does today. -->
+    <Reference Include="ICSharpCode.AvalonEdit">
+      <HintPath>lib\ICSharpCode.AvalonEdit.dll</HintPath>
+    </Reference>
+    <!-- the framework is on the machine already. said out loud because a build without the 4.0
+         targeting pack installed resolves it from the GAC and copies it beside the exe. -->
+    <Reference Include="mscorlib">
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml">
@@ -86,6 +96,8 @@
     <Compile Include="AppSettings.cs" />
     <Compile Include="Ps3Deploy.cs" />
     <Compile Include="PsjsCheck.cs" />
+    <Compile Include="PsjsEditor.cs" />
+    <EmbeddedResource Include="psjs.xshd" />
     <Compile Include="PsjsExamples.cs" />
     <Compile Include="PsjsSnippets.cs" />
     <Compile Include="ThemeSlots.cs" />

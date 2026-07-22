@@ -12,19 +12,133 @@ namespace ThemeStudio
    public static class PsjsSnippets
    {
       // everything the language offers, from Sony's RAF specification. small enough to list in
-      // full, which is what makes suggesting names worthwhile.
-      private static readonly string[] ApiNames = {
-         "Actor", "Camera", "Light", "Date", "System", "IntervalTimer", "OneShotTimer",
-         "INTERPOLATION_LINEAR", "INTERPOLATION_BEZIER",
+      // full, which is what makes suggesting names worthwhile. split by where a name may appear,
+      // because that is exactly what the suggestion popup has to know: what follows a dot can
+      // only be one of the members.
+      public static readonly string[] GlobalNames = {
+         "Actor", "Camera", "Light", "Date", "System", "Math", "IntervalTimer", "OneShotTimer",
+         "INTERPOLATION_LINEAR", "INTERPOLATION_BEZIER"
+      };
+
+      // what each kind of object offers. kept apart because a camera has no scale and a light has
+      // no rotation: offering them anyway would say the language allows something it does not.
+      public static readonly string[] ActorMembers = {
          "setPosition", "setRotation", "setDirection", "setUp", "setScale", "setColor",
          "setUVScale", "setUVOffset", "setAnimWeight", "setAnimSpeed", "setAnimTime",
          "getAnimWeight", "getAnimSpeed", "getAnimTime", "getAnimIndex",
-         "setAttenuation", "printPerf", "printHeap", "writeln", "write",
          "position", "rotation", "direction", "up", "scale", "color", "enable",
-         "uv_scale", "uv_offset", "attenuation", "aspect", "yfov", "ymag", "timer",
-         "resolution", "interval", "hours", "minutes", "seconds", "year", "month", "day",
-         "Math.PI", "Math.sin", "Math.cos", "Math.random", "Math.floor", "Math.abs"
+         "uv_scale", "uv_offset", "timer"
       };
+
+      public static readonly string[] CameraMembers = {
+         "setPosition", "setDirection", "setUp", "position", "direction", "up", "yfov", "ymag", "aspect"
+      };
+
+      public static readonly string[] LightMembers = {
+         "setPosition", "setDirection", "setColor", "setAttenuation",
+         "position", "direction", "color", "attenuation"
+      };
+
+      public static readonly string[] SystemMembers = {
+         "timer", "interval", "resolution", "printPerf", "printHeap", "writeln", "write"
+      };
+
+      public static readonly string[] DateMembers = { "hours", "minutes", "seconds", "year", "month", "day" };
+
+      public static readonly string[] MathNames = { "PI", "sin", "cos", "random", "floor", "abs" };
+
+      // the parts of a point in space, reached with ->
+      public static readonly string[] PartNames = { "x", "y", "z", "w" };
+
+      // every member of every kind, for the suggestion list that is not about one object
+      public static readonly string[] MemberNames =
+         combine(ActorMembers, CameraMembers, LightMembers, SystemMembers, DateMembers);
+
+      // what a script means by "new Actor(...)" and so on. an unknown name has no members to
+      // offer, and offering the wrong ones is worse than offering none.
+      public static string[] GetMembersOf(string typeName)
+      {
+         switch (typeName) {
+            case "Actor":  return ActorMembers;
+            case "Camera": return CameraMembers;
+            case "Light":  return LightMembers;
+            case "Date":   return DateMembers;
+            default:       return null;
+         }
+      }
+
+      // what to show beside a name in the suggestion list: how it is called, or what it holds.
+      // "seconds" left out means the value changes at once rather than moving to it.
+      private const string PointOverTime = "(<x, y, z>, seconds, [easing], [shape])";
+      private const string BakedAnimation = "the model's own baked animation -- not shown in the preview";
+
+      private static readonly Dictionary<string, string> HintByName = new Dictionary<string, string> {
+         { "setPosition",   PointOverTime },
+         { "setRotation",   "(<x, y, z> in radians, seconds, [easing], [shape])" },
+         { "setDirection",  PointOverTime },
+         { "setUp",         PointOverTime },
+         { "setScale",      PointOverTime },
+         { "setColor",      "(<red, green, blue, howSolid>, seconds, [easing], [shape])" },
+         { "setUVScale",    "(<u, v>, seconds, [easing], [shape])   stretches the texture" },
+         { "setUVOffset",   "(<u, v>, seconds, [easing], [shape])   slides the texture" },
+         { "setAttenuation","(<constant, linear, square>, seconds)   how the light fades with distance" },
+         { "setAnimWeight", BakedAnimation },
+         { "setAnimSpeed",  BakedAnimation },
+         { "setAnimTime",   BakedAnimation },
+         { "getAnimWeight", BakedAnimation },
+         { "getAnimSpeed",  BakedAnimation },
+         { "getAnimTime",   BakedAnimation },
+         { "getAnimIndex",  BakedAnimation },
+         { "position",      "<x, y, z>" },
+         { "rotation",      "<x, y, z> in radians" },
+         { "direction",     "<x, y, z>   which way it faces" },
+         { "up",            "<x, y, z>   which way is up" },
+         { "scale",         "<x, y, z>" },
+         { "color",         "<red, green, blue, howSolid>, each 0 to 1" },
+         { "attenuation",   "<constant, linear, square>" },
+         { "enable",        "true or false; false hides it" },
+         { "uv_scale",      "<u, v>" },
+         { "uv_offset",     "<u, v>" },
+         { "aspect",        "16/9 or 4/3   read only" },
+         { "yfov",          "how tall the view is, in radians" },
+         { "ymag",          "how tall the view is when the camera is flat-on" },
+         { "timer",         "timer[0] = new IntervalTimer(seconds, whatToRun)" },
+         { "interval",      "seconds the last frame took" },
+         { "resolution",    "<width, height> of the screen" },
+         { "printPerf",     "()   nothing to show in the preview" },
+         { "printHeap",     "()   nothing to show in the preview" },
+         { "writeln",       "(text)" },
+         { "write",         "(text)" },
+         { "hours",         "0 to 23, from new Date()" },
+         { "minutes",       "0 to 59, from new Date()" },
+         { "seconds",       "0 to 59, from new Date()" },
+         { "year",          "from new Date()" },
+         { "month",         "from new Date()" },
+         { "day",           "from new Date()" },
+         { "Actor",         "new Actor(\"name\")   one of your models" },
+         { "Camera",        "new Camera(\"camera\")   the view itself" },
+         { "Light",         "new Light(\"mainlight\")   or \"filllight\"" },
+         { "Date",          "new Date()   the console's clock" },
+         { "IntervalTimer", "new IntervalTimer(seconds, whatToRun)   again and again" },
+         { "OneShotTimer",  "new OneShotTimer(seconds, whatToRun)   once" },
+         { "INTERPOLATION_LINEAR", "a steady move" },
+         { "INTERPOLATION_BEZIER", "starts and stops gently; takes a <x1, y1, x2, y2> shape" }
+      };
+
+      public static string GetHint(string name)
+      {
+         string hint;
+         return HintByName.TryGetValue(name, out hint) ? hint : "";
+      }
+
+      private static string[] combine(params string[][] lists)
+      {
+         var all = new List<string>();
+         foreach (string[] list in lists)
+            foreach (string name in list)
+               if (!all.Contains(name)) all.Add(name);
+         return all.ToArray();
+      }
 
       // A model carries two different things, and they are not treated the same.
       //
@@ -98,7 +212,8 @@ namespace ThemeStudio
          yield return "\"" + SceneProject.CameraId + "\"";
          yield return "\"" + SceneProject.MainLightId + "\"";
          yield return "\"" + SceneProject.FillLightId + "\"";
-         foreach (string name in ApiNames) yield return name;
+         foreach (string name in GlobalNames) yield return name;
+         foreach (string name in MemberNames) yield return name;
       }
 
       // a starting script that already refers to the objects in this scene. mostly commented

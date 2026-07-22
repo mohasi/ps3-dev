@@ -144,3 +144,25 @@ surfaces show properly — several Sony parts are plain discs whose entire detai
 The 4:3 background (`sd`) is carried through the project but has no UI, so themes built here have no
 background on a 4:3 display. Stereo menu sounds cannot be authored (one file per sound slot). A full
 audit is in [audits/theme-studio-2026-07-20.md](../../../audits/theme-studio-2026-07-20.md).
+
+## Credits
+
+theme-studio is a front-end. Everything under `tools/` that does the real compiling was made by
+others and is bundled unchanged:
+
+- **Sony's RAF toolchain** (`raf_compiler.exe`, `raf_geom.exe`, `raf_anim.exe`, `raf_script.exe`,
+  `raf_pack.exe`) — the Rich Appearance Format compiler chain from Sony's PS3 theme SDK. It turns the
+  scene XML, `.dae` models and PSJS scripts into the console's geometry/animation/script binaries.
+  `raf_compiler.inf` is Sony's own build recipe, kept verbatim.
+- **p3tcompiler** (`p3tcompiler.exe`) — Sony's PS3 theme (`.p3t`) packager, also from the theme SDK.
+- **dds2gtf / gtf2dds** (`dds2gtf.exe`, `gtf2dds.exe`) — Sony's SDK converters between DDS and the
+  PS3's GTF texture format.
+- **GimConv** (`GimConv.exe`, `GxoTool.dll`, and the `lib/` DLLs) — Sony's official GIM image
+  converter from the PSP/PS3 SDK, used for icon conversion.
+- **rcomage** (`rcomage.exe` and its `.ini` attribute tables) — the open-source RCO packer/unpacker
+  by ZiNgA BuRgA (psptool / GBAtemp scene).
+- **AvalonEdit** (`ICSharpCode.AvalonEdit.dll`) — the open-source WPF code editor by the SharpDevelop
+  team, used for the PSJS script editor.
+
+Microsoft's `msvcp71.dll` / `msvcr71.dll` runtime is bundled because Sony's older SDK tools need it.
+The default icon set under `assets/default-icons/` is Sony's stock XMB iconography.

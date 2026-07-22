@@ -136,6 +136,21 @@ a real PS3, and a full dump→edit→compile→re-dump round trip compares byte-
   didn't cover (Polish, Portuguese-BR, English-UK, Turkish), added to the bundled `miscmap.ini`.
 - Each dump keeps its pristine copy in a hidden `.original` folder inside the dump; leave it be.
 
+## Credits
+
+rco-studio is only a front-end. The bundled tools under `tools/` were made by others:
+
+- **rcomage** — the RCO packer/unpacker that does all the actual dump/compile work, by
+  ZiNgA BuRgA (of the psptool / GBAtemp scene). Open source; the `.ini` attribute tables
+  (`objattribdef-*`, `animattribdef-*`, `tagmap.ini`) ship with it.
+- **GimConv** (`GimConv.exe`, `GxoTool.dll`) — Sony's official GIM image converter from the
+  PSP/PS3 SDK toolchain, used here for PNG↔GIM conversion. It relies on Microsoft's
+  `msvcp71.dll` / `msvcr71.dll` runtime, bundled alongside it.
+
+Files added or edited for rco-studio: `GimConv.cfg` (adds the PS3 byte-order and DXT flags),
+`miscmap.ini` (the four extra language names), and `override-data.txt` (the bundled 4.93
+override data used by **Migrate < 4.89**).
+
 ## Build
 
 .NET Framework 4.0 WPF, no external dependencies. Build `rco-studio.csproj` with

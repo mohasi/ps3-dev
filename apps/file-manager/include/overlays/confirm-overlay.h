@@ -22,9 +22,11 @@ void initConfirmOverlay(Audio *clickSfx);
 
 // shows a modal prompt and reports which button was pressed. it carries up to
 // three buttons - cross, an optional middle square, and circle - each with its
-// own label. pass squareText = NULL for a plain two-button prompt (the middle
-// button is hidden); pass a label to add the third option, e.g. rename's
-// Merge / Replace / Cancel. a two-button caller just checks for CONFIRM_CROSS.
+// own label; passing NULL for a label hides that button. pass squareText = NULL
+// for a plain two-button prompt; pass a label to add the third option, e.g.
+// rename's Merge / Replace / Cancel. a two-button caller just checks for
+// CONFIRM_CROSS. crossText = NULL with only a circle label makes an information
+// card the user can read and close, with no action to take.
 void askConfirm(const char *title, const char *message,
                 const char *crossText, const char *squareText, const char *circleText,
                 ConfirmCallback onResult);

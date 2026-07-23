@@ -160,6 +160,9 @@ static void runSearch(void)
          char top[MAX_PATH_LEN];
          top[0] = '/';
          strCopy(top + 1, sizeof top - 1, names[i]);
+         // a search from the root skips network volumes: walking one downloads a listing of the whole
+         // account over the internet. searching inside it still works - start the search there.
+         if (isRemoteVolume(top)) continue;
          walkTree(top, matchVisit, NULL, &cancel);
       }
 }

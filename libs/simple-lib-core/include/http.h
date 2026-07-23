@@ -23,6 +23,15 @@ typedef struct { const char *name; const char *value; } HttpHeader;
 int fetchHttp(const char *method, const char *url, const HttpHeader *headers, int headerCount,
               const void *body, int bodyLen, char *out, int cap, int *outLen, int *status);
 
+// one response header to copy out of the reply, e.g. { "Location", buffer, sizeof buffer }. value is
+// emptied when the header is absent (or the transport doesn't keep the response head).
+typedef struct { const char *name; char *value; int cap; } HttpHeaderCapture;
+
+// as fetchHttp, plus one captured response header. fetchHttp is this with capture = NULL.
+int fetchHttpCapturing(const char *method, const char *url, const HttpHeader *headers, int headerCount,
+                       const void *body, int bodyLen, char *out, int cap, int *outLen, int *status,
+                       HttpHeaderCapture *capture);
+
 // convenience: GET url with just a default User-Agent.
 int getHttp(const char *url, char *out, int cap, int *outLen, int *status);
 

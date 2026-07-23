@@ -74,7 +74,8 @@ never calls them never drags the heap in. Each entry below says which side it is
 ### Networking
 
 - **http.h** — a transport-agnostic HTTP(S) client. One API: `fetchHttp` / `getHttp` for a one-shot
-  request/response, `openHttpStream` / `readHttpStream` / `seekHttpStream` / `getHttpStreamSize` /
+  request/response (`fetchHttpCapturing` also hands back one named response header, e.g. the `Location`
+  of a Google Drive upload session), `openHttpStream` / `readHttpStream` / `seekHttpStream` / `getHttpStreamSize` /
   `closeHttpStream` for seekable, never-fully-downloaded media streaming. The actual TLS transport
   is bound once at startup: `initSystemHttp()` uses the console's firmware TLS (cellHttp — free
   weight, reaches RSA hosts like Google/YouTube); `initModernHttp()` (from **simple-lib-https**)

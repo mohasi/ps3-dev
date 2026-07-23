@@ -2817,7 +2817,7 @@ static VfsProbeResult probeExfat(int port)
       char segment[16], native[16];
       buildNames(port, segment, native);                 // native := "exfat<port>:"
       chooseSegment(port, volumes[port].segment, (int)sizeof(volumes[port].segment));
-      addVfsMount(volumes[port].segment, native, volumes[port].label, VFS_SCHEME_EXFAT, &exfatOps);
+      addVfsMount(volumes[port].segment, native, volumes[port].label, VFS_SCHEME_EXFAT, 0, &exfatOps);
       result = VFS_PROBE_MOUNTED;
    } else if (rc == EXFAT_MOUNT_NOT_EXFAT) {
       result = VFS_PROBE_NOT_MINE;

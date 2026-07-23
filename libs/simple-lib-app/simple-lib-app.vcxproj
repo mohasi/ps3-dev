@@ -36,6 +36,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
    <ClCompile Include="src\app.c" />
+   <ClCompile Include="src\gdrive.c" />
+   <ClCompile Include="src\gdrive-crypto.c" />
    <ClCompile Include="src\gfx.c" />
    <ClCompile Include="src\image-loader.c" />
    <ClCompile Include="src\image-encoder.c" />
@@ -63,6 +65,8 @@
    <ClCompile Include="src\osk-input.c" />
   </ItemGroup>
   <ItemGroup>
+   <ClInclude Include="include\gdrive.h" />
+   <ClInclude Include="include\gdrive-crypto.h" />
    <ClInclude Include="include\gfx.h" />
    <ClInclude Include="include\image-loader.h" />
    <ClInclude Include="include\font.h" />

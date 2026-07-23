@@ -166,13 +166,16 @@ int sendTlsRequest(TlsConn *conn, const char *method, const char *httpVersion, i
        writeStr(conn, httpVersion) || writeStr(conn, "\r\nHost: ") || writeStr(conn, host) || writeStr(conn, "\r\n"))
       return -1;
    if (extraHeaders && *extraHeaders && writeStr(conn, extraHeaders)) return -1;
-   if (body && bodyLen > 0) {
+   // a body needs its length, and so does a bodyless write method: PUT/POST/PATCH without a
+   // Content-Length is ambiguous to the server (Drive's final, empty upload chunk is one).
+   int hasBody = body && bodyLen > 0;
+   if (hasBody || (strcmp(method, "GET") != 0 && strcmp(method, "HEAD") != 0)) {
       char contentLength[40];
-      snprintf(contentLength, sizeof contentLength, "Content-Length: %d\r\n", bodyLen);
+      snprintf(contentLength, sizeof contentLength, "Content-Length: %d\r\n", hasBody ? bodyLen : 0);
       if (writeStr(conn, contentLength)) return -1;
    }
    if (writeStr(conn, keepAlive ? "Connection: keep-alive\r\n\r\n" : "Connection: close\r\n\r\n")) return -1;
-   if (body && bodyLen > 0 && br_sslio_write_all(&conn->io, body, bodyLen) != 0) return -1;
+   if (hasBody && br_sslio_write_all(&conn->io, body, bodyLen) != 0) return -1;
    return br_sslio_flush(&conn->io) != 0 ? -1 : 0;
 }
 

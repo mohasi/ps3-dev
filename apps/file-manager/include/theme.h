@@ -61,6 +61,8 @@ extern const Theme *activeTheme;
 // startup after the VFS is up (it reads/creates themes.txt).
 void initThemes(void);
 
+const char *getSettingsPath(void);   // the app's shared settings.txt (theme + other keys)
+
 int         getThemeCount(void);
 const char *getThemeName(int index);
 int         getActiveThemeIndex(void);

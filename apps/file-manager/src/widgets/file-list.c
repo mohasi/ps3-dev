@@ -26,6 +26,7 @@
 #include "overlays/video-player-overlay.h"
 #include "overlays/text-editor-overlay.h"
 #include "overlays/hex-viewer-overlay.h"
+#include "gdrive.h"              // isGdrivePath / isGdriveAuthorized - the Drive badge and its setup card
 #include "image-loader.h"
 #include "pad.h"
 #include <stdio.h>
@@ -51,7 +52,9 @@ typedef struct {
    int checked;
    int sized;        // folders: 0 until folder-sizer visits it
    int approx;       // sized but the walker hit its budget; size/fileCount are a lower bound
+   int remote;       // folders: on a network volume, so its 0 size was never measured
    int isUsb;        // root listing only: a removable (USB) device, badged with the USB icon
+   int isGoogle;     // root listing only: the Google Drive mount, badged with a "G"
 } FileEntry;
 
 static FileEntry *entries;
@@ -104,6 +107,7 @@ static int delTopmost;
 static Checkbox checkboxes[FILE_LIST_PAGE_SIZE];
 static Icon fileIcons[FILE_TYPE_COUNT];   // icon-font glyph per file type, tinted at draw
 static Icon hddIcon;   // drive glyph shown for removable (USB) devices at root
+static Icon googleBadge;   // small Google mark drawn over the folder icon for the Drive mount
 static Breadcrumb *breadcrumb;
 static Audio *clickSfx;
 static Audio *checkSfx;
@@ -182,11 +186,13 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
    e->checked   = 0;
    e->fileCount = 0;
    e->approx    = 0;
+   e->remote    = 0;
    e->modified  = 0;
    e->mode      = 0;
-   // root listing only: badge removable devices (folders) with the USB icon
+   // root listing only: badge the Google Drive mount with a "G", removable devices with the USB icon
    int atRoot = currentPath[0] == '/' && currentPath[1] == '\0';
-   e->isUsb = atRoot && isUsbDevice(name, fullPath);
+   e->isGoogle = atRoot && isGdrivePath(fullPath);
+   e->isUsb = atRoot && !e->isGoogle && isUsbDevice(name, fullPath);
 
    VfsStat st;
    if (statPath(fullPath, &st) != 0) {
@@ -203,7 +209,9 @@ static void populateEntry(FileEntry *e, const char *name, const char *fullPath)
    e->mode = st.mode;
    if (isDir) {
       e->size  = 0;
-      e->sized = 0;  // folder-sizer fills this in
+      // remote (network) volumes aren't crawled for their size; local dirs get filled in by the sizer
+      e->sized  = isRemoteVolume(fullPath);
+      e->remote = e->sized;
    } else {
       e->size      = st.size;
       e->fileCount = 1;
@@ -377,6 +385,17 @@ static void enterSelectedDir(void)
    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
    if (entries[selectedIndex].type != FILE_TYPE_FOLDER) return;
 
+   // the Google Drive mount can't list until it's signed in: show the setup card instead
+   if (entries[selectedIndex].isGoogle && !isGdriveAuthorized()) {
+      playAudioOnce(clickSfx);
+      askConfirm("Set up Google Drive",
+                 "This console isn't signed in yet. On a PC, run the Google Drive sign-in helper to authorize your "
+                 "account, then add google_client_id, google_client_secret and google_refresh_token to settings.txt "
+                 "over FTP and relaunch.",
+                 NULL, NULL, "Back", NULL);
+      return;
+   }
+
    playAudioOnce(clickSfx);
    pushNavHistory();
    char next[MAX_PATH_LEN];
@@ -482,6 +501,7 @@ void initFileList(Font *font, Audio *click, Audio *check, int x, int y, int maxW
    for (int t = 0; t < FILE_TYPE_COUNT; t++)
       initIcon(&fileIcons[t], getFileTypeIcon(t), 35);
    initIcon(&hddIcon, ICON_HDD, 35);
+   initIcon(&googleBadge, ICON_GOOGLE, 12);
 
    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
       int ry = y + i * rowHeight;
@@ -623,6 +643,7 @@ void drawFileList(void)
       int iconY = listY + i * listRowHeight + (listRowHeight - 35) / 2;
       Icon *rowIcon = entries[idx].isUsb ? &hddIcon : &fileIcons[entries[idx].type];
       drawIconAlpha(rowIcon, 120, iconY, activeTheme->textPrimary, alpha);
+      if (entries[idx].isGoogle) drawIconAlpha(&googleBadge, 131, iconY + 13, activeTheme->textPrimary, alpha);   // inside the folder outline
 
       // draw labels
       drawLabelAlpha(&labels[i], alpha);
@@ -651,6 +672,7 @@ void termFileList(void)
    for (int i = 0; i < COLUMN_HEADER_COUNT; i++) freeLabel(&columnHeaderLabels[i]);
    for (int t = 0; t < FILE_TYPE_COUNT; t++) freeIcon(&fileIcons[t]);
    freeIcon(&hddIcon);
+   freeIcon(&googleBadge);
 
    free(entries);
    entries = NULL;
@@ -1036,7 +1058,8 @@ static int entryTargeted(int i, int checkedCount)
 
 // an entry's size is exact for files, and for folders only once the sizer has
 // fully walked them (sized and not budget-truncated).
-static int entrySizeIsExact(const FileEntry *e) { return e->sized && !e->approx; }
+// a remote folder's 0 was never measured, so a copy must walk it rather than trust the total
+static int entrySizeIsExact(const FileEntry *e) { return e->sized && !e->approx && !e->remote; }
 
 // main-thread finisher: refresh the listing and reposition the cursor.
 static void onDeleteFinished(int cancelled)

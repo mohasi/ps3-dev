@@ -243,15 +243,15 @@ static void buildSettings(const char *slug, char *out, int cap)
    out[n] = '\0';
 }
 
-// rewrites settings.txt so the current theme choice is what the next launch reads.
+// saves the current theme choice, preserving any other keys (e.g. Google Drive) in settings.txt.
 static void persistThemeSetting(void)
 {
    char slug[THEME_NAME_MAX];
    slugifyName(names[activeIndex], slug, sizeof slug);
-   char text[SETTINGS_BUF];
-   buildSettings(slug, text, sizeof text);
-   writeFile(TMP_SETTINGS, text, (uint64_t)getStrLen(text));
+   upsertSettingValue(TMP_SETTINGS, "theme", slug);
 }
+
+const char *getSettingsPath(void) { return TMP_SETTINGS; }
 
 // reads settings.txt (creating it with a default on first launch) and selects the theme it names.
 static void applySettingsTheme(void)

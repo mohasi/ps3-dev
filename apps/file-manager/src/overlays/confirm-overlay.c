@@ -39,6 +39,7 @@
 static Font            font;
 static Audio          *clickSfx;
 static ConfirmCallback onResolve;   // fired with the pressed button when one is chosen
+static int             showCross;   // 1 when the cross button is visible (0 = a card you can only close)
 static int             showSquare;  // 1 when the middle button is visible
 static int             showCircle;  // 1 when the circle button is visible (0 = single-OK alert)
 static int             armed;       // 0 on the frame we open so the opening press is ignored
@@ -74,7 +75,7 @@ void initConfirmOverlay(Audio *sfx)
 static void layout(void)
 {
    buttonCount = 0;
-   buttonIcons[buttonCount] = &crossIcon;  buttonLabels[buttonCount] = &yesLabel;    buttonCount++;
+   if (showCross)  { buttonIcons[buttonCount] = &crossIcon;  buttonLabels[buttonCount] = &yesLabel;    buttonCount++; }
    if (showSquare) { buttonIcons[buttonCount] = &squareIcon; buttonLabels[buttonCount] = &squareLabel; buttonCount++; }
    if (showCircle) { buttonIcons[buttonCount] = &circleIcon; buttonLabels[buttonCount] = &noLabel;     buttonCount++; }
 
@@ -102,6 +103,7 @@ void askConfirm(const char *title, const char *message,
                 ConfirmCallback onResult)
 {
    onResolve  = onResult;
+   showCross  = (crossText != NULL);
    showSquare = (squareText != NULL);
    showCircle = (circleText != NULL);
    setLabelText(&titleLabel,   strOrEmpty(title));
@@ -140,7 +142,7 @@ static void resolve(ConfirmChoice choice)
 static void update(void)
 {
    if (!armed) { armed = 1; return; }  // swallow the press that opened the dialog
-   if (isPadButtonPressed(PAD_BTN_CROSS))                       resolve(CONFIRM_CROSS);
+   if (showCross && isPadButtonPressed(PAD_BTN_CROSS))          resolve(CONFIRM_CROSS);
    else if (showSquare && isPadButtonPressed(PAD_BTN_SQUARE))   resolve(CONFIRM_SQUARE);
    else if (showCircle && isPadButtonPressed(PAD_BTN_CIRCLE))   resolve(CONFIRM_CIRCLE);
 }

@@ -5735,7 +5735,7 @@ static VfsProbeResult probeNtfs(int port)
       char segment[16], native[16];
       buildNames(port, segment, native);                 // native := "ntfs<port>:"
       chooseSegment(port, volumes[port].segment, (int)sizeof(volumes[port].segment));
-      addVfsMount(volumes[port].segment, native, volumes[port].label, VFS_SCHEME_NTFS, &ntfsOps);
+      addVfsMount(volumes[port].segment, native, volumes[port].label, VFS_SCHEME_NTFS, 0, &ntfsOps);
       result = VFS_PROBE_MOUNTED;
    } else if (rc == NTFS_MOUNT_NOT_NTFS) {
       result = VFS_PROBE_NOT_MINE;

@@ -219,7 +219,10 @@ static void update(void)
    // live metrics: percentage every frame (cheap), stats lines throttled to once a second.
    uint64_t total = getTotalBytes();
    uint64_t done  = getProcessedBytes();
+   // the total can be a lower bound (a size the source could only estimate), so done may pass it -
+   // clamp, or the bar draws past the end of its track and out of the dialog.
    percent = total > 0 ? (int)((done * 100) / total) : 0;
+   if (percent > 100) percent = 100;
 
    char pctStr[8];
    int o = appendUint64(pctStr, sizeof pctStr, 0, (uint64_t)percent);

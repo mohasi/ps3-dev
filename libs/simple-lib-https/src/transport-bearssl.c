@@ -4,11 +4,12 @@
 // BearSSL instead of cellHttp, so it reaches hosts the firmware's RSA-only TLS can't (ECDSA certs) at the
 // cost of ~80 KB.
 //
-// Streaming (a GET carrying a Range header) uses HTTP/1.1 and always opens a fresh connection; one-shot
-// requests use HTTP/1.0 keep-alive and reuse a pooled connection to the same host, so a screen full of
-// thumbnails costs a handful of TLS handshakes instead of one per image. HTTP/1.0 keeps the response
-// un-chunked; the hosts we talk to answer a Range request with 206 + Content-Length, so no chunked
-// decoding is needed either way.
+// Streaming (the seekable engine, which is the only caller that asks for the resource size) uses
+// HTTP/1.1 on its own connection, held open across many reads. Every other request is one-shot: HTTP/1.0
+// keep-alive on a pooled connection to the same host, so a screen full of thumbnails - or a file
+// downloaded a megabyte at a time - costs a handful of TLS handshakes instead of one per request.
+// HTTP/1.0 keeps the response un-chunked; the hosts we talk to answer a Range request with 206 +
+// Content-Length, so no chunked decoding is needed either way.
 
 #include "http-transport.h"
 #include "tls-transport.h"
@@ -54,18 +55,6 @@ static void checkinConn(TlsConn *conn)
    if (!parked) closeTlsConn(conn);
 }
 
-// case-insensitive test for the "Range" header, used to pick the HTTP version (streaming vs one-shot).
-static int isRangeHeader(const char *name)
-{
-   const char *want = "range";
-   for (int i = 0; i < 5; i++) {
-      char c = name[i];
-      if (c >= 'A' && c <= 'Z') c += 32;
-      if (c != want[i]) return 0;
-   }
-   return name[5] == '\0';
-}
-
 static int isRedirect(int status) { return status == 301 || status == 302 || status == 303 || status == 307 || status == 308; }
 
 // get a connection to `host` (reused from the pool if possible), send the request, read the response head.
@@ -78,7 +67,10 @@ static TlsConn *sendReusable(const char *host, const char *path, const char *met
    for (int attempt = 0; attempt < 2; attempt++) {
       TlsConn *conn = (keepAlive && attempt == 0) ? checkoutConn(host) : NULL;   // retry always opens fresh
       int reused = conn != NULL;
-      if (!reused) conn = openTlsConn(host);
+      if (!reused) {
+         logInfo("[tls] opening a new connection to %s\n", host);   // a fresh handshake, not a reused one
+         conn = openTlsConn(host);
+      }
       if (!conn) return NULL;
 
       if (sendTlsRequest(conn, method, version, keepAlive, host, path, headerBlock, body, bodyLen) == 0 &&
@@ -98,25 +90,31 @@ static void *openBearssl(const char *method, const char *url, const HttpHeader *
    if (status) *status = 0;
    if (totalSize) *totalSize = 0;
 
-   // format the caller's headers into one block, and note if a Range is present (=> streaming => 1.1). the
-   // block (Range + UA) is reused unchanged across redirects so the same byte range is requested from the
-   // server we get redirected to.
+   // format the caller's headers into one block; it is reused unchanged across redirects, so a Range
+   // asks the server we are redirected to for the same byte range.
    char headerBlock[2048];
-   int length = 0, hasRange = 0;
+   int length = 0;
    for (int i = 0; i < headerCount; i++) {
       int written = snprintf(headerBlock + length, sizeof headerBlock - length, "%s: %s\r\n", headers[i].name, headers[i].value);
       if (written < 0 || length + written >= (int)sizeof headerBlock) { logError("[tls] request headers too long\n"); return NULL; }
       length += written;
-      if (isRangeHeader(headers[i].name)) hasRange = 1;
    }
    headerBlock[length] = '\0';
+
+   // only the streaming engine asks for the resource size, and only it wants a private connection it
+   // will hold open across many reads. everything else is a one-shot request that should reuse a pooled
+   // connection - including a ranged one-shot (a file downloaded chunk by chunk), which would otherwise
+   // pay a fresh TLS handshake per chunk.
+   int streaming = totalSize != NULL;
 
    char target[URL_MAX];
    if (strlen(url) >= sizeof target) { logError("[tls] url too long\n"); return NULL; }
    strcpy(target, url);
 
    // follow redirects: googlevideo 302s a fresh connection to another rrN host. after the first hop we
-   // re-request as a bodyless GET (303 semantics), which is what our redirects always are (media GETs).
+   // re-request as a bodyless GET (303 semantics), so we only follow when the request HAS no body to
+   // lose - a redirected PUT/POST re-sent as a GET would silently drop what it was carrying.
+   int bodyless = body == NULL || bodyLen == 0;
    for (int hop = 0; ; hop++) {
       char host[256];
       const char *path;
@@ -124,13 +122,12 @@ static void *openBearssl(const char *method, const char *url, const HttpHeader *
 
       int code = 0;
       uint64_t total = 0;
-      // one-shot requests (no Range) ask for keep-alive and reuse a pooled connection; streaming opens fresh.
-      TlsConn *conn = sendReusable(host, path, hop ? "GET" : method, hasRange ? "HTTP/1.1" : "HTTP/1.0",
-                                   !hasRange, headerBlock, hop ? NULL : body, hop ? 0 : bodyLen, &code, &total);
+      TlsConn *conn = sendReusable(host, path, hop ? "GET" : method, streaming ? "HTTP/1.1" : "HTTP/1.0",
+                                   !streaming, headerBlock, hop ? NULL : body, hop ? 0 : bodyLen, &code, &total);
       if (!conn) return NULL;
 
       char location[URL_MAX];
-      if (isRedirect(code) && hop < MAX_REDIRECTS &&
+      if (isRedirect(code) && bodyless && hop < MAX_REDIRECTS &&
           getTlsHeader(conn, "location", location, sizeof location) == 0 &&
           strncmp(location, "https://", 8) == 0 && strlen(location) < sizeof target) {
          closeTlsConn(conn);
@@ -166,7 +163,12 @@ static void shutdownBearssl(void)
    unlock(&poolLock);
 }
 
-static const HttpTransport BEARSSL_TRANSPORT = { openBearssl, readBearssl, closeBearssl, shutdownBearssl };
+static int getHeaderBearssl(void *handle, const char *name, char *out, int cap)
+{
+   return getTlsHeader((TlsConn *)handle, name, out, cap);
+}
+
+static const HttpTransport BEARSSL_TRANSPORT = { openBearssl, readBearssl, closeBearssl, shutdownBearssl, getHeaderBearssl };
 
 void initModernHttp(void)
 {

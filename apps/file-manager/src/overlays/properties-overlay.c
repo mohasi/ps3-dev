@@ -105,7 +105,8 @@ void initPropertiesOverlay(Audio *sfx)
 
 // section: SHA-1 worker
 
-static void toHexText(const uint8_t digest[20], char *out)
+// lower-case, unlike string-utilities' upper-case toHexText - a hash reads better in lower case
+static void toLowerHexText(const uint8_t digest[20], char *out)
 {
    static const char digits[] = "0123456789abcdef";
    for (int i = 0; i < 20; i++) {
@@ -140,7 +141,7 @@ static void hashWorker(uint64_t arg)
       if (!failed && !hashCancel) {
          uint8_t digest[20];
          finalizeSha1(&state, digest);
-         toHexText(digest, result);
+         toLowerHexText(digest, result);
 
          uint64_t elapsedUs = sys_time_get_system_time() - startUs;
          if (elapsedUs > 0)

@@ -38,6 +38,7 @@ typedef struct {
    char                 native[40];    // native prefix, e.g. "ntfs0:"
    char                 label[64];
    VfsScheme            scheme;
+   uint32_t             flags;     // backend-declared capabilities (VFS_MOUNT_*)
    const VfsOps *backend;
    int                  present;
 } MountEntry;
@@ -152,7 +153,7 @@ static const VfsOps *resolvePath(const char *path, char *buffer, int capacity, c
 
 // publishes a mounted volume. reuses a withdrawn slot when one is free so repeated
 // hotplug cycles can't exhaust the table. returns 0, or -1 if the table is full.
-int addVfsMount(const char *segment, const char *native, const char *label, VfsScheme scheme, const VfsOps *ops)
+int addVfsMount(const char *segment, const char *native, const char *label, VfsScheme scheme, uint32_t flags, const VfsOps *ops)
 {
    lockMounts();
    MountEntry *mount = NULL;
@@ -166,10 +167,24 @@ int addVfsMount(const char *segment, const char *native, const char *label, VfsS
    strCopy(mount->native,  sizeof mount->native,  native);
    strCopy(mount->label,   sizeof mount->label,   label && label[0] ? label : segment);
    mount->scheme  = scheme;
+   mount->flags   = flags;
    mount->backend = ops;
    mount->present = 1;   // publish last: a reader sees a fully-written entry or none
    unlockMounts();
    return 0;
+}
+
+// backend-declared capability query: does path live on a mount that flagged VFS_MOUNT_REMOTE?
+// cellFs (unregistered) paths are local, so they answer 0.
+int isRemoteVolume(const char *path)
+{
+   char segment[32];
+   splitFirstSegment(path, segment, sizeof segment);
+   lockMounts();
+   MountEntry *mount = findMount(segment);
+   int remote = mount ? (mount->flags & VFS_MOUNT_REMOTE) != 0 : 0;
+   unlockMounts();
+   return remote;
 }
 
 void removeVfsMount(const char *segment)
@@ -307,6 +322,7 @@ void closeDir(VfsDir *dir)
 int openFs(const char *path, int flags, VfsFile *file)
 {
    file->descriptor = -1;
+   file->abandoned  = 0;
    char buffer[MAX_PATH_LEN];
    const char *native;
    const VfsOps *backend = resolvePath(path, buffer, sizeof buffer, &native);
@@ -465,6 +481,9 @@ static int copyFileProgress(const char *src, const char *dst, void *buf, int buf
       if (onBytes) onBytes((uint64_t)got);
    }
    closeFs(&in);
+   // a cancelled or failed copy must not be committed by the close: a backend that
+   // publishes on close (an upload finishing) would replace a good file with a partial one.
+   out.abandoned = (rc != 0);
    // fold the destination close: a deferred commit error means the copy isn't
    // durable. don't override a cancel (rc == 1) -- that's not a failure.
    int closeRc = closeFs(&out);

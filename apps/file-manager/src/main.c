@@ -2,6 +2,8 @@
 
 #include "app.h"
 #include "vfs.h"
+#include "http.h"
+#include "gdrive.h"
 #include "syscall.h"
 #include "gfx.h"
 #include "colors.h"
@@ -36,6 +38,8 @@ int main(int argc, char **argv)
    initThemes();   // built-in + themes.txt palettes; must precede any screen that reads activeTheme
 
    initNet();
+   initModernHttp();                       // BearSSL transport - modern TLS 1.2, proven against Google
+   initGdrive(getSettingsPath());          // mounts "/Google Drive" only when settings.txt has the keys
    registerWithBridge("app", "file-manager");
 
    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
@@ -70,6 +74,8 @@ int main(int argc, char **argv)
    termAudio();
    termFont();
    termGfx();
+   shutdownGdrive();
+   shutdownHttp();
    shutdownVfs();
    return 0;
 }

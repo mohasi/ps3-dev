@@ -101,6 +101,14 @@ widgets expose a `retheme*` call to recolour on a live theme switch.
   progress and a cancel flag while the UI keeps rendering.
 - **Animation** (`anim.h`): easing curves and colour interpolation. **Timer** (`timer.h`): polling
   interval timer. **Colours** (`colors.h`): the Tailwind v4 palette as named constants.
+- **Google Drive** (`gdrive.h`, `gdrive-crypto.h`): mounts a Google Drive account as a VFS volume, so an
+  app browses, downloads from and uploads to it with the ordinary `openFs`/`readFs`/`writeFs` calls.
+  Uploads stream in 1 MB pieces through Drive's resumable-upload sessions, so file size isn't bound by
+  memory. The OAuth credentials come from the app's settings.txt and are re-saved encrypted against the
+  console's own id on first successful sign-in (freshly pasted plaintext keys always win over the stored
+  blob, which is how an expired token is recovered from). `initGdrive` mounts nothing when the settings
+  hold no keys, so an app that never configures it pays only the link cost. Lives here rather than in
+  core because it needs malloc and HTTP; needs `initModernHttp()` at startup.
 - File-system helpers come from `simple-lib-core` (`file.h`) — apps include `"file.h"` and get the core
   copy via the include path.
 

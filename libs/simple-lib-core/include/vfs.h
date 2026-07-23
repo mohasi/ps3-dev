@@ -55,6 +55,7 @@ typedef struct {
 typedef struct {
    const void *backend;
    int         descriptor;     // cellFs/NTFS file descriptor, or exFAT pool slot
+   int         abandoned;      // set before close when the writer gave up (cancelled/failed) - see below
 } VfsFile;
 
 // open flags for openFs (backend-neutral; mapped per backend)
@@ -70,7 +71,7 @@ typedef struct {
 #define VFS_SEEK_CUR 1
 #define VFS_SEEK_END 2
 
-typedef enum { VFS_SCHEME_CELLFS, VFS_SCHEME_NTFS, VFS_SCHEME_EXFAT, VFS_SCHEME_EXT } VfsScheme;
+typedef enum { VFS_SCHEME_CELLFS, VFS_SCHEME_NTFS, VFS_SCHEME_EXFAT, VFS_SCHEME_EXT, VFS_SCHEME_GDRIVE } VfsScheme;
 
 // directory-entry kind reported by readDir. SYMLINK is classified WITHOUT
 // following the link (lstat-style); backends that have no symlinks (e.g. exFAT)
@@ -104,6 +105,12 @@ typedef struct VfsOps {
    int     (*close)   (VfsFile *file);   // 0 / -1; surfaces a commit error deferred to close
 } VfsOps;
 
+// A write that was cancelled or failed still has to be closed, and a backend that commits on close
+// (a network volume finishing an upload) would then publish a half-written file over a good one. The
+// copier sets file.abandoned before that close; a backend which defers its commit must honour it and
+// throw the partial write away instead. Local backends have already written every byte, so they can
+// ignore it - the caller deletes the partial file itself.
+
 // A format backend's answer when the VFS offers it a present storage device (see below).
 typedef enum {
    VFS_PROBE_MOUNTED,    // it's my format and I mounted it (published via addVfsMount)
@@ -119,7 +126,13 @@ typedef enum {
 // runs at exit. A device no backend claims is left to cellFs (e.g. FAT32) - the VFS still refreshes
 // the listing on every presence change, so such devices appear without any backend's involvement.
 void registerVfsBackend(VfsProbeResult (*probe)(int port), void (*release)(int port), void (*shutdown)(void));
-int  addVfsMount(const char *segment, const char *native, const char *label, VfsScheme scheme, const VfsOps *ops);
+
+// mount capability flags a backend declares at addVfsMount. REMOTE = network-backed: enumerating it is
+// slow/metered, so consumers must not recursively crawl it (e.g. folder sizing skips it). Backends own
+// this decision; consumers ask via isRemoteVolume() and never special-case a scheme.
+#define VFS_MOUNT_REMOTE 0x1u
+
+int  addVfsMount(const char *segment, const char *native, const char *label, VfsScheme scheme, uint32_t flags, const VfsOps *ops);
 void removeVfsMount(const char *segment);
 
 // a virtual mount surfaced into the root listing.
@@ -139,6 +152,7 @@ void shutdownVfs(void);         // stop the poll thread + unmount everything; ca
 // mount / root enumeration
 int       listMounts(VfsMount *outMounts, int capacity);   // copies the virtual mounts; returns the count
 VfsScheme getScheme(const char *path);                     // which backend services path
+int       isRemoteVolume(const char *path);                // 1 if path's backend declared VFS_MOUNT_REMOTE (cellFs -> 0)
 
 // metadata / namespace
 int  statPath(const char *path, VfsStat *outStat);          // 0 / -1

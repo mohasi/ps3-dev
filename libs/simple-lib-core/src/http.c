@@ -40,12 +40,23 @@ int isHttpUrl(const char *path)
 int fetchHttp(const char *method, const char *url, const HttpHeader *headers, int headerCount,
               const void *body, int bodyLen, char *out, int cap, int *outLen, int *status)
 {
+   return fetchHttpCapturing(method, url, headers, headerCount, body, bodyLen, out, cap, outLen, status, NULL);
+}
+
+int fetchHttpCapturing(const char *method, const char *url, const HttpHeader *headers, int headerCount,
+                       const void *body, int bodyLen, char *out, int cap, int *outLen, int *status,
+                       HttpHeaderCapture *capture)
+{
    if (outLen) *outLen = 0;
    if (status) *status = 0;
+   if (capture) capture->value[0] = '\0';
    if (!transport) { logError("[http] no transport bound\n"); return -1; }
 
    void *handle = transport->open(method, url, headers, headerCount, body, bodyLen, status, NULL);
    if (!handle) return -1;
+
+   if (capture && transport->getResponseHeader)
+      transport->getResponseHeader(handle, capture->name, capture->value, capture->cap);
 
    int written = 0, stalls = 0, failed = 0;
    while (cap > 0 && written < cap - 1) {

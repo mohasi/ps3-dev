@@ -28,6 +28,10 @@ typedef struct {
 
    // release any idle pooled connections at app shutdown. optional - may be NULL.
    void (*shutdown)(void);
+
+   // copy one named response header (case-insensitive) of the open request into out. 0 when found,
+   // -1 when absent. optional - may be NULL on a transport that doesn't keep the response head.
+   int (*getResponseHeader)(void *handle, const char *name, char *out, int cap);
 } HttpTransport;
 
 // wire a transport into http.c. an `override` bind claims the slot permanently (modern wins over system

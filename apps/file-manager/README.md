@@ -23,6 +23,7 @@ PS3 homebrew file browser with a flat, themeable UI. Sony official SDK 4.75, tar
 - **Properties** — the sidepanel's "Properties" opens a details panel for the highlighted file: name, type, size (human-readable and exact bytes), modified time, permissions, location, and its SHA-1. The hash is computed on a background worker so the panel opens instantly and shows "Calculating… N%" until it lands; closing the panel stops the work.
 - **Disc dump** — with a disc in the drive, the sidepanel at the root offers "Dump Disc": a sector-for-sector copy of the whole disc to `/dev_hdd0/dumps/<TITLE_ID>.iso`, with free-space check up front, live progress and cancel. The image is exactly what the drive returns, so a PS3 game disc lands encrypted (decrypting it needs the disc keys, which is a separate job) while PS2 and data discs land readable. Unreadable sectors are retried, then zero-filled and reported rather than silently skipped; a cancelled or failed dump removes its partial file.
 - **FTP server** — Select toggles a built-in FTP server on the console (from `simple-lib-core`); the button label shows the console's address and port while it's running.
+- **Google Drive** — your Drive appears at the root as a `Google Drive` folder (folder icon with a Google badge) and works like any other folder: browse, open, copy in and out, create folders, rename and delete. Uploads stream in 1 MB pieces, so file size isn't limited by memory, and deleting moves the item to Drive's own trash rather than destroying it. Google Docs and Sheets are listed but can't be copied — they aren't files, they live on Google's servers. The folder only appears once you've set it up (below) — leave the settings empty and there's no Drive folder at all — and even then it costs nothing until you open it, since the console only signs in on the first entry. A search started from the device list skips it (searching your whole Drive over the internet would take forever); start the search inside the folder to search Drive.
 - **Native button glyphs** — the footer and dialog button hints render the PS3's own XMB button art, decoded at runtime from the system imagefont via app-lib's `console-glyphs`, so no button sprites are shipped
 
 ## Theming
@@ -35,6 +36,27 @@ The whole UI is flat/Metro: a solid-colour background with panels, highlights, s
 - **Colour format** — `#RRGGBB` for opaque, `#RRGGBBAA` when a colour needs transparency (alpha is last). Any field a theme omits inherits from Original Blue.
 
 Known gap: on the Light theme the side panel and its icons are still light-on-light (low contrast); it needs dark icon variants, tracked for later.
+
+## Google Drive setup
+
+Browsing your whole Drive needs Google's full `drive` permission, which is only granted through a real
+browser sign-in — and the console has no browser. So you approve it **once on a PC** and paste the
+result into the console's settings file; after that the console signs itself in on its own.
+
+1. At https://console.cloud.google.com create (or reuse) a project, and under **APIs & Services →
+   Library** enable the **Google Drive API**.
+2. Under **OAuth consent screen**, pick user type *External* and add your own Google account as a
+   *test user*. (Leaving the app in Testing is fine, but its sign-in expires after 7 days — publish
+   the app to remove that.)
+3. Under **Credentials → Create credentials → OAuth client ID**, choose application type
+   **Desktop app**. Copy the client ID and client secret.
+4. On the PC run `dev/tools/get-gdrive-token.ps1`. Your browser opens, you approve Drive access, and
+   the script prints three `google_…=` lines.
+5. Paste those three lines into `/dev_hdd0/tmp/file-manager/settings.txt` on the console (over FTP),
+   then relaunch the file manager and open the **Google Drive** folder.
+
+On the first successful connect the console encrypts all three values into one `google_auth_enc=` line
+tied to *this* console and deletes the plaintext ones, so a copied settings.txt is useless elsewhere.
 
 ## File operations & conflict resolution
 

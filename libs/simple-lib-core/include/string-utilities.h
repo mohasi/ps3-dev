@@ -217,6 +217,21 @@ static inline void toHexText(char *dst, int cap, const unsigned char *bytes, int
    dst[count * 2] = 0;
 }
 
+// Reads a hex string back into bytes (the inverse of toHexText; either case is accepted).
+// Returns the number of bytes written, or -1 on a bad digit, an odd trailing nibble, or
+// more bytes than outCap holds.
+static inline int fromHexText(const char *hex, unsigned char *out, int outCap)
+{
+   int count = 0;
+   while (hex[0] && hex[1]) {
+      int high = hexDigit(hex[0]), low = hexDigit(hex[1]);
+      if (high < 0 || low < 0 || count >= outCap) return -1;
+      out[count++] = (unsigned char)(high << 4 | low);
+      hex += 2;
+   }
+   return hex[0] ? -1 : count;
+}
+
 // Percent-decodes src into dst, NUL-terminating. Stops at space/'?'/'\r'/end.
 // Inverse of appendUrlEnc. Returns chars written, or -1 on bad %XX.
 static inline int urlDecode(const char *src, char *dst, int cap)

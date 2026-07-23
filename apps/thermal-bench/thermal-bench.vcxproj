@@ -60,6 +60,8 @@
    <ClCompile Include="src\metrics-log.c" />
    <ClCompile Include="src\stress.c" />
    <ClCompile Include="src\clocks.c" />
+   <ClCompile Include="src\console-model.c" />
+   <ClCompile Include="src\settings.c" />
    <ClCompile Include="src\ui\graph.c" />
    <ClCompile Include="src\screens\bench.c" />
   </ItemGroup>
@@ -69,6 +71,8 @@
    <ClInclude Include="include\metrics-log.h" />
    <ClInclude Include="include\stress.h" />
    <ClInclude Include="include\clocks.h" />
+   <ClInclude Include="include\console-model.h" />
+   <ClInclude Include="include\settings.h" />
    <None Include="src\spu\spu-burn.c" />
    <ClInclude Include="include\screens\bench.h" />
   </ItemGroup>

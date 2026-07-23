@@ -4,6 +4,8 @@
 #include <cell/rtc.h>
 
 #include "metrics-log.h"
+#include "console-model.h"
+#include "settings.h"
 #include "vfs.h"
 #include "dbg.h"
 
@@ -50,11 +52,13 @@ void startMetricsLog(const Sensors *initial, const LoadState *load)
    snprintf(header, sizeof header,
             "# thermal-bench run\n"
             "# date: %04d-%02d-%02d %02d:%02d:%02d\n"
+            "# console: %s, safety cutoff %d C\n"
             "# rsx clocks: core %d MHz, memory %d MHz\n"
             "# fan at start: %s\n"
             "# load at start: cpu %s, gpu %s (levels %d/%d/%d)\n"
             "elapsedSeconds,cpuC,cpuTenths,rsxC,rsxTenths,fanPercent,cpuLevel,spuLevel,gpuLevel,frameMs,coreMhz,memMhz\n",
             now.year, now.month, now.day, now.hour, now.minute, now.second,
+            getConsoleModelSummary(), getSafetyCutoffCelsius(),
             initial->coreClockMhz, initial->memoryClockMhz,
             initial->fanReadable ? getFanModeText(initial->fanMode) : "unreadable",
             getLoadLevelName(load->cpuLevel), getLoadLevelName(load->gpuLevel), load->cpuLevel, load->spuLevel, load->gpuLevel);

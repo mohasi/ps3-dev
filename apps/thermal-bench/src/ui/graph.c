@@ -25,6 +25,8 @@
 // the line's own thickness, so the trace looks the same.
 #define MIN_SEGMENT_PIXELS 2
 
+#define TICK_LABEL_GAP 10   // between a tick caption and the axis it labels
+
 static int getPlotTempY(const Graph *graph, int tenthsC)
 {
    int span = (graph->tempAxisHigh - graph->tempAxisLow) * 10;
@@ -32,9 +34,15 @@ static int getPlotTempY(const Graph *graph, int tenthsC)
    return graph->y + graph->height - (tenthsC - graph->tempAxisLow * 10) * graph->height / span;
 }
 
+// the fan axis is squashed into the lower part of the plot so its trace does not
+// sit on top of the temperature traces for minutes at a time. the fan tick labels
+// come from the same function, so the axis still reads true.
+#define FAN_AXIS_HEIGHT_PERCENT 75
+
 static int getPlotFanY(const Graph *graph, int percent)
 {
-   return graph->y + graph->height - percent * graph->height / 100;
+   int fanHeight = graph->height * FAN_AXIS_HEIGHT_PERCENT / 100;
+   return graph->y + graph->height - percent * fanHeight / 100;
 }
 
 static int getPlotX(const Graph *graph, int elapsedSeconds)
@@ -75,11 +83,42 @@ static void computeTempAxis(Graph *graph, const GraphSample *live, int liveCount
    graph->tempAxisHigh = high;
 }
 
-// a baseline run is the same line, faded back so it reads as a ghost of the run
-// in front of it.
+// a baseline run is the same line, faded back and dashed so it reads as a ghost
+// of the run in front of it and never as live data.
 #define GHOST_ALPHA 0x40000000
+#define GHOST_DASH_PIXELS 5
+#define GHOST_GAP_PIXELS  5
+#define LIVE_THICKNESS  2
+#define GHOST_THICKNESS 2
 
 static uint32_t fade(uint32_t color) { return (color & 0x00FFFFFF) | GHOST_ALPHA; }
+
+// one segment of a ghost line, cut into dashes. the pattern is measured against
+// the screen's own x, not against the segment: a segment can be 30 pixels wide on
+// a 2-minute window and 2 pixels wide on a 30-minute one, and cutting each segment
+// individually made the long windows come out as a solid line.
+#define GHOST_PERIOD_PIXELS (GHOST_DASH_PIXELS + GHOST_GAP_PIXELS)
+
+static void drawDashedLine(int x0, int y0, int x1, int y1, uint32_t color)
+{
+   int spanX = x1 - x0, spanY = y1 - y0;
+   if (spanX <= 0) { drawGfxLine(x0, y0, x1, y1, GHOST_THICKNESS, color); return; }   // vertical: nothing to dash along
+
+   for (int x = x0; x < x1; x = (x / GHOST_PERIOD_PIXELS + 1) * GHOST_PERIOD_PIXELS)
+   {
+      int dashEnd = x / GHOST_PERIOD_PIXELS * GHOST_PERIOD_PIXELS + GHOST_DASH_PIXELS;   // end of the dash x sits in
+      if (dashEnd > x1) dashEnd = x1;
+      if (dashEnd <= x) continue;   // x is in a gap
+
+      drawGfxLine(x, y0 + spanY * (x - x0) / spanX, dashEnd, y0 + spanY * (dashEnd - x0) / spanX, GHOST_THICKNESS, color);
+   }
+}
+
+static void drawTrace(int x0, int y0, int x1, int y1, int ghosted, uint32_t color)
+{
+   if (ghosted) drawDashedLine(x0, y0, x1, y1, color);
+   else         drawGfxLine(x0, y0, x1, y1, LIVE_THICKNESS, color);
+}
 
 // draw one run's three traces. ghosted marks a past baseline run.
 static void drawSeries(const Graph *graph, const GraphSample *samples, int count, int ghosted)
@@ -103,10 +142,9 @@ static void drawSeries(const Graph *graph, const GraphSample *samples, int count
 
       if (havePrev)
       {
-         int thickness = ghosted ? 1 : 2;
-         drawGfxLine(prevX, prevCpuY, px, cpuY, thickness, ghosted ? fade(COLOR_CPU) : COLOR_CPU);
-         drawGfxLine(prevX, prevRsxY, px, rsxY, thickness, ghosted ? fade(COLOR_RSX) : COLOR_RSX);
-         drawGfxLine(prevX, prevFanY, px, fanY, thickness, ghosted ? fade(COLOR_FAN) : COLOR_FAN);
+         drawTrace(prevX, prevCpuY, px, cpuY, ghosted, ghosted ? fade(COLOR_CPU) : COLOR_CPU);
+         drawTrace(prevX, prevRsxY, px, rsxY, ghosted, ghosted ? fade(COLOR_RSX) : COLOR_RSX);
+         drawTrace(prevX, prevFanY, px, fanY, ghosted, ghosted ? fade(COLOR_FAN) : COLOR_FAN);
       }
       prevX = px; prevCpuY = cpuY; prevRsxY = rsxY; prevFanY = fanY; havePrev = 1;
    }
@@ -130,19 +168,22 @@ void updateGraph(Graph *graph, const GraphSample *live, int liveCount, const Gra
    snprintf(text, sizeof text, "Temp %s", getTemperatureUnitText());
    setLabelText(&graph->tempTitle, text);
 
+   // right-aligned against the axis: fahrenheit ticks are three digits wide and a
+   // fixed left edge pushed them over the axis line.
    for (int tick = 0; tick < GRAPH_TEMP_TICKS; tick++)
    {
       int celsius = getTickCelsius(graph, tick);
       snprintf(text, sizeof text, "%d", getDisplayTenths(celsius * 10) / 10);
       setLabelText(&graph->tempTicks[tick], text);
-      moveLabel(&graph->tempTicks[tick], graph->x - 42, getPlotTempY(graph, celsius * 10) - halfLine);
+      moveLabel(&graph->tempTicks[tick], graph->x - TICK_LABEL_GAP - graph->tempTicks[tick].tt.tex.w,
+                getPlotTempY(graph, celsius * 10) - halfLine);
    }
    for (int tick = 0; tick < GRAPH_FAN_TICKS; tick++)
    {
       int percent = 100 * tick / (GRAPH_FAN_TICKS - 1);
       snprintf(text, sizeof text, "%d", percent);
       setLabelText(&graph->fanTicks[tick], text);
-      moveLabel(&graph->fanTicks[tick], graph->x + graph->width + 10, getPlotFanY(graph, percent) - halfLine);
+      moveLabel(&graph->fanTicks[tick], graph->x + graph->width + TICK_LABEL_GAP, getPlotFanY(graph, percent) - halfLine);
    }
 }
 

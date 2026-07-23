@@ -9,6 +9,7 @@
 #include "ui/console-glyphs.h"
 #include "screens/bench.h"
 #include "bridge-client.h"
+#include "settings.h"
 #include "dbg.h"
 #include "vfs.h"
 
@@ -28,6 +29,8 @@ int main(int argc, char **argv)
 
    initNet();
    registerWithBridge("app", "thermal-bench");   // live logs in the bridge client's Logs tab
+
+   loadSettings();     // safety cutoff, defaulted from the console model (settings.txt, created on first launch)
 
    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
    if (initFont() != 0) return 1;

@@ -2,7 +2,7 @@
 
 // graph - dual-axis time plot for a bench run. left axis is temperature, right
 // axis is fan duty %, x axis is elapsed time. draws the live run as solid lines
-// and, optionally, a past run behind it as faded ghost lines to compare against.
+// and, optionally, a past run behind it as faded, dashed ghost lines to compare against.
 
 #include "font.h"
 #include "colors.h"
@@ -47,6 +47,6 @@ void freeGraph(Graph *graph);
 void updateGraph(Graph *graph, const GraphSample *live, int liveCount, const GraphSample *baseline, int baselineCount);
 
 // draws grid, axes and the live run. baseline may be NULL; when set it is drawn
-// behind the live run as faded lines, aligned on elapsed time from each run's
+// behind the live run as faded, dashed lines, aligned on elapsed time from each run's
 // start, so the gap between the two is the effect of whatever changed.
 void drawGraph(const Graph *graph, const GraphSample *live, int liveCount, const GraphSample *baseline, int baselineCount);

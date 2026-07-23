@@ -269,6 +269,16 @@ static inline int32_t getFanPolicy(FanPolicy *outPolicy)
 
 static inline int getFanPercent(uint8_t duty) { return (duty * 100 + 127) / 255; }
 
+// lv2 syscall 867 - sys_ss_appliance_info_manager, packet 0x19003: the 16-byte
+// console id the factory wrote into flash. its 8th byte is the product sub code,
+// which names the motherboard and so the console model. returns 0 on success.
+#define CONSOLE_ID_LENGTH 16
+
+static inline int32_t getConsoleId(uint8_t *outConsoleId)
+{
+   return (int32_t)scCall2(867, 0x19003, (uint64_t)(uintptr_t)outConsoleId);
+}
+
 // lv2 syscall 461 - sys_prx_get_module_id_by_address.
 // returns the prx id of the module containing the given address.
 static inline int32_t getPrxModuleIdByAddress(void *addr)

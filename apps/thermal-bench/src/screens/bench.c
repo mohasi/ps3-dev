@@ -8,6 +8,8 @@
 
 #include "screens/bench.h"
 #include "sensors.h"
+#include "console-model.h"
+#include "settings.h"
 #include "graph.h"
 #include "metrics-log.h"
 #include "stress.h"
@@ -25,9 +27,12 @@
 
 #define SAMPLE_INTERVAL_SECONDS 2
 #define READOUT_INTERVAL_US 500000
-#define SAFETY_CUTOFF_CELSIUS 88
 #define MAX_SAMPLES 4096
 #define SCRIM_COLOR 0x80000000     // 50% black over the stress canvas
+
+// the two lines under the title and the load are subtitles: smaller, and a touch
+// faded so they sit behind the readings they explain.
+#define SUBTITLE_COLOR ((COLOR_SLATE_300 & 0x00FFFFFF) | 0xE5000000)   // 90% opacity
 
 // the readouts, in display order. the three that have a graph line take that
 // line's colour so a number and its trace read as the same thing.
@@ -50,6 +55,7 @@ static const int WINDOW_CHOICES[] = { 120, 300, 600, 1800 };
 
 static Font font;
 static Label title;
+static Label modelLabel;
 static Label statNames[STAT_ROW_COUNT];
 static Label statValues[STAT_ROW_COUNT];
 static Label loadLabel;
@@ -78,7 +84,7 @@ static Sensors latest;
 static RunSummary summary;
 static int startFanPercent;
 
-static int margin, textSize, spacing, headerTop;
+static int margin, sideMargin, textSize, subtitleSize, spacing, headerTop, titleTop, subtitleTop;
 
 static int elapsedSeconds(void)
 {
@@ -110,7 +116,8 @@ static void cutLoadIfTooHot(void)
    const LoadState *load = getLoadState();
    if (load->cpuLevel == 0 && load->gpuLevel == 0) return;
 
-   int tooHot = latest.cpuTenthsC >= SAFETY_CUTOFF_CELSIUS * 10 || latest.rsxTenthsC >= SAFETY_CUTOFF_CELSIUS * 10;
+   int cutoffTenths = getSafetyCutoffCelsius() * 10;
+   int tooHot = latest.cpuTenthsC >= cutoffTenths || latest.rsxTenthsC >= cutoffTenths;
    if (latest.temperatureReadable && !tooHot) return;
 
    if (latest.temperatureReadable)
@@ -139,7 +146,7 @@ static void refreshNotice(void)
    else if (cutoffFired)
    {
       snprintf(cutoffText, sizeof cutoffText, "safety cutoff at %d %s - load off, clocks back to boot",
-               getDisplayTenths(SAFETY_CUTOFF_CELSIUS * 10) / 10, getTemperatureUnitText());
+               getDisplayTenths(getSafetyCutoffCelsius() * 10) / 10, getTemperatureUnitText());
       text = cutoffText;
    }
    else if (!isMetricsLogRecording())
@@ -150,7 +157,18 @@ static void refreshNotice(void)
       text = "the fan is set manually - it will not step up as the console heats";
 
    setLabelText(&noticeLabel, text);
-   moveLabel(&noticeLabel, getGfxScreenWidth() - margin - noticeLabel.tt.tex.w, headerTop + spacing * 2);
+   moveLabel(&noticeLabel, getGfxScreenWidth() - sideMargin - noticeLabel.tt.tex.w, headerTop + spacing * 2);
+}
+
+// which console this is and the temperature its load switches off at. static text,
+// so it is only rebuilt when the displayed unit changes.
+static void refreshModelLabel(void)
+{
+   char text[LABEL_MAX_TEXT];
+   snprintf(text, sizeof text, "%s - cutoff %d %s%s", getConsoleModelSummary(),
+            getDisplayTenths(getSafetyCutoffCelsius() * 10) / 10, getTemperatureUnitText(),
+            isSafetyCutoffFromSettings() ? " (overridden in settings.txt)" : "");
+   setLabelText(&modelLabel, text);
 }
 
 static void refreshReadouts(void)
@@ -191,13 +209,13 @@ static void refreshReadouts(void)
    const LoadState *load = getLoadState();
    snprintf(text, sizeof text, "CELL: %s - SPU: %d/%d - RSX: %s", getLoadLevelName(load->cpuLevel), load->spuLevel, MAX_SPU_THREADS, getLoadLevelName(load->gpuLevel));
    setLabelText(&loadLabel, text);
-   moveLabel(&loadLabel, getGfxScreenWidth() - margin - loadLabel.tt.tex.w, headerTop);
+   moveLabel(&loadLabel, getGfxScreenWidth() - sideMargin - loadLabel.tt.tex.w, titleTop);
 
    // frame time sits under the load: it is the only visible sign that the gpu
    // load is actually landing
    snprintf(text, sizeof text, "%d ms/frame", frameMs);
    setLabelText(&frameLabel, text);
-   moveLabel(&frameLabel, getGfxScreenWidth() - margin - frameLabel.tt.tex.w, headerTop + spacing);
+   moveLabel(&frameLabel, getGfxScreenWidth() - sideMargin - frameLabel.tt.tex.w, subtitleTop);
 
    refreshNotice();
 }
@@ -215,7 +233,7 @@ static void setTimeWindow(int choice)
    graph.windowSeconds = WINDOW_CHOICES[windowChoice];
 
    char caption[32];
-   snprintf(caption, sizeof caption, "Time window (%dm)", graph.windowSeconds / 60);
+   snprintf(caption, sizeof caption, "Time (%dm)", graph.windowSeconds / 60);
    setButtonHintCaption(&hints, HINT_TIME_INDEX, caption);
    refreshGraph();
 }
@@ -242,28 +260,34 @@ static void initBench(void)
 
    int screenW = getGfxScreenWidth(), screenH = getGfxScreenHeight();
    margin       = screenW / 24;
+   sideMargin   = screenW / 40;                 // the screen edges are tighter than the top and bottom
    textSize     = screenH / 40;
+   subtitleSize = textSize * 4 / 5;
    spacing      = textSize * 5 / 3;
-   headerTop    = margin - 30;                  // title, right-hand lines and stats all sit on this line
-   int valueColumnX = margin + textSize * 15 / 2;   // room for the longest name ("RSX Clock")
+   headerTop    = margin - 30;                  // the stats and the notice line sit on this line
+   titleTop     = headerTop - spacing / 2;      // the title and the load sit higher, with their subtitle under them
+   subtitleTop  = titleTop + spacing * 4 / 5 + 5;
+   int valueColumnX = sideMargin + textSize * 15 / 2;   // room for the longest name ("RSX Clock")
 
-   initLabel(&title, &font, margin, headerTop, AUTO, AUTO, textSize + 8, COLOR_WHITE, TEXT_NOWRAP, "Thermal Bench");
+   initLabel(&title, &font, sideMargin, titleTop, AUTO, AUTO, textSize + 8, COLOR_WHITE, TEXT_NOWRAP, "Thermal Bench");
+   // the title is bigger than the load line opposite it, so its subtitle needs a touch more gap
+   initLabelRaw(&modelLabel, &font, sideMargin, subtitleTop + 5, AUTO, AUTO, subtitleSize, SUBTITLE_COLOR, TEXT_NOWRAP, "");
 
    int statTop = headerTop + spacing * 2;
    for (int row = 0; row < STAT_ROW_COUNT; row++)
    {
-      initLabel(&statNames[row], &font, margin, statTop + spacing * row, AUTO, AUTO, textSize, STAT_COLORS[row], TEXT_NOWRAP, STAT_NAMES[row]);
+      initLabel(&statNames[row], &font, sideMargin, statTop + spacing * row, AUTO, AUTO, textSize, STAT_COLORS[row], TEXT_NOWRAP, STAT_NAMES[row]);
       initLabelRaw(&statValues[row], &font, valueColumnX, statTop + spacing * row, AUTO, AUTO, textSize, STAT_COLORS[row], TEXT_NOWRAP, "");
    }
-   initLabelRaw(&loadLabel, &font, margin, headerTop, AUTO, AUTO, textSize, COLOR_AMBER_300, TEXT_NOWRAP, "");
-   initLabelRaw(&frameLabel, &font, margin, headerTop + spacing, AUTO, AUTO, textSize, COLOR_SLATE_300, TEXT_NOWRAP, "");
-   initLabelRaw(&noticeLabel, &font, margin, headerTop + spacing * 2, AUTO, AUTO, textSize, COLOR_AMBER_300, TEXT_NOWRAP, "");
+   initLabelRaw(&loadLabel, &font, sideMargin, titleTop, AUTO, AUTO, textSize, COLOR_AMBER_300, TEXT_NOWRAP, "");
+   initLabelRaw(&frameLabel, &font, sideMargin, subtitleTop, AUTO, AUTO, subtitleSize, SUBTITLE_COLOR, TEXT_NOWRAP, "");
+   initLabelRaw(&noticeLabel, &font, sideMargin, headerTop + spacing * 2, AUTO, AUTO, textSize, COLOR_AMBER_300, TEXT_NOWRAP, "");
 
    // graph, with the key centred above it
-   int graphX = margin + 50;
+   int graphX = sideMargin + 50;
    int graphH = (screenH - margin * 2) * 55 / 100;
    int graphY = screenH - margin - spacing - graphH;
-   int graphW = screenW - graphX - margin - 50;
+   int graphW = screenW - graphX - sideMargin - 50;
    initGraph(&graph, &font, textSize, graphX, graphY, graphW, graphH, WINDOW_CHOICES[windowChoice]);
 
    int keyY = graphY - textSize * 2 - spacing / 3;
@@ -279,10 +303,10 @@ static void initBench(void)
    addButtonHint(&hints, getConsoleGlyph(GLYPH_DPAD_RIGHT), "Overclock Mem");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_START), "Toggle Units");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_L1), "");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_R1), "Time window");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS), "Toggle Load");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE), "CPU");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "RSX");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_R1), "Time");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS), "Parallel Load");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE), "CELL Load");
+   addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "RSX Load");
 
    sampleCount = 0;
    lastSampleSecond = -SAMPLE_INTERVAL_SECONDS;
@@ -298,6 +322,7 @@ static void initBench(void)
    baselineCount = loadPreviousRun(baseline, MAX_SAMPLES);
 
    setTimeWindow(windowChoice);
+   refreshModelLabel();
    refreshReadouts();
 }
 
@@ -355,7 +380,7 @@ static void updateBench(void)
       return;
    }
 
-   if (isPadButtonPressed(PAD_BTN_START)) { toggleTemperatureUnit(); refreshReadouts(); refreshGraph(); }
+   if (isPadButtonPressed(PAD_BTN_START)) { toggleTemperatureUnit(); refreshModelLabel(); refreshReadouts(); refreshGraph(); }
    if (isPadButtonPressed(PAD_BTN_R1)) setTimeWindow(windowChoice + 1);
    if (isPadButtonPressed(PAD_BTN_L1)) setTimeWindow(windowChoice - 1);
    const LoadState *load = getLoadState();
@@ -380,6 +405,7 @@ static void drawBench(void)
    fillGfxRectangle(0, 0, getGfxScreenWidth(), getGfxScreenHeight(), SCRIM_COLOR);
 
    drawLabel(&title);
+   drawLabel(&modelLabel);
    drawLabel(&loadLabel);
    drawLabel(&frameLabel);
    drawLabel(&noticeLabel);
@@ -401,6 +427,7 @@ static void termBench(void)
    termButtonHints(&hints);
    freeGraph(&graph);
    freeLabel(&title);
+   freeLabel(&modelLabel);
    freeLabel(&loadLabel);
    freeLabel(&frameLabel);
    freeLabel(&noticeLabel);

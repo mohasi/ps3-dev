@@ -2,7 +2,6 @@
 
 #include "clocks.h"
 #include "syscall.h"
-#include "gfx.h"
 #include "thread.h"
 #include "dbg.h"
 
@@ -31,31 +30,22 @@
 
 static int bootCoreMhz, bootMemoryMhz;
 
-static int getMultiplier(uint64_t reg)
+static int getMultiplier(uint64_t registerAddress)
 {
-   return (int)((peekLv1(reg) >> MULTIPLIER_SHIFT) & MULTIPLIER_MASK);
+   return (int)((peekLv1(registerAddress) >> MULTIPLIER_SHIFT) & MULTIPLIER_MASK);
 }
 
-static void setMultiplier(uint64_t reg, int multiplier)
+static void setMultiplier(uint64_t registerAddress, int multiplier)
 {
-   uint64_t value = peekLv1(reg);
+   uint64_t value = peekLv1(registerAddress);
    value = (value & ~(MULTIPLIER_MASK << MULTIPLIER_SHIFT)) | ((uint64_t)multiplier << MULTIPLIER_SHIFT);
-   pokeLv1(reg, value);
+   pokeLv1(registerAddress, value);
 }
 
-// the live register is the truth; the graphics config only knows what was set
-// when the app started, so it is the fallback for a console with no cfw peek.
-int getRsxCoreClockMhz(void)
-{
-   int mhz = getMultiplier(CORE_CLOCK_REGISTER) * CORE_STEP_MHZ;
-   return mhz != 0 ? mhz : getGfxCoreClockMhz();
-}
-
-int getRsxMemoryClockMhz(void)
-{
-   int mhz = getMultiplier(MEMORY_CLOCK_REGISTER) * MEMORY_STEP_MHZ;
-   return mhz != 0 ? mhz : getGfxMemoryClockMhz();
-}
+// the live register is the only source: a console that cannot be read cannot be
+// changed either, and reporting a clock we could not change would be a lie.
+int getRsxCoreClockMhz(void)   { return getMultiplier(CORE_CLOCK_REGISTER) * CORE_STEP_MHZ; }
+int getRsxMemoryClockMhz(void) { return getMultiplier(MEMORY_CLOCK_REGISTER) * MEMORY_STEP_MHZ; }
 
 int getBootRsxCoreClockMhz(void)   { return bootCoreMhz; }
 int getBootRsxMemoryClockMhz(void) { return bootMemoryMhz; }
@@ -67,37 +57,36 @@ void initClocks(void)
    logInfo("[bench] rsx clocks at startup: core %d MHz, memory %d MHz\n", bootCoreMhz, bootMemoryMhz);
 }
 
-static int stepClock(uint64_t reg, int stepMhz, int direction, int minMhz, int maxMhz, const char *name)
+static void stepClock(uint64_t registerAddress, int stepMhz, int direction, int minMhz, int maxMhz, const char *name)
 {
-   int multiplier = getMultiplier(reg);
-   if (multiplier == 0) { logWarn("[bench] %s clock is unreadable; cfw peek/poke unavailable\n", name); return 0; }
+   int multiplier = getMultiplier(registerAddress);
+   if (multiplier == 0) { logWarn("[bench] %s clock is unreadable; cfw peek/poke unavailable\n", name); return; }
 
    int wanted = (multiplier + direction) * stepMhz;
    if (wanted < minMhz || wanted > maxMhz)
    {
-      logInfo("[bench] %s clock stays at %d MHz (%d is outside %d-%d)\n", name, multiplier * stepMhz, wanted, minMhz, maxMhz);
-      return multiplier * stepMhz;
+      logInfo("[bench] %s clock stays at %d MHz (%d is outside %d-%d)\n",
+              name, multiplier * stepMhz, wanted, minMhz, maxMhz);
+      return;
    }
 
-   setMultiplier(reg, multiplier + direction);
-   int applied = getMultiplier(reg) * stepMhz;
-   logInfo("[bench] %s clock now %d MHz (asked for %d)\n", name, applied, wanted);
-   return applied;
+   setMultiplier(registerAddress, multiplier + direction);
+   logInfo("[bench] %s clock now %d MHz (asked for %d)\n", name, getMultiplier(registerAddress) * stepMhz, wanted);
 }
 
-int stepRsxCoreClock(int direction)
+void stepRsxCoreClock(int direction)
 {
-   return stepClock(CORE_CLOCK_REGISTER, CORE_STEP_MHZ, direction, CORE_MIN_MHZ, CORE_MAX_MHZ, "core");
+   stepClock(CORE_CLOCK_REGISTER, CORE_STEP_MHZ, direction, CORE_MIN_MHZ, CORE_MAX_MHZ, "core");
 }
 
-int stepRsxMemoryClock(int direction)
+void stepRsxMemoryClock(int direction)
 {
    static uint64_t lastStepUs;
    uint64_t now = sys_time_get_system_time();
-   if (now - lastStepUs < MEMORY_STEP_INTERVAL_US) return getRsxMemoryClockMhz();
+   if (now - lastStepUs < MEMORY_STEP_INTERVAL_US) return;
    lastStepUs = now;
 
-   return stepClock(MEMORY_CLOCK_REGISTER, MEMORY_STEP_MHZ, direction, MEMORY_MIN_MHZ, MEMORY_MAX_MHZ, "memory");
+   stepClock(MEMORY_CLOCK_REGISTER, MEMORY_STEP_MHZ, direction, MEMORY_MIN_MHZ, MEMORY_MAX_MHZ, "memory");
 }
 
 void restoreBootRsxClocks(void)
@@ -119,5 +108,5 @@ void restoreBootRsxClocks(void)
       sleepMs(MEMORY_STEP_INTERVAL_US / 1000);
    }
 
-   logInfo("[bench] rsx clocks restored to boot: core %d MHz, memory %d MHz\n", getRsxCoreClockMhz(), getRsxMemoryClockMhz());
+   logInfo("[bench] rsx clocks back to boot: core %d MHz, mem %d MHz\n", getRsxCoreClockMhz(), getRsxMemoryClockMhz());
 }

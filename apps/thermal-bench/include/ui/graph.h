@@ -2,8 +2,10 @@
 
 // graph - dual-axis time plot for a bench run. left axis is temperature, right
 // axis is fan duty %, x axis is elapsed time. draws the live run as solid lines
-// and, optionally, a past run behind it as faded, dashed ghost lines to compare against.
+// and, optionally, a past run behind it as faded, dashed ghost lines to compare
+// against.
 
+#include "run-sample.h"
 #include "font.h"
 #include "colors.h"
 #include "ui/label.h"
@@ -13,16 +15,6 @@
 #define GRAPH_COLOR_CPU COLOR_ORANGE_400
 #define GRAPH_COLOR_RSX COLOR_ROSE_400
 #define GRAPH_COLOR_FAN COLOR_SKY_400
-
-// one point in a run's history. temperatures are in tenths of a degree - whole
-// degrees drew a visible staircase. elapsed time is full width: 16 bits wrapped
-// after 18 hours and blanked the graph on a long run.
-typedef struct GraphSample {
-   uint32_t elapsedSeconds;
-   uint16_t cpuTenthsC;
-   uint16_t rsxTenthsC;
-   uint8_t  fanPercent;
-} GraphSample;
 
 #define GRAPH_TEMP_TICKS 5
 #define GRAPH_FAN_TICKS  5
@@ -44,9 +36,9 @@ void freeGraph(Graph *graph);
 // re-ranges the axis and rebuilds the tick captions. call from the update path,
 // never from the draw path: setting label text re-rasterises it, which drains
 // the whole graphics pipeline mid-frame.
-void updateGraph(Graph *graph, const GraphSample *live, int liveCount, const GraphSample *baseline, int baselineCount);
+void updateGraph(Graph *graph, RunSamples live, RunSamples baseline);
 
-// draws grid, axes and the live run. baseline may be NULL; when set it is drawn
-// behind the live run as faded, dashed lines, aligned on elapsed time from each run's
+// draws grid, axes and the live run. an empty baseline draws nothing; when it has
+// samples it goes behind the live run, aligned on elapsed time from each run's
 // start, so the gap between the two is the effect of whatever changed.
-void drawGraph(const Graph *graph, const GraphSample *live, int liveCount, const GraphSample *baseline, int baselineCount);
+void drawGraph(const Graph *graph, RunSamples live, RunSamples baseline);

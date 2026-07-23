@@ -22,9 +22,3 @@ void logSensorChanges(const Sensors *sensors);
 
 // "automatic" / "manual" / "full" - what is deciding the fan duty right now.
 const char *getFanModeText(FanMode mode);
-
-// display units. everything is measured and stored in celsius; only what is
-// shown converts, so a run file is always comparable with any other.
-void toggleTemperatureUnit(void);
-const char *getTemperatureUnitText(void);        // "°C" or "°F"
-int getDisplayTenths(int tenthsCelsius);         // converts if fahrenheit is selected

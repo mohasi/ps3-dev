@@ -5,10 +5,11 @@
 #include "dbg.h"
 
 static const char *FAN_MODE_NAMES[] = { "full", "automatic", "manual" };
+#define FAN_MODE_NAME_COUNT (int)(sizeof FAN_MODE_NAMES / sizeof FAN_MODE_NAMES[0])
 
 const char *getFanModeText(FanMode mode)
 {
-   return (unsigned)mode < 3 ? FAN_MODE_NAMES[mode] : "unknown";
+   return (int)mode < FAN_MODE_NAME_COUNT ? FAN_MODE_NAMES[mode] : "unknown";
 }
 
 static int readZoneTenths(ThermalZone zone, int *outTenthsC)
@@ -71,16 +72,4 @@ void logSensorChanges(const Sensors *sensors)
 
    previous = *sensors;
    haveLogged = 1;
-}
-
-// display units
-static int showFahrenheit;
-
-void toggleTemperatureUnit(void) { showFahrenheit = !showFahrenheit; }
-
-const char *getTemperatureUnitText(void) { return showFahrenheit ? "°F" : "°C"; }
-
-int getDisplayTenths(int tenthsCelsius)
-{
-   return showFahrenheit ? tenthsCelsius * 9 / 5 + 320 : tenthsCelsius;
 }

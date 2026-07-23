@@ -62,17 +62,22 @@
    <ClCompile Include="src\clocks.c" />
    <ClCompile Include="src\console-model.c" />
    <ClCompile Include="src\settings.c" />
+   <ClCompile Include="src\safety.c" />
    <ClCompile Include="src\ui\graph.c" />
+   <ClCompile Include="src\ui\temperature-unit.c" />
    <ClCompile Include="src\screens\bench.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\sensors.h" />
-   <ClInclude Include="include\graph.h" />
+   <ClInclude Include="include\run-sample.h" />
    <ClInclude Include="include\metrics-log.h" />
    <ClInclude Include="include\stress.h" />
    <ClInclude Include="include\clocks.h" />
    <ClInclude Include="include\console-model.h" />
    <ClInclude Include="include\settings.h" />
+   <ClInclude Include="include\safety.h" />
+   <ClInclude Include="include\ui\graph.h" />
+   <ClInclude Include="include\ui\temperature-unit.h" />
    <None Include="src\spu\spu-burn.c" />
    <ClInclude Include="include\screens\bench.h" />
   </ItemGroup>

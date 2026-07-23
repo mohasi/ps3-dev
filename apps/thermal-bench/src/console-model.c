@@ -2,6 +2,7 @@
 
 #include "console-model.h"
 #include "syscall.h"
+#include "string-utilities.h"
 #include "dbg.h"
 
 // the 8th byte of the console id is the product sub code, which names the
@@ -53,15 +54,8 @@ static int isConsoleIdValid(const uint8_t *consoleId)
 
 static void logConsoleId(const uint8_t *consoleId)
 {
-   static const char DIGITS[] = "0123456789ABCDEF";
    char hexText[CONSOLE_ID_LENGTH * 2 + 1];
-
-   for (int byte = 0; byte < CONSOLE_ID_LENGTH; byte++)
-   {
-      hexText[byte * 2]     = DIGITS[consoleId[byte] >> 4];
-      hexText[byte * 2 + 1] = DIGITS[consoleId[byte] & 0xF];
-   }
-   hexText[CONSOLE_ID_LENGTH * 2] = 0;
+   toHexText(hexText, sizeof hexText, consoleId, CONSOLE_ID_LENGTH);
    logInfo("[bench] console id %s\n", hexText);
 }
 

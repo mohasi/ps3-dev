@@ -18,6 +18,8 @@
 // remembers the clocks the console booted with. call once at startup.
 void initClocks(void);
 
+// the live clocks, or 0 when the hypervisor register cannot be read (no cfw
+// support) - the same condition that makes a change impossible.
 int getRsxCoreClockMhz(void);
 int getRsxMemoryClockMhz(void);
 
@@ -29,8 +31,7 @@ int getBootRsxMemoryClockMhz(void);
 // safety cutoff fires.
 void restoreBootRsxClocks(void);
 
-// one step up or down (direction +1 / -1). returns the new value in MHz, or 0
-// if the clock could not be read (no cfw support). memory moves in single
-// steps on purpose - it must not jump.
-int stepRsxCoreClock(int direction);
-int stepRsxMemoryClock(int direction);
+// one step up or down (direction +1 / -1). memory moves in single steps on
+// purpose - it must not jump.
+void stepRsxCoreClock(int direction);
+void stepRsxMemoryClock(int direction);

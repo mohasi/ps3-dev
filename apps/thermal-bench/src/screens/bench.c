@@ -1,19 +1,20 @@
 // bench screen - the main view. a full-screen stress canvas is drawn behind a
 // semi-transparent scrim; the live readouts, a key and the graph float on top,
-// like a furmark overlay. reads the sensors every 500 ms, records a graph point
-// and a csv row every 2 seconds, and saves the run summary on exit.
+// like a furmark overlay. reads the sensors every 500 ms and hands each reading
+// to the recorder and to the safety watch.
 #include <sys/sys_time.h>
 #include <stdio.h>
-#include <string.h>
 
 #include "screens/bench.h"
 #include "sensors.h"
 #include "console-model.h"
 #include "settings.h"
-#include "graph.h"
+#include "safety.h"
 #include "metrics-log.h"
 #include "stress.h"
 #include "clocks.h"
+#include "ui/graph.h"
+#include "ui/temperature-unit.h"
 #include "app.h"
 #include "gfx.h"
 #include "colors.h"
@@ -23,11 +24,8 @@
 #include "ui/button-hints.h"
 #include "ui/console-glyphs.h"
 #include "thread.h"
-#include "dbg.h"
 
-#define SAMPLE_INTERVAL_SECONDS 2
 #define READOUT_INTERVAL_US 500000
-#define MAX_SAMPLES 4096
 #define SCRIM_COLOR 0x80000000     // 50% black over the stress canvas
 
 // the two lines under the title and the load are subtitles: smaller, and a touch
@@ -39,7 +37,9 @@
 typedef enum StatRow { STAT_CPU, STAT_RSX, STAT_FAN, STAT_CORE_CLOCK, STAT_MEMORY_CLOCK, STAT_ROW_COUNT } StatRow;
 
 static const char *STAT_NAMES[STAT_ROW_COUNT] = { "CELL", "RSX", "Fan", "RSX Clock", "Mem Clock" };
-static const uint32_t STAT_COLORS[STAT_ROW_COUNT] = { GRAPH_COLOR_CPU, GRAPH_COLOR_RSX, GRAPH_COLOR_FAN, COLOR_SLATE_300, COLOR_SLATE_300 };
+static const uint32_t STAT_COLORS[STAT_ROW_COUNT] = {
+   GRAPH_COLOR_CPU, GRAPH_COLOR_RSX, GRAPH_COLOR_FAN, COLOR_SLATE_300, COLOR_SLATE_300
+};
 
 // the three readings that have a graph line, for the key above the graph
 #define KEY_ENTRY_COUNT 3
@@ -48,10 +48,24 @@ static const StatRow KEY_ROWS[KEY_ENTRY_COUNT] = { STAT_CPU, STAT_RSX, STAT_FAN 
 static const int WINDOW_CHOICES[] = { 120, 300, 600, 1800 };
 #define WINDOW_CHOICE_COUNT (int)(sizeof WINDOW_CHOICES / sizeof WINDOW_CHOICES[0])
 
-#define HINT_TIME_INDEX    6   // the R1 hint, whose caption carries the current window
 #define KEY_SWATCH_WIDTH   26
 #define KEY_SWATCH_GAP      8
 #define KEY_ENTRY_GAP      34
+
+// pixel nudges the derived layout cannot express: the header sits a little above
+// the stats, and each subtitle a little under the line it belongs to.
+#define HEADER_LIFT_PIXELS   30
+#define SUBTITLE_GAP_PIXELS   5
+#define GRAPH_AXIS_GUTTER    50   // room for the tick captions either side of the plot
+
+// every position the screen is laid out from, worked out once from the screen size
+typedef struct BenchLayout {
+   int sideMargin, verticalMargin;
+   int textSize, subtitleSize, spacing;
+   int headerTop;     // the stats and the notice line
+   int titleTop;      // the title and the load line, a little higher
+   int subtitleTop;   // the model line and the frame-time line
+} BenchLayout;
 
 static Font font;
 static Label title;
@@ -65,71 +79,22 @@ static Label keyLabels[KEY_ENTRY_COUNT];
 static int keySwatchX[KEY_ENTRY_COUNT];
 static Graph graph;
 static ButtonHints hints;
+static int timeWindowHintIndex;
 
-static GraphSample samples[MAX_SAMPLES];
-static int sampleCount;
-static GraphSample baseline[MAX_SAMPLES];
-static int baselineCount;
-
-static uint64_t startUs;
 static uint64_t lastReadoutUs;
 static int framesSinceReadout;
 static int frameMs;
-static int lastSampleSecond;
 static int windowChoice = 1;
 static int menuWasOpen;
-static int cutoffFired;
 
-static Sensors latest;
-static RunSummary summary;
-static int startFanPercent;
+static Sensors latestSensors;
+static BenchLayout layout;
 
-static int margin, sideMargin, textSize, subtitleSize, spacing, headerTop, titleTop, subtitleTop;
-
-static int elapsedSeconds(void)
+// "cutoff 70 °C" in whatever unit is on screen, for the model line and the notice
+static void getCutoffText(char *out, int capacity)
 {
-   return (int)((sys_time_get_system_time() - startUs) / 1000000);
-}
-
-static void recordSample(void)
-{
-   int seconds = elapsedSeconds();
-
-   GraphSample point = { (uint32_t)seconds, (uint16_t)latest.cpuTenthsC, (uint16_t)latest.rsxTenthsC, (uint8_t)latest.fanPercent };
-   if (sampleCount == MAX_SAMPLES) { memmove(samples, samples + 1, sizeof(GraphSample) * (MAX_SAMPLES - 1)); sampleCount--; }
-   samples[sampleCount++] = point;
-
-   appendMetricsSample(seconds, &latest, frameMs, getLoadState());
-
-   if (latest.cpuTenthsC > summary.peakCpuTenthsC) summary.peakCpuTenthsC = latest.cpuTenthsC;
-   if (latest.rsxTenthsC > summary.peakRsxTenthsC) summary.peakRsxTenthsC = latest.rsxTenthsC;
-   if (latest.fanPercent > summary.peakFanPercent) summary.peakFanPercent = latest.fanPercent;
-   if (summary.firstFanStepSeconds < 0 && latest.fanReadable && latest.fanPercent > startFanPercent) summary.firstFanStepSeconds = seconds;
-   summary.durationSeconds = seconds;
-}
-
-// a stress test must never be the thing that cooks the console: past this
-// temperature - or if the console will not tell us the temperature at all - the
-// load drops itself to off and the clocks go back to what they booted at.
-static void cutLoadIfTooHot(void)
-{
-   const LoadState *load = getLoadState();
-   if (load->cpuLevel == 0 && load->gpuLevel == 0) return;
-
-   int cutoffTenths = getSafetyCutoffCelsius() * 10;
-   int tooHot = latest.cpuTenthsC >= cutoffTenths || latest.rsxTenthsC >= cutoffTenths;
-   if (latest.temperatureReadable && !tooHot) return;
-
-   if (latest.temperatureReadable)
-      logWarn("[bench] safety cutoff: cpu %d.%d C, rsx %d.%d C - dropping load to off\n",
-              latest.cpuTenthsC / 10, latest.cpuTenthsC % 10, latest.rsxTenthsC / 10, latest.rsxTenthsC % 10);
-   else
-      logWarn("[bench] safety cutoff: the console refused to report its temperature - dropping load to off\n");
-
-   setCpuLoad(0);
-   setGpuLoad(0);
-   restoreBootRsxClocks();
-   cutoffFired = 1;
+   int shown = getDisplayTenths(getSafetyCutoffCelsius() * 10) / 10;
+   snprintf(out, capacity, "cutoff %d %s", shown, getTemperatureUnitText());
 }
 
 // one line for whatever the user cannot otherwise see: why the load switched
@@ -138,48 +103,67 @@ static void cutLoadIfTooHot(void)
 static void refreshNotice(void)
 {
    const LoadState *load = getLoadState();
+   int clocksChanged = latestSensors.coreClockMhz != getBootRsxCoreClockMhz()
+                    || latestSensors.memoryClockMhz != getBootRsxMemoryClockMhz();
+   int loaded = load->cpuLevel != LOAD_OFF || load->gpuLevel != LOAD_OFF;
+   int fanIsManual = latestSensors.fanReadable && latestSensors.fanMode == FAN_MODE_MANUAL;
+
    char cutoffText[LABEL_MAX_TEXT];
    const char *text = "";
 
-   if (cutoffFired && !latest.temperatureReadable)
+   if (hasSafetyCutoffFired() && !latestSensors.temperatureReadable)
       text = "safety cutoff: temperature unreadable - load off, clocks back to boot";
-   else if (cutoffFired)
+   else if (hasSafetyCutoffFired())
    {
-      snprintf(cutoffText, sizeof cutoffText, "safety cutoff at %d %s - load off, clocks back to boot",
-               getDisplayTenths(getSafetyCutoffCelsius() * 10) / 10, getTemperatureUnitText());
+      char cutoff[48];
+      getCutoffText(cutoff, sizeof cutoff);
+      snprintf(cutoffText, sizeof cutoffText, "safety %s - load off, clocks back to boot", cutoff);
       text = cutoffText;
    }
    else if (!isMetricsLogRecording())
       text = "not recording - this run is not being saved";
-   else if (latest.coreClockMhz != getBootRsxCoreClockMhz() || latest.memoryClockMhz != getBootRsxMemoryClockMhz())
+   else if (clocksChanged)
       text = "clocks changed - the new clocks stay after exit, until the console reboots";
-   else if (load->cpuLevel + load->gpuLevel > 0 && latest.fanReadable && latest.fanMode == FAN_MODE_MANUAL)
+   else if (loaded && fanIsManual)
       text = "the fan is set manually - it will not step up as the console heats";
 
    setLabelText(&noticeLabel, text);
-   moveLabel(&noticeLabel, getGfxScreenWidth() - sideMargin - noticeLabel.tt.tex.w, headerTop + spacing * 2);
+   int rightEdge = getGfxScreenWidth() - layout.sideMargin;
+   moveLabel(&noticeLabel, rightEdge - noticeLabel.tt.tex.w, layout.headerTop + layout.spacing * 2);
 }
 
 // which console this is and the temperature its load switches off at. static text,
 // so it is only rebuilt when the displayed unit changes.
 static void refreshModelLabel(void)
 {
-   char text[LABEL_MAX_TEXT];
-   snprintf(text, sizeof text, "%s - cutoff %d %s%s", getConsoleModelSummary(),
-            getDisplayTenths(getSafetyCutoffCelsius() * 10) / 10, getTemperatureUnitText(),
+   char cutoffText[LABEL_MAX_TEXT], text[LABEL_MAX_TEXT];
+   getCutoffText(cutoffText, sizeof cutoffText);
+   snprintf(text, sizeof text, "%s - %s%s", getConsoleModelSummary(), cutoffText,
             isSafetyCutoffFromSettings() ? " (overridden in settings.txt)" : "");
    setLabelText(&modelLabel, text);
+}
+
+// one clock readout: the live value with the boot value beside it, because a clock
+// change here is global and stays after the app closes.
+static void setClockValue(StatRow row, int liveMhz, int bootMhz)
+{
+   char text[LABEL_MAX_TEXT];
+   if (liveMhz > 0) snprintf(text, sizeof text, "%d MHz  (boot %d)", liveMhz, bootMhz);
+   else             snprintf(text, sizeof text, "unreadable");
+   setLabelText(&statValues[row], text);
 }
 
 static void refreshReadouts(void)
 {
    char text[LABEL_MAX_TEXT];
+   const RunSummary *summary = getRunSummary();
 
-   if (latest.temperatureReadable)
+   // temperatures: now / peak so far
+   if (latestSensors.temperatureReadable)
    {
       const char *unit = getTemperatureUnitText();
-      int cpuNow = getDisplayTenths(latest.cpuTenthsC), cpuPeak = getDisplayTenths(summary.peakCpuTenthsC);
-      int rsxNow = getDisplayTenths(latest.rsxTenthsC), rsxPeak = getDisplayTenths(summary.peakRsxTenthsC);
+      int cpuNow = getDisplayTenths(latestSensors.cpuTenthsC), cpuPeak = getDisplayTenths(summary->peakCpuTenthsC);
+      int rsxNow = getDisplayTenths(latestSensors.rsxTenthsC), rsxPeak = getDisplayTenths(summary->peakRsxTenthsC);
 
       snprintf(text, sizeof text, "%d.%d / %d.%d %s", cpuNow / 10, cpuNow % 10, cpuPeak / 10, cpuPeak % 10, unit);
       setLabelText(&statValues[STAT_CPU], text);
@@ -192,30 +176,30 @@ static void refreshReadouts(void)
       setLabelText(&statValues[STAT_RSX], "unreadable");
    }
 
-   if (latest.fanReadable)
+   // fan and clocks
+   if (latestSensors.fanReadable)
    {
-      snprintf(text, sizeof text, "%d / %d %%  (%s)", latest.fanPercent, summary.peakFanPercent, getFanModeText(latest.fanMode));
+      const char *fanMode = getFanModeText(latestSensors.fanMode);
+      snprintf(text, sizeof text, "%d / %d %%  (%s)", latestSensors.fanPercent, summary->peakFanPercent, fanMode);
       setLabelText(&statValues[STAT_FAN], text);
    }
    else setLabelText(&statValues[STAT_FAN], "unreadable");
 
-   // the boot value sits alongside, because a clock change here is global and
-   // stays after the app closes
-   snprintf(text, sizeof text, "%d MHz  (boot %d)", latest.coreClockMhz, getBootRsxCoreClockMhz());
-   setLabelText(&statValues[STAT_CORE_CLOCK], text);
-   snprintf(text, sizeof text, "%d MHz  (boot %d)", latest.memoryClockMhz, getBootRsxMemoryClockMhz());
-   setLabelText(&statValues[STAT_MEMORY_CLOCK], text);
+   setClockValue(STAT_CORE_CLOCK, latestSensors.coreClockMhz, getBootRsxCoreClockMhz());
+   setClockValue(STAT_MEMORY_CLOCK, latestSensors.memoryClockMhz, getBootRsxMemoryClockMhz());
 
+   // the two right-hand lines: what is loaded, and how long a frame is taking
    const LoadState *load = getLoadState();
-   snprintf(text, sizeof text, "CELL: %s - SPU: %d/%d - RSX: %s", getLoadLevelName(load->cpuLevel), load->spuLevel, MAX_SPU_THREADS, getLoadLevelName(load->gpuLevel));
+   snprintf(text, sizeof text, "CELL: %s - SPU: %d/%d - RSX: %s",
+            getLoadLevelName(load->cpuLevel), load->spuThreadCount, MAX_SPU_THREADS, getLoadLevelName(load->gpuLevel));
    setLabelText(&loadLabel, text);
-   moveLabel(&loadLabel, getGfxScreenWidth() - sideMargin - loadLabel.tt.tex.w, titleTop);
+   int rightEdge = getGfxScreenWidth() - layout.sideMargin;
+   moveLabel(&loadLabel, rightEdge - loadLabel.tt.tex.w, layout.titleTop);
 
-   // frame time sits under the load: it is the only visible sign that the gpu
-   // load is actually landing
+   // frame time is the only visible sign that the gpu load is actually landing
    snprintf(text, sizeof text, "%d ms/frame", frameMs);
    setLabelText(&frameLabel, text);
-   moveLabel(&frameLabel, getGfxScreenWidth() - sideMargin - frameLabel.tt.tex.w, subtitleTop);
+   moveLabel(&frameLabel, rightEdge - frameLabel.tt.tex.w, layout.subtitleTop);
 
    refreshNotice();
 }
@@ -224,7 +208,7 @@ static void refreshReadouts(void)
 // belongs here in the update path and never in the draw path.
 static void refreshGraph(void)
 {
-   updateGraph(&graph, samples, sampleCount, baseline, baselineCount);
+   updateGraph(&graph, getRunSamples(), getBaselineSamples());
 }
 
 static void setTimeWindow(int choice)
@@ -234,7 +218,7 @@ static void setTimeWindow(int choice)
 
    char caption[32];
    snprintf(caption, sizeof caption, "Time (%dm)", graph.windowSeconds / 60);
-   setButtonHintCaption(&hints, HINT_TIME_INDEX, caption);
+   setButtonHintCaption(&hints, timeWindowHintIndex, caption);
    refreshGraph();
 }
 
@@ -243,7 +227,8 @@ static void setTimeWindow(int choice)
 static void layoutKey(int screenWidth, int keyY)
 {
    int keyWidth = KEY_ENTRY_GAP * (KEY_ENTRY_COUNT - 1);
-   for (int entry = 0; entry < KEY_ENTRY_COUNT; entry++) keyWidth += KEY_SWATCH_WIDTH + KEY_SWATCH_GAP + keyLabels[entry].tt.tex.w;
+   for (int entry = 0; entry < KEY_ENTRY_COUNT; entry++)
+      keyWidth += KEY_SWATCH_WIDTH + KEY_SWATCH_GAP + keyLabels[entry].tt.tex.w;
 
    int keyX = (screenWidth - keyWidth) / 2;
    for (int entry = 0; entry < KEY_ENTRY_COUNT; entry++)
@@ -254,76 +239,127 @@ static void layoutKey(int screenWidth, int keyY)
    }
 }
 
-static void initBench(void)
+// every position on the screen comes from the screen's own size, so the layout
+// holds up at any resolution.
+static void computeBenchLayout(int screenWidth, int screenHeight)
 {
-   font = openSystemFont(FONT_POP);
+   layout.sideMargin     = screenWidth / 40;    // the screen edges are tighter than the top and bottom
+   layout.verticalMargin = screenWidth / 24;
+   layout.textSize       = screenHeight / 40;
+   layout.subtitleSize   = layout.textSize * 4 / 5;
+   layout.spacing        = layout.textSize * 5 / 3;
+   layout.headerTop      = layout.verticalMargin - HEADER_LIFT_PIXELS;
+   layout.titleTop       = layout.headerTop - layout.spacing / 2;
+   layout.subtitleTop    = layout.titleTop + layout.spacing * 4 / 5 + SUBTITLE_GAP_PIXELS;
+}
 
-   int screenW = getGfxScreenWidth(), screenH = getGfxScreenHeight();
-   margin       = screenW / 24;
-   sideMargin   = screenW / 40;                 // the screen edges are tighter than the top and bottom
-   textSize     = screenH / 40;
-   subtitleSize = textSize * 4 / 5;
-   spacing      = textSize * 5 / 3;
-   headerTop    = margin - 30;                  // the stats and the notice line sit on this line
-   titleTop     = headerTop - spacing / 2;      // the title and the load sit higher, with their subtitle under them
-   subtitleTop  = titleTop + spacing * 4 / 5 + 5;
-   int valueColumnX = sideMargin + textSize * 15 / 2;   // room for the longest name ("RSX Clock")
+static void initBenchLabels(int valueColumnX)
+{
+   int left = layout.sideMargin, size = layout.textSize, small = layout.subtitleSize;
 
-   initLabel(&title, &font, sideMargin, titleTop, AUTO, AUTO, textSize + 8, COLOR_WHITE, TEXT_NOWRAP, "Thermal Bench");
-   // the title is bigger than the load line opposite it, so its subtitle needs a touch more gap
-   initLabelRaw(&modelLabel, &font, sideMargin, subtitleTop + 5, AUTO, AUTO, subtitleSize, SUBTITLE_COLOR, TEXT_NOWRAP, "");
+   initLabel(&title, &font, left, layout.titleTop, AUTO, AUTO, size + 8, COLOR_WHITE, TEXT_NOWRAP, "Thermal Bench");
 
-   int statTop = headerTop + spacing * 2;
+   // the title is bigger than the load line opposite it, so its subtitle sits lower
+   int modelTop = layout.subtitleTop + SUBTITLE_GAP_PIXELS;
+   initLabelRaw(&modelLabel, &font, left, modelTop, AUTO, AUTO, small, SUBTITLE_COLOR, TEXT_NOWRAP, "");
+
+   int statTop = layout.headerTop + layout.spacing * 2;
    for (int row = 0; row < STAT_ROW_COUNT; row++)
    {
-      initLabel(&statNames[row], &font, sideMargin, statTop + spacing * row, AUTO, AUTO, textSize, STAT_COLORS[row], TEXT_NOWRAP, STAT_NAMES[row]);
-      initLabelRaw(&statValues[row], &font, valueColumnX, statTop + spacing * row, AUTO, AUTO, textSize, STAT_COLORS[row], TEXT_NOWRAP, "");
+      int rowY = statTop + layout.spacing * row;
+      uint32_t color = STAT_COLORS[row];
+      initLabel(&statNames[row], &font, left, rowY, AUTO, AUTO, size, color, TEXT_NOWRAP, STAT_NAMES[row]);
+      initLabelRaw(&statValues[row], &font, valueColumnX, rowY, AUTO, AUTO, size, color, TEXT_NOWRAP, "");
    }
-   initLabelRaw(&loadLabel, &font, sideMargin, titleTop, AUTO, AUTO, textSize, COLOR_AMBER_300, TEXT_NOWRAP, "");
-   initLabelRaw(&frameLabel, &font, sideMargin, subtitleTop, AUTO, AUTO, subtitleSize, SUBTITLE_COLOR, TEXT_NOWRAP, "");
-   initLabelRaw(&noticeLabel, &font, sideMargin, headerTop + spacing * 2, AUTO, AUTO, textSize, COLOR_AMBER_300, TEXT_NOWRAP, "");
 
-   // graph, with the key centred above it
-   int graphX = sideMargin + 50;
-   int graphH = (screenH - margin * 2) * 55 / 100;
-   int graphY = screenH - margin - spacing - graphH;
-   int graphW = screenW - graphX - sideMargin - 50;
-   initGraph(&graph, &font, textSize, graphX, graphY, graphW, graphH, WINDOW_CHOICES[windowChoice]);
+   initLabelRaw(&loadLabel, &font, left, layout.titleTop, AUTO, AUTO, size, COLOR_AMBER_300, TEXT_NOWRAP, "");
+   initLabelRaw(&frameLabel, &font, left, layout.subtitleTop, AUTO, AUTO, small, SUBTITLE_COLOR, TEXT_NOWRAP, "");
+   initLabelRaw(&noticeLabel, &font, left, statTop, AUTO, AUTO, size, COLOR_AMBER_300, TEXT_NOWRAP, "");
+}
 
-   int keyY = graphY - textSize * 2 - spacing / 3;
-   for (int entry = 0; entry < KEY_ENTRY_COUNT; entry++)
-      initLabel(&keyLabels[entry], &font, 0, keyY, AUTO, AUTO, textSize, STAT_COLORS[KEY_ROWS[entry]], TEXT_NOWRAP, STAT_NAMES[KEY_ROWS[entry]]);
-   layoutKey(screenW, keyY);
-
-   // the clock hints lead the row; each is a caption-less Select clustered with its d-pad glyph
-   initButtonHints(&hints, &font, screenH - margin, textSize + 4, textSize, COLOR_SLATE_300);
+// the clock hints lead the row; each is a caption-less Select clustered with its
+// d-pad glyph, which is what a caption-less hint means to the widget.
+static void initBenchHints(int screenHeight)
+{
+   int hintsY = screenHeight - layout.verticalMargin;
+   initButtonHints(&hints, &font, hintsY, layout.textSize + 4, layout.textSize, COLOR_SLATE_300);
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT), "");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_DPAD_UP), "Overclock RSX");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT), "");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_DPAD_RIGHT), "Overclock Mem");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_START), "Toggle Units");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_L1), "");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_R1), "Time");
+   timeWindowHintIndex = addButtonHint(&hints, getConsoleGlyph(GLYPH_R1), "Time");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS), "Parallel Load");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE), "CELL Load");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "RSX Load");
+}
 
-   sampleCount = 0;
-   lastSampleSecond = -SAMPLE_INTERVAL_SECONDS;
-   summary.firstFanStepSeconds = -1;
-   startUs = sys_time_get_system_time();
-   lastReadoutUs = startUs;
+static void initBench(void)
+{
+   font = openSystemFont(FONT_POP);
+
+   // layout, then the widgets that hang off it
+   int screenWidth = getGfxScreenWidth(), screenHeight = getGfxScreenHeight();
+   computeBenchLayout(screenWidth, screenHeight);
+   initBenchLabels(layout.sideMargin + layout.textSize * 15 / 2);   // room for the longest name ("RSX Clock")
+
+   // graph, with the key centred above it
+   int graphX = layout.sideMargin + GRAPH_AXIS_GUTTER;
+   int graphHeight = (screenHeight - layout.verticalMargin * 2) * 55 / 100;
+   int graphY = screenHeight - layout.verticalMargin - layout.spacing - graphHeight;
+   int graphWidth = screenWidth - graphX - layout.sideMargin - GRAPH_AXIS_GUTTER;
+   initGraph(&graph, &font, layout.textSize, graphX, graphY, graphWidth, graphHeight, WINDOW_CHOICES[windowChoice]);
+
+   int keyY = graphY - layout.textSize * 2 - layout.spacing / 3;
+   for (int entry = 0; entry < KEY_ENTRY_COUNT; entry++)
+   {
+      StatRow row = KEY_ROWS[entry];
+      int size = layout.textSize;
+      initLabel(&keyLabels[entry], &font, 0, keyY, AUTO, AUTO, size, STAT_COLORS[row], TEXT_NOWRAP, STAT_NAMES[row]);
+   }
+   layoutKey(screenWidth, keyY);
+
+   initBenchHints(screenHeight);
+
+   // start the run
+   lastReadoutUs = sys_time_get_system_time();
    framesSinceReadout = 0;
 
    initClocks();
-   readSensors(&latest);
-   startFanPercent = latest.fanPercent;
-   startMetricsLog(&latest, getLoadState());
-   baselineCount = loadPreviousRun(baseline, MAX_SAMPLES);
+   readSensors(&latestSensors);
+   startMetricsLog(&latestSensors, getLoadState());
 
    setTimeWindow(windowChoice);
    refreshModelLabel();
    refreshReadouts();
+}
+
+// select + d-pad tunes the graphics clocks; without select the d-pad is free
+static void handleBenchInput(void)
+{
+   if (isPadButtonDown(PAD_BTN_SELECT))
+   {
+      if (isPadButtonPressed(PAD_BTN_UP))    stepRsxCoreClock(+1);
+      if (isPadButtonPressed(PAD_BTN_DOWN))  stepRsxCoreClock(-1);
+      if (isPadButtonPressed(PAD_BTN_RIGHT)) stepRsxMemoryClock(+1);
+      if (isPadButtonPressed(PAD_BTN_LEFT))  stepRsxMemoryClock(-1);
+      return;
+   }
+
+   if (isPadButtonPressed(PAD_BTN_START))
+   {
+      toggleTemperatureUnit();
+      refreshModelLabel();
+      refreshReadouts();
+      refreshGraph();
+   }
+   if (isPadButtonPressed(PAD_BTN_R1)) setTimeWindow(windowChoice + 1);
+   if (isPadButtonPressed(PAD_BTN_L1)) setTimeWindow(windowChoice - 1);
+
+   if (isPadButtonPressed(PAD_BTN_CROSS))    stepBothLoads();
+   if (isPadButtonPressed(PAD_BTN_SQUARE))   stepCpuLoad();
+   if (isPadButtonPressed(PAD_BTN_TRIANGLE)) stepGpuLoad();
 }
 
 static void updateBench(void)
@@ -333,10 +369,9 @@ static void updateBench(void)
    if (appSystemMenuOpen != menuWasOpen)
    {
       menuWasOpen = appSystemMenuOpen;
-      if (menuWasOpen) suspendStress();
-      else
+      setStressSuspended(menuWasOpen);
+      if (!menuWasOpen)
       {
-         resumeStress();
          // the menu was open for minutes and drew none of our frames; without
          // this the next frame time is the whole menu period divided by three.
          lastReadoutUs = sys_time_get_system_time();
@@ -356,42 +391,21 @@ static void updateBench(void)
       framesSinceReadout = 0;
       lastReadoutUs = now;
 
-      readSensors(&latest);
-      logSensorChanges(&latest);
-      cutLoadIfTooHot();
+      readSensors(&latestSensors);
+      logSensorChanges(&latestSensors);
+      updateSafety(&latestSensors);
+      recordMetricsSample(&latestSensors, frameMs, getLoadState());
 
-      int seconds = elapsedSeconds();
-      if (seconds - lastSampleSecond >= SAMPLE_INTERVAL_SECONDS)
-      {
-         lastSampleSecond = seconds;
-         recordSample();
-      }
       refreshReadouts();
       refreshGraph();
    }
 
-   // select + d-pad tunes the graphics clocks; without select the d-pad is free
-   if (isPadButtonDown(PAD_BTN_SELECT))
-   {
-      if (isPadButtonPressed(PAD_BTN_UP))    stepRsxCoreClock(+1);
-      if (isPadButtonPressed(PAD_BTN_DOWN))  stepRsxCoreClock(-1);
-      if (isPadButtonPressed(PAD_BTN_RIGHT)) stepRsxMemoryClock(+1);
-      if (isPadButtonPressed(PAD_BTN_LEFT))  stepRsxMemoryClock(-1);
-      return;
-   }
-
-   if (isPadButtonPressed(PAD_BTN_START)) { toggleTemperatureUnit(); refreshModelLabel(); refreshReadouts(); refreshGraph(); }
-   if (isPadButtonPressed(PAD_BTN_R1)) setTimeWindow(windowChoice + 1);
-   if (isPadButtonPressed(PAD_BTN_L1)) setTimeWindow(windowChoice - 1);
-   const LoadState *load = getLoadState();
-   if (isPadButtonPressed(PAD_BTN_CROSS))    { int next = load->cpuLevel >= load->gpuLevel ? load->cpuLevel + 1 : load->gpuLevel + 1; setCpuLoad(next); setGpuLoad(next); cutoffFired = 0; }
-   if (isPadButtonPressed(PAD_BTN_SQUARE))   { setCpuLoad(load->cpuLevel + 1); cutoffFired = 0; }
-   if (isPadButtonPressed(PAD_BTN_TRIANGLE)) { setGpuLoad(load->gpuLevel + 1); cutoffFired = 0; }
+   handleBenchInput();
 }
 
 static void drawKey(void)
 {
-   int swatchY = keyLabels[0].y + textSize / 2;
+   int swatchY = keyLabels[0].y + layout.textSize / 2;
    for (int entry = 0; entry < KEY_ENTRY_COUNT; entry++)
    {
       fillGfxRectangle(keySwatchX[entry], swatchY, KEY_SWATCH_WIDTH, 3, STAT_COLORS[KEY_ROWS[entry]]);
@@ -412,7 +426,7 @@ static void drawBench(void)
    for (int row = 0; row < STAT_ROW_COUNT; row++) { drawLabel(&statNames[row]); drawLabel(&statValues[row]); }
 
    drawKey();
-   drawGraph(&graph, samples, sampleCount, baselineCount > 0 ? baseline : NULL, baselineCount);
+   drawGraph(&graph, getRunSamples(), getBaselineSamples());
    drawButtonHints(&hints, getGfxScreenWidth());
 }
 
@@ -421,8 +435,7 @@ static void drawBench(void)
 static void termBench(void)
 {
    stopStress();
-   summary.durationSeconds = elapsedSeconds();
-   finishMetricsLog(&summary);
+   finishMetricsLog();
 
    termButtonHints(&hints);
    freeGraph(&graph);

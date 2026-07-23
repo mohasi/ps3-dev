@@ -28,7 +28,8 @@ typedef struct {
 } ButtonHints;
 
 void initButtonHints(ButtonHints *bar, Font *font, int y, int glyphHeight, int captionSize, uint32_t captionColor);
-void addButtonHint(ButtonHints *bar, GfxTexture glyph, const char *caption);
+// returns the index of the hint just added, for later setButtonHintCaption calls (-1 when the row is full).
+int addButtonHint(ButtonHints *bar, GfxTexture glyph, const char *caption);
 // retitle an existing hint (e.g. Subscribe <-> Unsubscribe); recomputes its width so the row stays centered.
 void setButtonHintCaption(ButtonHints *bar, int index, const char *caption);
 void drawButtonHints(ButtonHints *bar, int screenWidth);

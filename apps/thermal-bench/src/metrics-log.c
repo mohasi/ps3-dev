@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/sys_time.h>
 #include <cell/rtc.h>
 
 #include "metrics-log.h"
@@ -10,13 +11,35 @@
 #include "dbg.h"
 
 #define RUN_DIR "/dev_hdd0/tmp/thermal-bench"
+#define SAMPLE_INTERVAL_SECONDS 2
+
+// 4096 samples at one every two seconds is 2 h 16 m of run; past that the oldest
+// are dropped so the newest always survive.
+#define MAX_SAMPLES 4096
 
 static VfsFile runFile;
 static int runOpen;
 static int writeFailed;   // a write or flush was refused, so the file is incomplete
 static char runPath[256];
 
+static RunSample samples[MAX_SAMPLES];
+static int sampleCount;
+static RunSample baseline[MAX_SAMPLES];
+static int baselineCount;
+
+static RunSummary summary;
+static uint64_t startUs;
+static int lastSampleSecond;
+static int startFanPercent;
+
 int isMetricsLogRecording(void) { return runOpen && !writeFailed; }
+
+const RunSummary *getRunSummary(void) { return &summary; }
+
+RunSamples getRunSamples(void)      { RunSamples run = { samples, sampleCount }; return run; }
+RunSamples getBaselineSamples(void) { RunSamples run = { baseline, baselineCount }; return run; }
+
+int getRunElapsedSeconds(void) { return (int)((sys_time_get_system_time() - startUs) / 1000000); }
 
 static void writeLine(const char *text)
 {
@@ -30,8 +53,20 @@ static void writeLine(const char *text)
    }
 }
 
+static int loadPreviousRun(void);
+
 void startMetricsLog(const Sensors *initial, const LoadState *load)
 {
+   // start the run's clock and its bookkeeping
+   startUs = sys_time_get_system_time();
+   sampleCount = 0;
+   lastSampleSecond = -SAMPLE_INTERVAL_SECONDS;
+   startFanPercent = initial->fanPercent;
+
+   RunSummary blank = { 0, 0, 0, -1, 0 };
+   summary = blank;
+
+   // open the file, named after the date and time
    if (makeDir(RUN_DIR) != 0) logWarn("[bench] could not create %s\n", RUN_DIR);
 
    CellRtcDateTime now;
@@ -43,11 +78,14 @@ void startMetricsLog(const Sensors *initial, const LoadState *load)
    {
       logError("[bench] could not open run file %s\n", runPath);
       runOpen = 0;
-      return;
    }
-   runOpen = 1;
-   writeFailed = 0;
+   else
+   {
+      runOpen = 1;
+      writeFailed = 0;
+   }
 
+   // header: everything needed to tell this run apart from another
    char header[512];
    snprintf(header, sizeof header,
             "# thermal-bench run\n"
@@ -56,34 +94,69 @@ void startMetricsLog(const Sensors *initial, const LoadState *load)
             "# rsx clocks: core %d MHz, memory %d MHz\n"
             "# fan at start: %s\n"
             "# load at start: cpu %s, gpu %s (levels %d/%d/%d)\n"
-            "elapsedSeconds,cpuC,cpuTenths,rsxC,rsxTenths,fanPercent,cpuLevel,spuLevel,gpuLevel,frameMs,coreMhz,memMhz\n",
+            "elapsedSeconds,cpuC,cpuTenths,rsxC,rsxTenths,fanPercent,"
+            "cpuLevel,spuThreads,gpuLevel,frameMs,coreMhz,memMhz\n",
             now.year, now.month, now.day, now.hour, now.minute, now.second,
             getConsoleModelSummary(), getSafetyCutoffCelsius(),
             initial->coreClockMhz, initial->memoryClockMhz,
             initial->fanReadable ? getFanModeText(initial->fanMode) : "unreadable",
-            getLoadLevelName(load->cpuLevel), getLoadLevelName(load->gpuLevel), load->cpuLevel, load->spuLevel, load->gpuLevel);
+            getLoadLevelName(load->cpuLevel), getLoadLevelName(load->gpuLevel),
+            load->cpuLevel, load->spuThreadCount, load->gpuLevel);
    writeLine(header);
 
    logInfo("[bench] recording run to %s\n", runPath);
+
+   baselineCount = loadPreviousRun();
 }
 
-void appendMetricsSample(int elapsedSeconds, const Sensors *sensors, int frameMs, const LoadState *load)
+static void appendRow(int elapsedSeconds, const Sensors *sensors, int frameMs, const LoadState *load)
 {
    char row[256];
    snprintf(row, sizeof row, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
-            elapsedSeconds, sensors->cpuTenthsC / 10, sensors->cpuTenthsC % 10, sensors->rsxTenthsC / 10, sensors->rsxTenthsC % 10,
-            sensors->fanPercent, load->cpuLevel, load->spuLevel, load->gpuLevel, frameMs,
+            elapsedSeconds, sensors->cpuTenthsC / 10, sensors->cpuTenthsC % 10,
+            sensors->rsxTenthsC / 10, sensors->rsxTenthsC % 10, sensors->fanPercent,
+            load->cpuLevel, load->spuThreadCount, load->gpuLevel, frameMs,
             sensors->coreClockMhz, sensors->memoryClockMhz);
    writeLine(row);
 }
 
-void finishMetricsLog(const RunSummary *summary)
+void recordMetricsSample(const Sensors *sensors, int frameMs, const LoadState *load)
+{
+   if (!sensors->temperatureReadable) return;   // a refused reading is not a 0 C reading
+
+   int seconds = getRunElapsedSeconds();
+   if (seconds - lastSampleSecond < SAMPLE_INTERVAL_SECONDS) return;
+   lastSampleSecond = seconds;
+
+   // keep the newest samples when the ring is full
+   RunSample point = { (uint32_t)seconds, (uint16_t)sensors->cpuTenthsC,
+                       (uint16_t)sensors->rsxTenthsC, (uint8_t)sensors->fanPercent };
+   if (sampleCount == MAX_SAMPLES)
+   {
+      memmove(samples, samples + 1, sizeof(RunSample) * (MAX_SAMPLES - 1));
+      sampleCount--;
+   }
+   samples[sampleCount++] = point;
+
+   appendRow(seconds, sensors, frameMs, load);
+
+   // running peaks, shown live beside the current values and saved on the way out
+   if (sensors->cpuTenthsC > summary.peakCpuTenthsC) summary.peakCpuTenthsC = sensors->cpuTenthsC;
+   if (sensors->rsxTenthsC > summary.peakRsxTenthsC) summary.peakRsxTenthsC = sensors->rsxTenthsC;
+   if (sensors->fanPercent > summary.peakFanPercent) summary.peakFanPercent = sensors->fanPercent;
+   if (summary.firstFanStepSeconds < 0 && sensors->fanReadable && sensors->fanPercent > startFanPercent)
+      summary.firstFanStepSeconds = seconds;
+   summary.durationSeconds = seconds;
+}
+
+void finishMetricsLog(void)
 {
    if (!runOpen) return;
+   summary.durationSeconds = getRunElapsedSeconds();
 
    char firstStep[24];
-   if (summary->firstFanStepSeconds >= 0) snprintf(firstStep, sizeof firstStep, "%d s", summary->firstFanStepSeconds);
-   else                                   snprintf(firstStep, sizeof firstStep, "never");
+   if (summary.firstFanStepSeconds >= 0) snprintf(firstStep, sizeof firstStep, "%d s", summary.firstFanStepSeconds);
+   else                                  snprintf(firstStep, sizeof firstStep, "never");
 
    char footer[512];
    snprintf(footer, sizeof footer,
@@ -93,15 +166,15 @@ void finishMetricsLog(const RunSummary *summary)
             "# peak rsx: %d.%d C\n"
             "# peak fan: %d%%\n"
             "# first fan step-up: %s\n",
-            summary->durationSeconds, summary->peakCpuTenthsC / 10, summary->peakCpuTenthsC % 10,
-            summary->peakRsxTenthsC / 10, summary->peakRsxTenthsC % 10, summary->peakFanPercent, firstStep);
+            summary.durationSeconds, summary.peakCpuTenthsC / 10, summary.peakCpuTenthsC % 10,
+            summary.peakRsxTenthsC / 10, summary.peakRsxTenthsC % 10, summary.peakFanPercent, firstStep);
    writeLine(footer);
 
    closeFs(&runFile);
    runOpen = 0;
    logInfo("[bench] run saved: peak cpu %d.%d C, rsx %d.%d C, fan %d%%\n",
-           summary->peakCpuTenthsC / 10, summary->peakCpuTenthsC % 10,
-           summary->peakRsxTenthsC / 10, summary->peakRsxTenthsC % 10, summary->peakFanPercent);
+           summary.peakCpuTenthsC / 10, summary.peakCpuTenthsC % 10,
+           summary.peakRsxTenthsC / 10, summary.peakRsxTenthsC % 10, summary.peakFanPercent);
 }
 
 // the newest run file that is not the one we are writing now. names start with
@@ -133,29 +206,29 @@ static int findPreviousRunPath(char *out, int capacity)
 // a run file is plain text on a disk anyone can reach over ftp, so treat every
 // field as untrusted: anything outside what the sensors can physically report
 // means the row is corrupt and the whole row is dropped.
+#define SAMPLE_FIELD_COUNT  6      // elapsed, cpuC, cpuTenths, rsxC, rsxTenths, fanPercent
 #define MAX_ELAPSED_SECONDS 604800   // a week
 #define MAX_WHOLE_CELSIUS   150
 #define MAX_TENTHS          9
 #define MAX_FAN_PERCENT     100
+#define CSV_HEADER_PREFIX   "elapsed"
 
 static int isInRange(long value, long low, long high) { return value >= low && value <= high; }
 
-// one csv row -> one graph sample. comment, header and corrupt lines return 0.
-static int parseSampleRow(const char *row, GraphSample *out)
+// one csv row -> one sample. comment, header and corrupt lines return 0.
+static int parseSampleRow(const char *row, RunSample *out)
 {
-   if (row[0] == '#' || row[0] == 'e' || row[0] == 0) return 0;
+   if (row[0] == '#' || row[0] == 0 || strncmp(row, CSV_HEADER_PREFIX, sizeof CSV_HEADER_PREFIX - 1) == 0) return 0;
 
-   long field[6] = { 0 };   // elapsed, cpuC, cpuTenths, rsxC, rsxTenths, fanPercent
+   long field[SAMPLE_FIELD_COUNT] = { 0 };
    const char *cursor = row;
-   for (int index = 0; index < 6; index++)
+   for (int index = 0; index < SAMPLE_FIELD_COUNT; index++)
    {
       if (*cursor < '0' || *cursor > '9') return 0;
       field[index] = strtol(cursor, (char **)&cursor, 10);
-      if (index < 5)
-      {
-         if (*cursor != ',') return 0;
-         cursor++;
-      }
+      if (index == SAMPLE_FIELD_COUNT - 1) break;
+      if (*cursor != ',') return 0;
+      cursor++;
    }
 
    if (!isInRange(field[0], 0, MAX_ELAPSED_SECONDS)) return 0;
@@ -170,7 +243,7 @@ static int parseSampleRow(const char *row, GraphSample *out)
    return 1;
 }
 
-int loadPreviousRun(GraphSample *out, int capacity)
+static int loadPreviousRun(void)
 {
    char path[256];
    if (!findPreviousRunPath(path, sizeof path)) return 0;
@@ -183,8 +256,8 @@ int loadPreviousRun(GraphSample *out, int capacity)
    int rowLength = 0, count = 0;
    int64_t read;
 
-   while (count < capacity && (read = readFs(&file, chunk, sizeof chunk)) > 0)
-      for (int64_t byte = 0; byte < read && count < capacity; byte++)
+   while (count < MAX_SAMPLES && (read = readFs(&file, chunk, sizeof chunk)) > 0)
+      for (int64_t byte = 0; byte < read && count < MAX_SAMPLES; byte++)
       {
          if (chunk[byte] != '\n')
          {
@@ -193,7 +266,7 @@ int loadPreviousRun(GraphSample *out, int capacity)
          }
          row[rowLength] = 0;
          rowLength = 0;
-         if (parseSampleRow(row, &out[count])) count++;
+         if (parseSampleRow(row, &baseline[count])) count++;
       }
 
    closeFs(&file);

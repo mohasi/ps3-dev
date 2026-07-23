@@ -9,28 +9,37 @@
 // overlapping translucent geometry filling the whole screen - fill rate with
 // blending is what actually heats the rsx.
 
-#define LOAD_LEVEL_COUNT 4
+typedef enum LoadLevel {
+   LOAD_OFF,
+   LOAD_LIGHT,
+   LOAD_MEDIUM,
+   LOAD_FULL,
+   LOAD_LEVEL_COUNT
+} LoadLevel;
 
 // the spus are six co-processors on the same chip as the ppu, and in a real
 // game they produce most of the heat - without them a "full" burn is not full.
 #define MAX_SPU_THREADS 6
 
 typedef struct LoadState {
-   int cpuLevel;   // 0..3, also drives the spu load
-   int spuLevel;
-   int gpuLevel;
+   LoadLevel cpuLevel;   // also drives the spu load
+   LoadLevel gpuLevel;
+   int spuThreadCount;   // how many spus the cell dial actually got, 0..MAX_SPU_THREADS
 } LoadState;
 
-const char *getLoadLevelName(int level);
+const char *getLoadLevelName(LoadLevel level);
 const LoadState *getLoadState(void);
 
-void setCpuLoad(int level);
-void setGpuLoad(int level);
+// each dial steps to its next level and wraps back to off past the last one.
+void stepCpuLoad(void);
+void stepGpuLoad(void);
+void stepBothLoads(void);   // both dials to one past whichever is currently higher
 
-// drops every load to nothing without forgetting the chosen levels, and puts
-// them back. used while the XMB is open over the app.
-void suspendStress(void);
-void resumeStress(void);
+void setLoadOff(void);   // how the safety cutoff drops everything
+
+// drops every load to nothing without forgetting the chosen levels, and puts them
+// back. used while the XMB is open over the app.
+void setStressSuspended(int suspended);
 
 // stops every worker for good; call before the app exits.
 void stopStress(void);

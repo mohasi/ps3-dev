@@ -12,27 +12,25 @@ Title id `THERMAL01`, installs to `/dev_hdd0/game/THERMAL01/`.
 |---|---|---|
 | CPU / RSX temperature | lv2 syscall 383 `sys_game_get_temperature` | zone 0 = cell, 1 = rsx; top byte whole °C, next byte 1/256ths |
 | Fan duty | lv2 syscall 409 `sys_sm_get_fan_policy` | 0-255 pwm level; gated behind a manufacturing-mode check on stock lv2 |
-| RSX core / memory clock | hypervisor clock registers, via the CFW lv1 read | stock 500 / 650 MHz; higher on an overclocked CFW. `cellGcmGetConfiguration` is the fallback when the register cannot be read |
+| RSX core / memory clock | hypervisor clock registers, via the CFW lv1 read | stock 500 / 650 MHz; higher on an overclocked CFW. A console that cannot read the register cannot change it either, so the readout says "unreadable" rather than guessing |
 
 There is **no fan RPM** anywhere in the system — the fan has a control wire and no sense
 wire, so not even the system controller knows its real speed. Fan duty is the only fan
 number that exists, and in the default automatic mode the system controller steps it up
 as the console heats, so it moves live.
 
-## What this console reports (hardware run, 2026-07-21)
+Confirmed on hardware: temperatures and the fan both read fine (no kernel patch needed for
+the fan). The southbridge and voltage zones are refused, and the undocumented thermal-zone
+block (syscall 384) reads all zeros, so neither is read any more.
 
-CPU and RSX temperatures read fine. The fan read is **not** blocked — it answered 28%,
-mode automatic, so no kernel patch is needed. The southbridge and voltage zones are
-refused, so those sensors do not exist for us. The undocumented thermal-zone block (syscall
-384) reads all zeros — nothing useful in it, so it is no longer read. RSX clocks came back
-650 / 750 MHz, i.e. this console is already overclocked above the stock 500 / 650.
-
-## State
+## How it works
 
 Full-screen view: a stress canvas behind a semi-transparent overlay carrying the live
 readouts and a dual-axis graph (temperature left, fan % right, time along the bottom),
 FurMark style. Reads the sensors every 500 ms, records a graph point and a CSV row every
-2 seconds, and logs every change to `dbg.txt` and the debug bridge. L1/R1 change the time
+2 seconds, and logs every change to `dbg.txt` and the debug bridge. A reading the console
+refuses is not recorded at all, because a made-up 0 °C would come back as real data the next
+time the run is used as a baseline. L1/R1 change the time
 window, START switches between °C and °F, and the key above the graph says which colour is
 which. X steps both load dials together, Square steps the CELL dial alone, Triangle steps
 the graphics dial alone — each has four steps (off / light / medium / full burn). While the
@@ -70,7 +68,9 @@ the UI's priority, the GPU load is heavy overlapping translucent geometry with t
 cap removed. If either temperature reaches the safety cutoff — **or the console refuses to report a
 temperature at all** — the load drops itself to off, the clocks go back to what they were
 at startup, and the screen and log both say why. The tool must never be the thing that
-cooks the console, and it must never keep burning while flying blind.
+cooks the console, and it must never keep burning while flying blind. The watch also runs
+when the load is off but the clocks have been raised, because a raised clock heats the
+console on its own and outlives the app.
 
 The SPUs are the six co-processors inside the same Cell chip as the CPU, and in a real
 game they produce most of the heat, so they follow the CPU dial (2 / 4 / 6 threads). Their
@@ -91,8 +91,9 @@ The mechanism is a hypervisor register holding a multiplier, poked through the C
 write syscall — lifted from webMAN-MOD's `include/feat/clock.h` (credited there to
 Chattrapat Sangmanee). Because this writes below the operating system, the range is clamped
 (core 300-800, memory 400-900) and each press moves exactly one step. Clocks are read back
-from the same register, so the readout tracks changes; `cellGcmGetConfiguration` only knows
-what was set when the app started.
+from the same register, so the readout tracks changes. A console whose CFW cannot read that
+register cannot change it either, so the readout says "unreadable" instead of showing a
+number nothing can move.
 
 A clock change is global and **stays after the app exits** — the XMB and every game launched
 afterwards run at the new clocks until the console reboots. That is deliberate: the tool

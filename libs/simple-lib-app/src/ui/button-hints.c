@@ -17,9 +17,9 @@ void initButtonHints(ButtonHints *bar, Font *font, int y, int glyphHeight, int c
    bar->captionColor = captionColor;
 }
 
-void addButtonHint(ButtonHints *bar, GfxTexture glyph, const char *caption)
+int addButtonHint(ButtonHints *bar, GfxTexture glyph, const char *caption)
 {
-   if (bar->count >= MAX_BUTTON_HINTS) return;
+   if (bar->count >= MAX_BUTTON_HINTS) return -1;
    ButtonHint *hint = &bar->hints[bar->count++];
    hint->glyph     = glyph;
    hint->drawWidth = glyph.h > 0 ? glyph.w * bar->glyphHeight / glyph.h : bar->glyphHeight;
@@ -27,6 +27,7 @@ void addButtonHint(ButtonHints *bar, GfxTexture glyph, const char *caption)
    initLabel(&hint->caption, bar->font, 0, 0, AUTO, AUTO, bar->captionSize, bar->captionColor, TEXT_NOWRAP, caption);
    // a caption-less hint is just the glyph; drop the icon gap so it clusters with the next one
    hint->width = hint->drawWidth + (hint->pairNext ? 0 : ICON_GAP + hint->caption.tt.tex.w);
+   return bar->count - 1;
 }
 
 void setButtonHintCaption(ButtonHints *bar, int index, const char *caption)

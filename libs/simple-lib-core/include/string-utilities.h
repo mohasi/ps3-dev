@@ -203,6 +203,20 @@ static inline int hexDigit(char c)
    return -1;
 }
 
+// Writes count bytes as upper-case hex into dst, NUL-terminated. dst needs
+// count * 2 + 1 bytes; nothing is written if it is smaller.
+static inline void toHexText(char *dst, int cap, const unsigned char *bytes, int count)
+{
+   static const char HEX_DIGITS[] = "0123456789ABCDEF";
+   if (cap < count * 2 + 1) { if (cap > 0) dst[0] = 0; return; }
+
+   for (int index = 0; index < count; index++) {
+      dst[index * 2]     = HEX_DIGITS[bytes[index] >> 4];
+      dst[index * 2 + 1] = HEX_DIGITS[bytes[index] & 0xF];
+   }
+   dst[count * 2] = 0;
+}
+
 // Percent-decodes src into dst, NUL-terminating. Stops at space/'?'/'\r'/end.
 // Inverse of appendUrlEnc. Returns chars written, or -1 on bad %XX.
 static inline int urlDecode(const char *src, char *dst, int cap)

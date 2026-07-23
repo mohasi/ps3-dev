@@ -32,7 +32,7 @@ extern const char _binary_spuburn_elf_start[];   // the embedded spu program
 #define MAX_CPU_WORKERS   6
 #define BURN_BATCH        200000   // iterations between stop-flag checks
 
-static LoadState load;
+static LoadState currentLoad;
 static int suspended;
 
 static float spin;
@@ -45,12 +45,12 @@ static sys_spu_image_t spuImage;
 static int spuImageOpen;
 static int spuThreadCount;
 
-const char *getLoadLevelName(int level)
+const char *getLoadLevelName(LoadLevel level)
 {
-   return (unsigned)level < LOAD_LEVEL_COUNT ? LEVEL_NAMES[level] : "?";
+   return (int)level < LOAD_LEVEL_COUNT ? LEVEL_NAMES[level] : "?";
 }
 
-const LoadState *getLoadState(void) { return &load; }
+const LoadState *getLoadState(void) { return &currentLoad; }
 
 // busy loop. four independent chains keep the pipeline full instead of stalling
 // on the previous result, and the volatile sink stops the compiler folding the
@@ -89,7 +89,8 @@ static void startCpuWorkers(int count)
    if (count > MAX_CPU_WORKERS) count = MAX_CPU_WORKERS;
    while (workerCount < count)
    {
-      if (spawnJoinableThread(&workers[workerCount], burnCpu, (uint64_t)workerCount, WORKER_PRIORITY, WORKER_STACK_SIZE, "bench-burn") != 0)
+      sys_ppu_thread_t *worker = &workers[workerCount];
+      if (spawnJoinableThread(worker, burnCpu, workerCount, WORKER_PRIORITY, WORKER_STACK_SIZE, "bench-burn") != 0)
       {
          logError("[bench] could not start cpu worker %d\n", workerCount);
          return;
@@ -117,7 +118,11 @@ static int startSpuThreads(int count)
 
    if (!spuImageOpen)
    {
-      if (sys_spu_initialize(MAX_SPU_THREADS, 0) != CELL_OK) { logError("[bench] sys_spu_initialize failed\n"); return 0; }
+      if (sys_spu_initialize(MAX_SPU_THREADS, 0) != CELL_OK)
+      {
+         logError("[bench] sys_spu_initialize failed\n");
+         return 0;
+      }
       if (sys_spu_image_import(&spuImage, _binary_spuburn_elf_start, SYS_SPU_IMAGE_DIRECT) != CELL_OK)
       {
          logError("[bench] embedded spu program would not load\n");
@@ -163,64 +168,75 @@ static int startSpuThreads(int count)
 
 static void applySpuLoad(void)
 {
-   int wanted = suspended ? 0 : SPU_THREADS[load.cpuLevel];
+   int wanted = suspended ? 0 : SPU_THREADS[currentLoad.cpuLevel];
    if (wanted == spuThreadCount) return;
 
    stopSpuThreads();
    // other parts of the system may already hold some spus; take what we can get
    while (wanted > 0 && startSpuThreads(wanted) == 0) wanted--;
-   load.spuLevel = spuThreadCount;
+   currentLoad.spuThreadCount = spuThreadCount;
 }
 
-// the frame cap comes off only while there is gpu load, so the rsx runs flat
-// out during a burn and idles politely the rest of the time.
-static void applyGpuLoad(void)
+// the frame cap comes off only while there is gpu load, so the rsx runs flat out
+// during a burn and idles politely the rest of the time. the geometry that is the
+// gpu load is drawn by drawStressCanvas, which reads the dial itself.
+static void setVsyncForLoad(void)
 {
-   int level = suspended ? 0 : load.gpuLevel;
-   setGfxVsync(level > 0 ? GFX_VSYNC_OFF : GFX_VSYNC_ON);
+   LoadLevel level = suspended ? LOAD_OFF : currentLoad.gpuLevel;
+   setGfxVsync(level > LOAD_OFF ? GFX_VSYNC_OFF : GFX_VSYNC_ON);
 }
 
 static void applyCpuLoad(void)
 {
-   int wanted = suspended ? 0 : CPU_WORKERS[load.cpuLevel];
+   int wanted = suspended ? 0 : CPU_WORKERS[currentLoad.cpuLevel];
    if (wanted == workerCount) return;
    if (wanted < workerCount) stopCpuWorkers();
    startCpuWorkers(wanted);
 }
 
-void setCpuLoad(int level)
+static LoadLevel nextLevel(LoadLevel level) { return (level + 1) % LOAD_LEVEL_COUNT; }
+
+static void setCpuLoad(LoadLevel level)
 {
-   load.cpuLevel = (level + LOAD_LEVEL_COUNT) % LOAD_LEVEL_COUNT;
+   currentLoad.cpuLevel = level;
    applyCpuLoad();
    applySpuLoad();   // the spus live on the same chip, so they follow the cpu dial
-   logInfo("[bench] cpu load '%s': %d ppu workers, %d spu threads\n", getLoadLevelName(load.cpuLevel), workerCount, spuThreadCount);
+   logInfo("[bench] cpu load '%s': %d workers, %d spus\n", getLoadLevelName(level), workerCount, spuThreadCount);
 }
 
-void setGpuLoad(int level)
+static void setGpuLoad(LoadLevel level)
 {
-   load.gpuLevel = (level + LOAD_LEVEL_COUNT) % LOAD_LEVEL_COUNT;
-   applyGpuLoad();
-   logInfo("[bench] gpu load '%s': %d triangles\n", getLoadLevelName(load.gpuLevel), GPU_TRIANGLES[load.gpuLevel]);
+   currentLoad.gpuLevel = level;
+   setVsyncForLoad();
+   logInfo("[bench] gpu load '%s': %d triangles\n", getLoadLevelName(level), GPU_TRIANGLES[level]);
 }
 
-void suspendStress(void)
+void stepCpuLoad(void) { setCpuLoad(nextLevel(currentLoad.cpuLevel)); }
+void stepGpuLoad(void) { setGpuLoad(nextLevel(currentLoad.gpuLevel)); }
+
+// one press moves both dials, so they step together from whichever is ahead
+void stepBothLoads(void)
 {
-   if (suspended) return;
-   suspended = 1;
+   LoadLevel ahead = currentLoad.cpuLevel >= currentLoad.gpuLevel ? currentLoad.cpuLevel : currentLoad.gpuLevel;
+   LoadLevel next = nextLevel(ahead);
+   setCpuLoad(next);
+   setGpuLoad(next);
+}
+
+void setLoadOff(void)
+{
+   setCpuLoad(LOAD_OFF);
+   setGpuLoad(LOAD_OFF);
+}
+
+void setStressSuspended(int suspend)
+{
+   if (suspended == suspend) return;
+   suspended = suspend;
    applyCpuLoad();
    applySpuLoad();
-   applyGpuLoad();
-   logInfo("[bench] load suspended (xmb open)\n");
-}
-
-void resumeStress(void)
-{
-   if (!suspended) return;
-   suspended = 0;
-   applyCpuLoad();
-   applySpuLoad();
-   applyGpuLoad();
-   logInfo("[bench] load resumed\n");
+   setVsyncForLoad();
+   logInfo("[bench] load %s\n", suspend ? "suspended (xmb open)" : "resumed");
 }
 
 void stopStress(void)
@@ -235,12 +251,12 @@ void drawStressCanvas(void)
 {
    spin += SPIN_PER_FRAME;
 
-   int triangles = suspended ? 0 : GPU_TRIANGLES[load.gpuLevel];
+   int triangles = suspended ? 0 : GPU_TRIANGLES[currentLoad.gpuLevel];
    if (triangles == 0) return;
 
-   int screenW = getGfxScreenWidth(), screenH = getGfxScreenHeight();
-   float centerX = screenW / 2.0f, centerY = screenH / 2.0f;
-   float radius = (screenW < screenH ? screenW : screenH) * 0.75f;
+   int screenWidth = getGfxScreenWidth(), screenHeight = getGfxScreenHeight();
+   float centerX = screenWidth / 2.0f, centerY = screenHeight / 2.0f;
+   float radius = (screenWidth < screenHeight ? screenWidth : screenHeight) * 0.75f;
 
    // low alpha so overlapping triangles build up instead of hiding each other
    uint32_t inner = (COLOR_INDIGO_600 & 0x00FFFFFF) | 0x30000000;

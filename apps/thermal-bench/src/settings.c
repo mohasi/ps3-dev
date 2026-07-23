@@ -40,7 +40,7 @@ void loadSettings(void)
 
    char text[2048];
    if (loadSettingsFile(SETTINGS_PATH, DEFAULT_SETTINGS, text, sizeof text) == 1)
-      logInfo("[settings] created %s with defaults\n", SETTINGS_PATH);
+      logInfo("[bench] created %s with defaults\n", SETTINGS_PATH);
 
    const char *cutoff = findSettingValue(text, "safety-cutoff");
    if (!cutoff || settingValueEquals(cutoff, "auto")) return;
@@ -48,14 +48,14 @@ void loadSettings(void)
    int wanted = atoi(cutoff);
    if (wanted < CUTOFF_MIN_CELSIUS || wanted > CUTOFF_MAX_CELSIUS)
    {
-      logWarn("[settings] safety-cutoff %d is outside %d-%d C, using %d C\n",
+      logWarn("[bench] safety-cutoff %d is outside %d-%d C, using %d C\n",
               wanted, CUTOFF_MIN_CELSIUS, CUTOFF_MAX_CELSIUS, safetyCutoffCelsius);
       return;
    }
 
    safetyCutoffCelsius = wanted;
    cutoffFromSettings = 1;
-   logInfo("[settings] safety cutoff set to %d C by settings.txt\n", safetyCutoffCelsius);
+   logInfo("[bench] safety cutoff set to %d C by settings.txt\n", safetyCutoffCelsius);
 }
 
 int getSafetyCutoffCelsius(void)   { return safetyCutoffCelsius; }

@@ -45,10 +45,22 @@
    <ClCompile Include="src\main.c" />
    <ClCompile Include="src\net-common.c" />
    <ClCompile Include="src\stream.c" />
+   <ClCompile Include="src\shortcuts.c" />
+   <ClCompile Include="src\toast.c" />
+   <ClCompile Include="src\companion-prompt.c" />
+   <ClCompile Include="src\shortcut-hint.c" />
+   <ClCompile Include="src\frametime-graph.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\net-common.h" />
    <ClInclude Include="include\stream.h" />
+   <ClInclude Include="include\shortcuts.h" />
+   <ClInclude Include="include\cell-stream-settings.h" />
+   <ClInclude Include="include\toast.h" />
+   <ClInclude Include="include\companion-prompt.h" />
+   <ClInclude Include="include\shortcut-hint.h" />
+   <ClInclude Include="include\qr-code.h" />
+   <ClInclude Include="include\frametime-graph.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="cell-stream.conf" />

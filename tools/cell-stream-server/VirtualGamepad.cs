@@ -33,6 +33,11 @@ namespace CellStreamServer
       private const ushort PadStart = 0x0010, PadBack = 0x0020, PadLeftThumb = 0x0040, PadRightThumb = 0x0080;
       private const ushort PadLeftShoulder = 0x0100, PadRightShoulder = 0x0200;
       private const ushort PadA = 0x1000, PadB = 0x2000, PadX = 0x4000, PadY = 0x8000;
+      // Windows 11 opens the in-app Guide (Game Bar) on View+Menu pressed together, not on the raw
+      // Guide bit - see Settings > Gaming > "Use View+Menu as Guide button in apps". So we send that
+      // chord (Back = View, Start = Menu), which is the default mapping on real controllers too.
+      private const ushort GuideChord = PadBack | PadStart;
+      private const int GuidePulseMs = 120;
 
       private const int StickDeadZone = 12;      // the PS3's sticks rest a few counts off centre
       private const double StickFullTilt = 115.0;
@@ -40,6 +45,7 @@ namespace CellStreamServer
       private static bool installTried;
       private IntPtr busHandle = InvalidHandle;
       private uint serial;
+      private volatile int guideHoldUntilTicks;   // Send() keeps the Guide bit set until this time
 
       public bool IsOpen { get { return busHandle != InvalidHandle; } }
 
@@ -83,11 +89,14 @@ namespace CellStreamServer
       {
          if (!IsOpen) return;
 
+         ushort xboxButtons = ToXboxButtons(buttons);
+         if (Environment.TickCount < guideHoldUntilTicks) xboxButtons |= GuideChord;   // survive a Guide tap
+
          var submit = new SubmitReport
          {
             Size = (uint)Marshal.SizeOf(typeof(SubmitReport)),
             SerialNo = serial,
-            Buttons = ToXboxButtons(buttons),
+            Buttons = xboxButtons,
             LeftTrigger = (buttons & (1 << PadBits.L2)) != 0 ? (byte)255 : (byte)0,
             RightTrigger = (buttons & (1 << PadBits.R2)) != 0 ? (byte)255 : (byte)0,
             ThumbLX = ToXboxAxis(leftX),
@@ -95,6 +104,32 @@ namespace CellStreamServer
             ThumbRX = ToXboxAxis(rightX),
             ThumbRY = ToXboxAxis(-rightY)
          };
+         Call(busHandle, IoctlSubmitReport, submit);
+      }
+
+      // taps the Guide button. Windows opens Game Bar on Guide, so this is how the PS3's Game Bar
+      // shortcut works. plugs the virtual gamepad in first if it isn't already; false means no driver.
+      public bool PressGuide()
+      {
+         if (!TryOpen()) return false;
+
+         // drive the tap on a short-lived thread so we don't block the pad loop. Send() ORs the Guide
+         // bit into its own reports until the hold expires, so controller mode can't clear it mid-tap.
+         guideHoldUntilTicks = Environment.TickCount + GuidePulseMs;
+         new Thread(() =>
+         {
+            SubmitButtons(GuideChord);
+            Thread.Sleep(GuidePulseMs);
+            guideHoldUntilTicks = 0;
+            SubmitButtons(0);
+         }) { IsBackground = true }.Start();
+         return true;
+      }
+
+      private void SubmitButtons(ushort xboxButtons)
+      {
+         if (!IsOpen) return;
+         var submit = new SubmitReport { Size = (uint)Marshal.SizeOf(typeof(SubmitReport)), SerialNo = serial, Buttons = xboxButtons };
          Call(busHandle, IoctlSubmitReport, submit);
       }
 

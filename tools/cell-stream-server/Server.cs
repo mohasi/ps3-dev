@@ -273,6 +273,15 @@ namespace CellStreamServer
             {
                padReceiver.SetGamepadMode(text.Substring(8).StartsWith("gamepad"));
             }
+            else if (text.StartsWith("KEY ") && length >= 5)
+            {
+               padReceiver.TypeKey((char)buffer[4]);   // the raw byte after "KEY " is the character
+            }
+            else if (text.StartsWith("CUSTOM "))
+            {
+               int slot;
+               if (int.TryParse(text.Substring(7).Trim(), out slot)) CustomCommands.Run(slot, padReceiver);
+            }
             else if (text.StartsWith("STOP"))
             {
                StopStreaming("the PS3 asked us to stop");

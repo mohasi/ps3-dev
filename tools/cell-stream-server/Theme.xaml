@@ -142,6 +142,53 @@
      </Setter>
    </Style>
 
+   <!-- flat dark tabs: a plain strip with an accent underline on the selected tab -->
+   <Style TargetType="TabItem">
+     <Setter Property="Foreground" Value="{StaticResource FgText}" />
+     <Setter Property="FontFamily" Value="Segoe UI" />
+     <Setter Property="FontSize" Value="12" />
+     <Setter Property="Template">
+       <Setter.Value>
+         <ControlTemplate TargetType="TabItem">
+           <Border x:Name="tab" Padding="14,7" Margin="0,0,2,0" Background="{StaticResource BgSurface}"
+                   BorderBrush="{StaticResource BgSurface}" BorderThickness="0,0,0,2">
+             <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" />
+           </Border>
+           <ControlTemplate.Triggers>
+             <Trigger Property="IsMouseOver" Value="True">
+               <Setter TargetName="tab" Property="Background" Value="{StaticResource BgHover}" />
+             </Trigger>
+             <Trigger Property="IsSelected" Value="True">
+               <Setter TargetName="tab" Property="Background" Value="{StaticResource BgHover}" />
+               <Setter TargetName="tab" Property="BorderBrush" Value="{StaticResource BrAccent}" />
+             </Trigger>
+           </ControlTemplate.Triggers>
+         </ControlTemplate>
+       </Setter.Value>
+     </Setter>
+   </Style>
+
+   <Style TargetType="TabControl">
+     <Setter Property="Background" Value="{StaticResource BgBase}" />
+     <Setter Property="BorderThickness" Value="0" />
+     <Setter Property="Template">
+       <Setter.Value>
+         <ControlTemplate TargetType="TabControl">
+           <Grid>
+             <Grid.RowDefinitions>
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="*" />
+             </Grid.RowDefinitions>
+             <TabPanel Grid.Row="0" IsItemsHost="True" Background="{StaticResource BgBase}" />
+             <Border Grid.Row="1" Background="{StaticResource BgBase}">
+               <ContentPresenter ContentSource="SelectedContent" />
+             </Border>
+           </Grid>
+         </ControlTemplate>
+       </Setter.Value>
+     </Setter>
+   </Style>
+
    <Style x:Key="LogBox" TargetType="TextBox">
      <Setter Property="Background" Value="{StaticResource BgSurface}" />
      <Setter Property="Foreground" Value="{StaticResource FgText}" />

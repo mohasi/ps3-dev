@@ -14,6 +14,7 @@
 // every fragment except a frame's last carries exactly FRAGMENT_PAYLOAD_BYTES of data.
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -40,7 +41,7 @@
 #define TIME_SYNC_SAMPLES      10
 #define FRAGMENT_HEADER_BYTES  20
 #define FRAGMENT_PAYLOAD_BYTES 1300
-#define FRAME_MAX_BYTES        (1024 * 1024)   // a 1080p keyframe at a high bitrate is far bigger than a normal frame
+#define FRAME_MAX_BYTES        (1024 * 1024)   // a keyframe at a high bitrate is far bigger than a normal frame; generous headroom
 #define FRAGMENT_MAX_COUNT     (FRAME_MAX_BYTES / FRAGMENT_PAYLOAD_BYTES + 1)
 #define FEED_TIME_RING         32
 #define DECODE_BUSY_TRIES      200   // 1ms apart; give up feeding an AU after this
@@ -65,8 +66,17 @@ static void *yuvBuffers[YUV_BUFFER_COUNT];
 static int publishedIndex = -1, previousPublishedIndex = -1;
 static int drawnIndex = -1, previousDrawnIndex = -1;
 static int publishedWidth, publishedHeight;
-static uint64_t publishedCaptureUs, publishedDecodedUs;   // for the draw thread's present/total timings
+static uint64_t bufferCaptureUs[YUV_BUFFER_COUNT], bufferDecodedUs[YUV_BUFFER_COUNT];   // per buffer, for present/total timings
 static sys_lwmutex_t frameLock;
+
+// one-frame buffer mode: instead of showing the newest picture the instant it decodes, present on the
+// display's steady refresh one frame behind, keeping a single decoded frame in reserve. a frame that
+// decodes a little late is then already the reserve when its refresh comes, so the cadence stays even -
+// it rides out the common small hitches for the price of ~one frame of delay. bigger stalls (a frame
+// more than a whole refresh late) still show as a single repeat. publishSeq counts decoded frames;
+// presentSeq is the one currently shown; we only keep the newest two buffers, so present tracks within one.
+static int bufferOneFrame;
+static uint64_t publishSeq, presentSeq;
 
 // section: decode bookkeeping (stream thread only)
 
@@ -88,10 +98,8 @@ typedef struct {
 static FrameTiming feedTiming[FEED_TIME_RING];
 
 // per-second stat window
-static uint64_t windowStartUs, windowBytes, windowMinDecodeUs;
+static uint64_t windowStartUs, windowBytes;
 static uint64_t windowNetworkUs, windowAssembleUs, windowDecodeUs;
-static uint64_t windowDecoderReadyUs, windowDrainWaitUs;   // decode split: feed->ready vs ready->retrieved
-static uint64_t windowMinDecoderReadyUs, windowMaxDecoderReadyUs;   // is the decoder's own time a fixed hold or jitter?
 static int windowDecodedFrames;   // all decoded frames (the fps count)
 static int windowTimedFrames;     // ... of those, the ones whose server timestamps made sense
 static int clockOutOfSync;        // the server's clock disagreed with ours: latency figures are not to be trusted
@@ -187,20 +195,6 @@ static void drainDecodedFrames(void)
       const FrameTiming *timing = &feedTiming[decodedCount % FEED_TIME_RING];
       uint64_t decodeUs = now - timing->fedUs;
       windowDecodeUs += decodeUs;
-      if (decodeUs < windowMinDecodeUs) windowMinDecodeUs = decodeUs;
-
-      // split that decode time: how much was the decoder actually working (feed -> it reported the
-      // picture ready) vs how much was the picture sitting ready, waiting for us to pull it. proves
-      // whether the ~20ms is a real in-decoder hold or our own drain lag. guard against a stamp that
-      // falls outside [fed, now] (ring not yet warmed on the first frames) rather than log nonsense.
-      uint64_t readyUs = getDecoderReadyUs(decoder);
-      if (readyUs >= timing->fedUs && readyUs <= now) {
-         uint64_t decoderOwnUs = readyUs - timing->fedUs;
-         windowDecoderReadyUs += decoderOwnUs;
-         windowDrainWaitUs += now - readyUs;
-         if (decoderOwnUs < windowMinDecoderReadyUs) windowMinDecoderReadyUs = decoderOwnUs;
-         if (decoderOwnUs > windowMaxDecoderReadyUs) windowMaxDecoderReadyUs = decoderOwnUs;
-      }
 
       // a frame cannot arrive before it was captured: if it claims to, our clock and the server's have come
       // apart (a restarted server used to do this) and the timings are meaningless, so leave them out of the
@@ -220,8 +214,9 @@ static void drainDecodedFrames(void)
       publishedIndex = writeIndex;
       publishedWidth = width;
       publishedHeight = height;
-      publishedCaptureUs = timing->captureUs;
-      publishedDecodedUs = now;
+      bufferCaptureUs[writeIndex] = timing->captureUs;
+      bufferDecodedUs[writeIndex] = now;
+      publishSeq++;
       unlock(&frameLock);
    }
 }
@@ -477,11 +472,6 @@ static void updateWindowStats(void)
    stats.networkMsTenths = windowTimedFrames > 0 ? (int)(windowNetworkUs / windowTimedFrames / 100) : 0;
    stats.assembleMsTenths = windowTimedFrames > 0 ? (int)(windowAssembleUs / windowTimedFrames / 100) : 0;
    stats.decodeMsTenths = windowDecodedFrames > 0 ? (int)(windowDecodeUs / windowDecodedFrames / 100) : 0;
-   stats.decodeMinMsTenths = windowDecodedFrames > 0 ? (int)(windowMinDecodeUs / 100) : 0;
-   stats.decodeReadyMsTenths = windowDecodedFrames > 0 ? (int)(windowDecoderReadyUs / windowDecodedFrames / 100) : 0;
-   stats.decodeReadyMinMsTenths = windowMaxDecoderReadyUs > 0 ? (int)(windowMinDecoderReadyUs / 100) : 0;
-   stats.decodeReadyMaxMsTenths = (int)(windowMaxDecoderReadyUs / 100);
-   stats.drainWaitMsTenths = windowDecodedFrames > 0 ? (int)(windowDrainWaitUs / windowDecodedFrames / 100) : 0;
    stats.presentMsTenths = presentedFrames > 0 ? (int)(presentUs / presentedFrames / 100) : 0;
    stats.displayWaitMsTenths = flipWaits > 0 ? (int)(flipWaitUs / flipWaits / 100) : 0;
    stats.totalMsTenths = presentedFrames > 0 ? (int)(totalUs / presentedFrames / 100) : 0;
@@ -493,10 +483,6 @@ static void updateWindowStats(void)
    windowStartUs = now;
    windowBytes = 0;
    windowNetworkUs = windowAssembleUs = windowDecodeUs = 0;
-   windowDecoderReadyUs = windowDrainWaitUs = 0;
-   windowMinDecoderReadyUs = ~0ull;
-   windowMaxDecoderReadyUs = 0;
-   windowMinDecodeUs = ~0ull;
    windowDecodedFrames = windowTimedFrames = 0;
 
    // mirror the on-screen stats to the log every few seconds so runs are analyzable afterwards - but only
@@ -512,19 +498,14 @@ static void updateWindowStats(void)
          logWarn("[cst] the server's clock disagrees with ours - was it restarted mid-stream? "
                  "latency figures cover only the frames that still made sense\n");
       }
-      logInfo("[cst] latency: network %d.%d + decode %d.%d (min %d.%d) + present %d.%d + display %d.%d = %d.%dms"
-              " encoder-to-screen  [assemble %d.%d of network]  [decode = decoder %d.%d (%d.%d-%d.%d) + drain %d.%d]\n",
+      logInfo("[cst] latency: network %d.%d + decode %d.%d + present %d.%d + display %d.%d = %d.%dms"
+              " encoder-to-screen  [assemble %d.%d of network]\n",
               snapshot.networkMsTenths / 10, snapshot.networkMsTenths % 10,
               snapshot.decodeMsTenths / 10, snapshot.decodeMsTenths % 10,
-              snapshot.decodeMinMsTenths / 10, snapshot.decodeMinMsTenths % 10,
               snapshot.presentMsTenths / 10, snapshot.presentMsTenths % 10,
               snapshot.displayWaitMsTenths / 10, snapshot.displayWaitMsTenths % 10,
               snapshot.totalMsTenths / 10, snapshot.totalMsTenths % 10,
-              snapshot.assembleMsTenths / 10, snapshot.assembleMsTenths % 10,
-              snapshot.decodeReadyMsTenths / 10, snapshot.decodeReadyMsTenths % 10,
-              snapshot.decodeReadyMinMsTenths / 10, snapshot.decodeReadyMinMsTenths % 10,
-              snapshot.decodeReadyMaxMsTenths / 10, snapshot.decodeReadyMaxMsTenths % 10,
-              snapshot.drainWaitMsTenths / 10, snapshot.drainWaitMsTenths % 10);
+              snapshot.assembleMsTenths / 10, snapshot.assembleMsTenths % 10);
 
       // buffered IS the audio delay; it should sit near AUDIO_PRIME_MS. dropped/repeated counts are the
       // clock-drift corrections - a steady trickle is normal, a flood means something worse is wrong.
@@ -718,6 +699,26 @@ void sendPadMode(int useGamepad)
    sendto(padSocket, message, strlen(message), 0, (struct sockaddr *)&padServerAddress, sizeof padServerAddress);
 }
 
+// asks the PC to run one of its four Custom Commands - the PS3 only names the slot
+void sendCustomCommand(int slot)
+{
+   if (padSocket < 0) return;
+
+   char message[16];
+   snprintf(message, sizeof message, "CUSTOM %d", slot);
+   sendto(padSocket, message, strlen(message), 0, (struct sockaddr *)&padServerAddress, sizeof padServerAddress);
+}
+
+// one key from the on-screen keyboard. control keys arrive as their ASCII bytes
+// ('\b' backspace, '\t' tab, '\n' return, ' ' space); the PC maps them to key presses.
+void sendKeystroke(char key)
+{
+   if (padSocket < 0) return;
+
+   char message[5] = { 'K', 'E', 'Y', ' ', key };
+   sendto(padSocket, message, sizeof message, 0, (struct sockaddr *)&padServerAddress, sizeof padServerAddress);
+}
+
 // section: the decode thread - drains the queue, feeds the decoder, publishes pictures
 
 static volatile int decodeThreadRunning;
@@ -760,10 +761,6 @@ static void runStreamSession(void)
    auWriteSlot = auReadSlot = 0;
    decodeThreadRunning = 0;
    windowBytes = windowNetworkUs = windowAssembleUs = windowDecodeUs = 0;
-   windowDecoderReadyUs = windowDrainWaitUs = 0;
-   windowMinDecoderReadyUs = ~0ull;
-   windowMaxDecoderReadyUs = 0;
-   windowMinDecodeUs = ~0ull;
    windowDecodedFrames = 0;
    windowPresentUs = windowTotalUs = 0;
    windowPresentedFrames = 0;
@@ -831,9 +828,13 @@ static void runStreamSession(void)
    // start the decode thread, then run the receive loop here. the receive loop must never
    // block on decoding, or the socket backs up and packets are lost (each loss then freezes
    // the picture until the next keyframe - this was the stutter).
+   //
+   // both the receive loop (cst-stream) and this decode thread run at HIGH: on the ~2-way PPU the video
+   // path must not be preempted by the render/UI thread (which sits just below), or a decoded frame lands
+   // late and hitches. verified smoother on hardware; keep them equal so neither starves the other.
    sys_ppu_thread_t decodeThreadId;
    decodeThreadRunning = 1;   // must be set BEFORE the thread starts, or it can see 0 and exit at once
-   int decodeRc = spawnJoinableThread(&decodeThreadId, runDecodeThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_64KB, "cst-decode");
+   int decodeRc = spawnJoinableThread(&decodeThreadId, runDecodeThread, 0, THREAD_PRIORITY_HIGH, THREAD_STACK_SIZE_64KB, "cst-decode");
    if (decodeRc != 0) { decodeThreadRunning = 0; setStreamError("decode thread spawn failed"); goto cleanup; }
 
    setReceiveTimeout(socketValue, 500);
@@ -892,6 +893,7 @@ cleanup:
    lock(&frameLock);
    publishedIndex = previousPublishedIndex = -1;
    drawnIndex = previousDrawnIndex = -1;
+   publishSeq = presentSeq = 0;
    unlock(&frameLock);
    if (decoder) {
       logInfo("[cst] stream: destroying decoder\n");
@@ -945,7 +947,7 @@ void initStream(void)
    streamRunning = 1;
    stopRequested = 0;
    sys_ppu_thread_t threadId;
-   int rc = spawnThread(&threadId, runStreamThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_64KB, "cst-stream");
+   int rc = spawnThread(&threadId, runStreamThread, 0, THREAD_PRIORITY_HIGH, THREAD_STACK_SIZE_64KB, "cst-stream");
    if (rc != 0) { logError("[cst] stream thread spawn failed rc=0x%x\n", rc); streamRunning = 0; }
 }
 
@@ -965,12 +967,48 @@ void getStreamStats(StreamStats *out)
    unlock(&statsLock);
 }
 
-// true when the decoder has published a picture the draw thread has not shown yet. drawing only when
-// this is true is what lets the render loop run without waiting for the display's refresh.
+void setStreamBuffered(int on)
+{
+   lock(&frameLock);
+   bufferOneFrame = on ? 1 : 0;
+   presentSeq = 0;   // re-prime the reserve when the mode changes mid-stream
+   unlock(&frameLock);
+}
+
+// which buffer the draw thread should show next, or -1 to hold the current one. straight mode shows the
+// newest undrawn picture; buffered mode advances one frame per call and stays one behind the newest, so a
+// reserve is always in hand. presentSeq is advanced here only, and only when a frame is actually taken.
+static int nextDrawIndexLocked(void)
+{
+   if (publishedIndex < 0) return -1;
+   if (!bufferOneFrame) return publishedIndex != drawnIndex ? publishedIndex : -1;
+
+   uint64_t target;
+   if (presentSeq == 0) {                       // prime: need one decoded reserve before the first show
+      if (publishSeq < 2) return -1;
+      target = publishSeq - 1;                  // start one behind the newest
+   } else {
+      if (presentSeq + 1 > publishSeq) return -1;   // starved: the next frame is late, hold the current one
+      target = presentSeq + 1;
+      if (target < publishSeq - 1) target = publishSeq - 1;   // only the newest two are kept; skip stale ones
+   }
+   presentSeq = target;
+   return target >= publishSeq ? publishedIndex : previousPublishedIndex;
+}
+
+// true when nextDrawIndexLocked would take a frame. straight mode: a newer picture exists; buffered mode:
+// the reserve is primed and the next frame is in hand. drawing only then keeps the render loop paced by the
+// arriving video (straight) or by the display's refresh (buffered), never spinning on the same picture.
+// this is a non-mutating peek; keep its three take-conditions in lockstep with nextDrawIndexLocked (which
+// advances presentSeq, so the gate can't share its body).
 int isNewStreamPictureReady(void)
 {
    lock(&frameLock);
-   int ready = publishedIndex >= 0 && publishedIndex != drawnIndex;
+   int ready;
+   if (publishedIndex < 0) ready = 0;
+   else if (!bufferOneFrame) ready = publishedIndex != drawnIndex;
+   else if (presentSeq == 0) ready = publishSeq >= 2;
+   else ready = presentSeq + 1 <= publishSeq;
    unlock(&frameLock);
    return ready;
 }
@@ -978,23 +1016,25 @@ int isNewStreamPictureReady(void)
 void drawStreamFrame(void)
 {
    lock(&frameLock);
-   if (publishedIndex >= 0) {
+   int index = nextDrawIndexLocked();
+   if (index < 0) index = drawnIndex;   // nothing new: redraw whatever is on screen
+   if (index >= 0) {
       // letterbox: scale to fit the screen preserving aspect ratio
       int screenWidth = getGfxScreenWidth(), screenHeight = getGfxScreenHeight();
       int drawWidth = screenWidth, drawHeight = publishedHeight * screenWidth / publishedWidth;
       if (drawHeight > screenHeight) { drawHeight = screenHeight; drawWidth = publishedWidth * screenHeight / publishedHeight; }
       drawGfxYuvFrame((screenWidth - drawWidth) / 2, (screenHeight - drawHeight) / 2, drawWidth, drawHeight,
-                      yuvBuffers[publishedIndex], publishedWidth, publishedHeight);
+                      yuvBuffers[index], publishedWidth, publishedHeight);
 
       // time only the first draw of each new picture: that's when it is handed to the RSX. the wait for
       // the display is NOT part of this - it is timed separately (see noteStreamFlipWait) because it
       // happens inside the next endGfxFrame, and folding it in here would credit it to the wrong frame.
-      if (drawnIndex != publishedIndex) {
+      if (drawnIndex != index) {
          previousDrawnIndex = drawnIndex;
-         drawnIndex = publishedIndex;
+         drawnIndex = index;
          uint64_t now = getTimeUs();
-         windowPresentUs += now - publishedDecodedUs;
-         windowTotalUs += now - publishedCaptureUs;
+         windowPresentUs += now - bufferDecodedUs[index];
+         windowTotalUs += now - bufferCaptureUs[index];
          windowPresentedFrames++;
       }
    }

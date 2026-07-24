@@ -30,10 +30,6 @@ typedef struct {
    int networkMsTenths;     // encoder exit -> last fragment of the frame arrived
    int assembleMsTenths;    // first fragment -> frame complete (fragment spread + loss waits)
    int decodeMsTenths;      // fed to the decoder -> picture handed back
-   int decodeMinMsTenths;   // fastest decode in the window (pure compute, no hold)
-   int decodeReadyMsTenths; // ... of that decode time, fed -> decoder reported the picture ready (its own latency)
-   int decodeReadyMinMsTenths, decodeReadyMaxMsTenths;   // spread of the decoder's own time: tight = fixed hold, wide = jitter
-   int drainWaitMsTenths;   // ... and picture ready -> we pulled it out (our drain lag)
    int presentMsTenths;     // picture ready -> handed to the RSX (render loop)
    int displayWaitMsTenths; // ... then waiting for the display to take it (a whole refresh with vsync on, ~0 without)
    int totalMsTenths;       // encoder exit -> drawn on screen (everything we can measure)
@@ -52,6 +48,12 @@ void getStreamStats(StreamStats *out);
 // of (1 << PadButton). no-op when not streaming, and never blocks the render loop.
 void sendPadState(unsigned buttons, int leftX, int leftY, int rightX, int rightY);
 void sendPadMode(int useGamepad);   // 1 = virtual gamepad (for games), 0 = mouse and keyboard
+void sendCustomCommand(int slot);   // 1..4 - asks the PC to run the command bound to that slot
+void sendKeystroke(char key);       // one character typed on the on-screen keyboard, for the PC to inject
+
+// one-frame buffer: off shows each picture the instant it decodes (paced by the arriving video); on
+// presents on the display's refresh one frame behind, keeping a reserve to ride out late frames.
+void setStreamBuffered(int on);
 
 // true when a decoded picture is waiting that has not been drawn yet. the render loop draws only
 // then, so it is paced by the arriving video rather than by the display's refresh.

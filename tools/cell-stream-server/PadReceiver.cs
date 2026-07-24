@@ -50,6 +50,19 @@ namespace CellStreamServer
          Server.Log("pad: now driving " + (gamepadMode ? "a virtual Xbox gamepad" : "the mouse and keyboard"));
       }
 
+      // a key typed on the PS3's on-screen keyboard, replayed on the PC keyboard
+      public void TypeKey(char character)
+      {
+         desktopInput.TypeCharacter(character);
+      }
+
+      // taps Guide on the virtual gamepad (opens Game Bar), for a Custom Command bound to it.
+      // false means there is no gamepad driver, so nothing was sent.
+      public bool PressGamepadGuide()
+      {
+         return gamepad.PressGuide();
+      }
+
       // the stream ended - let go of anything the PS3 was holding down, or it stays stuck on the PC
       public void Release()
       {

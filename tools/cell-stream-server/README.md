@@ -49,7 +49,17 @@ ffmpeg only with that trade-off in mind.
   encoder — no file, no pacing, no buffering.
 - **Audio** — the desktop mix, alongside the picture.
 - **Input** — pad packets from the PS3 drive either the virtual gamepad or the mouse/keyboard; the
-  PS3 switches between them with SELECT + R3.
+  PS3 cycles input modes with SELECT + Cross. On-screen-keyboard characters arrive as `KEY` packets
+  and are typed via `SendInput`. **Custom Commands** (a tab in the window) map `CUSTOM 1-4` to a
+  program/URI or a Guide-button tap; the PS3 only sends the slot number, so the PC never runs anything
+  not set up there.
 - **Discovery** — a `CELLSTREAM` beacon on :38311 every second, so the PS3 finds the PC on its own.
   Both sides hang up cleanly: 3 seconds of silence from the PS3 and the server stops encoding and
   puts the desktop resolution back.
+
+## Credits
+
+- **FFmpeg** (LGPL/GPL) — the bundled `ffmpeg.exe` does the screen capture, scaling and H.264 encode.
+  Source and build steps: `build-ffmpeg.sh`.
+- **ViGEmBus** by Nefarius Software Solutions (BSD-3-Clause) — the virtual-gamepad driver
+  (`ViGEmBusSetup.exe`), installed on demand.

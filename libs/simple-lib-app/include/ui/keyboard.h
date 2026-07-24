@@ -27,6 +27,11 @@ void openKeyboard(KeyboardKeyCallback onKey);
 void closeKeyboard(void);
 int  isKeyboardOpen(void);
 
+// which button closes the keyboard (default Circle), or KEY_GRID_NO_CLOSE for none. with no
+// close button, Circle becomes a second backspace - use this when something else owns closing
+// (e.g. cell-stream closes the keyboard by switching input mode).
+void setKeyboardCloseButton(int button);
+
 // true while the keyboard is open AND L2 is held - the caller's document
 // (text editor, hex viewer, ...) should read the d-pad itself during this
 // window instead of leaving it to the keyboard, so the caret/cursor can be

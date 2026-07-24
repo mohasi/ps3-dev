@@ -62,6 +62,7 @@
      <SubType>Code</SubType>
    </Compile>
    <Compile Include="Server.cs" />
+   <Compile Include="CustomCommands.cs" />
    <Compile Include="ChildProcessJob.cs" />
    <Compile Include="Log.cs" />
    <Compile Include="AudioCapture.cs" />

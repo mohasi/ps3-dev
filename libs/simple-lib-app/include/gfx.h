@@ -36,8 +36,9 @@ void termGfx(void);
 // next scan line, which is as soon as the screen can - at the cost of tearing.
 void setGfxVsync(GfxVsync vsync);
 
-// microseconds the last endGfxFrame spent waiting for the display to take the previous frame.
-// that wait IS the cost of vsync: up to a whole refresh with it on, ~0 with it off.
+// microseconds the last endGfxFrame spent blocked before it could reuse a buffer. with vsync on this
+// is the wait for the next refresh; with it off endGfxFrame's flip barrier makes it track the previous
+// frame's RSX draw time (double-buffered, so the CPU can't get ahead of the GPU).
 uint64_t getGfxFlipWaitUs(void);
 
 // Offscreen render target (render-to-texture). Draw a scene into one of these instead of

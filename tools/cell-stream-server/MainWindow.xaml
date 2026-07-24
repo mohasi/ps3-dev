@@ -1,39 +1,70 @@
 <Window x:Class="CellStreamServer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Cell Stream Server" Height="420" Width="560" MinHeight="300" MinWidth="420"
+        Title="Cell Stream Server" Height="460" Width="560" MinHeight="340" MinWidth="440"
         Background="{StaticResource BgBase}"
         WindowStartupLocation="CenterScreen">
 
-   <Grid Margin="16">
-      <Grid.RowDefinitions>
-         <RowDefinition Height="Auto" />
-         <RowDefinition Height="Auto" />
-         <RowDefinition Height="Auto" />
-         <RowDefinition Height="Auto" />
-         <RowDefinition Height="Auto" />
-         <RowDefinition Height="*" />
-      </Grid.RowDefinitions>
+   <TabControl Margin="8" Background="{StaticResource BgBase}" BorderThickness="0">
+      <TabItem Header="Server">
+         <Grid Margin="16">
+            <Grid.RowDefinitions>
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-      <StackPanel Grid.Row="0" Orientation="Horizontal">
-         <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="{StaticResource BrIdle}" VerticalAlignment="Center" />
-         <TextBlock x:Name="StatusText" Style="{StaticResource TextStatus}" Margin="10,0,0,0"
-                    VerticalAlignment="Center" Text="Waiting for a PS3 ..." />
-      </StackPanel>
+            <StackPanel Grid.Row="0" Orientation="Horizontal">
+               <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="{StaticResource BrIdle}" VerticalAlignment="Center" />
+               <TextBlock x:Name="StatusText" Style="{StaticResource TextStatus}" Margin="10,0,0,0"
+                          VerticalAlignment="Center" Text="Waiting for a PS3 ..." />
+            </StackPanel>
 
-      <TextBlock Grid.Row="1" x:Name="SettingsText" Style="{StaticResource TextDim}" Margin="22,6,0,0" TextWrapping="Wrap" />
+            <TextBlock Grid.Row="1" x:Name="SettingsText" Style="{StaticResource TextDim}" Margin="22,6,0,0" TextWrapping="Wrap" />
 
-      <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,18,0,0">
-         <Button x:Name="StartStopButton" Width="90" Content="Stop" Click="OnStartStopClicked" />
-         <TextBlock Text="Encoder" Style="{StaticResource TextDim}" Margin="18,0,8,0" VerticalAlignment="Center" />
-         <ComboBox x:Name="EncoderChoice" Width="220" SelectionChanged="OnEncoderChosen" VerticalAlignment="Center" />
-      </StackPanel>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,18,0,0">
+               <Button x:Name="StartStopButton" Width="90" Content="Stop" Click="OnStartStopClicked" />
+               <TextBlock Text="Encoder" Style="{StaticResource TextDim}" Margin="18,0,8,0" VerticalAlignment="Center" />
+               <ComboBox x:Name="EncoderChoice" Width="220" SelectionChanged="OnEncoderChosen" VerticalAlignment="Center" />
+            </StackPanel>
 
-      <CheckBox Grid.Row="3" x:Name="StartWithWindows" Margin="0,16,0,0" Content="Start with Windows" />
+            <CheckBox Grid.Row="3" x:Name="StartWithWindows" Margin="0,16,0,0" Content="Start with Windows" />
 
-      <TextBlock Grid.Row="4" Style="{StaticResource TextDim}" Margin="0,10,0,8" TextWrapping="Wrap"
-                 Text="Closing this window leaves the server running in the notification area. Exit from the tray icon to stop it." />
+            <TextBlock Grid.Row="4" Style="{StaticResource TextDim}" Margin="0,10,0,8" TextWrapping="Wrap"
+                       Text="Closing this window leaves the server running in the notification area. Exit from the tray icon to stop it." />
 
-      <TextBox Grid.Row="5" x:Name="LogBox" Style="{StaticResource LogBox}" />
-   </Grid>
+            <TextBox Grid.Row="5" x:Name="LogBox" Style="{StaticResource LogBox}" />
+         </Grid>
+      </TabItem>
+
+      <TabItem Header="Custom Commands">
+         <Grid Margin="16">
+            <Grid.RowDefinitions>
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="Auto" />
+               <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Style="{StaticResource TextDim}" TextWrapping="Wrap" Margin="0,0,0,12"
+                       Text="Hold SELECT on the PS3 and press the custom1-4 button to fire these. Choose what each slot does; changes save as you make them." />
+
+            <Grid Grid.Row="1">
+               <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="28" />
+                  <ColumnDefinition Width="180" />
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="120" />
+               </Grid.ColumnDefinitions>
+               <TextBlock Grid.Column="1" Text="Action" Style="{StaticResource TextDim}" Margin="4,0,0,0" />
+               <TextBlock Grid.Column="2" Text="Command or URI" Style="{StaticResource TextDim}" Margin="8,0,0,0" />
+               <TextBlock Grid.Column="3" Text="Name" Style="{StaticResource TextDim}" Margin="8,0,0,0" />
+            </Grid>
+
+            <StackPanel Grid.Row="2" x:Name="CustomSlotsPanel" Margin="0,6,0,0" />
+         </Grid>
+      </TabItem>
+   </TabControl>
 </Window>

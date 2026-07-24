@@ -52,6 +52,7 @@ void termKeyboard(void) { termKeyGrid(&keyGrid); }
 void openKeyboard(KeyboardKeyCallback onKey) { openKeyGrid(&keyGrid, onKey); }
 void closeKeyboard(void) { closeKeyGrid(&keyGrid); }
 int  isKeyboardOpen(void) { return isKeyGridOpen(&keyGrid); }
+void setKeyboardCloseButton(int button) { setKeyGridCloseButton(&keyGrid, button); }
 int  isBackgroundFocused(void) { return isKeyGridBackgroundFocused(&keyGrid); }
 
 void updateKeyboard(void) { updateKeyGrid(&keyGrid); }

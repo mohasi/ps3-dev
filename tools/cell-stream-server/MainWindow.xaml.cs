@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using Forms = System.Windows.Forms;
 using Drawing = System.Drawing;   // WPF and WinForms both have a Brush, a Color and an Icon
+using Controls = System.Windows.Controls;
 
 namespace CellStreamServer
 {
@@ -37,6 +38,8 @@ namespace CellStreamServer
          EncoderChoice.ItemsSource = Server.AvailableEncoders;
          EncoderChoice.SelectedItem = Server.ChosenEncoder;
 
+         BuildCustomCommandsTab();
+
          StartWithWindows.IsChecked = IsStartWithWindows();
          StartWithWindows.Checked += (sender, e) => SetStartWithWindows(true);
          StartWithWindows.Unchecked += (sender, e) => SetStartWithWindows(false);
@@ -61,6 +64,74 @@ namespace CellStreamServer
          trayIcon.DoubleClick += (sender, e) => ShowFromTray();
          trayIcon.Visible = true;
          SetTrayIcon(false);
+      }
+
+      // Custom Commands tab: one row per slot (action dropdown, command/URI, name), saved as you edit
+      private static readonly CustomCommandKind[] KindByIndex = { CustomCommandKind.None, CustomCommandKind.Run, CustomCommandKind.Guide };
+      private static readonly string[] KindLabels = { "None", "Run command / URI", "Press Guide (Game Bar)" };
+
+      private readonly Controls.ComboBox[] slotKind = new Controls.ComboBox[CustomCommands.SlotCount];
+      private readonly Controls.TextBox[] slotValue = new Controls.TextBox[CustomCommands.SlotCount];
+      private readonly Controls.TextBox[] slotLabel = new Controls.TextBox[CustomCommands.SlotCount];
+
+      private void BuildCustomCommandsTab()
+      {
+         for (int index = 0; index < CustomCommands.SlotCount; index++)
+         {
+            int slot = index + 1;
+            CustomCommand command = CustomCommands.Get(slot);
+
+            var row = new Controls.Grid { Margin = new Thickness(0, 0, 0, 6) };
+            row.ColumnDefinitions.Add(new Controls.ColumnDefinition { Width = new GridLength(28) });
+            row.ColumnDefinitions.Add(new Controls.ColumnDefinition { Width = new GridLength(180) });
+            row.ColumnDefinitions.Add(new Controls.ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new Controls.ColumnDefinition { Width = new GridLength(120) });
+
+            var number = new Controls.TextBlock { Text = slot.ToString(), VerticalAlignment = VerticalAlignment.Center };
+            Controls.Grid.SetColumn(number, 0);
+            row.Children.Add(number);
+
+            var kind = new Controls.ComboBox { Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            foreach (string label in KindLabels) kind.Items.Add(label);
+            kind.SelectedIndex = Math.Max(0, Array.IndexOf(KindByIndex, command.Kind));
+            kind.SelectionChanged += (sender, e) => OnSlotChanged(slot);
+            Controls.Grid.SetColumn(kind, 1);
+            row.Children.Add(kind);
+            slotKind[index] = kind;
+
+            var value = new Controls.TextBox { Text = command.Value, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            value.LostFocus += (sender, e) => OnSlotChanged(slot);
+            Controls.Grid.SetColumn(value, 2);
+            row.Children.Add(value);
+            slotValue[index] = value;
+
+            var name = new Controls.TextBox { Text = command.Label, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+            name.LostFocus += (sender, e) => OnSlotChanged(slot);
+            Controls.Grid.SetColumn(name, 3);
+            row.Children.Add(name);
+            slotLabel[index] = name;
+
+            UpdateSlotEnabled(index);
+            CustomSlotsPanel.Children.Add(row);
+         }
+      }
+
+      // only a Run action needs a command/URI; Guide and None leave the field disabled
+      private void UpdateSlotEnabled(int index)
+      {
+         slotValue[index].IsEnabled = KindByIndex[slotKind[index].SelectedIndex] == CustomCommandKind.Run;
+      }
+
+      private void OnSlotChanged(int slot)
+      {
+         int index = slot - 1;
+         UpdateSlotEnabled(index);
+         CustomCommands.Set(slot, new CustomCommand
+         {
+            Kind = KindByIndex[slotKind[index].SelectedIndex],
+            Value = slotValue[index].Text ?? "",
+            Label = slotLabel[index].Text ?? ""
+         });
       }
 
       private void OnStartStopClicked(object sender, RoutedEventArgs e)

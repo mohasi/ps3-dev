@@ -20,23 +20,24 @@ namespace CellStreamServer
       // rest), and without a dead zone that drifts the pointer across the screen on its own
       private const int StickDeadZone = 16;
 
-      // the pad arrives 60 times a second, and the stick reads up to ~112 once the dead zone is off it.
-      // these are scaled from what full deflection should FEEL like, not picked by eye: 4.2 px per update
-      // is ~250 px/s, about a fifth of a screen width per second.
+      // pointer and scroll speeds are per SECOND, not per packet: the pad's send rate can vary, so moving
+      // by elapsed time keeps the speed steady and the motion smooth however the packets are spaced. the
+      // stick reads up to ~112 once the dead zone is off it. full tilt crosses the screen in ~1.8s; tune
+      // these two numbers to taste.
       private const double StickFullTilt = 112.0;
-      private const double PointerPixelsAtFullTilt = 4.2;
-      private const double ScrollNotchesAtFullTilt = 0.17;   // ~10 notches a second held over
+      private const double PointerPixelsPerSecondAtFullTilt = 880.0;
+      private const double ScrollNotchesPerSecondAtFullTilt = 42.0;
 
-      private const double PointerSpeed = PointerPixelsAtFullTilt / (StickFullTilt * StickFullTilt);
-      private const double ScrollSpeed = ScrollNotchesAtFullTilt / StickFullTilt;
+      private const double PointerSpeed = PointerPixelsPerSecondAtFullTilt / (StickFullTilt * StickFullTilt);
+      private const double ScrollSpeed = ScrollNotchesPerSecondAtFullTilt / StickFullTilt;
       private const int WheelNotch = 120;   // one detent, as Windows counts them
 
       private const int InputMouse = 0, InputKeyboard = 1;
       private const uint MouseMove = 0x0001, MouseLeftDown = 0x0002, MouseLeftUp = 0x0004;
       private const uint MouseRightDown = 0x0008, MouseRightUp = 0x0010, MouseWheel = 0x0800;
-      private const uint KeyUp = 0x0002;
+      private const uint KeyUp = 0x0002, KeyUnicode = 0x0004;
 
-      private const ushort VkReturn = 0x0D, VkBack = 0x08, VkEscape = 0x1B;
+      private const ushort VkReturn = 0x0D, VkBack = 0x08, VkEscape = 0x1B, VkTab = 0x09;
       private const ushort VkLeft = 0x25, VkUp = 0x26, VkRight = 0x27, VkDown = 0x28;
       private const ushort VkPrior = 0x21, VkNext = 0x22;
 
@@ -59,11 +60,20 @@ namespace CellStreamServer
 
       private int lastButtons;
       private double pointerCarryX, pointerCarryY, scrollCarry;   // sub-pixel remainders, so slow moves still move
+      private readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+      private double lastApplySeconds;
 
       public void Apply(int buttons, int leftX, int leftY, int rightX, int rightY)
       {
-         MovePointer(leftX, leftY);
-         Scroll(rightY);
+         // seconds since the previous packet, capped so a gap (or the first packet) can't lurch the pointer
+         double now = clock.Elapsed.TotalSeconds;
+         double elapsedSeconds = now - lastApplySeconds;
+         lastApplySeconds = now;
+         if (elapsedSeconds < 0) elapsedSeconds = 0;
+         if (elapsedSeconds > 0.05) elapsedSeconds = 0.05;
+
+         MovePointer(leftX, leftY, elapsedSeconds);
+         Scroll(rightY, elapsedSeconds);
 
          int pressed = buttons & ~lastButtons, released = lastButtons & ~buttons;
 
@@ -86,27 +96,49 @@ namespace CellStreamServer
          Apply(0, 0, 0, 0, 0);
       }
 
+      // types one character from the PS3's on-screen keyboard. control keys map to real keys;
+      // every other character is injected as Unicode, so the PC keyboard layout never matters.
+      public void TypeCharacter(char character)
+      {
+         switch (character)
+         {
+            case '\b': SendKey(VkBack, false); SendKey(VkBack, true); break;
+            case '\t': SendKey(VkTab, false); SendKey(VkTab, true); break;
+            case '\n': SendKey(VkReturn, false); SendKey(VkReturn, true); break;
+            default: SendUnicode(character); break;
+         }
+      }
+
+      private static void SendUnicode(char character)
+      {
+         var down = new Input { Type = InputKeyboard };
+         down.Union.Keyboard = new KeyboardInput { ScanCode = character, Flags = KeyUnicode };
+         var up = new Input { Type = InputKeyboard };
+         up.Union.Keyboard = new KeyboardInput { ScanCode = character, Flags = KeyUnicode | KeyUp };
+         SendInput(2, new[] { down, up }, Marshal.SizeOf(typeof(Input)));
+      }
+
       // squared response: small stick movements stay slow and precise, big ones move fast. a linear
       // pointer is either too slow to cross the screen or too twitchy to hit anything.
-      private void MovePointer(int stickX, int stickY)
+      private void MovePointer(int stickX, int stickY, double elapsedSeconds)
       {
          double x = ApplyDeadZone(stickX), y = ApplyDeadZone(stickY);
          if (x == 0 && y == 0) return;
 
-         pointerCarryX += x * Math.Abs(x) * PointerSpeed;
-         pointerCarryY += y * Math.Abs(y) * PointerSpeed;
+         pointerCarryX += x * Math.Abs(x) * PointerSpeed * elapsedSeconds;
+         pointerCarryY += y * Math.Abs(y) * PointerSpeed * elapsedSeconds;
          int moveX = (int)pointerCarryX, moveY = (int)pointerCarryY;
          pointerCarryX -= moveX;
          pointerCarryY -= moveY;
          if (moveX != 0 || moveY != 0) SendMouse(MouseMove, moveX, moveY, 0);
       }
 
-      private void Scroll(int stickY)
+      private void Scroll(int stickY, double elapsedSeconds)
       {
          double y = ApplyDeadZone(stickY);
          if (y == 0) { scrollCarry = 0; return; }
 
-         scrollCarry -= y * ScrollSpeed;   // stick down (positive) scrolls the page down
+         scrollCarry -= y * ScrollSpeed * elapsedSeconds;   // stick down (positive) scrolls the page down
          int notches = (int)scrollCarry;
          if (notches == 0) return;
          scrollCarry -= notches;

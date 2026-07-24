@@ -1,5 +1,5 @@
 // 2D graphics implementation using libgcm/RSX.
-// Double-buffered, uncapped. Shader-based batched quad renderer.
+// Triple-buffered, uncapped. Shader-based batched quad renderer.
 #include "gfx.h"
 #include "colors.h"
 #include "dbg.h"
@@ -17,7 +17,7 @@
 
 #define CTX gCellGcmCurrentContext
 
-#define FRAME_COUNT       2
+#define FRAME_COUNT       3
 #define HOST_MEM_SIZE     (1 * 1024 * 1024)
 #define CMD_BUFFER_SIZE   (0x10000)
 #define BYTES_PER_PIXEL   4
@@ -205,22 +205,20 @@ void freeVram(void *ptr)
    }
 }
 
-// how long the last endGfxFrame spent blocked waiting for the display to take the previous frame.
-// with vsync on this is the wait for the next refresh (up to one frame); with it off it is ~0.
+// how long the last endGfxFrame spent blocked before it could reuse a buffer. triple-buffered and
+// non-blocking, so the CPU stalls here only when the display pipeline is full (the GPU has fallen a
+// whole frame behind); in the steady state it is ~0.
 static uint64_t lastFlipWaitUs;
+
+// the display pipeline. flipsSubmitted counts flips the CPU has queued; flipsCompleted counts the
+// ones the RSX has retired (bumped by the flip callback). their difference is how many are in flight.
+static uint32_t          flipsSubmitted;
+static volatile uint32_t flipsCompleted;
+static void onGfxFlip(const uint32_t head) { (void)head; flipsCompleted++; }
 
 uint64_t getGfxFlipWaitUs(void)
 {
    return lastFlipWaitUs;
-}
-
-static void waitFlip(void)
-{
-   uint64_t startUs = sys_time_get_system_time();
-   while (cellGcmGetFlipStatus() != 0) {
-      sys_timer_usleep(300);
-   }
-   lastFlipWaitUs = sys_time_get_system_time() - startUs;
 }
 
 // Binds a linear (CELL_GCM_SURFACE_PITCH) RGBA color surface as the render target and
@@ -359,6 +357,9 @@ int initGfx(GfxVsync vsync)
    }
 
    backBuffer = 0;
+   flipsSubmitted = 0;
+   flipsCompleted = 0;
+   cellGcmSetFlipHandler(onGfxFlip);   // retires in-flight flips so endGfxFrame need not block on them
    initialized = 1;
 
    // init shaders
@@ -859,16 +860,25 @@ void endGfxFrame(void)
    flushBatch();
    reportFrameBudget();
 
-   waitFlip();
-   cellGcmResetFlipStatus();
-
-   if (cellGcmSetFlip(CTX, backBuffer) != CELL_OK) {
-      return;
-   }
+   // queue this frame's flip without blocking the CPU on it. cellGcmSetWaitFlip is a gpu-side barrier:
+   // the RSX won't draw into a buffer still on screen, so no tearing beyond what vsync-off already implies.
+   if (cellGcmSetFlip(CTX, backBuffer) != CELL_OK) return;
    cellGcmFlush(CTX);
    cellGcmSetWaitFlip(CTX);
+   flipsSubmitted++;
 
    backBuffer = (backBuffer + 1) % FRAME_COUNT;
+
+   // stall only when the pipeline is full - one buffer on screen plus FRAME_COUNT-2 flips already queued.
+   // with three buffers the CPU may run one flip ahead, so a slow GPU frame overlaps the next frame's work
+   // instead of stalling us. the timeout is a safety net: a missed flip callback falls back to a brief wait
+   // rather than a hard-lock.
+   uint64_t startUs = sys_time_get_system_time();
+   while ((uint32_t)(flipsSubmitted - flipsCompleted) >= FRAME_COUNT - 1) {
+      if (sys_time_get_system_time() - startUs > 50000) break;   // 50ms guard, never a hard-lock
+      sys_timer_usleep(200);
+   }
+   lastFlipWaitUs = sys_time_get_system_time() - startUs;
 }
 
 void finishGfx(void)

@@ -36,11 +36,20 @@ typedef struct {
 } Stick;
 
 void initPad(void);
-void updatePad(void);
+
+// One reader owns the controller hardware. In a single-threaded app just call updatePad() each frame,
+// as before. To sample the pad on a dedicated thread (e.g. to forward input at a steady rate, off the
+// render loop), have that thread call pollPad() and the UI thread call updatePadEdges() - so the two
+// never both touch the hardware.
+void pollPad(void);          // read the controller hardware into shared state (the sole hardware reader)
+void updatePadEdges(void);   // recompute button press/hold/release edges from the last pollPad
+void updatePad(void);        // pollPad + updatePadEdges together, for the common single-thread case
+
 PadButtonState getPadButtonState(PadButton button);
 int isPadButtonPressed(PadButton button);   // the frame it went down
 int isPadButtonHeld(PadButton button);      // frames after that, NOT the frame it went down
 int isPadButtonDown(PadButton button);      // down right now, however long it has been: pressed or held
 int isPadButtonReleased(PadButton button);
+unsigned getPadDownButtons(void);           // buttons down right now as a mask (1u << PadButton), for forwarding
 Stick getPadLeftStick(void);
 Stick getPadRightStick(void);

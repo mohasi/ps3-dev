@@ -33,7 +33,12 @@ namespace CellStreamServer
       // ~10x below the bar we could see. 1s is chosen because the sweep is also what repairs a lost frame,
       // and a 4s sweep left visible damage on screen for 4s. Raise this if a faint bar ever shows.
       private const int RefreshSweepSeconds = 1;
-      private const int RefreshKeyframeIntervalSeconds = 10;   // an anchor only; the sweep does the repairing
+      // intra refresh repairs the picture continuously (a strip every frame), so no periodic full keyframe is
+      // needed. each one is a big, slow-to-decode frame that lands as a hitch - it was the exactly-10s stutter.
+      // the PS3 gets its one needed keyframe when the encoder starts on connect (a dropped session sends STOP,
+      // so the next connect restarts the encoder and makes a fresh one), so push the anchor an hour out where
+      // it never fires mid-session. x264 is the exception: there -g IS the sweep length, kept at RefreshSweepSeconds.
+      private const int AnchorKeyframeSeconds = 3600;
       private const int RefreshQpDelta = -2;
       private const int RefreshMaxRatePercent = 140;           // VBR headroom over the target bitrate
       private const int RefreshBufferMs = 250;
@@ -120,8 +125,13 @@ namespace CellStreamServer
       private string GetRateArguments()
       {
          return " -b:v " + kbps + "k -maxrate " + kbps * RefreshMaxRatePercent / 100 + "k -bufsize " +
-                kbps * RefreshBufferMs / 1000 + "k -g " + RefreshKeyframeIntervalSeconds * fps + " -bf 0 -refs 1";
+                kbps * RefreshBufferMs / 1000 + "k -bf 0 -refs 1";
       }
+
+      // -g sets the interval between keyframes (hardware encoders) or full refresh sweeps (x264). kept out of
+      // GetRateArguments so each encoder can pass its own: the hardware ones an hour out (no periodic keyframe),
+      // x264 the sweep length.
+      private string GetGopArgument(int intervalSeconds) { return " -g " + intervalSeconds * fps; }
 
       // frames per full sweep. every encoder spells intra refresh differently, but all of them need
       // B-frames off (set above): a sweep only works if each frame strictly follows the last.
@@ -162,8 +172,8 @@ namespace CellStreamServer
          return "-hide_banner -loglevel warning -init_hw_device d3d11va=dx -init_hw_device qsv=qs@dx -filter_hw_device dx" +
                 " -filter_complex ddagrab=framerate=" + fps + ",hwmap=derive_device=qsv,vpp_qsv=w=" + outputWidth +
                 ":h=" + outputHeight + ":format=nv12:out_range=limited:async_depth=1" +
-                " -c:v h264_qsv -preset medium -async_depth 1 -look_ahead 0" + GetRateArguments() + GetQsvRefreshArguments() +
-                " -color_range tv -colorspace bt709 -forced_idr 1 -f h264 -flush_packets 1 pipe:1";
+                " -c:v h264_qsv -preset medium -async_depth 1 -look_ahead 0" + GetRateArguments() + GetGopArgument(AnchorKeyframeSeconds) +
+                GetQsvRefreshArguments() + " -color_range tv -colorspace bt709 -forced_idr 1 -f h264 -flush_packets 1 pipe:1";
       }
 
       // NVIDIA: on a laptop with switchable graphics the desktop is driven by the Intel chip, so the d3d11
@@ -176,7 +186,7 @@ namespace CellStreamServer
       {
          return "-hide_banner -loglevel warning -init_hw_device d3d11va=dx -init_hw_device cuda=cu -filter_hw_device dx" +
                 GetCpuCaptureChain() +
-                " -c:v h264_nvenc -preset p1 -tune ull -rc vbr -pix_fmt yuv420p" + GetRateArguments() +
+                " -c:v h264_nvenc -preset p1 -tune ull -rc vbr -pix_fmt yuv420p" + GetRateArguments() + GetGopArgument(AnchorKeyframeSeconds) +
                 " -intra-refresh 1 -single-slice-intra-refresh 1" +
                 " -color_range tv -colorspace bt709 -forced-idr 1 -f h264 -flush_packets 1 pipe:1";
       }
@@ -188,7 +198,7 @@ namespace CellStreamServer
       private string BuildAmfArguments()
       {
          return "-hide_banner -loglevel warning -init_hw_device d3d11va" + GetCpuCaptureChain() +
-                " -c:v h264_amf -usage ultralowlatency -quality speed -rc vbr_peak" + GetRateArguments() +
+                " -c:v h264_amf -usage ultralowlatency -quality speed -rc vbr_peak" + GetRateArguments() + GetGopArgument(AnchorKeyframeSeconds) +
                 " -intra_refresh_mb " + RefreshBlocksPerFrame +
                 " -color_range tv -colorspace bt709 -forced_idr 1 -f h264 -flush_packets 1 pipe:1";
       }
@@ -204,7 +214,7 @@ namespace CellStreamServer
          return "-hide_banner -loglevel warning -init_hw_device d3d11va" + GetCpuCaptureChain() +
                 " -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p" +
                 " -x264-params sliced-threads=0:slices=1:intra-refresh=1" +
-                GetRateArguments() + " -f h264 -flush_packets 1 pipe:1";
+                GetRateArguments() + GetGopArgument(RefreshSweepSeconds) + " -f h264 -flush_packets 1 pipe:1";
       }
 
       private string BuildArguments(EncoderKind kind)

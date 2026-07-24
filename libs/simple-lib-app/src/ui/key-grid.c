@@ -16,6 +16,7 @@ void initKeyGrid(KeyGridPicker *kg, int rows, int cols, int cellW, int cellH, in
    kg->grid             = grid;
    kg->extraBindings    = extraBindings;
    kg->extraBindingCount = extraBindingCount;
+   kg->closeButton      = PAD_BTN_CIRCLE;   // Circle closes by default; callers can move or disable it
    kg->theme            = theme;
    kg->panelW = PANEL_PAD * 2 + cols * cellW;
    kg->panelH = PANEL_PAD * 2 + rows * cellH;
@@ -60,6 +61,7 @@ void openKeyGrid(KeyGridPicker *kg, KeyGridCallback onKey)
 
 void closeKeyGrid(KeyGridPicker *kg) { kg->isOpen = 0; }
 int  isKeyGridOpen(KeyGridPicker *kg) { return kg->isOpen; }
+void setKeyGridCloseButton(KeyGridPicker *kg, int button) { kg->closeButton = button; }
 
 int isKeyGridBackgroundFocused(KeyGridPicker *kg)
 {
@@ -72,7 +74,7 @@ void updateKeyGrid(KeyGridPicker *kg)
    if (!kg->isOpen) return;
    if (!kg->armed) { kg->armed = 1; return; }   // swallow the press that opened the grid
 
-   if (isPadButtonPressed(PAD_BTN_CIRCLE)) { closeKeyGrid(kg); return; }
+   if (kg->closeButton >= 0 && isPadButtonPressed((PadButton)kg->closeButton)) { closeKeyGrid(kg); return; }
    if (isKeyGridBackgroundFocused(kg)) return;   // L2 held: d-pad and commit buttons belong to the document underneath
 
    if (isRepeatDue(&kg->moveDownRepeat, getPadButtonState(PAD_BTN_DOWN)))
@@ -88,7 +90,8 @@ void updateKeyGrid(KeyGridPicker *kg)
       if (kg->onKey) kg->onKey(kg->grid[kg->cursorRow * kg->cols + kg->cursorCol]);
       return;
    }
-   if (isPadButtonPressed(PAD_BTN_SQUARE)) {
+   // Square backspaces; Circle backspaces too, unless it is being used to close the grid
+   if (isPadButtonPressed(PAD_BTN_SQUARE) || (kg->closeButton != PAD_BTN_CIRCLE && isPadButtonPressed(PAD_BTN_CIRCLE))) {
       if (kg->onKey) kg->onKey('\b');
       return;
    }

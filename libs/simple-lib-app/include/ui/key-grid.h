@@ -16,6 +16,7 @@
 
 #define KEY_GRID_MAX_ROWS 5
 #define KEY_GRID_MAX_COLS 14
+#define KEY_GRID_NO_CLOSE (-1)   // pass to setKeyGridCloseButton to give the grid no self-close button
 
 // flat/metro palette for the grid, supplied by the app (the lib stays theme-agnostic): the docked
 // panel is a filled box with a border, the selected cell a filled box in the highlight colours.
@@ -56,6 +57,7 @@ typedef struct {
    Label        keyLabels[KEY_GRID_MAX_ROWS][KEY_GRID_MAX_COLS];
 
    int cursorRow, cursorCol;
+   int closeButton;   // PadButton that closes the grid, or KEY_GRID_NO_CLOSE for none
    int isOpen;
    int armed;          // 0 on the frame it opens, so the opening Cross press isn't also read as a key commit
    int panelX, panelY;   // top-left, set fresh each time the grid opens
@@ -77,6 +79,7 @@ void termKeyGrid(KeyGridPicker *kg);
 void openKeyGrid(KeyGridPicker *kg, KeyGridCallback onKey);
 void closeKeyGrid(KeyGridPicker *kg);
 int  isKeyGridOpen(KeyGridPicker *kg);
+void setKeyGridCloseButton(KeyGridPicker *kg, int button);   // a PadButton, or KEY_GRID_NO_CLOSE
 
 // true while the grid is open AND L2 is held - the caller's document (text editor, hex viewer,
 // ...) should read the d-pad itself during this window instead of leaving it to the grid, so

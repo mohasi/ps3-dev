@@ -18,11 +18,18 @@ side can be started first.
 While streaming **every button goes to the PC** — a game needs all of them — so the app uses SELECT as
 a modifier for its own, and holds a combo's buttons back so the game never sees them:
 
-| Button | Does |
+| Combo | Does |
 |---|---|
-| SELECT + R3 | switch the PC between the gamepad and the mouse |
-| SELECT + L3 | show/hide the stats panel (hidden by default) |
+| SELECT + Cross | input mode: mouse only → mouse+keyboard → controller |
+| SELECT + Square | stream mode: 720p/60 vsync off → vsync → vsync + one-frame buffer |
+| SELECT + R3 | show/hide the stats panel (hidden by default) |
+| SELECT + Triangle/Circle/L1/R1 | custom 1-4 (PC actions set in the server's Custom Commands tab) |
 | START (not streaming) | exit |
+
+In mouse+keyboard mode an on-screen keyboard docks bottom-right: d-pad moves, Cross types, Circle
+backspaces, Triangle is space; the keys are injected on the PC. The combos are editable in
+`/dev_hdd0/tmp/cell-stream/settings.txt` (created with defaults on first launch). A shortcut list shows
+briefly on connect, and the waiting screen shows a QR code to the server's download page.
 
 **Both sides hang up cleanly.** The PS3 treats 2s of no video as "the server is gone". The server treats
 3s of no pad (it arrives 60x/second while streaming) as "the PS3 is gone" — without that it would encode
@@ -52,9 +59,12 @@ queue we can drain. The only lever left is fewer pixels.
 It does nothing. The PS3 picks its own buffer count (`decode-h264.c` floors at refs+1 = 2) and never
 reads that field from the stream. Don't retry it.*
 
-**Immediate flip saves ~8ms, and is now the only mode.** A decoded picture goes to the screen the moment
-it is ready instead of waiting for the TV's next refresh, and the render loop is paced by the arriving
-video rather than by the display. Measured against waiting for vsync: `display` 0.0ms vs ~8ms.
+**Three presentation modes (SELECT + Square); immediate flip is the default.** *Vsync off* puts a decoded
+picture on the screen the moment it is ready instead of waiting for the TV's next refresh — `display` 0.0ms
+vs ~8ms — at the cost of a little tearing, and the render loop is paced by the arriving video. *Vsync*
+locks to the refresh so nothing tears (~8ms back). *Vsync + one-frame buffer* presents on the refresh one
+frame behind, keeping a decoded frame in reserve so a late one is covered by the spare — it rides out the
+occasional hitch for ~one frame (16.7ms) of delay. All three are 720p/60; the choice is saved and restored.
 
 *Measuring trap, in case anyone touches this:* time the display wait INSIDE the flip
 (`getGfxFlipWaitUs`). Do NOT stamp the frame after `endGfxFrame` — that call only QUEUES the flip, so
@@ -73,6 +83,8 @@ figure is still reported (it should stay 0) so that a regression would show up.
 | `AINFO <rate> 2` / `AF` | server → PS3 | audio rate (repeated 1/s), then 5ms PCM packets |
 | `CP` | PS3 → server | controller state, 60/s. doubles as the server's proof the PS3 is still alive |
 | `PADMODE gamepad\|mouse` | PS3 → server | which PC device the pad drives (repeated 1/s, so a lost one is harmless) |
+| `KEY <char>` | PS3 → server | one on-screen-keyboard character, injected on the PC |
+| `CUSTOM <1-4>` | PS3 → server | run the PC action bound to that Custom Commands slot |
 
 ## The three rules this app was built on
 
@@ -118,9 +130,8 @@ lost frame — a 4s sweep left visible damage on screen for 4 seconds.
 Consequence on the PS3: an intra-refresh stream repairs itself, so it decodes straight through a lost
 frame instead of freezing. `SINFO` says which kind of stream it is and the PS3 picks its behaviour.
 
-**Not the last word.** Sunshine/Moonlight use no periodic recovery at all — infinite GOP, plus a
-keyframe sent ONLY when the client reports a loss. That needs an encoder API that can be told "IDR now"
-mid-stream, which is impossible while driving ffmpeg as a child process.
+There is no periodic keyframe: intra refresh repairs the picture continuously, and the PS3 gets the one
+keyframe it needs when it connects.
 
 ## The encoder holds far less than it looks like — beware the measurement
 
@@ -170,7 +181,7 @@ once every 25 seconds: far too little to hear.
 ## Controller
 
 The PS3 sends its pad 60x/second; measured **4-5ms** PS3 → PC, no loss. The PC replays it two ways, and
-SELECT + R3 swaps between them mid-stream (use the mouse to launch a game, then switch to the gamepad):
+SELECT + Cross cycles input modes mid-stream (use the mouse to launch a game, then switch to the gamepad):
 
 **Gamepad** (default). A virtual Xbox 360 controller: games and Windows see a real one plugged in.
 Windows has no way to fake a controller from a normal program, so this needs the **ViGEmBus** driver —
@@ -188,3 +199,9 @@ X/O = clicks, d-pad = arrows, L1/R1 = page up/down.
 - **Bitrate spikes on WiFi.** `network` jumps from ~3ms to ~9ms whenever the bitrate reaches 11-12Mbps,
   which is close to the PS3's ~22Mbps radio ceiling. Busier video means bigger frames and a longer
   delivery time on the link; a wired connection would flatten it.
+
+## Credits
+
+- **miniz / tinfl** (public domain) — the inflate used to decode the console's button glyphs.
+- **segno** (BSD) — generated the waiting-screen QR code data at build time.
+- On-screen button glyphs are the PS3's own system font art, decoded at runtime — not shipped by us.

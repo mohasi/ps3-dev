@@ -17,6 +17,9 @@
   <!-- HG = hdd game, GD = game data, SD = save data -->
   <param key="CATEGORY">HG</param>
 
+  <!-- floats the icon to the top of the Games column (higher = higher up); matches irisMAN Priority -->
+  <param key="ITEM_PRIORITY">2100</param>
+
   <!-- license text shown under "about this game" -->
   <param key="LICENSE">Homebrew. Not affiliated with Sony Computer Entertainment Inc.</param>
 

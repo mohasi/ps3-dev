@@ -170,23 +170,40 @@ namespace ThemeStudio
                if (actor.MaterialId.Length > 0) usedMaterials.Add(actor.MaterialId);
             }
 
-            // models, with any baked animation the .dae carries. several models often share one
-            // .dae, so each file is staged and mended once.
+            // models, with any baked animation the .dae carries.
+            //
+            // several objects can point at the same shape file (importing one .dae twice for, say,
+            // a day and a night layer). the console crashes on two <model> ids that share one file:
+            // each is compiled into its own copy of the shape, and the two copies carry the same
+            // names inside, which the console trips over. so a shared file is written as ONE model
+            // that every actor using it points at -- exactly how Sony's own themes reuse geometry
+            // (one <model id="mdl_bg">, eight actors). each file is staged and mended once.
             var stagedModels = new HashSet<string>();
+            var modelForFile = new Dictionary<string, string>();   // staged file -> the one model written for it
+            var modelIdMap = new Dictionary<string, string>();     // project model id -> the model an actor should use
             foreach (SceneModel model in scene.Models) {
                if (!usedModels.Contains(model.Id)) continue;
                string staged = stageModel(projectDir, model.DaePath, stageDir, stagedModels, log);
                if (staged.Length == 0) continue;
-               writer.WriteStartElement("model");
-               writer.WriteAttributeString("id", model.Id);
-               writer.WriteAttributeString("file", staged);
-               if (model.HasAnimation) {
-                  writer.WriteStartElement("animation");
-                  writer.WriteAttributeString("id", model.Id + "_anim");
+
+               string owner;
+               if (!modelForFile.TryGetValue(staged, out owner)) {
+                  owner = model.Id;
+                  modelForFile[staged] = owner;
+                  writer.WriteStartElement("model");
+                  writer.WriteAttributeString("id", owner);
                   writer.WriteAttributeString("file", staged);
+                  if (model.HasAnimation) {
+                     writer.WriteStartElement("animation");
+                     writer.WriteAttributeString("id", owner + "_anim");
+                     writer.WriteAttributeString("file", staged);
+                     writer.WriteEndElement();
+                  }
                   writer.WriteEndElement();
+               } else {
+                  log("\"" + model.Id + "\" reuses the same shape as \"" + owner + "\", so they share one model");
                }
-               writer.WriteEndElement();
+               modelIdMap[model.Id] = owner;
             }
 
             // materials and their textures
@@ -214,7 +231,9 @@ namespace ThemeStudio
             foreach (SceneActor actor in scene.Actors) {
                writer.WriteStartElement("actor");
                writer.WriteAttributeString("id", actor.Id);
-               writer.WriteAttributeString("model", actor.ModelId);
+               string modelId;
+               if (!modelIdMap.TryGetValue(actor.ModelId, out modelId)) modelId = actor.ModelId;
+               writer.WriteAttributeString("model", modelId);
                if (actor.MaterialId.Length > 0) writer.WriteAttributeString("material", actor.MaterialId);
                if (actor.Placed) {
                   writer.WriteAttributeString("position", actor.Position.ToString());

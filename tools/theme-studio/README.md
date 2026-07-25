@@ -40,7 +40,13 @@ the scene XML and runs `raf_compiler` as part of a theme build. **An object is o
 and one texture** — that is the format, not a shortcut here; a model wanting several textures has to be
 cut into parts in the modelling program and added as one object per part, which is how Sony's own
 `raf_mustache` sample is built. Only materials an actor actually uses are written — a leftover material
-reaches the console as `Invalid texture: id=0`. `raf_compiler` reports how much of the console's texture,
+reaches the console as `Invalid texture: id=0`. When two objects use the
+same shape file (importing one `.dae` twice, say for a day and a night layer), the shape is written
+**once** and both actors point at it — each keeps its own texture. Two `<model>` ids sharing one file
+crash the console: each becomes its own copy of the shape carrying the same internal names, and the
+console trips over the clash (position and memory are irrelevant, so it looks like a mystery freeze).
+Writing one shared model is exactly how Sony's own themes reuse geometry — one model, many actors.
+`raf_compiler` reports how much of the console's texture,
 geometry and actor memory a scene uses and refuses to build past any of the three; all three figures go
 to the build log, with a warning from 90% on. Those limits are all about memory; the console also has a
 per-frame budget for *drawing* the scene that the compiler never checks, so a scene with many full-screen

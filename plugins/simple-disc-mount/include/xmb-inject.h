@@ -6,6 +6,7 @@
 #include "dbg.h"
 #include "vsh.h"
 #include "vfs.h"
+#include "syscall.h"   // sysMemAllocate for the menu scratch
 #include "string-utilities.h"
 
 // Paths
@@ -34,23 +35,48 @@ static const char *injectLine =
 // precede Items inside a View. namePool holds a copy of each ISO filename so
 // we can sort them before emitting — cellFsReaddir returns entries in
 // filesystem (insertion) order, not alphabetical.
+//
+// A quarter of a megabyte cannot sit in a vsh plugin's fixed memory, and all of
+// it is dead once the menu is written, so it lives in one on-demand allocation
+// held only for the duration of that work. The three sizes sum to exactly the
+// 64KB-aligned total lv2 requires.
 enum {
-   XML_BUF_SIZE    = 128 * 1024,
+   XML_BUF_SIZE    = 160 * 1024,
    ITEMS_BUF_SIZE  =  32 * 1024,
-   MAX_ISOS        = 256,
    NAME_POOL_SIZE  =  64 * 1024,  // 256 names × ~256B worst case
+   SCRATCH_SIZE    = XML_BUF_SIZE + ITEMS_BUF_SIZE + NAME_POOL_SIZE,
+   MAX_ISOS        = 256,
 };
-static char xmlBuf[XML_BUF_SIZE];
-static char itemsBuf[ITEMS_BUF_SIZE];
-static char namePool[NAME_POOL_SIZE];
-static int  nameOff[MAX_ISOS];
+static char *xmlBuf;
+static char *itemsBuf;
+static char *namePool;
+static uint32_t scratchAddr;
+static int  nameOff[MAX_ISOS];   // 1KB, small enough to keep resident
+
+static int openXmlScratch(void)
+{
+   if (sysMemAllocate(SCRATCH_SIZE, SYS_PAGE_64K, &scratchAddr) != 0 || scratchAddr == 0) {
+      logError("[sdm] could not allocate %dKB of menu scratch\n", SCRATCH_SIZE / 1024);
+      return -1;
+   }
+
+   xmlBuf   = (char *)(uintptr_t)scratchAddr;
+   itemsBuf = xmlBuf + XML_BUF_SIZE;
+   namePool = itemsBuf + ITEMS_BUF_SIZE;
+   return 0;
+}
+
+static void closeXmlScratch(void)
+{
+   sysMemFree(scratchAddr);
+   scratchAddr = 0;
+   xmlBuf = itemsBuf = namePool = 0;
+}
 
 // patchCategoryGameXml return codes
 #define PATCH_APPLIED   1
 #define PATCH_EXISTS    2
 #define PATCH_FAILED   -1
-
-// --- sdm.xml generation ---
 
 static int buildSdmXml(char *buf, int cap)
 {
@@ -81,15 +107,17 @@ static int buildSdmXml(char *buf, int cap)
    // other filesystem access ("." / ".." are already filtered by the backend).
    int poolOff = 0;
    int count = 0;
+   int dropped = 0;
    VfsDir dir;
    if (openDir(pathIsoDir, &dir) == 0) {
       char entName[256];
-      while (count < MAX_ISOS && readDir(&dir, entName, sizeof entName, NULL) == 1)
+      while (readDir(&dir, entName, sizeof entName, NULL) == 1)
       {
          if (!endsWithICase(entName, ".iso")) continue;
 
          int nlen = getStrLen(entName);
-         if (poolOff + nlen + 1 > NAME_POOL_SIZE) break;
+         if (count >= MAX_ISOS || poolOff + nlen + 1 > NAME_POOL_SIZE) { dropped++; continue; }
+
          nameOff[count] = poolOff;
          for (int i = 0; i <= nlen; i++) namePool[poolOff + i] = entName[i];
          poolOff += nlen + 1;
@@ -97,6 +125,7 @@ static int buildSdmXml(char *buf, int cap)
       }
       closeDir(&dir);
    }
+   if (dropped > 0) logWarn("[sdm] menu is full, %d iso(s) left out\n", dropped);
 
    // Phase 2: insertion sort by case-insensitive name. n <= 256, n² fine.
    for (int i = 1; i < count; i++) {
@@ -192,8 +221,6 @@ static int writeSdmXml(void)
    return 0;
 }
 
-// --- category_game.xml patching ---
-
 // Splice injectLine after the Query element containing injectAnchor, inside
 // the View whose opener is viewOpen. Returns new length. Both "view not
 // found" and "anchor not found in this view" are treated as no-ops (returns
@@ -251,6 +278,14 @@ static int patchCategoryGameXml(void)
    int len = readFile(pathCatFlash, xmlBuf, XML_BUF_SIZE);
    if (len <= 0) { logError("[sdm] read category_game.xml failed\n"); return PATCH_FAILED; }
 
+   // readFile cannot report truncation, so a file that exactly fills the buffer
+   // may be a short read. Writing that back would put a cut-off system XML into
+   // flash and take the pristine backup from the same cut-off bytes.
+   if (len >= XML_BUF_SIZE - 1) {
+      logError("[sdm] category_game.xml is too big for our buffer, leaving it alone\n");
+      return PATCH_FAILED;
+   }
+
    // Already up to date? Verbatim match on the exact injectLine.
    int injLen = getStrLen(injectLine);
    if (findBytes(xmlBuf, len, injectLine, injLen) >= 0) {
@@ -264,6 +299,14 @@ static int patchCategoryGameXml(void)
 
    int n = spliceAfterAnchor("<View id=\"root\">", len);
    if (n < 0) { logError("[sdm] splice root failed\n"); return PATCH_FAILED; }
+
+   // A splice always grows the file, so an unchanged length means the View or the
+   // anchor wasn't there. Writing the file back unchanged and calling it patched
+   // would claim success, and re-toast "installed successfully", on every boot.
+   if (n == len) {
+      logError("[sdm] anchor %s not found, menu not injected\n", injectAnchor);
+      return PATCH_FAILED;
+   }
 
    if (writeFile(pathCatBlind, xmlBuf, (uint64_t)n) != 0) {
       logError("[sdm] write /dev_blind failed\n");

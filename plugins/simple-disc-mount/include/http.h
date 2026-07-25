@@ -37,7 +37,15 @@ static const char httpRespAutoClose[] =
 
 static void httpWriteLastMount(const char *path)
 {
-   writeFile(pathLastMount, path, (uint64_t)getStrLen(path));
+   if (writeFile(pathLastMount, path, (uint64_t)getStrLen(path)) != 0)
+      logError("[sdm] could not remember %s for next boot\n", path);
+}
+
+// A real disc, or an explicit unmount, replaces the remembered image outright:
+// only picking an ISO from the menu mounts one again.
+static void forgetLastMount(void)
+{
+   deleteFile(pathLastMount);
 }
 
 // Parses the request in `buf` and, if it's a well-formed mount URL whose
@@ -69,6 +77,7 @@ static void httpParseAndMount(const char *buf, int off)
       vshNotify("Disc mounted.");
    } else {
       logError("[sdm] mount failed: %s\n", path);
+      vshNotify("Could not mount that disc image.");
    }
 }
 
@@ -78,7 +87,7 @@ static void httpHandle(int clientFd)
    int off = 0;
    while (off < (int)sizeof(buf) - 1) {
       int got = recv(clientFd, buf + off, sizeof(buf) - 1 - off, 0);
-      if (got <= 0) return;     // dead socket — no point trying to respond
+      if (got <= 0) break;      // client went away mid-request; still answer what we have
       off += got;
       buf[off] = '\0';
       if (off >= 4 && buf[off-4] == '\r' && buf[off-3] == '\n' &&

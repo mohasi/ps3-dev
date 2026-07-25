@@ -14,13 +14,19 @@ Only PS3 game ISO images (`.iso` files) placed in `/dev_hdd0/PS3ISO`. Each is mo
 
 On boot the plugin waits for the XMB to be ready, then:
 
-1. Auto-mounts the last ISO if one was previously mounted (the path is remembered in `/dev_hdd0/tmp/sdm_last.txt`)
-2. Mounts `/dev_blind` (a writable mirror of `/dev_flash`, the console's internal system storage)
-3. Generates `sdm.xml` — a menu file listing every `.iso` in `/dev_hdd0/PS3ISO`, sorted alphabetically
-4. Patches `category_game.xml` once to inject the "Mount Disc Image" submenu just below "Package Manager" (with a one-time backup of the original)
-5. Starts a small web listener on `127.0.0.1:8947` (loopback only — the PC never sees it)
+1. Auto-mounts the last ISO, but only if the disc drive is empty — a real disc always wins, and clears the memory (the remembered path lives in `/dev_hdd0/tmp/sdm_last.txt`)
+2. Starts a small web listener on `127.0.0.1:8947` (loopback only — the PC never sees it), and a watcher that unmounts the image as soon as a real disc goes into the drive
+3. Mounts `/dev_blind` (a writable mirror of `/dev_flash`, the console's internal system storage)
+4. Generates `sdm.xml` — a menu file listing every `.iso` in `/dev_hdd0/PS3ISO`, sorted alphabetically
+5. Patches `category_game.xml` once to inject the "Mount Disc Image" submenu just below "Package Manager" (with a one-time backup of the original)
 
 When you press X on an ISO in the menu, the XMB wakes Sony's built-in web renderer with a link pointing at that local listener. The listener catches the request, tells Cobra to swap the disc (fake eject, mount, fake insert), remembers the path for auto-mount on the next boot, and shows a notification.
+
+## Real discs take priority
+
+A mounted image otherwise stays in the way of the drive: Cobra keeps reporting the image to the XMB until something unmounts it, so a disc you push in is simply ignored. The watcher checks every two seconds and unmounts the image once a real disc is present, leaving the drive to the disc. It waits for any running game to exit first, so a game booted from the image is never pulled out from under itself.
+
+A real disc also clears the remembered image, so ejecting the disc later does not bring the image back — mounting one again is always an explicit pick from the menu. Note that the XMB's own Eject only reaches the physical drive, so it cannot clear a mounted image: inserting a real disc is what does that.
 
 ## Installation
 

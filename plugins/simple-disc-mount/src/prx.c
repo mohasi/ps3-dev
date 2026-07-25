@@ -7,10 +7,12 @@
 //
 // Boot order on the plugin thread:
 //   1. wait for XMB ready
-//   2. auto-mount last ISO if sdm_last.txt remembers one
-//   3. open /dev_blind, ensure xmlhost directories exist
-//   4. regenerate sdm.xml (ISO list) and patch category_game.xml once
-//   5. spawn the HTTP listener so X-press on items actually mounts
+//   2. auto-mount last ISO if the drive is empty and sdm_last.txt remembers one
+//   3. spawn the HTTP listener (X-press on items) and the disc watcher (a real
+//      disc takes over from a mounted image) — before the XML work, so a menu
+//      problem cannot leave the plugin with nothing serving it
+//   4. open /dev_blind, ensure xmlhost directories exist
+//   5. regenerate sdm.xml (ISO list) and patch category_game.xml once
 
 #include <sys/prx.h>
 #include <sys/ppu_thread.h>
@@ -33,8 +35,15 @@ static void autoMountLast(void)
 {
    char path[SDM_PATH_MAX];
 
-   // read last mount path from file
-   if (readFile(pathLastMount, path, sizeof path) < 0) return;
+   // a real disc always wins — never mount an image over it
+   if (getRealDiscType() != 0) {
+      logInfo("[sdm] real disc present, skipping auto-mount\n");
+      forgetLastMount();
+      return;
+   }
+
+   // read last mount path from file (0 bytes = nothing remembered)
+   if (readFile(pathLastMount, path, sizeof path) <= 0) return;
 
    // check iso still exists
    if (!fileExists(path)) {
@@ -47,6 +56,46 @@ static void autoMountLast(void)
       logInfo("[sdm] auto-mounted: %s\n", path);
    } else {
       logError("[sdm] auto-mount failed: %s\n", path);
+   }
+}
+
+enum {
+   DISC_POLL_SECONDS  = 2,
+   DISC_RETRY_SECONDS = 30,   // after a failed unmount, so we don't replay events in a tight loop
+};
+
+// A physically inserted disc is the user's intent, so it overrides a mounted
+// image. Cobra keeps reporting the emulated disc to the XMB until something
+// unmounts it, and nothing tells us an insert happened, so poll the real disc
+// type. Waiting for a game to exit avoids pulling the disc out from under a
+// game that is running off the image.
+static void discWatchThread(uint64_t arg)
+{
+   (void)arg;
+   logInfo("[sdm] disc watch thread start\n");
+
+   unsigned int pollSeconds = DISC_POLL_SECONDS;
+   for (;;) {
+      sys_timer_sleep(pollSeconds);
+
+      if (getRealDiscType() == 0 || getGameProcessId() != 0) continue;
+
+      switch (cobraUnmountIso()) {
+      case UNMOUNT_DONE:
+         forgetLastMount();
+         logInfo("[sdm] real disc inserted, disc image unmounted\n");
+         vshNotify("Real disc inserted, disc image unmounted.");
+         pollSeconds = DISC_POLL_SECONDS;
+         break;
+
+      case UNMOUNT_NOTHING_MOUNTED:
+         break;   // the common case: a real disc in the drive and no image to displace
+
+      case UNMOUNT_FAILED:
+         logError("[sdm] unmount failed, retrying in %ds\n", DISC_RETRY_SECONDS);
+         pollSeconds = DISC_RETRY_SECONDS;
+         break;
+      }
    }
 }
 
@@ -79,6 +128,19 @@ static void pluginThread(uint64_t arg)
    // show up the moment the Games column settles.
    autoMountLast();
 
+   // Spawn the workers before the XML work: the listener owns :8947 (loopback)
+   // and turns incoming GET /mount/<name> into cobraMountIso calls, and the
+   // watcher enforces "a real disc wins". An XML problem must not take either
+   // down, or the menu from a previous boot renders with nothing serving it.
+   sys_ppu_thread_t httpTid;
+   int rc = spawnThread(&httpTid, httpListenerThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "sdm-http");
+   if (rc != 0) logError("[sdm] http thread spawn rc=0x%x\n", rc);
+
+   sys_ppu_thread_t watchTid;
+   rc = spawnThread(&watchTid, discWatchThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "sdm-watch");
+   if (rc != 0) logError("[sdm] disc watch thread spawn rc=0x%x\n", rc);
+
+   // menu generation
    mountDevBlind();
    logInfo("[sdm] dev_blind mounted\n");
 
@@ -88,22 +150,18 @@ static void pluginThread(uint64_t arg)
       return;
    }
 
-   if (writeSdmXml() != 0) { exitThread(); return; }
+   if (openXmlScratch() != 0) { exitThread(); return; }
 
-   int rc = patchCategoryGameXml();
+   int patched = (writeSdmXml() == 0) ? patchCategoryGameXml() : PATCH_FAILED;
+   closeXmlScratch();
 
    // Notify only on a fresh install. Sleep past webMAN's own boot toast
    // so ours isn't stomped.
-   if (rc == PATCH_APPLIED) {
+   if (patched == PATCH_APPLIED) {
       sys_timer_sleep(10);
       logInfo("[sdm] vshNotify\n");
       vshNotify("Simple disc mount plugin installed successfully!");
    }
-
-   // Hand off to the HTTP listener. It owns :8947 (loopback) and turns
-   // incoming GET /mount/<name> into cobraMountIso calls.
-   sys_ppu_thread_t httpTid;
-   spawnThread(&httpTid, httpListenerThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_8KB, "disc-mount-http");
 
    logInfo("[sdm] done\n");
    exitThread();
@@ -116,6 +174,7 @@ int _start(uint64_t arg)
    logInfo("[sdm] _start\n");
 
    sys_ppu_thread_t tid;
-   spawnThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "disc-mount-main");
+   int rc = spawnThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "sdm-main");
+   if (rc != 0) logError("[sdm] plugin thread spawn rc=0x%x\n", rc);
    return SYS_PRX_RESIDENT;
 }

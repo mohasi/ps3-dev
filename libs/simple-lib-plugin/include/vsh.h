@@ -13,6 +13,8 @@
 
 extern int32_t  vshtask_A02D46E7(int32_t, const char *);
 extern uint32_t vshmain_EB757101(void);
+extern uint32_t vshmain_0624D3AE(void);   // running game's process id (0 = none)
 
-#define vshNotify(msg)  vshtask_A02D46E7(0, (msg))
-#define isXmbReady()    (vshmain_EB757101() == 0)
+#define vshNotify(msg)         vshtask_A02D46E7(0, (msg))
+#define isXmbReady()           (vshmain_EB757101() == 0)
+#define getGameProcessId()     vshmain_0624D3AE()

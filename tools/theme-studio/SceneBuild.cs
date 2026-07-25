@@ -71,7 +71,7 @@ namespace ThemeStudio
          Directory.CreateDirectory(stageDir);
 
          string xmlPath = Path.Combine(stageDir, sceneName + ".xml");
-         writeSceneXml(scene, projectDir, stageDir, xmlPath);
+         writeSceneXml(scene, projectDir, stageDir, xmlPath, log);
          log("staged scene to " + stageDir);
 
          // compile
@@ -92,8 +92,32 @@ namespace ThemeStudio
          if (result.Budget.WasReported) log(result.Budget.ToString());
          if (result.Budget.IsNearlyFull)
             log("warning: this scene is nearly at the console's limit -- adding much more will not build");
+         warnIfTooHeavyToDraw(scene, log);
          log("built " + producedPath + " (" + new FileInfo(producedPath).Length + " bytes)");
          return result;
+      }
+
+      // the compiler's limits are all about memory, but the console also has a per-frame budget for
+      // *drawing* the scene, which the compiler never checks. a stack of full-screen textured layers
+      // blends over the same pixels again and again, and enough of them tips the background over that
+      // budget -- on the console the theme is dropped with "RAF Error: reduce CPU load", which can
+      // look like a freeze. so a scene with many drawn-over layers is flagged here, where it can still
+      // be changed. this is an estimate, not the compiler's word: overlap depends on where a script
+      // places things, which is not known at build time.
+      private const int LayersLikelyTooHeavy = 4;
+
+      private static void warnIfTooHeavyToDraw(SceneProject scene, Action<string> log)
+      {
+         int texturedLayers = 0;
+         foreach (SceneActor actor in scene.Actors) {
+            SceneMaterial material = scene.FindMaterial(actor.MaterialId);
+            if (material != null && material.TexturePath.Length > 0) texturedLayers++;
+         }
+         if (texturedLayers < LayersLikelyTooHeavy) return;
+
+         log("warning: " + texturedLayers + " textured layers may be too much for the background to draw " +
+             "in time -- the console can drop a too-heavy theme (\"RAF Error: reduce CPU load\"), which looks " +
+             "like a freeze. if it does, use fewer layers or lower-detail models and smaller textures.");
       }
 
       // "  Total texture size 9128465 Bytes ( / maximum 15728640 Bytes, 58.0% used)"
@@ -129,15 +153,29 @@ namespace ThemeStudio
 
       // scene xml
 
-      private static void writeSceneXml(SceneProject scene, string projectDir, string stageDir, string xmlPath)
+      private static void writeSceneXml(SceneProject scene, string projectDir, string stageDir, string xmlPath, Action<string> log)
       {
          var settings = new XmlWriterSettings { Indent = true, IndentChars = "  " };
          using (XmlWriter writer = XmlWriter.Create(xmlPath, settings)) {
             writer.WriteStartElement("raf");
 
-            // models, with any baked animation the .dae carries
+            // only what an actor actually uses is written. a model or material left in the project
+            // after its object was deleted would otherwise still be compiled in -- padding the file,
+            // confusing the log, and (for a material with no texture) reaching the console as
+            // "Invalid texture: id=0".
+            var usedModels = new HashSet<string>();
+            var usedMaterials = new HashSet<string>();
+            foreach (SceneActor actor in scene.Actors) {
+               if (actor.ModelId.Length > 0) usedModels.Add(actor.ModelId);
+               if (actor.MaterialId.Length > 0) usedMaterials.Add(actor.MaterialId);
+            }
+
+            // models, with any baked animation the .dae carries. several models often share one
+            // .dae, so each file is staged and mended once.
+            var stagedModels = new HashSet<string>();
             foreach (SceneModel model in scene.Models) {
-               string staged = stage(projectDir, model.DaePath, stageDir);
+               if (!usedModels.Contains(model.Id)) continue;
+               string staged = stageModel(projectDir, model.DaePath, stageDir, stagedModels, log);
                if (staged.Length == 0) continue;
                writer.WriteStartElement("model");
                writer.WriteAttributeString("id", model.Id);
@@ -153,6 +191,7 @@ namespace ThemeStudio
 
             // materials and their textures
             foreach (SceneMaterial material in scene.Materials) {
+               if (!usedMaterials.Contains(material.Id)) continue;
                writer.WriteStartElement("material");
                writer.WriteAttributeString("id", material.Id);
                writer.WriteAttributeString("effect", material.Effect);
@@ -231,14 +270,45 @@ namespace ThemeStudio
          writer.WriteAttributeString(name, value.ToString("0.######", CultureInfo.InvariantCulture));
       }
 
-      // copies an asset beside the scene xml and returns the bare filename, or "" if unusable
-      private static string stage(string projectDir, string storedPath, string stageDir)
+      // the on-disk path of an asset, whether it is stored absolute or relative to the project
+      private static string findAsset(string projectDir, string storedPath)
       {
          if (string.IsNullOrEmpty(storedPath)) return "";
          string source = Path.IsPathRooted(storedPath) ? storedPath : Path.Combine(projectDir, storedPath);
-         if (!File.Exists(source)) return "";
+         return File.Exists(source) ? source : "";
+      }
+
+      // copies an asset beside the scene xml and returns the bare filename, or "" if unusable
+      private static string stage(string projectDir, string storedPath, string stageDir)
+      {
+         string source = findAsset(projectDir, storedPath);
+         if (source.Length == 0) return "";
          string fileName = Path.GetFileName(source);
          File.Copy(source, Path.Combine(stageDir, fileName), true);
+         return fileName;
+      }
+
+      // stages a model, mending anything the compiler would reject (Z-up, no material binding) into
+      // the staged copy first. the user's own file is left alone; the mend is reported. a file
+      // shared by several models is staged only once.
+      private static string stageModel(string projectDir, string storedPath, string stageDir,
+                                       HashSet<string> alreadyStaged, Action<string> log)
+      {
+         string source = findAsset(projectDir, storedPath);
+         if (source.Length == 0) return "";
+
+         string fileName = Path.GetFileName(source);
+         if (!alreadyStaged.Add(fileName)) return fileName;
+
+         string staged = Path.Combine(stageDir, fileName);
+         try {
+            DaeCompatibility.Changes changes = DaeCompatibility.WriteReady(source, staged);
+            if (changes.TurnedUpright) log("turned " + fileName + " upright for the compiler (it was not Y-up)");
+            if (changes.BoundMaterial) log("gave " + fileName + " a material to carry its texture (it had none)");
+         } catch (Exception) {
+            // an odd file the mender cannot parse: stage it as-is and let the compiler say why
+            File.Copy(source, staged, true);
+         }
          return fileName;
       }
 

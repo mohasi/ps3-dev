@@ -39,12 +39,27 @@ output streams at once (reading one to the end deadlocks when the other fills it
 the scene XML and runs `raf_compiler` as part of a theme build. **An object is one model, one material
 and one texture** — that is the format, not a shortcut here; a model wanting several textures has to be
 cut into parts in the modelling program and added as one object per part, which is how Sony's own
-`raf_mustache` sample is built. `raf_compiler` reports how much of the console's texture, geometry and
-actor memory a scene uses and refuses to build past any of the three; all three figures go to the build
-log, with a warning from 90% on. `DaeFile` reads COLLADA models for
-both their extent (the auto-fit) and their triangles (the preview). A model with no placement of its
-own is sized to about a third of the screen and put in the bottom-right corner, clear of the XMB's
-menu — written into the script as visible lines, not applied silently (`ScenePlacement`).
+`raf_mustache` sample is built. Only materials an actor actually uses are written — a leftover material
+reaches the console as `Invalid texture: id=0`. `raf_compiler` reports how much of the console's texture,
+geometry and actor memory a scene uses and refuses to build past any of the three; all three figures go
+to the build log, with a warning from 90% on. Those limits are all about memory; the console also has a
+per-frame budget for *drawing* the scene that the compiler never checks, so a scene with many full-screen
+textured layers (which blend over the same pixels again and again) is flagged in the build log too —
+past that budget the console drops the theme with `RAF Error: reduce CPU load`, which can look like a
+freeze. `DaeFile` reads COLLADA models for
+both their extent (the auto-fit) and their triangles (the preview). The preview turns a Z-up model
+upright the same way the build does (below), so the editor and the console agree on which way a model
+faces — without it a flat plane can look face-on in the editor yet end up edge-on and invisible on the
+console. A model with no placement of its own is sized to about a third of the screen and put in the
+bottom-right corner, clear of the XMB's menu — written into the script as visible lines, not applied
+silently (`ScenePlacement`).
+
+Blender (and some other editors) export COLLADA that `raf_compiler` rejects two ways: the model is
+Z-up when the compiler only accepts Y-up, and the mesh names no material when the compiler needs one
+to hang the texture on. `DaeCompatibility` mends both into a compiler-ready copy during the build —
+it hangs the scene under one node that turns it upright, and adds a plain white material with the
+texture-coordinate binding. The user's own `.dae` is never touched, and each mend is reported in the
+build log. The theme's real effect and texture still come from the scene, not from the added material.
 
 `DaePlacement` works out where a model's geometry actually sits, which is not optional detail: a `.dae`
 stores its shape wherever it sat in the artist's scene and places it with a scene-graph transform. The

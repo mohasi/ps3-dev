@@ -180,10 +180,34 @@ namespace ThemeStudio
 
             if (mesh.Positions.Count == 0) return null;
             addNormals(mesh);
+
+            // the build turns a Z-up (or X-up) model upright for the console, so the preview must do
+            // the same or it shows a different orientation than the console draws -- which is how a
+            // flat plane can look face-on here and end up edge-on and invisible there.
+            turnUpright(mesh, readUpAxis(document, names));
             return mesh;
          } catch (Exception) {
             return null;
          }
+      }
+
+      // matches the console's Y-up requirement: Z-up turns back a quarter about X, X-up about Z
+      private static void turnUpright(MeshGeometry3D mesh, string upAxis)
+      {
+         if (upAxis == "Y_UP") return;
+         var correction = Matrix3D.Identity;
+         correction.Rotate(upAxis == "X_UP" ? new Quaternion(new Vector3D(0, 0, 1), 90)
+                                             : new Quaternion(new Vector3D(1, 0, 0), -90));
+         for (int index = 0; index < mesh.Positions.Count; index++)
+            mesh.Positions[index] = correction.Transform(mesh.Positions[index]);
+         for (int index = 0; index < mesh.Normals.Count; index++)
+            mesh.Normals[index] = correction.Transform(mesh.Normals[index]);
+      }
+
+      private static string readUpAxis(XmlDocument document, XmlNamespaceManager names)
+      {
+         XmlNode node = document.SelectSingleNode("//c:asset/c:up_axis", names);
+         return node == null ? "Y_UP" : node.InnerText.Trim();
       }
 
       // geometry

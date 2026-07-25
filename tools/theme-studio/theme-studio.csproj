@@ -85,6 +85,7 @@
     <Compile Include="MainWindow.Scene.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="DaeCompatibility.cs" />
     <Compile Include="DaeFile.cs" />
     <Compile Include="DaePlacement.cs" />
     <Compile Include="ScenePlacement.cs" />

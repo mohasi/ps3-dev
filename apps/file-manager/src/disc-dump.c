@@ -8,7 +8,9 @@
 #include "format.h"
 #include "string-utilities.h"
 #include "dbg.h"
+#include "sha1.h"     // hash the image as it streams by, so no costly re-read when it finishes
 #include <stdlib.h>   // memalign: the read buffer must be aligned for the storage syscall
+#include <sys/sys_time.h>   // sys_time_get_system_time: elapsed dump time
 #include <stdio.h>
 
 #define DUMP_DIRECTORY     "/dev_hdd0/dumps"
@@ -18,10 +20,10 @@
 #define DUMP_BUFFER_BYTES  (SECTORS_PER_READ * BD_SECTOR_SIZE)
 #define READ_ATTEMPTS      3
 #define BUFFER_ALIGNMENT   128
-#define MAX_NAME_ATTEMPTS  99                                      // "NAME (2).iso" ... "NAME (99).iso"
+#define MAX_NAME_ATTEMPTS  99                                      // "NAME (1).iso" ... "NAME (99).iso"
 
 static char destinationPath[MAX_PATH_LEN];
-static char statusMessage[MAX_PATH_LEN + 64];
+static char statusMessage[MAX_PATH_LEN + 160];   // path + SHA-1 + elapsed time on success
 static int  dumpFailed;
 
 // the drive reports a disc, and how big it is. 0 when the tray is empty or unreadable.
@@ -56,7 +58,7 @@ static void getDiscName(char *out, int cap)
 static void chooseDestination(const char *name)
 {
    snprintf(destinationPath, sizeof destinationPath, "%s/%s.iso", DUMP_DIRECTORY, name);
-   for (int attempt = 2; attempt <= MAX_NAME_ATTEMPTS && fileExists(destinationPath); attempt++)
+   for (int attempt = 1; attempt <= MAX_NAME_ATTEMPTS && fileExists(destinationPath); attempt++)
       snprintf(destinationPath, sizeof destinationPath, "%s/%s (%d).iso", DUMP_DIRECTORY, name, attempt);
 }
 
@@ -115,12 +117,23 @@ static int readChunk(int driveHandle, uint64_t sector, uint32_t count, uint8_t *
    return unreadable;
 }
 
+// "6m 21s", or "1h 04m 21s" once past the hour.
+static void formatDuration(uint64_t microseconds, char *out, int cap)
+{
+   uint64_t totalSeconds = microseconds / 1000000;
+   uint32_t hours   = (uint32_t)(totalSeconds / 3600);
+   uint32_t minutes = (uint32_t)((totalSeconds % 3600) / 60);
+   uint32_t seconds = (uint32_t)(totalSeconds % 60);
+   if (hours > 0) snprintf(out, cap, "%uh %02um %02us", hours, minutes, seconds);
+   else           snprintf(out, cap, "%um %02us", minutes, seconds);
+}
+
 void runDiscDump(void)
 {
    dumpFailed = 1;   // cleared once the whole disc is written
    strCopy(statusMessage, sizeof statusMessage, "The disc could not be read.");
 
-   // open the drive and the destination
+   // find the disc and set the progress total
    StorageDeviceInfo info;
    if (!getDiscInfo(&info)) return;
    setTotalBytes(info.sectorCount * (uint64_t)info.sectorSize);
@@ -137,6 +150,9 @@ void runDiscDump(void)
    int      removePartialImage = 0;
    uint64_t unreadableSectors  = 0;
    uint64_t sector             = 0;
+   uint64_t startUs            = 0;
+   Sha1State hashState;
+   initSha1(&hashState);
    if (!buffer) { logError("[dump] out of memory for the read buffer\n"); goto cleanup; }
 
    makeDirPath(DUMP_DIRECTORY);
@@ -147,8 +163,11 @@ void runDiscDump(void)
    }
    imageOpen = 1;
 
-   // copy the disc. anything that stops it early leaves no image behind - a partial file
-   // that looks like a dump is worse than none.
+   // copy the disc, hashing each chunk as it goes. the Blu-ray drive read (~2x, ~9 MB/s) is
+   // the bottleneck, not the copy, so read-then-write stays single-threaded. anything that
+   // stops it early leaves no image behind - a partial file that looks like a dump is worse
+   // than none.
+   startUs = sys_time_get_system_time();
    while (sector < info.sectorCount) {
       uint32_t count = SECTORS_PER_READ;
       if (info.sectorCount - sector < count) count = (uint32_t)(info.sectorCount - sector);
@@ -162,6 +181,7 @@ void runDiscDump(void)
       unreadableSectors += (uint64_t)unreadable;
 
       uint64_t chunkBytes = (uint64_t)count * BD_SECTOR_SIZE;
+      updateSha1(&hashState, buffer, (int)chunkBytes);
       if (writeFs(&image, buffer, chunkBytes) != (int64_t)chunkBytes) {
          logError("[dump] write failed at sector %llu\n", (unsigned long long)sector);
          strCopy(statusMessage, sizeof statusMessage, "Writing to the internal drive failed.");
@@ -173,14 +193,26 @@ void runDiscDump(void)
    }
 
    // report the outcome
-   if (unreadableSectors > 0) {
-      snprintf(statusMessage, sizeof statusMessage, "%llu sectors could not be read - the image is incomplete.",
-               (unsigned long long)unreadableSectors);
-      logError("[dump] finished with %llu unreadable sectors\n", (unsigned long long)unreadableSectors);
-   } else {
-      snprintf(statusMessage, sizeof statusMessage, "Dumped to %s", destinationPath);
-      logInfo("[dump] finished, %llu sectors\n", (unsigned long long)info.sectorCount);
-      dumpFailed = 0;
+   {
+      uint8_t digest[20];
+      char    hashText[41], elapsed[24];
+      finalizeSha1(&hashState, digest);
+      toHexText(hashText, sizeof hashText, digest, 20);
+      formatDuration(sys_time_get_system_time() - startUs, elapsed, sizeof elapsed);
+
+      if (unreadableSectors > 0) {
+         snprintf(statusMessage, sizeof statusMessage,
+                  "%llu sectors could not be read - the image is incomplete.\nSHA-1: %s\nTook %s",
+                  (unsigned long long)unreadableSectors, hashText, elapsed);
+         logError("[dump] finished with %llu unreadable sectors, SHA-1 %s, took %s\n",
+                  (unsigned long long)unreadableSectors, hashText, elapsed);
+      } else {
+         snprintf(statusMessage, sizeof statusMessage, "Dumped to %s\nSHA-1: %s\nTook %s",
+                  destinationPath, hashText, elapsed);
+         logInfo("[dump] finished, %llu sectors, SHA-1 %s, took %s\n",
+                 (unsigned long long)info.sectorCount, hashText, elapsed);
+         dumpFailed = 0;
+      }
    }
 
 cleanup:

@@ -811,16 +811,24 @@ const SelectionAction *getAvailableActions(int *outCount)
    // sidepanel can show.
    static SelectionAction list[9];
    int n = 0;
-   if (entryCount > 0)     { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
-   if (!isClipboardEmpty())  list[n++] = ACTION_PASTE;
-   if (entryCount > 0)     { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
-   if (entryCount > 0 && !targetIsSingleZipFile()) list[n++] = ACTION_ZIP;
-   if (targetIsSingleZipFile())                    list[n++] = ACTION_UNZIP;
-   if (discDumpApplies())                          list[n++] = ACTION_DUMP_DISC;
-   // creation always applies to the current directory, even when it is empty.
-   list[n++] = ACTION_NEW_FILE;
-   list[n++] = ACTION_NEW_FOLDER;
-   if (targetIsSingleFile())                       list[n++] = ACTION_PROPERTIES;
+   // at "/" the rows are the device roots (dev_hdd0, dev_flash, ...). Every file
+   // action here would either wipe/brick a device or write to the synthetic root,
+   // so none are offered at root - only disc dump, which is a root-only action.
+   int atRoot = strEq(currentPath, "/");
+   if (!atRoot) {
+      if (entryCount > 0)   { list[n++] = ACTION_CUT; list[n++] = ACTION_COPY; }
+      if (!isClipboardEmpty()) list[n++] = ACTION_PASTE;
+      if (entryCount > 0)   { list[n++] = ACTION_DELETE; list[n++] = ACTION_RENAME; }
+      if (entryCount > 0 && !targetIsSingleZipFile()) list[n++] = ACTION_ZIP;
+      if (targetIsSingleZipFile())                    list[n++] = ACTION_UNZIP;
+   }
+   if (discDumpApplies())                             list[n++] = ACTION_DUMP_DISC;
+   if (!atRoot) {
+      // creation always applies to the current directory, even when it is empty.
+      list[n++] = ACTION_NEW_FILE;
+      list[n++] = ACTION_NEW_FOLDER;
+   }
+   if (targetIsSingleFile())                          list[n++] = ACTION_PROPERTIES;
    *outCount = n;
    return list;
 }

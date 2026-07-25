@@ -153,6 +153,7 @@ void shutdownVfs(void);         // stop the poll thread + unmount everything; ca
 int       listMounts(VfsMount *outMounts, int capacity);   // copies the virtual mounts; returns the count
 VfsScheme getScheme(const char *path);                     // which backend services path
 int       isRemoteVolume(const char *path);                // 1 if path's backend declared VFS_MOUNT_REMOTE (cellFs -> 0)
+int       isDeviceRoot(const char *path);                  // 1 for a top-level device root ("/dev_hdd0"); delete refuses these
 
 // metadata / namespace
 int  statPath(const char *path, VfsStat *outStat);          // 0 / -1

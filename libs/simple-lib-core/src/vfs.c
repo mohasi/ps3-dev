@@ -98,6 +98,18 @@ static int isRootPath(const char *path)
    return path[0] == '/' && path[1] == '\0';
 }
 
+// a top-level device root like "/dev_hdd0", "/dev_flash" or a mounted USB: one
+// path segment, no inner slash. deleting one of these would wipe an entire
+// device (and /dev_flash would brick the console), so the delete flow refuses
+// them outright - see deleteTree / deleteTreeProgress.
+int isDeviceRoot(const char *path)
+{
+   if (path[0] != '/' || path[1] == '\0') return 0;   // not absolute, or "/" itself
+   for (const char *c = path + 1; *c; c++)
+      if (*c == '/') return 0;                          // has a child segment
+   return 1;
+}
+
 // Backend support for the synthetic "/" reader in cellfs.c: hand it the next
 // present virtual mount. The registry and its lock live here, so the cellFs
 // backend asks rather than reaching in. advances *cursor; 1 if a name was
@@ -695,6 +707,7 @@ static int deleteTreeRecursively(const char *path, void (*onBytes)(uint64_t), in
 
 int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancelled)(void))
 {
+   if (isDeviceRoot(path)) return -1;   // never delete a whole device root
    int rc = deleteTreeRecursively(path, onBytes, cancelled, 0);
 
    // flush the directory-entry removals and freed blocks to disk once, so the
@@ -736,6 +749,7 @@ static int deleteTreeDepth(const char *path, uint64_t *bytesFreed, int depth)
 // regular file into *bytesFreed (pass NULL to ignore). idempotent when absent.
 int deleteTree(const char *path, uint64_t *bytesFreed)
 {
+   if (isDeviceRoot(path)) return -1;   // never delete a whole device root
    return deleteTreeDepth(path, bytesFreed, 0);
 }
 

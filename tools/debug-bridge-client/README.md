@@ -20,7 +20,7 @@ back to whoever sent the command) and LOG lines (pushed to the Logs tab).
 
 ## features
 
-- **Commands** menu — Screenshot, Stat Tree, Restart XMB, Restart PS3, Shutdown.
+- **Commands** menu — Stat Tree, Restart XMB, Restart PS3, Shutdown.
 - **Files** menu — Pull / Push / Delete a file on the PS3. Pull and Delete have
   presets for `dbg.txt`, `stat-tree.txt`, `trace-capture.bin` plus a Custom...
   prompt; pulled files are saved to disk through a Save dialog.
@@ -33,7 +33,6 @@ back to whoever sent the command) and LOG lines (pushed to the Logs tab).
   Toolbar has a live filter box plus copy and clear buttons. This tab is the
   source of truth for forwarded logs — `dbg.txt` on the console only proves the
   producer ran.
-- **Screen** tab — shows framebuffer captures as they come back from the bridge.
 - **Modules** tab — a process-first tree: top-level nodes are the processes the
   bridge can see (always `vsh`, plus any registered app); expand a process to
   list its loaded modules, expand a module to fetch its segments, linkage
@@ -57,7 +56,6 @@ without speaking the raw protocol.
 | `GET /pull-file?path=<p>[&offset=N&length=N][&text=1]` | stream a file back (`application/octet-stream`, or `text/plain` with `text=1`) |
 | `GET /delete-file?path=<p>` | delete `<p>` on the PS3 |
 | `GET /list-dir?path=<p>` | tab-separated `<kind>\t<size>\t<mtime>\t<name>` lines |
-| `GET /capture?x=X&y=Y&w=W&h=H` | raw ARGB8888 framebuffer region (vsh only); also shown on the Screen tab |
 | `GET /read-mem?<hexAddr>&<decLen>` | raw bytes from vsh memory (positional args) |
 | `GET /stat-tree?root=<p>` | recursive checksummed snapshot on the PS3; reply is `OK files=<n> dirs=<n> -> /dev_hdd0/tmp/stat-tree.txt`. Slow (~40 s on `/dev_hdd0`) — allow at least a 5-minute request timeout, then pull the output file with `/pull-file`. |
 | `GET /<command>[?arg1&arg2&...]` | generic passthrough: forwards `<command> arg1 arg2 ...` and returns the reply |

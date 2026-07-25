@@ -17,11 +17,6 @@ namespace DebugBridgeClient
       private const string UsageText =
          "debug-bridge-client http proxy\n\nusage: GET /<command>\nexample: /ping, /restart-ps3\n/status - connection status";
 
-      // fired whenever a /capture request returns binary data, so the UI
-      // can mirror http-driven captures onto the screen canvas.
-      public delegate void CaptureHandler(int x, int y, int w, int h, byte[] argb);
-      public event CaptureHandler CaptureReceived;
-
       private readonly Ps3Connection ps3;
       private readonly Action<string> log;
       private HttpListener listener;
@@ -114,7 +109,6 @@ namespace DebugBridgeClient
          if (Is(path, "delete-file")) return DeleteFile(ctx);
          if (Is(path, "list-dir"))    return ListDir(ctx);
          if (Is(path, "read-mem"))    return ReadMem(ctx);
-         if (Is(path, "capture"))     return Capture(ctx);
          if (Is(path, "stat-tree"))   return StatTree(ctx);
          if (Is(path, "pull-file"))   return PullFile(ctx);
 
@@ -158,22 +152,6 @@ namespace DebugBridgeClient
          byte[] payload;
          string err = WriteBinaryReply(ctx.Response, cmd, out payload, "application/octet-stream");
          return payload != null ? null : err;
-      }
-
-      // GET /capture?x=X&y=Y&w=W&h=H — raw ARGB8888 bytes (vram byte order
-      // A,R,G,B per pixel), w*h*4 in length. also mirrors the capture to the
-      // screen canvas so any /capture caller (ui, curl, scripts) shows up live.
-      private string Capture(HttpListenerContext ctx)
-      {
-         var q = ParseQuery(ctx.Request.Url.Query);
-         int x = IntArg(q, "x", 0), y = IntArg(q, "y", 0);
-         int w = IntArg(q, "w", 1), h = IntArg(q, "h", 1);
-         byte[] argb;
-         string err = WriteBinaryReply(ctx.Response, "capture " + x + " " + y + " " + w + " " + h, out argb);
-         if (argb == null) return err;
-         CaptureHandler handler = CaptureReceived;
-         if (handler != null && argb.Length == w * h * 4) handler(x, y, w, h, argb);
-         return null;
       }
 
       // GET /stat-tree?root=/dev_hdd0 — kicks off a recursive sha1'd snapshot
@@ -305,11 +283,6 @@ namespace DebugBridgeClient
          return q.ContainsKey(key) ? q[key] : null;
       }
 
-      private static int IntArg(Dictionary<string, string> q, string key, int fallback)
-      {
-         int v;
-         return q.ContainsKey(key) && int.TryParse(q[key], out v) ? v : fallback;
-      }
 
       private static Dictionary<string, string> ParseQuery(string query)
       {

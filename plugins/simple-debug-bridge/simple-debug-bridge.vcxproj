@@ -33,22 +33,22 @@
    </ClCompile>
    <Link>
      <AdditionalOptions>-mprx -zgenprx -zgenstub -Wl,--strip-unused-data %(AdditionalOptions)</AdditionalOptions>
-     <AdditionalDependencies>$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)\libsimple-lib-core.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;$(SolutionDir)libs\libpaf_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
+     <AdditionalDependencies>$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)\libsimple-lib-core.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;$(SolutionDir)libs\libpaf_export_stub.a;$(SolutionDir)libs\libsys_io_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
    </Link>
    </ItemDefinitionGroup>
   <ItemGroup>
    <ClCompile Include="src\prx.c" />
   </ItemGroup>
   <ItemGroup>
-   <ClInclude Include="include\capture.h" />
    <ClInclude Include="include\server.h" />
    <ClInclude Include="include\cmd-read-mem.h" />
    <ClInclude Include="include\cmd-stat-tree.h" />
-   <ClInclude Include="include\cmd-capture.h" />
    <ClInclude Include="include\cmd-file.h" />
    <ClInclude Include="include\cmd-common.h" />
    <ClInclude Include="include\cmd-introspect.h" />
    <ClInclude Include="include\cmd-trace.h" />
+   <ClInclude Include="include\cmd-pad.h" />
+   <ClInclude Include="include\cmd-game.h" />
    <ClInclude Include="include\fileio.h" />
    <ClInclude Include="include\pkg.h" />
    <ClInclude Include="include\plugin.h" />

@@ -3,10 +3,15 @@
 The on-console half of the debug bridge. It runs as a VSH plugin, opens a TCP
 listener on port **8785** (LAN), and does what the host-side tools ask it to.
 
-Pair it with `tools/debug-bridge-client/`. That host client keeps the one live
+Pair it with `tools/debug-bridge-client/`. That host client keeps a live
 connection to the PS3 and puts a plain HTTP proxy in front of it at
 `http://localhost:8786`, so scripts and the `ps3` MCP tool talk to the console
 over ordinary HTTP without knowing the wire framing.
+
+Up to **4 hosts** can be connected at once (the client, the MCP server, ad-hoc
+scripts), so nothing has to be shut down to make room. Commands run one at a
+time across all of them, and every log line goes to every connected host. A
+fifth connection is answered `ERR busy`.
 
 ## What it does
 
@@ -16,7 +21,8 @@ over ordinary HTTP without knowing the wire framing.
 - **Transfers files** both ways (pull, push, delete, list, recursive snapshot).
 - **Installs / removes VSH plugins** and edits `boot_plugins.txt`.
 - **Installs / removes games** from debug-format `.pkg` files.
-- **Reads the framebuffer** (screen capture, XMB only).
+- **Presses buttons** through a virtual controller (XMB and in-game).
+- **Starts and quits titles** (`launch` / `exit-game`).
 - **Inspects modules and processes** (list, per-module detail, import tracing).
 - **Powers the console** (soft-restart the XMB, hard reboot, shut down).
 
@@ -30,8 +36,11 @@ Every command below is implemented and working.
 | `restart-ps3` | hard reboot (`sys_sm_shutdown` mode `0x1200`) |
 | `restart-xmb` | soft restart of the XMB — restarts vsh (`sys_sm_shutdown` mode `0x0200`) |
 | `shutdown` | power off (`sys_sm_shutdown` mode `0x1100`) |
-| `display-info` | report `<width> <height> <pitch> <depth>` of the current front buffer |
-| `capture <x> <y> <w> <h>` | capture a region of the front buffer as raw ARGB8888. **XMB only** — returns `ERR` in-game. Use `display-info` first for geometry. |
+| `pad <button>[+<button>...] [holdMs]` | press buttons on a virtual controller, then release. `holdMs` defaults to 80, capped at 5000. Names: `up down left right cross circle square triangle l1 l2 r1 r2 l3 r3 start select ps`. |
+| `pad hold <buttons>` / `pad release` | keep buttons pressed / let everything go. |
+| `pad off` | unregister the virtual controller. It registers itself on first use and stays until then. |
+| `launch <TITLE_ID>` | start an installed title: points `/app_home/PS3_GAME` at `/dev_hdd0/game/<TITLE_ID>` (cobra map-paths), then drives the XMB onto that icon and presses it. |
+| `exit-game` | quit whatever is running, back to the XMB (`game_plugin` ExitGame). `ERR` if nothing is running. |
 | `read-mem <hexAddr> <decLen>` | dump `<decLen>` raw bytes from vsh memory starting at `<hexAddr>`. Payload is binary. |
 | `module-list` | one line per PRX loaded into vsh.self: `<id>\t<name>\t<filename>\n`. Includes system modules. |
 | `module-info <name>` | per-module detail: ELF segments, linkage tables, exports, imports (sectioned text). |
@@ -80,8 +89,8 @@ sticks via FTP or the file-manager instead.
 
 ## Protocol
 
-One persistent duplex TCP socket. A single host client at a time; commands run
-one at a time on that connection. Each reply is length-framed:
+One persistent duplex TCP socket per host, up to 4 of them; commands run one at
+a time across all hosts. Each reply is length-framed:
 
 ```
 request:  <command> [args...]\n
@@ -90,7 +99,7 @@ response: <STATUS> <n>\n<n bytes>
 
 `<STATUS>` is `OK` or `ERR`. `<n>` is the exact byte length of the payload that
 follows (no trailing newline). Text payloads are UTF-8 / ASCII; binary payloads
-(`capture`, `pull-file`, `read-mem`) are raw bytes. An empty payload is `OK 0\n`.
+(`pull-file`, `read-mem`) are raw bytes. An empty payload is `OK 0\n`.
 
 ### Producer log forwarding
 
@@ -153,11 +162,11 @@ simple-debug-bridge/
 │   ├── cmd-introspect.h    # module-list, process-list, process-info
 │   ├── cmd-file.h          # pull-file / push-file / delete-file / list-dir
 │   ├── cmd-stat-tree.h     # recursive sha1'd snapshot for install diffs
-│   ├── cmd-capture.h       # capture + display-info (vsh-side framebuffer read)
+│   ├── cmd-pad.h           # virtual controller (ldd pad register + button frames)
+│   ├── cmd-game.h          # launch / exit-game via the xmb's own plugins
 │   ├── cmd-trace.h         # module-trace-on / module-trace-off
 │   ├── cmd-read-mem.h      # read-mem (raw vsh memory dump)
 │   ├── fileio.h            # socket-coupled file streaming
-│   ├── capture.h           # vsh-side framebuffer + RSX FIFO helpers
 │   ├── plugin.h            # vsh plugin install/uninstall + boot_plugins.txt edits
 │   └── pkg.h               # debug-format .pkg parser + extractor
 ├── simple-debug-bridge.vcxproj

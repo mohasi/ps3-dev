@@ -35,8 +35,8 @@ static uint32_t moduleIds[MODULE_IDS_MAX];
 //   sendReply       - c-string payload, length figured out internally.
 //                     covers empty replies (""), errors, and every text OK.
 //   sendFrameHeader - write just the header for a known-size payload; caller
-//                     follows up with sendBytes / sendFileWindow / captureRegion
-//                     to produce the n bytes (capture, pull-file, module-list).
+//                     follows up with sendBytes / sendFileWindow
+//                     to produce the n bytes (pull-file, module-list).
 static inline int sendReply(int fd, const char *status, const char *text)
 {
    return sendFrame(fd, status, text, (int)getStrLen(text));

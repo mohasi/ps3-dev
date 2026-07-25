@@ -102,7 +102,6 @@
          Background="{StaticResource BgSurface}"
          Foreground="{StaticResource FgText}">
        <MenuItem x:Name="commandsMenu" Header="Commands" IsEnabled="False">
-         <MenuItem Header="Screenshot" Click="OnScreenshot" />
          <MenuItem Header="Stat Tree..." Click="OnStatTree" />
          <MenuItem IsEnabled="False" Height="2" Background="{StaticResource BrBorder}" />
          <MenuItem Header="Files">
@@ -210,19 +209,6 @@
            grid (one row per outgoing import call). -->
       <TabItem Header="Trace">
          <local:TraceView x:Name="traceView" />
-      </TabItem>
-
-      <!-- screen tab. canvas size is a pre-connect placeholder; OnConnected
-           resizes it to match the actual ps3 framebuffer reported by
-           display-info, so capture (x,y,w,h) is always screen-relative.
-           Viewbox does the scaling; Canvas does the absolute positioning. -->
-      <TabItem Header="Screen">
-         <Viewbox Stretch="Uniform">
-            <Canvas x:Name="screenCanvas"
-                    Width="1920"
-                    Height="1080"
-                    Background="#202020" />
-         </Viewbox>
       </TabItem>
 
    </TabControl>

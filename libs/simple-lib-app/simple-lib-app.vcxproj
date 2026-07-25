@@ -43,7 +43,6 @@
    <ClCompile Include="src\image-encoder.c" />
    <ClCompile Include="src\font.c" />
    <ClCompile Include="src\pad.c" />
-   <ClCompile Include="src\screenshot.c" />
    <ClCompile Include="src\screen-manager.c" />
    <ClCompile Include="src\anim.c" />
    <ClCompile Include="src\ui\button.c" />
@@ -71,7 +70,6 @@
    <ClInclude Include="include\image-loader.h" />
    <ClInclude Include="include\font.h" />
    <ClInclude Include="include\pad.h" />
-   <ClInclude Include="include\screenshot.h" />
    <ClInclude Include="include\screen.h" />
    <ClInclude Include="include\screen-manager.h" />
    <ClInclude Include="include\overlay.h" />

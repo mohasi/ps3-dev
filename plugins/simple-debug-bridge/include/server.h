@@ -3,8 +3,10 @@
 // tcp accept loop, host vs producer demux, log forwarding, and command
 // dispatch for simple-debug-bridge.
 //
-// listens on port 8785. one persistent host client at a time + up to
-// SDB_MAX_PLUGINS producer plugins + one app producer (newest wins).
+// listens on port 8785. up to SDB_MAX_HOSTS persistent host clients (the
+// desktop client, the mcp server, ad-hoc scripts) + up to SDB_MAX_PLUGINS
+// producer plugins + one app producer (newest wins). commands from all
+// hosts run one at a time, and every log line goes to every host.
 // each request is "<cmd>[ args]\n" (with optional raw upload bytes
 // after the newline for upload commands like push-file). each reply
 // is the framed format "<STATUS> <n>\n[<n bytes>]" - see sendFrame()
@@ -30,14 +32,16 @@
 #include "cmd-common.h"
 #include "cmd-introspect.h"
 #include "cmd-file.h"
-#include "cmd-capture.h"
 #include "cmd-trace.h"
 #include "cmd-read-mem.h"
 #include "cmd-stat-tree.h"
+#include "cmd-pad.h"
+#include "cmd-game.h"
 
 #define SDB_PORT          8785
 #define SDB_BUF_MAX       512
 #define SDB_LOG_BODY_MAX  4096
+#define SDB_MAX_HOSTS     4
 
 // sys_sm_shutdown modes (psdevwiki) - see syscall.h sysPower()
 enum {
@@ -51,18 +55,18 @@ enum {
 // system down externally.
 static volatile int      isServerRunning = 0;
 static int               serverListenFd  = -1;
-static int               serverHostFd    = -1; // current connected host, if any
+static int               hostFds[SDB_MAX_HOSTS]; // connected hosts, -1 when free
 static sys_ppu_thread_t  serverThreadId  = 0;
 
-// serializes writes to the host fd. command replies happen on the host
-// thread; producer LOG frames are forwarded from producer threads. without
-// this lock a producer write can interleave bytes inside a host reply
-// payload and desync the host's framed reader.
-static sys_lwmutex_t     serverHostWriteLock;
+// serializes command dispatch and every write to a host socket. replies
+// happen on that host's own thread; producer LOG frames are forwarded from
+// producer threads and fan out to all hosts. without this lock a log write
+// can interleave bytes inside a reply payload and desync a host's framed
+// reader, and two hosts could run commands at the same time.
+static sys_lwmutex_t     serverHostLock;
 
 // active producer registry. one app slot (newest wins - if a second app
-// registers we drop the previous one) and N plugin slots. capture routing
-// will later prefer the app slot when present, but logs flow from any
+// registers we drop the previous one) and N plugin slots. logs flow from any
 // registered producer to the host as soon as the host is connected.
 #define SDB_MAX_PLUGINS 8
 #define SDB_NAME_MAX    32
@@ -94,22 +98,42 @@ static int sendBacklogToHost(const char *data, int len, void *user)
    return 0;
 }
 
-// forward a LOG line from a producer thread to the host. takes the host
-// write mutex so the "LOG <n>\n<bytes>" frame never interleaves with a
+// forward a LOG line from a producer thread to every connected host. takes
+// the host lock so the "LOG <n>\n<bytes>" frame never interleaves with a
 // reply to a host command. when no host is connected, queues into the
 // ring buffer so the lines are replayed on the next host-connect.
 static void forwardLogToHost(const char *buf, int len)
 {
-   lock(&serverHostWriteLock);
-   int fd = serverHostFd;
-   if (fd >= 0) {
+   lock(&serverHostLock);
+   int sent = 0;
+   for (int i = 0; i < SDB_MAX_HOSTS; i++) {
+      int fd = hostFds[i];
+      if (fd < 0) continue;
+      sent = 1;
       if (sendFrame(fd, "LOG", buf, len) < 0) {
-         shutdown(fd, SHUT_RDWR);
+         shutdown(fd, SHUT_RDWR);   // that host's own thread notices and cleans up
       }
-   } else {
-      pushLogBacklog(&logBacklog, buf, len);
    }
-   unlock(&serverHostWriteLock);
+   if (!sent) pushLogBacklog(&logBacklog, buf, len);
+   unlock(&serverHostLock);
+}
+
+// claim a host slot for a new connection. caller holds serverHostLock.
+static int addHost(int fd)
+{
+   for (int i = 0; i < SDB_MAX_HOSTS; i++) {
+      if (hostFds[i] < 0) { hostFds[i] = fd; return i; }
+   }
+   return -1;
+}
+
+static int countHosts(void)
+{
+   int hosts = 0;
+   for (int i = 0; i < SDB_MAX_HOSTS; i++) {
+      if (hostFds[i] >= 0) hosts++;
+   }
+   return hosts;
 }
 
 // dispatch one command from the client. returns 0 on success, -1 on send
@@ -147,14 +171,6 @@ static int dispatchCommand(int cli, char *buf)
       sysPower(POWER_SHUTDOWN);
       return 0;
    }
-   if (matchCommand(buf, "display-info")) {
-      uint32_t w, h, pitch, depth;
-      char     reply[96];
-      captureDisplayInfo(&w, &h, &pitch, &depth);
-      snprintf(reply, sizeof reply, "%u %u %u %u",
-               (unsigned)w, (unsigned)h, (unsigned)pitch, (unsigned)depth);
-      return sendReply(cli, SDB_OK, reply);
-   }
    if (matchCommand(buf, "module-list")) {
       cmdModuleList(cli);
       return 0;
@@ -179,7 +195,9 @@ static int dispatchCommand(int cli, char *buf)
    else if ((args = matchCommand(buf, "delete-file"))      != 0) cmdDeleteFile     (cli, args);
    else if ((args = matchCommand(buf, "list-dir"))         != 0) cmdListDir        (cli, args);
    else if ((args = matchCommand(buf, "stat-tree"))        != 0) cmdStatTree       (cli, args);
-   else if ((args = matchCommand(buf, "capture"))          != 0) cmdCapture        (cli, args);
+   else if ((args = matchCommand(buf, "pad"))              != 0) cmdPad            (cli, args);
+   else if ((args = matchCommand(buf, "launch"))           != 0) cmdLaunchTitle    (cli, args);
+   else if ((args = matchCommand(buf, "exit-game"))        != 0) cmdExitGame       (cli, args);
    else if ((args = matchCommand(buf, "vsh-plugin-install")) != 0) {
       if (!parseNameAndSize(args, name, sizeof name, &size)) {
          sendReply(cli, SDB_ERR, "usage: vsh-plugin-install <name> <size>");
@@ -275,9 +293,9 @@ static void handleHostSession(int cli)
    while (isServerRunning) {
       int len = receiveLine(cli, buf, sizeof buf);
       if (len <= 0) return;
-      lock(&serverHostWriteLock);
+      lock(&serverHostLock);
       int rc = dispatchCommand(cli, buf);
-      unlock(&serverHostWriteLock);
+      unlock(&serverHostLock);
       if (rc < 0) return;
    }
 }
@@ -398,17 +416,16 @@ static void runConnHandler(uint64_t arg)
       logInfo("[sdb] producer disconnected: %s\n", name);
    }
    else {
-      // single-host policy: reject a second host while one is connected.
-      // publish serverHostFd under the host write lock so the log forwarder
-      // (forwardLogToHost) never races between "fd is valid" and "socket
-      // still open" — same lock guards every write to the host fd.
-      lock(&serverHostWriteLock);
-      if (serverHostFd >= 0) {
-         unlock(&serverHostWriteLock);
-         logWarn("[sdb] rejecting second host (already connected)\n");
+      // publish the slot under the host lock so the log forwarder never
+      // races between "fd is valid" and "socket still open" — the same lock
+      // guards every write to every host fd.
+      lock(&serverHostLock);
+      int slotIndex = addHost(cli);
+      if (slotIndex < 0) {
+         unlock(&serverHostLock);
+         logWarn("[sdb] rejecting host - all %d slots in use\n", SDB_MAX_HOSTS);
          sendReply(cli, SDB_ERR, "busy");
       } else {
-         serverHostFd = cli;
          // drain any logs buffered while no host was connected (plugin
          // startup, bridge startup, producer registrations) so the
          // Debug Logs tab shows the full history, not just post-connect.
@@ -416,13 +433,15 @@ static void runConnHandler(uint64_t arg)
          // the first line we already consumed is a real command; dispatch
          // it before entering the read loop.
          int rc = dispatchCommand(cli, first);
-         unlock(&serverHostWriteLock);
-         logInfo("[sdb] host connected\n");
+         int hosts = countHosts();
+         unlock(&serverHostLock);
+         logInfo("[sdb] host connected (%d of %d)\n", hosts, SDB_MAX_HOSTS);
          if (rc >= 0) handleHostSession(cli);
-         lock(&serverHostWriteLock);
-         serverHostFd = -1;
-         unlock(&serverHostWriteLock);
-         logInfo("[sdb] host disconnected\n");
+         lock(&serverHostLock);
+         hostFds[slotIndex] = -1;
+         hosts = countHosts();
+         unlock(&serverHostLock);
+         logInfo("[sdb] host disconnected (%d left)\n", hosts);
       }
    }
 
@@ -446,7 +465,7 @@ static int openListener(uint16_t port)
    a.sin_addr.s_addr = htonl(INADDR_ANY);
 
    if (bind(s, (struct sockaddr *)&a, sizeof a) < 0) { socketclose(s); return -1; }
-   if (listen(s, 2) < 0)                             { socketclose(s); return -1; }
+   if (listen(s, 8) < 0)                             { socketclose(s); return -1; }
    return s;
 }
 
@@ -527,8 +546,8 @@ static void runAcceptLoop(uint64_t arg)
       setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &ct, sizeof ct);
 
       // detached per-connection thread. handshake decides host vs producer
-      // role; host single-client enforcement lives inside the thread so
-      // producers can keep registering even while a host is connected.
+      // role; host slot claiming lives inside the thread so producers can
+      // keep registering even when every host slot is taken.
       sys_ppu_thread_t tid = 0;
       spawnThread(&tid, runConnHandler, (uint64_t)c, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "bridge-conn");
       // detached - thread self-exits on disconnect and lv2 reclaims it.
@@ -545,11 +564,13 @@ static void startServer(void)
 {
    isServerRunning = 1;
 
-   // serverHostWriteLock is recursive: dispatchCommand runs under it, and any
+   // serverHostLock is recursive: dispatchCommand runs under it, and any
    // logInfo inside dispatch re-enters via the bridge's own LOG tee. without
    // recursion that's an instant self-deadlock. registry lock is plain.
-   createRecursiveLock(&serverHostWriteLock);
+   createRecursiveLock(&serverHostLock);
    createLock(&serverRegistryLock);
+
+   for (int i = 0; i < SDB_MAX_HOSTS; i++) hostFds[i] = -1;
 
    appSlot.fd = -1;
    appSlot.name[0] = '\0';
@@ -572,11 +593,14 @@ static void stopServer(void)
 {
    logInfo("[sdb] stopServer\n");
    isServerRunning = 0;
+   closeVirtualPad();   // don't leave a fake controller registered with lv2
 
-   // wake any in-progress host recv
-   if (serverHostFd >= 0) {
-      shutdown(serverHostFd, SHUT_RDWR);
+   // wake any in-progress host recvs
+   lock(&serverHostLock);
+   for (int i = 0; i < SDB_MAX_HOSTS; i++) {
+      if (hostFds[i] >= 0) shutdown(hostFds[i], SHUT_RDWR);
    }
+   unlock(&serverHostLock);
    // wake any in-progress producer recvs
    lock(&serverRegistryLock);
    if (appSlot.fd >= 0) shutdown(appSlot.fd, SHUT_RDWR);

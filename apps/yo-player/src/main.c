@@ -13,7 +13,6 @@
 #include "gfx.h"
 #include "colors.h"
 #include "pad.h"
-#include "screenshot.h"
 #include "audio.h"
 #include "font.h"
 #include "screen-manager.h"
@@ -50,7 +49,6 @@ int main(int argc, char **argv)
    if (initFont() != 0) return 1;
    if (initIconFont() != 0) logError("[yt] embedded icon font failed to load; icons will be blank\n");
    initPad();
-   enableScreenshot();
 
    initStats(5, 5, 14, COLOR_AMBER_300);
    initStorage();          // prefs (last category) + watch history, under /dev_hdd0/tmp/yo-player/
@@ -64,7 +62,6 @@ int main(int argc, char **argv)
    while (!appExitRequested) {
       appPoll();
       updatePad();
-      handleScreenshot();
       updateScreen();
 
       beginGfxFrame();

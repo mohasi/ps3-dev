@@ -8,7 +8,6 @@
 #include "gfx.h"
 #include "colors.h"
 #include "pad.h"
-#include "screenshot.h"
 #include "audio.h"
 #include "font.h"
 #include "screen-manager.h"
@@ -46,7 +45,6 @@ int main(int argc, char **argv)
    if (initAudio() != 0) return 1;
    if (initFont() != 0) return 1;
    initPad();
-   enableScreenshot();
    loadConsoleGlyphs();   // decode the console's own button glyphs for footer/keyboard hints
    if (initIconFont() != 0) logError("[icons] embedded icon font failed to load; icons will be blank\n");
    initCheckboxIcons();   // rasterise the checkbox box/check glyphs once
@@ -58,7 +56,6 @@ int main(int argc, char **argv)
    while (!appExitRequested) {
       appPoll();
       updatePad();
-      handleScreenshot();
       updateScreen();
 
       beginGfxFrame();

@@ -3,7 +3,7 @@
 Reusable static library for PS3 homebrew **apps** (NPDRM EBOOTs). Sony official SDK 4.75.
 
 It provides the whole drawing-and-input side of an app: an RSX 2D renderer, fonts and text, a
-flat/Metro UI widget set, controller input, a screen/overlay framework, and screenshots. Apps link
+flat/Metro UI widget set, controller input, and a screen/overlay framework. Apps link
 it and build their screens on top; the file manager, yo-player, and the Ren'Py/video players all use it.
 
 Audio and video *playback* live in the separate `simple-lib-av` library — this lib only draws (it does
@@ -92,9 +92,6 @@ widgets expose a `retheme*` call to recolour on a live theme switch.
 - **Images** (`image-loader.h`): asynchronous PNG/JPEG decode on a background worker thread (decodes to
   a heap ARGB buffer; the main thread uploads to VRAM), so large images don't freeze the UI.
   Generation-based request superseding, oversized-JPEG downscaling, 4096×4096 cap.
-- **Screenshots** (`screenshot.h`, `image-encoder.c`): `enableScreenshot` + `handleScreenshot` save
-  the front buffer to `/dev_hdd0/tmp/screenshots/<timestamp>.png` on L3+R3; `takeScreenshot` captures
-  on demand. Needs `-lpngenc_stub`. Encode is synchronous (a brief hitch that frame).
 - **On-screen keyboard** (`osk-input.h`): non-blocking wrapper around the system OSK (`cellOskDialog`),
   driven by the app's existing `appPoll`; result comes back through a completion callback.
 - **File tasks** (`file-task.h`): run one long copy/move/delete on a background thread with byte
@@ -118,7 +115,7 @@ widgets expose a `retheme*` call to recolour on a live theme switch.
 2. In your app's vcxproj:
    - Add `$(SolutionDir)libs\simple-lib-app\include` to include directories.
    - Link with `-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app`.
-   - Add `-lpngenc_stub` only if you use screenshots.
+   - Add `-lpngenc_stub` only if you save PNGs (`savePngArgb`).
 3. Include headers as needed: `#include "gfx.h"`, `#include "font.h"`, `#include "ui/label.h"`, etc.
 
 Shaders (`vpshader.cg`, `fpshader.cg`, `fpshader-yuv.cg`) are compiled as custom build steps inside

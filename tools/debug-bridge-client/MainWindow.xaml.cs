@@ -5,7 +5,6 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -40,11 +39,6 @@ namespace DebugBridgeClient
          ps3.LogReceived  += OnPs3Log;
 
          httpBridge = new HttpBridge(ps3, AppendLog);
-         // mirror http-driven captures to the canvas so any /capture call
-         // (curl, browser, scripts) shows up live in the screen tab.
-         httpBridge.CaptureReceived += (x, y, w, h, argb) =>
-            Dispatcher.BeginInvoke(DispatcherPriority.Normal,
-                new Action(() => DrawCapture(x, y, w, h, argb)));
 
          logFlushTimer = new DispatcherTimer(DispatcherPriority.Background) {
             Interval = TimeSpan.FromMilliseconds(33)
@@ -76,33 +70,6 @@ namespace DebugBridgeClient
       private void OnConnected()
       {
          SetConnectionStatus(true);
-         // size the canvas to the ps3's actual framebuffer so capture
-         // coordinates are screen-relative regardless of 720p/1080p output.
-         System.Threading.ThreadPool.QueueUserWorkItem(delegate
-         {
-             string reply = SendText("display-info");
-             int w, h;
-             if (TryParseDisplayInfo(reply, out w, out h))
-             {
-                 Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
-                 {
-                     screenCanvas.Width  = w;
-                     screenCanvas.Height = h;
-                     AppendLog("display: " + w + "x" + h);
-                 }));
-             }
-         });
-      }
-
-      // "OK <w> <h> <pitch> <depth>" -> w, h.
-      private static bool TryParseDisplayInfo(string reply, out int w, out int h)
-      {
-         w = 0; h = 0;
-         if (reply == null) return false;
-         string status = reply.Split('\n')[0];
-         if (!status.StartsWith("OK ")) return false;
-         string[] parts = status.Substring(3).Split(' ');
-         return parts.Length >= 2 && int.TryParse(parts[0], out w) && int.TryParse(parts[1], out h);
       }
 
       private void SetConnectionStatus(bool connected)
@@ -121,95 +88,6 @@ namespace DebugBridgeClient
       private void OnRestartXmb(object sender, RoutedEventArgs e) { RunCommand("restart-xmb"); }
       private void OnRestartPs3(object sender, RoutedEventArgs e) { RunCommand("restart-ps3"); }
       private void OnShutdown(object sender, RoutedEventArgs e) { RunCommand("shutdown"); }
-
-      // wired to Commands -> Screenshot. captures the whole screen (display-info
-      // gives the current 720p/1080p size), draws it on the canvas, then prompts
-      // to save it as a PNG. drawing happens before the dialog so Cancel still
-      // leaves the shot on the canvas.
-      private void OnScreenshot(object sender, RoutedEventArgs e)
-      {
-         if (!ps3.IsConnected) { AppendLog("not connected"); return; }
-         System.Threading.ThreadPool.QueueUserWorkItem(delegate
-         {
-             int w, h;
-             if (!TryParseDisplayInfo(SendText("display-info"), out w, out h))
-             {
-                 AppendLog("screenshot failed: no display info");
-                 return;
-             }
-             Ps3Reply r = ps3.SendCommand("capture 0 0 " + w + " " + h);
-             if (!r.Ok || r.Payload.Length != w * h * 4)
-             {
-                 AppendLog("screenshot failed: " + (r.Ok ? "short capture" : r.AsText().TrimEnd('\n')));
-                 return;
-             }
-             byte[] argb = r.Payload;
-             Dispatcher.BeginInvoke(new Action(delegate
-             {
-                 DrawCapture(0, 0, w, h, argb);
-                 SaveScreenshot(w, h, argb);
-             }));
-         });
-      }
-
-      // prompt for a PNG destination, default name a timestamp. Cancel = discard
-      // (the shot is already on the canvas). encodes the shared BGRA bitmap.
-      private void SaveScreenshot(int w, int h, byte[] argb)
-      {
-         SaveFileDialog dlg = new SaveFileDialog();
-         dlg.Title    = "Save screenshot";
-         dlg.FileName = "screenshot-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png";
-         dlg.Filter   = "PNG image (*.png)|*.png|All files (*.*)|*.*";
-         if (dlg.ShowDialog(this) != true) return;
-         try
-         {
-             var encoder = new PngBitmapEncoder();
-             encoder.Frames.Add(BitmapFrame.Create(CaptureToBitmap(w, h, argb)));
-             using (var file = File.Create(dlg.FileName)) encoder.Save(file);
-             AppendLog("saved screenshot to " + dlg.FileName);
-         }
-         catch (Exception ex) { AppendLog("save failed: " + ex.Message); }
-      }
-
-      // vram byte order is A,R,G,B per pixel (big-endian ARGB word). wpf's
-      // Bgra32 expects B,G,R,A, so swap. forced opaque alpha because vram
-      // alpha is unreliable.
-      private static BitmapSource CaptureToBitmap(int w, int h, byte[] argb)
-      {
-         byte[] bgra = new byte[argb.Length];
-         for (int i = 0; i < argb.Length; i += 4)
-         {
-            bgra[i + 0] = argb[i + 3];
-            bgra[i + 1] = argb[i + 2];
-            bgra[i + 2] = argb[i + 1];
-            bgra[i + 3] = 0xFF;
-         }
-         return BitmapSource.Create(w, h, 96, 96, PixelFormats.Bgra32, null, bgra, w * 4);
-      }
-
-      // partial captures get a thin lime border so they're visible against the
-      // dark canvas; full-screen captures get none (they cover everything).
-      // thickness is in canvas units, so the Viewbox scales it with the tile.
-      private void DrawCapture(int x, int y, int w, int h, byte[] argb)
-      {
-         var bmp = CaptureToBitmap(w, h, argb);
-         var img = new Image { Source = bmp, Width = w, Height = h, Stretch = Stretch.Fill };
-         UIElement tile = img;
-         bool fullScreen = x == 0 && y == 0 && w >= screenCanvas.Width && h >= screenCanvas.Height;
-         if (!fullScreen)
-         {
-            tile = new Border
-            {
-               Child = img,
-               BorderBrush = Brushes.Lime,
-               BorderThickness = new Thickness(2),
-               Width = w, Height = h
-            };
-         }
-         Canvas.SetLeft(tile, x);
-         Canvas.SetTop(tile, y);
-         screenCanvas.Children.Add(tile);
-      }
 
       // walk a ps3 subtree and have the bridge write a sha1'd snapshot to
       // /dev_hdd0/tmp/stat-tree.txt. used for before/after install diffs to

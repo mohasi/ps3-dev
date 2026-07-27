@@ -27,7 +27,7 @@ static const char *DEFAULT_SETTINGS =
    "\n"
    "# saved settings - updated as you change them in-stream, applied on the next launch\n"
    "saved-input-mode     = controller        # mouse | mouse+keyboard | controller\n"
-   "saved-streaming-mode = 720p60-vsync-off   # 720p60-vsync-off | 720p60-vsync | 720p60-buffer\n";
+   "saved-streaming-mode = 720p60-vsync       # 720p60-vsync-off | 720p60-vsync | 720p60-buffer\n";
 
 // the settings.txt key each action reads, indexed by ShortcutAction
 static const char *actionKeys[SHORTCUT_COUNT] = {

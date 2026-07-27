@@ -20,7 +20,11 @@ namespace CellStreamServer
       private const int ServerPort = 38310;
       private const int BeaconPort = 38311;
       private const int ClientTimeoutMs = 3000;   // no word from the PS3 for this long = it is gone
+      // before the first pad arrives the PS3 is still finishing the handshake (and its resolution switch), so
+      // give the stream a longer grace to latch on - tearing down at ClientTimeoutMs mid-handshake made it loop.
+      private const int StreamStartupGraceMs = 10000;
       private const int WatchdogTickMs = 500;
+      private static volatile bool streamConfirmed;   // a pad packet has arrived, so the PS3 really is streaming
       private const int BindAttempts = 25, BindRetryMs = 200;   // ~5s for the copy we are replacing to let the port go
 
       private static readonly Stopwatch SinceLastClientPacket = Stopwatch.StartNew();
@@ -40,12 +44,11 @@ namespace CellStreamServer
 
       private const uint EsContinuous = 0x80000000, EsDisplayRequired = 0x00000002, EsSystemRequired = 0x00000001;
 
-      // screen capture of a sleeping display returns black frames - the stream keeps running at
-      // full frame rate and looks perfectly healthy, it is just a picture of a switched-off screen.
-      // so hold the display awake for as long as the server runs.
-      private static void keepDisplayAwake()
+      // capturing a slept display returns black frames, so hold the display on and the PC awake WHILE
+      // streaming. when idle we release it (EsContinuous alone) so the screen sleeps normally.
+      private static void keepDisplayAwake(bool streaming)
       {
-         SetThreadExecutionState(EsContinuous | EsDisplayRequired | EsSystemRequired);
+         SetThreadExecutionState(streaming ? (EsContinuous | EsDisplayRequired | EsSystemRequired) : EsContinuous);
       }
 
       // the settings, deliberately baked in: this is an appliance, not a command line. (the PS3 will get
@@ -66,7 +69,6 @@ namespace CellStreamServer
       public static bool Start()
       {
          timeBeginPeriod(1);   // 1ms Thread.Sleep resolution; the video pacing depends on it
-         keepDisplayAwake();
          if (!BindSocket()) return false;
 
          string ffmpegPath = Path.Combine(ExeFolder, "ffmpeg.exe");
@@ -246,6 +248,7 @@ namespace CellStreamServer
             // the pad arrives 60 times a second, so match it before anything else and never log it
             if (length >= PadReceiver.PacketBytes && buffer[0] == 'C' && buffer[1] == 'P')
             {
+               streamConfirmed = true;   // the PS3 has latched on; the watchdog can hold it to the normal timeout
                padReceiver.Handle(buffer, length, (IPEndPoint)sender);
                continue;
             }
@@ -264,6 +267,7 @@ namespace CellStreamServer
                {
                   ConnectedPs3 = ((IPEndPoint)sender).Address.ToString();
                   // the desktop must be at the streaming size BEFORE ffmpeg starts capturing it
+                  keepDisplayAwake(true);
                   displayMode.MatchTo(Width, Height, Fps);
                   liveStreamer.Start((IPEndPoint)sender);   // repeat PLAYs are ignored inside
                   audioStreamer.Start((IPEndPoint)sender);
@@ -303,8 +307,10 @@ namespace CellStreamServer
             if (liveStreamer != null) liveStreamer.Stop();
             if (audioStreamer != null) audioStreamer.Stop();
             ConnectedPs3 = null;
+            streamConfirmed = false;
             padReceiver.Release();
             displayMode.Restore();
+            keepDisplayAwake(false);   // idle again: let the screen sleep
             if (wasStreaming) Log("stream stopped: " + why + ". waiting for the PS3 again.");
          }
       }
@@ -324,8 +330,9 @@ namespace CellStreamServer
                if (displayMode.IsChanged) StopStreaming("the encoder stopped on its own");
                continue;
             }
-            if (SinceLastClientPacket.ElapsedMilliseconds < ClientTimeoutMs) continue;
-            StopStreaming("nothing from the PS3 for " + ClientTimeoutMs + "ms");
+            int timeout = streamConfirmed ? ClientTimeoutMs : StreamStartupGraceMs;
+            if (SinceLastClientPacket.ElapsedMilliseconds < timeout) continue;
+            StopStreaming("nothing from the PS3 for " + timeout + "ms");
          }
       }
 

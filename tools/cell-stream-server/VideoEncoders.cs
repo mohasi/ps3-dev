@@ -16,9 +16,13 @@ namespace CellStreamServer
       public override string ToString() { return Name; }   // what the dropdown shows
    }
 
-   // the encoders we know how to drive, best first. which of them this PC can actually run is found out
-   // once, at start-up, by asking each to encode a single frame - a machine with no NVIDIA card should
-   // never be offered nvenc, let alone waste a second failing it on every stream.
+   // the encoders we know how to drive, best first (the first one a PC can run is the default). which of
+   // them this PC can actually run is found out once, at start-up, by asking each to encode a single frame -
+   // a machine with no NVIDIA card should never be offered nvenc, let alone waste a second failing it.
+   //
+   // Intel Quick Sync leads because the PS3's decoder handles its stream the most reliably. nvenc and amf
+   // intra-refresh streams make cellVdec's decode time creep up over a session and can leave artifacts that
+   // only a server restart clears, so they sit below Quick Sync as fallbacks. any of them is still selectable.
    internal static class VideoEncoders
    {
       private const string SettingsKey = @"Software\CellStreamServer";
@@ -28,12 +32,12 @@ namespace CellStreamServer
 
       public static readonly VideoEncoder[] Ladder =
       {
+         new VideoEncoder { Kind = EncoderKind.QuickSync, Name = "Intel GPU (Quick Sync)",
+                            ProbeArguments = ProbeSource + " -c:v h264_qsv -f null -" },
          new VideoEncoder { Kind = EncoderKind.Nvenc, Name = "NVIDIA GPU (nvenc)",
                             ProbeArguments = ProbeSource + " -c:v h264_nvenc -f null -" },
          new VideoEncoder { Kind = EncoderKind.Amf, Name = "AMD GPU (amf)",
                             ProbeArguments = ProbeSource + " -c:v h264_amf -f null -" },
-         new VideoEncoder { Kind = EncoderKind.QuickSync, Name = "Intel GPU (Quick Sync)",
-                            ProbeArguments = ProbeSource + " -c:v h264_qsv -f null -" },
          new VideoEncoder { Kind = EncoderKind.Cpu, Name = "CPU (x264 - expect reduced fps)",
                             ProbeArguments = ProbeSource + " -c:v libx264 -f null -" }
       };

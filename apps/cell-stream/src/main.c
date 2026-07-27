@@ -77,7 +77,7 @@ static const StreamMode streamModes[] = {
    { "720p/60 vsync + one-frame buffer", "720p60-buffer",    1, 1 },
 };
 #define STREAM_MODE_COUNT   ((int)(sizeof streamModes / sizeof streamModes[0]))
-#define DEFAULT_STREAM_MODE 0   // 720p/60 vsync off
+#define DEFAULT_STREAM_MODE 1   // 720p/60 vsync - perceived as the most fluid
 
 #define KEY_INPUT_MODE     "saved-input-mode"
 #define KEY_STREAMING_MODE "saved-streaming-mode"
@@ -164,7 +164,12 @@ static void sendPadStateToServer(void)
 {
    unsigned down = getPadDownButtons();
    unsigned heldBack = padForwardKeyboardHeldBack;
-   if (down & (1u << PAD_BTN_SELECT)) heldBack |= getShortcutHeldBackMask();
+
+   // SELECT is the app's modifier, but only when a combo button is pressed with it - hold back SELECT and
+   // the combo buttons then. SELECT on its own passes straight through as the gamepad's Select/Back.
+   unsigned shortcutMask = getShortcutHeldBackMask();               // SELECT + every bound combo button
+   unsigned comboButtons = shortcutMask & ~(1u << PAD_BTN_SELECT);
+   if ((down & (1u << PAD_BTN_SELECT)) && (down & comboButtons)) heldBack |= shortcutMask;
 
    Stick left = getPadLeftStick(), right = getPadRightStick();
    sendPadState(down & ~heldBack, left.x, left.y, right.x, right.y);

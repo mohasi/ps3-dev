@@ -43,10 +43,10 @@ ffmpeg only with that trade-off in mind.
 ## How it works
 
 - **Video** — ffmpeg `ddagrab` (Windows' GPU screen capture) → GPU scaler → H.264, tuned for latency:
-  no B-frames, intra refresh instead of keyframes, one slice, one frame of encoder queue. It uses the
-  best encoder the PC has — NVIDIA (nvenc), Intel (Quick Sync), or AMD (AMF) — and falls back to the CPU
-  (x264) if none work, remembering whichever succeeded. Each frame goes out the moment it leaves the
-  encoder — no file, no pacing, no buffering.
+  no B-frames, intra refresh instead of keyframes, one slice, one frame of encoder queue. It prefers Intel
+  (Quick Sync) because the PS3 decodes its stream most reliably, then NVIDIA (nvenc) or AMD (amf), and falls
+  back to the CPU (x264). You can pick a specific encoder in the window, which is then remembered. Each frame
+  goes out the moment it leaves the encoder — no file, no pacing, no buffering.
 - **Audio** — the desktop mix, alongside the picture.
 - **Input** — pad packets from the PS3 drive either the virtual gamepad or the mouse/keyboard; the
   PS3 cycles input modes with SELECT + Cross. On-screen-keyboard characters arrive as `KEY` packets

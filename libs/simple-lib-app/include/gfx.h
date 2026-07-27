@@ -2,6 +2,9 @@
 
 // 2D graphics over libgcm/RSX.
 // Color format: 0xAARRGGBB. Origin at top-left.
+// All drawing uses a virtual 1920x1080 canvas: lay screens out for 1080p and the GPU
+// scales the frame to the TV's real resolution (720p/576p/480p) automatically.
+// getGfxScreenWidth/Height return the virtual size; getGfxDisplayBuffer is real pixels.
 
 #include <stdint.h>
 #include <stddef.h>
@@ -9,7 +12,7 @@
 #define AUTO 0
 
 typedef enum {
-   GFX_FILTER_NEAREST = 0, // sharp, pixelated - good for pixel art and sprites
+   GFX_FILTER_NEAREST = 0, // sharp, pixelated - good for pixel art and sprites (auto-switches to linear on sub-1080p screens, where nothing draws 1:1)
    GFX_FILTER_LINEAR  = 1  // smooth, blended - good for text and photos
 } GfxFilter;
 
@@ -109,6 +112,7 @@ void *allocGfxVideoBuffer(size_t size);
 void  freeGfxVideoBuffer(void *buffer);
 void  drawGfxYuvFrame(int x, int y, int w, int h, const void *yuvPlanes, int frameW, int frameH);
 
+// the virtual canvas size (always 1920x1080), NOT the TV's real resolution
 int getGfxScreenWidth(void);
 int getGfxScreenHeight(void);
 

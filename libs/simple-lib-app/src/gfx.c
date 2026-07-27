@@ -45,14 +45,25 @@ typedef struct {
    float u, v;
 } GfxVertex;
 
+// Apps always draw on a virtual 1920x1080 canvas regardless of the TV's real resolution.
+// The clip-space conversion divides by the virtual size while the viewport is the real
+// surface, so the GPU scales everything down (720p, 576p, 480p) for free. On a 1080p
+// screen virtual == physical and nothing changes.
+#define VIRTUAL_W 1920
+#define VIRTUAL_H 1080
+
 static int       initialized = 0;
-static int       screenW = 0;        // display buffer dimensions (the flipped surface)
+static int       screenW = 0;        // display buffer dimensions (the flipped surface, real pixels)
 static int       screenH = 0;
-// Dimensions of the CURRENT render target (the display buffer, or a bound offscreen
-// target). All drawing math (clip-space, clamping, viewport, scissor) uses these so the
-// same draw calls work whether we're rendering to screen or to a texture.
+// Logical drawing space of the CURRENT render target: the virtual canvas for the display
+// buffer, or an offscreen target's own w*h. All draw-call math (clip-space, clamping)
+// divides by these, which is what maps virtual coordinates onto the real viewport.
 static int       targetW = 0;
 static int       targetH = 0;
+// Real pixel dimensions of the currently bound surface (viewport/scissor use these).
+static int       surfaceW = 0;
+static int       surfaceH = 0;
+static int       targetIsDisplay = 0;   // drawing to the screen buffer (vs an offscreen target)
 static uint32_t  framePitch = 0;
 static uint32_t  frameOffset[FRAME_COUNT];
 static uint32_t  backBuffer = 0;
@@ -221,10 +232,11 @@ uint64_t getGfxFlipWaitUs(void)
    return lastFlipWaitUs;
 }
 
-// Binds a linear (CELL_GCM_SURFACE_PITCH) RGBA color surface as the render target and
-// records its size as the current target. Works for both the display buffer and an
-// offscreen texture (offset/pitch 64-byte aligned). Sets the viewport + scissor to match.
-static void setSurface(uint32_t offset, uint32_t pitch, int w, int h)
+// Binds a linear (CELL_GCM_SURFACE_PITCH) RGBA color surface as the render target and sets
+// the viewport + scissor to its real w*h. logicalW/logicalH is the coordinate space draw
+// calls use on it: the virtual canvas for the display buffer, its own w*h for an offscreen
+// texture (offset/pitch 64-byte aligned).
+static void setSurface(uint32_t offset, uint32_t pitch, int w, int h, int logicalW, int logicalH)
 {
    CellGcmSurface sf;
    memset(&sf, 0, sizeof(sf));
@@ -258,8 +270,10 @@ static void setSurface(uint32_t offset, uint32_t pitch, int w, int h)
 
    cellGcmSetSurface(CTX, &sf);
 
-   targetW = w;
-   targetH = h;
+   targetW  = logicalW;
+   targetH  = logicalH;
+   surfaceW = w;
+   surfaceH = h;
 
    float scale[4]  = { w * 0.5f,  h * -0.5f, 0.5f, 0.0f };
    float offs[4]   = { w * 0.5f,  h *  0.5f, 0.5f, 0.0f };
@@ -269,7 +283,8 @@ static void setSurface(uint32_t offset, uint32_t pitch, int w, int h)
 
 static void setRenderTarget(void)
 {
-   setSurface(frameOffset[backBuffer], framePitch, screenW, screenH);
+   setSurface(frameOffset[backBuffer], framePitch, screenW, screenH, VIRTUAL_W, VIRTUAL_H);
+   targetIsDisplay = 1;
 }
 
 int initGfx(GfxVsync vsync)
@@ -421,7 +436,7 @@ int initGfx(GfxVsync vsync)
       cellGcmAddressToOffset(&batchVerts[i][0].u, &batchUvOffset[i]);
    }
 
-   logInfo("[gfx] ready: %d x %d, pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, framePitch, getUsedVram(), vramSize);
+   logInfo("[gfx] ready: %d x %d (virtual %d x %d), pitch=%u, vram_used=%zu/%zu\n", screenW, screenH, VIRTUAL_W, VIRTUAL_H, framePitch, getUsedVram(), vramSize);
    return 0;
 }
 
@@ -474,7 +489,7 @@ void beginGfxFrame(void)
 void clearGfx(uint32_t argb)
 {
    if (!initialized) return;
-   cellGcmSetScissor(CTX, 0, 0, targetW, targetH);
+   cellGcmSetScissor(CTX, 0, 0, surfaceW, surfaceH);
    cellGcmSetClearColor(CTX, argb);
    cellGcmSetClearSurface(CTX, CELL_GCM_CLEAR_R | CELL_GCM_CLEAR_G | CELL_GCM_CLEAR_B | CELL_GCM_CLEAR_A);
 }
@@ -727,6 +742,12 @@ void drawGfxTexture(int x, int y, int w, int h, GfxTexture tex, float u0, float 
 {
    if (!initialized || tex.w == 0 || tex.h == 0) return;
 
+   // nearest is crisp only at 1:1. on a sub-1080p screen every draw is shrunk from the virtual
+   // canvas, so force smooth filtering there or text and sprites go blocky. offscreen targets
+   // stay 1:1 (their logical size is their real size) and keep the caller's choice.
+   if (filter == GFX_FILTER_NEAREST && targetIsDisplay && screenW != VIRTUAL_W)
+      filter = GFX_FILTER_LINEAR;
+
    // flush if texture or filter mode changes
    if (tex.offset != batchTexOffset || filter != batchTexLinear) {
       flushBatch();
@@ -889,8 +910,9 @@ void finishGfx(void)
    cellGcmFinish(CTX, ++finishRef);  // block until the RSX drains the command buffer
 }
 
-int getGfxScreenWidth(void)  { return screenW; }
-int getGfxScreenHeight(void) { return screenH; }
+// virtual canvas size, not the TV's real resolution -- all layout happens in this space
+int getGfxScreenWidth(void)  { return VIRTUAL_W; }
+int getGfxScreenHeight(void) { return VIRTUAL_H; }
 
 int getGfxCoreClockMhz(void)
 {
@@ -964,7 +986,8 @@ void beginGfxRenderTarget(GfxRenderTarget *rt)
 {
    if (!initialized || !rt || rt->tex.offset == 0) return;
    flushBatch();   // anything still queued belongs to the previous target
-   setSurface(rt->tex.offset, (uint32_t)rt->tex.pitch, rt->tex.w, rt->tex.h);
+   setSurface(rt->tex.offset, (uint32_t)rt->tex.pitch, rt->tex.w, rt->tex.h, rt->tex.w, rt->tex.h);
+   targetIsDisplay = 0;
 }
 
 // Returns a CPU-readable pointer to the FRONT (currently displayed) framebuffer in local memory --

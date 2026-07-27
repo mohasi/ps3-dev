@@ -13,13 +13,12 @@ namespace RenpyToPs3
    //   pack <game-dir> <out.rpk> [--max <px>] [--ascii-text] [--ffmpeg <path>] | rpk <file>
    internal static class Program
    {
-      private static int Main(string[] args)
+      // the command-line engine behind the GUI: MainWindow builds args and calls this;
+      // all Console output is redirected into the window's log pane
+      internal static int Run(string[] args)
       {
          try
          {
-            // Ren'Py scripts are UTF-8; emit UTF-8 regardless of console codepage.
-            try { Console.OutputEncoding = Encoding.UTF8; } catch { }
-
             if (args.Length == 0) { PrintUsage(); return 0; }
 
             string command = args[0].ToLower();

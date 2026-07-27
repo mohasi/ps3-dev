@@ -185,8 +185,8 @@ Dumps firmware NIDs (symbol IDs) from PS3 modules, for resolving VSH/system symb
 See `tools/nid-dump/README.md`.
 
 ### renpy-to-ps3
-Packages Ren'Py visual-novel games into a runnable PS3 build. See
-`tools/renpy-to-ps3/README.md`.
+Dark-theme WPF GUI that converts Ren'Py visual-novel games into a single `.rpk`
+bundle for the on-console renpy-player. See `tools/renpy-to-ps3/README.md`.
 
 ### rco-studio
 Dark-theme WPF GUI for editing PS3 XMB resource files (RCOs). Drives bundled rcomage +

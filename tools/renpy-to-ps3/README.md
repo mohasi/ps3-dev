@@ -17,58 +17,56 @@ Open `ps3-dev.sln` in Visual Studio and build, or use MSBuild:
 msbuild tools\renpy-to-ps3\renpy-to-ps3.csproj /p:Configuration=Release
 ```
 
-Output: `tools\renpy-to-ps3.exe`. Targets .NET Framework 4.0.
+Output: `tools\renpy-to-ps3\bin\renpy-to-ps3.exe`, a windowed app. Targets .NET Framework 4.0.
 
 ## Usage
 
-```
-renpy-to-ps3 <command> [args...]
+Run `renpy-to-ps3.exe`, pick a task from the dropdown, fill in the paths and
+press Run. Everything the tool reports appears in the log pane at the bottom.
 
-Commands:
-  list <rpa-file>                         List archive contents
-  extract <rpa-file> <output>             Extract an .rpa archive to a folder
-  info <game-dir>                         Report which Ren'Py constructs the game
-                                          uses and whether it is convertible
-  compile <rpyc|game-dir> [out.rbc]       Compile scripts to intermediate form;
-                                          write bytecode if out.rbc is given
-  pack <game-dir> <out.rpk> [options]     Full convert: compile + transcode +
-                                          bundle into one .rpk
-  rpk <file>                              Inspect an .rpk bundle (contents + sizes)
-```
+Tasks:
 
-`pack` options:
-
-| Option | Meaning |
+| Task | What it does |
 |---|---|
-| `--max <px>` | cap the longest image edge (default 1920) so assets fit the target |
-| `--ascii-text` | replace curly quotes / ellipsis with plain ASCII (system-font fallback) |
-| `--ffmpeg <path>` | use a specific ffmpeg instead of the bundled one |
-| `--no-cache` | re-encode every asset, ignoring the cache |
-| `--clear-cache` | wipe the asset cache first, then pack and repopulate it |
+| Convert a game to a PS3 bundle | Compile + transcode + bundle into one `.rpk` |
+| Check if a game is convertible | Report which Ren'Py constructs the game uses |
+| Compile scripts to bytecode | Compile scripts; optionally write a `.rbc` file |
+| List / extract an archive | Look inside or unpack an `.rpa` archive |
+| Inspect a bundle | Show an `.rpk`'s contents and sizes |
+| Script diagnostics | Show as text / raw tree / animation nodes for one `.rpyc` |
 
-`pack` also writes a `<out.rpk>.log` alongside the bundle with the full run
-transcript. Repeated packs reuse cached encoded assets (keyed by content +
-settings) so only changed files are re-encoded.
+Convert options: max image size (longest edge, default 1920 px), plain
+quotes/dots (replace curly quotes / ellipsis for fonts that lack them), and
+no cache / clear cache (asset cache control). The bundled `ffmpeg.exe` is
+used automatically.
+
+Converting also writes a `<out.rpk>.log` alongside the bundle with the full
+run transcript. Repeated conversions reuse cached encoded assets (keyed by
+content + settings) so only changed files are re-encoded.
 
 ## How it works
 
 1. **Read** — `.rpa` archives and `.rpyc` compiled scripts (Ren'Py stores the
    latter as Python pickles, which the tool parses without Python).
-2. **Classify** (`info`) — walks the scripts and sorts every construct into
+2. **Classify** — walks the scripts and sorts every construct into
    supported / partial / deferred / unsupported buckets, then gives a verdict on
    whether the game converts cleanly.
-3. **Compile** (`compile`) — lowers the linear story (say / menu / jump / call /
+3. **Compile** — lowers the linear story (say / menu / jump / call /
    if / python / show / scene / ...) into a small instruction set, then writes a
    verified `.rbc` bytecode. Reports anything it couldn't lower.
-4. **Transcode + bundle** (`pack`) — resizes and re-encodes images, audio and
+4. **Transcode + bundle** — resizes and re-encodes images, audio and
    video through ffmpeg and writes the bytecode plus all assets into one `.rpk`.
 
-`ast`, `atldump` and `script` are extra diagnostic commands for inspecting a
-single `.rpyc` (raw tree, ATL animation nodes, reconstructed script text).
+The "show as text" / "raw tree" / "animation nodes" tasks are diagnostics for
+inspecting a single `.rpyc`.
 
 ## Status
 
 Working end to end for linear-core games: read, classify, compile to verified
 bytecode, transcode assets, and produce a playable `.rpk`. Screen-language GUI
-and ATL transforms/animation are partially covered — `info` and `compile` flag
-whatever a given game needs that isn't fully supported yet.
+and ATL transforms/animation are partially covered — the check and compile
+tasks flag whatever a given game needs that isn't fully supported yet.
+
+## Credits
+
+Bundles [FFmpeg](https://ffmpeg.org) (`ffmpeg.exe`) for the asset transcoding.

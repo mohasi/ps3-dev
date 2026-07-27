@@ -1,10 +1,16 @@
+// Detour a VSH export (or a raw code address) so our own function runs on every call,
+// then the original proceeds unchanged. The patched entry is a single atomic branch into
+// an asm stub that saves the inbound state, switches to our toc, calls the C hook, restores,
+// then runs the original via a trampoline of the displaced instructions. Shared by the
+// plugins that need it (cheat menu, cd-info). One hook at a time; the hook body must be light.
+
 #include "export-hook.h"
 #include "syscall.h"
 #include "string-utilities.h"   // strEq
-#include "game-mem.h"           // writeProcMem: the shared ps3mapi write path
+#include "proc-mem.h"           // writeProcMem: the shared process-memory write path
 #include "dbg.h"
 
-#define TAG "[cht] "
+#define TAG "[hook] "
 
 #define SYS_PROCESS_GETPID  1   // vsh patches its OWN code, so writeCode writes to this pid
 
@@ -29,6 +35,11 @@ typedef struct {
 static uint32_t exportHookUserFn     = 0;   // code entry of the C hook
 static uint32_t exportHookUserToc    = 0;   // our module's toc
 static uint32_t exportHookTrampoline = 0;   // trampoline code address
+
+// the single patched entry, saved so uninstallCodeHook can put it back before
+// this module unloads (else the export keeps branching into our freed memory).
+static uint32_t hookedEntry     = 0;
+static uint32_t hookedEntryWord = 0;
 
 // inbound stub. reached by a raw far-jump from the patched export entry, so
 // r2 = callee toc and lr = original caller. save the inbound state, switch to
@@ -148,8 +159,8 @@ static int emitBranch(uint32_t *out, uint32_t target, uint32_t bo, uint32_t bi,
 
 // copy one instruction into the trampoline, rewriting pc-relative branches
 // to absolute far branches (their offset is relative to the original site).
-// everything else — normal instructions and register-indirect branches
-// (bctr/blr) — is position-independent and copied verbatim. returns the
+// everything else - normal instructions and register-indirect branches
+// (bctr/blr) - is position-independent and copied verbatim. returns the
 // number of instructions written.
 static int relocateInstr(uint32_t *out, uint32_t srcAddr, uint32_t instr)
 {
@@ -171,12 +182,11 @@ static int relocateInstr(uint32_t *out, uint32_t srcAddr, uint32_t instr)
    return emitBranch(out, srcAddr + (uint32_t)offset, bo, bi, instr & 1, 1, 0);
 }
 
-int installExportHook(const char *libName, uint32_t fnid, void (*hookFn)(void))
+// detour an arbitrary code address (same mechanism as the export hook, but the
+// entry is given directly - used to patch on-demand firmware modules resolved
+// at runtime). one hook at a time (single trampoline slot).
+int installCodeHook(uint32_t entry, void (*hookFn)(void))
 {
-   Opd *target = findExport(libName, fnid);
-   if (!target) { logError(TAG "hook: export %s/0x%x not found\n", libName, fnid); return -1; }
-
-   uint32_t  entry     = target->func;
    uint32_t *entryCode = (uint32_t *)(uintptr_t)entry;
    logInfo(TAG "hook prologue @0x%x: %08x %08x %08x %08x\n",
            entry, entryCode[0], entryCode[1], entryCode[2], entryCode[3]);
@@ -198,15 +208,45 @@ int installExportHook(const char *libName, uint32_t fnid, void (*hookFn)(void))
    exportHookUserFn     = ((uint32_t *)(uintptr_t)hookFn)[0];   // opd -> code entry
    __sync_synchronize();
 
-   // patch the entry with an unconditional far jump to our stub (4 instrs).
-   uint32_t jump[4];
-   (void)emitBranch(jump, (uint32_t)(uintptr_t)exportHookStub, 20, 0, 0, 0, 11);
-   if (writeCode(entryCode, jump, sizeof(jump)) != 0) {
+   // patch the entry with a SINGLE relative branch to our stub. one aligned
+   // 4-byte store is atomic, so a thread calling this function mid-install
+   // never executes a half-written multi-instruction patch. that race hard-
+   // locked the console when we hooked the boot-busy connect(): a 4-instruction
+   // far jump left a window where a concurrent call ran 1-2 written words then
+   // garbage. only usable when the stub is within a branch's +-32MB reach.
+   int32_t rel = (int32_t)((uint32_t)(uintptr_t)exportHookStub - entry);
+   if (rel < -0x2000000 || rel >= 0x2000000) {
+      logError(TAG "hook: stub 0x%x out of branch range of entry 0x%x\n",
+               (uint32_t)(uintptr_t)exportHookStub, entry);
+      return -4;
+   }
+   uint32_t branch = PPC_OP_B | ((uint32_t)rel & 0x03FFFFFCu);
+   hookedEntry     = entry;          // saved so uninstallCodeHook can restore it
+   hookedEntryWord = entryCode[0];
+   if (writeCode(entryCode, &branch, sizeof branch) != 0) {
       logError(TAG "hook: entry patch failed\n");
+      hookedEntry = 0;
       return -4;
    }
 
-   logInfo(TAG "hook installed %s/0x%x entry=0x%x stub=0x%x tramp=0x%x\n",
-           libName, fnid, entry, (uint32_t)(uintptr_t)exportHookStub, exportHookTrampoline);
+   logInfo(TAG "hook installed entry=0x%x stub=0x%x tramp=0x%x\n",
+           entry, (uint32_t)(uintptr_t)exportHookStub, exportHookTrampoline);
    return 0;
+}
+
+// put the patched entry back. must run before this module unloads, otherwise the
+// export keeps branching into the memory the loader is about to reclaim.
+void uninstallCodeHook(void)
+{
+   if (hookedEntry == 0) return;
+   int rc = writeCode((uint32_t *)(uintptr_t)hookedEntry, &hookedEntryWord, sizeof hookedEntryWord);
+   logInfo(TAG "hook removed entry=0x%x rc=%d\n", hookedEntry, rc);
+   hookedEntry = 0;
+}
+
+int installExportHook(const char *libName, uint32_t fnid, void (*hookFn)(void))
+{
+   Opd *target = findExport(libName, fnid);
+   if (!target) { logError(TAG "hook: export %s/0x%x not found\n", libName, fnid); return -1; }
+   return installCodeHook(target->func, hookFn);
 }

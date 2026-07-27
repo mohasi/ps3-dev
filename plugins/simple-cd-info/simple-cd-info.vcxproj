@@ -7,8 +7,8 @@
    </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
-   <ProjectGuid>{7F3A2C10-9B4D-4E62-A1F5-2D8C6B0E4A19}</ProjectGuid>
-   <ProjectName>simple-cheat-menu</ProjectName>
+   <ProjectGuid>{7C1A9E42-5B8D-4F31-9A6C-2D4E8F70B913}</ProjectGuid>
+   <ProjectName>simple-cd-info</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
@@ -22,7 +22,7 @@
   <PropertyGroup>
    <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
    <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
-   <ExtensionsToDeleteOnClean>*.obj;*.d;*.map;*.lst;*.pch;$(TargetPath);simple-cheat-menu.sprx;$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
+   <ExtensionsToDeleteOnClean>*.obj;*.d;*.map;*.lst;*.pch;$(TargetPath);simple-cd-info.sprx;$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
    <TargetName>$(ProjectName).ppu</TargetName>
    <IgnoreImportLibrary>true</IgnoreImportLibrary>
   </PropertyGroup>
@@ -33,32 +33,21 @@
    </ClCompile>
    <Link>
      <AdditionalOptions>-mprx -zgenprx -zgenstub -Wl,--strip-unused-data %(AdditionalOptions)</AdditionalOptions>
-     <AdditionalDependencies>$(SolutionDir)libs\simple-lib-plugin\bin\$(Configuration)\libsimple-lib-plugin.a;$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)\libsimple-lib-core.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\libm.a;$(SCE_PS3_ROOT)\target\ppu\lib\libio_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libc_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnetctl_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libhttp_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libhttp_util_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libssl_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\fno-exceptions\fno-rtti\libstdc++.a;$(SolutionDir)libs\libvshtask_export_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;$(SolutionDir)libs\libpaf_export_stub.a;$(SolutionDir)libs\libsys_io_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
+     <AdditionalDependencies>$(SolutionDir)libs\simple-lib-plugin\bin\$(Configuration)\libsimple-lib-plugin.a;$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)\libsimple-lib-core.a;$(SN_PS3_PATH)\ppu\lib\sn\libsn.a;$(SCE_PS3_ROOT)\target\ppu\lib\libm.a;$(SCE_PS3_ROOT)\target\ppu\lib\libio_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\liblv2_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libfs_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libc_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libnet_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libhttp_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\libhttp_util_stub.a;$(SCE_PS3_ROOT)\target\ppu\lib\librtc_stub.a;$(SolutionDir)libs\libvshmain_export_stub.a;%(AdditionalDependencies)</AdditionalDependencies>
    </Link>
    </ItemDefinitionGroup>
   <ItemGroup>
    <ClCompile Include="src\prx.c" />
-   <ClCompile Include="src\trigger.c" />
-   <ClCompile Include="src\overlay-bridge.c" />
-   <ClCompile Include="src\raw-pad.c" />
-   <ClCompile Include="src\game-mem.c" />
-   <ClCompile Include="src\texture-probe.c" />
-   <ClCompile Include="src\cheat-fetch.c" />
-   <ClCompile Include="src\overlay.cpp">
-     <AdditionalOptions>-fno-exceptions -fno-rtti %(AdditionalOptions)</AdditionalOptions>
-   </ClCompile>
-   <ClCompile Include="src\cheat-sync.c" />
+   <ClCompile Include="src\toc.c" />
+   <ClCompile Include="src\cddb.c" />
+   <ClCompile Include="src\amg-response.c" />
+   <ClCompile Include="src\lookup.c" />
   </ItemGroup>
   <ItemGroup>
-   <ClInclude Include="include\vsh-ext.h" />
-   <ClInclude Include="include\game-mem.h" />
-   <ClInclude Include="include\texture-probe.h" />
-   <ClInclude Include="include\raw-pad.h" />
-   <ClInclude Include="include\nav-repeat.h" />
-   <ClInclude Include="include\trigger.h" />
-   <ClInclude Include="include\overlay.h" />
-   <ClInclude Include="include\cheat-sync.h" />
-   <ClInclude Include="include\cheat-fetch.h" />
+   <ClInclude Include="include\toc.h" />
+   <ClInclude Include="include\cddb.h" />
+   <ClInclude Include="include\amg-response.h" />
+   <ClInclude Include="include\lookup.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="README.md" />

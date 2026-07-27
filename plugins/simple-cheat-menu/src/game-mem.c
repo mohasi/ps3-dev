@@ -3,53 +3,11 @@
 
 #include <sys/prx.h>   // sys_prx_module_info_t / sys_prx_segment_info_t for the segments query
 
-// dbg process-memory syscalls, arg order (pid, address, size, buffer). disabled
-// on some CFW, so both paths fall back to cobra ps3mapi (syscall 8, opcode
-// 0x7777, get=0x0031 / set=0x0032) same as export-hook's code writer.
-#define SYS_DBG_READ_PROCESS_MEMORY   904
-#define SYS_DBG_WRITE_PROCESS_MEMORY  905
-#define SYSCALL_COBRA                 8
-#define PS3MAPI_OPCODE                0x7777
-#define PS3MAPI_GET_PROC_MEM          0x0031
-#define PS3MAPI_SET_PROC_MEM          0x0032
-
-// the debug syscall is refused on this CFW (rc 0x80010003), so the ps3mapi path
-// is the live one. reads are NOT logged on failure: an aob scan sweeps unmapped
-// pages by design and a failed read there is normal control flow (the scan skips
-// the page) — logging each one floods the disk and stalls the sweep. callers that
-// care about a read landing (the poke readback) catch it via the verify step.
-// once a syscall path succeeds we stick to it and stop probing the other — the working
-// path is a fixed per-boot CFW property, so re-probing the dead debug syscall per call
-// just wastes ~half the syscalls on the scan/poke sweep. cache ONLY on success: a failed
-// read (an unmapped page in a sweep) leaves the path unknown, so a bad address is never
-// mistaken for a dead ABI. worker + menu threads both call these; memPath is an aligned
-// int and every thread only ever caches the same terminal value, so the race is benign.
-enum { MEM_PATH_UNKNOWN, MEM_PATH_DEBUG, MEM_PATH_COBRA };
-static int memPath = MEM_PATH_UNKNOWN;
-
-int readProcMem(uint32_t pid, uint32_t address, void *out, uint32_t size)
-{
-   if (memPath != MEM_PATH_COBRA &&
-       scCall4(SYS_DBG_READ_PROCESS_MEMORY, (uint64_t)pid, (uint64_t)address, (uint64_t)size, (uint64_t)(uintptr_t)out) == 0) {
-      memPath = MEM_PATH_DEBUG;
-      return 0;
-   }
-   int mapiRc = (int)scCall6(SYSCALL_COBRA, PS3MAPI_OPCODE, PS3MAPI_GET_PROC_MEM, (uint64_t)pid, (uint64_t)address, (uint64_t)(uintptr_t)out, (uint64_t)size);
-   if (mapiRc == 0) memPath = MEM_PATH_COBRA;
-   return mapiRc;
-}
-
-int writeProcMem(uint32_t pid, uint32_t address, const void *src, uint32_t size)
-{
-   if (memPath != MEM_PATH_COBRA &&
-       scCall4(SYS_DBG_WRITE_PROCESS_MEMORY, (uint64_t)pid, (uint64_t)address, (uint64_t)size, (uint64_t)(uintptr_t)src) == 0) {
-      memPath = MEM_PATH_DEBUG;
-      return 0;
-   }
-   int mapiRc = (int)scCall6(SYSCALL_COBRA, PS3MAPI_OPCODE, PS3MAPI_SET_PROC_MEM, (uint64_t)pid, (uint64_t)address, (uint64_t)(uintptr_t)src, (uint64_t)size);
-   if (mapiRc == 0) memPath = MEM_PATH_COBRA;
-   return mapiRc;
-}
+// cobra ps3mapi (syscall 8, opcode 0x7777) is the live process-introspection path on this
+// CFW. readProcMem/writeProcMem now live in the shared proc-mem.h (simple-lib-plugin); this
+// file keeps only the game-specific segment enumeration.
+#define SYSCALL_COBRA   8
+#define PS3MAPI_OPCODE  0x7777
 
 // ps3mapi module enumeration (TheRouletteBoi's segments opcode; Cobra 8.4+). the
 // segments query hands the kernel our sys_prx_module_info_t with our own buffers set

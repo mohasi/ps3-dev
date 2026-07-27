@@ -32,9 +32,15 @@
    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+   <ClCompile Include="src\export-hook.c" />
+   <ClCompile Include="src\proc-mem.c" />
+  </ItemGroup>
+  <ItemGroup>
    <ClInclude Include="include\module-inspect.h" />
    <ClInclude Include="include\module-hook.h" />
    <ClInclude Include="include\vsh.h" />
+   <ClInclude Include="include\export-hook.h" />
+   <ClInclude Include="include\proc-mem.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="README.md" />

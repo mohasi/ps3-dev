@@ -8,7 +8,7 @@
 #include "pad.h"
 
 typedef enum {
-   SHORTCUT_INPUT_MODE,       // cycle: mouse only -> mouse+keyboard -> controller
+   SHORTCUT_INPUT_MODE,       // cycle: mouse+keyboard -> controller
    SHORTCUT_STREAMING_MODE,   // cycle: vsync off -> vsync -> vsync + one-frame buffer
    SHORTCUT_STATS,            // toggle the stats overlay
    SHORTCUT_CUSTOM1,          // PC command, defined in the server's Custom Commands tab

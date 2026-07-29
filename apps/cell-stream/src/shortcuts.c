@@ -17,16 +17,16 @@ static const char *DEFAULT_SETTINGS =
    "# hold SELECT plus the named button. custom1-4 are PC commands you define in\n"
    "# the server's Custom Commands tab; the PS3 only sends the slot name.\n"
    "\n"
-   "input-mode     = select+cross      # cycle: mouse only -> mouse+keyboard -> controller\n"
+   "input-mode     = select+cross      # cycle: mouse+keyboard -> controller (Triangle toggles the keyboard)\n"
    "streaming-mode = select+square     # cycle: 720p/60 vsync off -> vsync -> vsync + one-frame buffer\n"
    "stats          = select+r3         # show/hide the stats overlay\n"
-   "custom1        = select+triangle   # default on PC: Game Bar (Guide button)\n"
-   "custom2        = select+circle     # default on PC: Steam Big Picture\n"
+   "custom1        = select+triangle   # default on PC: Steam Big Picture\n"
+   "custom2        = select+circle     # unset by default; bind it on the server's Custom Commands tab\n"
    "custom3        = select+l1\n"
    "custom4        = select+r1\n"
    "\n"
    "# saved settings - updated as you change them in-stream, applied on the next launch\n"
-   "saved-input-mode     = controller        # mouse | mouse+keyboard | controller\n"
+   "saved-input-mode     = controller        # mouse+keyboard | controller\n"
    "saved-streaming-mode = 720p60-vsync       # 720p60-vsync-off | 720p60-vsync | 720p60-buffer\n";
 
 // the settings.txt key each action reads, indexed by ShortcutAction

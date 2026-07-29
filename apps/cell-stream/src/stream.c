@@ -91,7 +91,6 @@ static int64_t clockOffsetUs;
 // back to when its frame was captured, arrived and was fed
 typedef struct {
    uint64_t captureUs;    // encoder exit (server clock, converted to ours)
-   uint64_t firstFragUs;
    uint64_t completeUs;
    uint64_t fedUs;
 } FrameTiming;
@@ -99,7 +98,7 @@ static FrameTiming feedTiming[FEED_TIME_RING];
 
 // per-second stat window
 static uint64_t windowStartUs, windowBytes;
-static uint64_t windowNetworkUs, windowAssembleUs, windowDecodeUs;
+static uint64_t windowNetworkUs, windowDecodeUs;
 static int windowDecodedFrames;   // all decoded frames (the fps count)
 static int windowTimedFrames;     // ... of those, the ones whose server timestamps made sense
 static int clockOutOfSync;        // the server's clock disagreed with ours: latency figures are not to be trusted
@@ -124,7 +123,7 @@ static int windowFlipWaits;
 typedef struct {
    int bytes;
    int keyframe;
-   uint64_t captureUs, firstFragUs, completeUs;
+   uint64_t captureUs, completeUs;
 } AuSlot;
 
 static uint8_t auBuffers[AU_SLOT_COUNT][FRAME_MAX_BYTES];
@@ -201,7 +200,6 @@ static void drainDecodedFrames(void)
       // averages rather than reporting a negative latency
       if (timing->completeUs >= timing->captureUs) {
          windowNetworkUs += timing->completeUs - timing->captureUs;
-         windowAssembleUs += timing->completeUs - timing->firstFragUs;
          windowTimedFrames++;
       } else {
          clockOutOfSync = 1;
@@ -271,12 +269,7 @@ static void feedAu(const AuSlot *slot, const uint8_t *data)
    // the first feed must be a keyframe regardless: it carries the stream's SPS/PPS setup data, and the
    // decoder is built from it. after that, see streamSelfHeals.
    if (waitingForKeyframe) {
-      if (!slot->keyframe) {
-         lock(&statsLock);
-         stats.framesSkipped++;
-         unlock(&statsLock);
-         return;
-      }
+      if (!slot->keyframe) return;
       waitingForKeyframe = 0;
    }
 
@@ -289,7 +282,6 @@ static void feedAu(const AuSlot *slot, const uint8_t *data)
       if (rc == 0) {
          FrameTiming *timing = &feedTiming[fedCount % FEED_TIME_RING];
          timing->captureUs = slot->captureUs;
-         timing->firstFragUs = slot->firstFragUs;
          timing->completeUs = slot->completeUs;
          timing->fedUs = getTimeUs();
          fedCount++;
@@ -337,7 +329,6 @@ static void handleFragment(const uint8_t *packet, int packetBytes)
       assemblyLastFragBytes = -1;
       slot->keyframe = keyframe;
       slot->captureUs = captureUs - clockOffsetUs;   // server clock -> ours
-      slot->firstFragUs = getTimeUs();
       memset(assemblyFragSeen, 0, fragCount);
    }
    if (assemblyFragSeen[fragIndex]) return;
@@ -353,10 +344,6 @@ static void handleFragment(const uint8_t *packet, int packetBytes)
    slot->bytes = (assemblyFragCount - 1) * FRAGMENT_PAYLOAD_BYTES + assemblyLastFragBytes;
    slot->completeUs = getTimeUs();
    assemblyFrameId = -1;
-
-   lock(&statsLock);
-   stats.framesComplete++;
-   unlock(&statsLock);
 
    lock(&queueLock);
    int nextSlot = (auWriteSlot + 1) % AU_SLOT_COUNT;
@@ -388,9 +375,6 @@ static void handleFragment(const uint8_t *packet, int packetBytes)
 #define AUDIO_MAX_FRAMES    512   // one packet is 5ms (240 frames at 48kHz); this is generous headroom
 
 static int audioFeedOpen, audioRate;
-static long audioLastPacketId = -1;
-static int audioPacketsReceived, audioPacketsLost;
-static int audioChunksDropped, audioChunksRepeated;
 static uint64_t audioPushedFrames;   // vs getAudioPcmFeedPlayedFrames(), this gives the live backlog
 
 static int getAudioBacklogMs(void)
@@ -415,12 +399,8 @@ static void openAudioFeed(const char *info)
 static void handleAudioPacket(const uint8_t *packet, int packetBytes)
 {
    if (!audioFeedOpen || packetBytes <= AUDIO_HEADER_BYTES) return;
-   long packetId = ((long)packet[2] << 24) | ((long)packet[3] << 16) | ((long)packet[4] << 8) | packet[5];
-   int frames = (packet[6] << 8) | packet[7];
+   int frames = (packet[6] << 8) | packet[7];   // packet[2..5] is the packet id, which nothing needs now
    if (frames <= 0 || frames > AUDIO_MAX_FRAMES || packetBytes < AUDIO_HEADER_BYTES + frames * 4) return;
-
-   if (audioLastPacketId >= 0 && packetId > audioLastPacketId + 1) audioPacketsLost += (int)(packetId - audioLastPacketId - 1);
-   audioLastPacketId = packetId;
 
    float stereo[AUDIO_MAX_FRAMES * 2];
    const uint8_t *samples = packet + AUDIO_HEADER_BYTES;
@@ -437,12 +417,11 @@ static void handleAudioPacket(const uint8_t *packet, int packetBytes)
    int repeats = 1;
    if (getAudioPcmFeedPlayedFrames() > 0) {   // still filling the initial backlog: nothing to correct yet
       int backlogMs = getAudioBacklogMs();
-      if (backlogMs > AUDIO_PRIME_MS + AUDIO_DRIFT_MS) { audioChunksDropped++; repeats = 0; }
-      else if (backlogMs < AUDIO_PRIME_MS - AUDIO_DRIFT_MS) { audioChunksRepeated++; repeats = 2; }
+      if (backlogMs > AUDIO_PRIME_MS + AUDIO_DRIFT_MS) repeats = 0;
+      else if (backlogMs < AUDIO_PRIME_MS - AUDIO_DRIFT_MS) repeats = 2;
    }
    for (i = 0; i < repeats; i++) audioPushedFrames += pushAudioPcm(stereo, frames);
 
-   audioPacketsReceived++;
    windowBytes += packetBytes;
 }
 
@@ -470,48 +449,25 @@ static void updateWindowStats(void)
    stats.bitrateKbps = (int)(windowBytes * 8000 / elapsedUs);
    stats.receivedFps = (int)(windowDecodedFrames * 1000000ull / elapsedUs);
    stats.networkMsTenths = windowTimedFrames > 0 ? (int)(windowNetworkUs / windowTimedFrames / 100) : 0;
-   stats.assembleMsTenths = windowTimedFrames > 0 ? (int)(windowAssembleUs / windowTimedFrames / 100) : 0;
    stats.decodeMsTenths = windowDecodedFrames > 0 ? (int)(windowDecodeUs / windowDecodedFrames / 100) : 0;
    stats.presentMsTenths = presentedFrames > 0 ? (int)(presentUs / presentedFrames / 100) : 0;
    stats.displayWaitMsTenths = flipWaits > 0 ? (int)(flipWaitUs / flipWaits / 100) : 0;
    stats.totalMsTenths = presentedFrames > 0 ? (int)(totalUs / presentedFrames / 100) : 0;
    stats.totalMsTenths += stats.displayWaitMsTenths;   // the frame is not really seen until the display takes it
    stats.pipelineDepth = fedCount - decodedCount;
-   StreamStats snapshot = stats;
    unlock(&statsLock);
 
    windowStartUs = now;
    windowBytes = 0;
-   windowNetworkUs = windowAssembleUs = windowDecodeUs = 0;
+   windowNetworkUs = windowDecodeUs = 0;
    windowDecodedFrames = windowTimedFrames = 0;
 
-   // mirror the on-screen stats to the log every few seconds so runs are analyzable afterwards - but only
-   // while video is actually decoding, so a stalled or idle stream doesn't fill the log with zero rows
-   static int windowsSinceLogged = 0;
-   if (++windowsSinceLogged >= 5 && snapshot.receivedFps > 0) {
-      windowsSinceLogged = 0;
-      logInfo("[cst] stream: %dfps %dkbps  ok %d incomplete %d behind %d skipped %d  pipeline %d\n",
-              snapshot.receivedFps, snapshot.bitrateKbps, snapshot.framesComplete, snapshot.framesIncomplete,
-              snapshot.framesDroppedBehind, snapshot.framesSkipped, snapshot.pipelineDepth);
-      if (clockOutOfSync && !clockOutOfSyncWarned) {
-         clockOutOfSyncWarned = 1;   // once per episode; the re-sync line marks its end
-         logWarn("[cst] the server's clock disagrees with ours - was it restarted mid-stream? "
-                 "latency figures cover only the frames that still made sense\n");
-      }
-      logInfo("[cst] latency: network %d.%d + decode %d.%d + present %d.%d + display %d.%d = %d.%dms"
-              " encoder-to-screen  [assemble %d.%d of network]\n",
-              snapshot.networkMsTenths / 10, snapshot.networkMsTenths % 10,
-              snapshot.decodeMsTenths / 10, snapshot.decodeMsTenths % 10,
-              snapshot.presentMsTenths / 10, snapshot.presentMsTenths % 10,
-              snapshot.displayWaitMsTenths / 10, snapshot.displayWaitMsTenths % 10,
-              snapshot.totalMsTenths / 10, snapshot.totalMsTenths % 10,
-              snapshot.assembleMsTenths / 10, snapshot.assembleMsTenths % 10);
-
-      // buffered IS the audio delay; it should sit near AUDIO_PRIME_MS. dropped/repeated counts are the
-      // clock-drift corrections - a steady trickle is normal, a flood means something worse is wrong.
-      if (audioFeedOpen)
-         logInfo("[cst] audio: %d packets, %d lost, %dms buffered (%d dropped, %d repeated)\n", audioPacketsReceived,
-                 audioPacketsLost, getAudioBacklogMs(), audioChunksDropped, audioChunksRepeated);
+   // the figures live on the stats panel, not in the log - a line every few seconds would fill dbg.txt
+   // over a long session. the one thing still worth saying is that they cannot be trusted.
+   if (clockOutOfSync && !clockOutOfSyncWarned) {
+      clockOutOfSyncWarned = 1;   // once per episode; the re-sync line marks its end
+      logWarn("[cst] the server's clock disagrees with ours - was it restarted mid-stream? "
+              "latency figures cover only the frames that still made sense\n");
    }
 }
 
@@ -760,7 +716,7 @@ static void runStreamSession(void)
    assemblyFrameId = -1;
    auWriteSlot = auReadSlot = 0;
    decodeThreadRunning = 0;
-   windowBytes = windowNetworkUs = windowAssembleUs = windowDecodeUs = 0;
+   windowBytes = windowNetworkUs = windowDecodeUs = 0;
    windowDecodedFrames = 0;
    windowPresentUs = windowTotalUs = 0;
    windowPresentedFrames = 0;
@@ -773,9 +729,6 @@ static void runStreamSession(void)
    windowTimedFrames = 0;
    streamSelfHeals = 0;
    padPacketId = 0;
-   audioLastPacketId = -1;
-   audioPacketsReceived = audioPacketsLost = 0;
-   audioChunksDropped = audioChunksRepeated = 0;
    audioPushedFrames = 0;
    lock(&statsLock);
    memset(&stats, 0, sizeof stats);

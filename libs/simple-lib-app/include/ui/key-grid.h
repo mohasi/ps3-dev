@@ -2,8 +2,10 @@
 
 // key-grid - shared engine behind keyboard.h and hex-pad.h: a docked, controller-navigable
 // grid of single-character keys. D-pad moves the highlighted cell; Cross commits it; Square
-// is backspace; Circle closes; any extraBindings fire a fixed character regardless of cursor
-// position (e.g. the keyboard's Triangle-is-space). Docks itself at the screen's bottom-right.
+// is backspace; Circle closes (and once closing moves elsewhere, Circle backspaces and Square types
+// a space); any extraBindings fire a fixed character regardless of cursor position (e.g. the
+// keyboard's Triangle-is-space). Cross, backspace and space repeat while held. Docks itself at
+// the screen's bottom-right.
 //
 // call updateKeyGrid()/drawKeyGrid() once per frame regardless of open state - both no-op
 // while closed, same convention as stats.h.
@@ -66,6 +68,7 @@ typedef struct {
    KeyGridCallback onKey;
 
    ButtonRepeat moveUpRepeat, moveDownRepeat, moveLeftRepeat, moveRightRepeat;
+   ButtonRepeat commitRepeat, backspaceRepeat, spaceRepeat;   // holding a key button repeats it
 } KeyGridPicker;
 
 // grid/labelText/fontSizeFor/extraBindings are all borrowed references - the caller must keep

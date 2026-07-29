@@ -48,6 +48,14 @@ void termKeyGrid(KeyGridPicker *kg)
    closeFont(&kg->font);
 }
 
+// a button already held when the grid opens starts its hold from now, so it waits the full delay
+// before repeating instead of firing off a timer left over from last time
+static void restartRepeat(ButtonRepeat *repeat)
+{
+   repeat->timer   = sys_time_get_system_time();
+   repeat->repeats = 0;
+}
+
 void openKeyGrid(KeyGridPicker *kg, KeyGridCallback onKey)
 {
    kg->onKey     = onKey;
@@ -57,6 +65,14 @@ void openKeyGrid(KeyGridPicker *kg, KeyGridCallback onKey)
    kg->panelY = getGfxScreenHeight() - kg->panelH - SCREEN_MARGIN;
    kg->isOpen = 1;
    kg->armed  = 0;
+
+   restartRepeat(&kg->moveUpRepeat);
+   restartRepeat(&kg->moveDownRepeat);
+   restartRepeat(&kg->moveLeftRepeat);
+   restartRepeat(&kg->moveRightRepeat);
+   restartRepeat(&kg->commitRepeat);
+   restartRepeat(&kg->backspaceRepeat);
+   restartRepeat(&kg->spaceRepeat);
 }
 
 void closeKeyGrid(KeyGridPicker *kg) { kg->isOpen = 0; }
@@ -86,13 +102,21 @@ void updateKeyGrid(KeyGridPicker *kg)
    else if (isRepeatDue(&kg->moveLeftRepeat, getPadButtonState(PAD_BTN_LEFT)))
       kg->cursorCol = (kg->cursorCol - 1 + kg->cols) % kg->cols;
 
-   if (isPadButtonPressed(PAD_BTN_CROSS)) {
+   // Cross, backspace and space all repeat while held, like a real keyboard
+   if (isRepeatDue(&kg->commitRepeat, getPadButtonState(PAD_BTN_CROSS))) {
       if (kg->onKey) kg->onKey(kg->grid[kg->cursorRow * kg->cols + kg->cursorCol]);
       return;
    }
-   // Square backspaces; Circle backspaces too, unless it is being used to close the grid
-   if (isPadButtonPressed(PAD_BTN_SQUARE) || (kg->closeButton != PAD_BTN_CIRCLE && isPadButtonPressed(PAD_BTN_CIRCLE))) {
+   // Square backspaces while Circle is the close button. once closing moves elsewhere (cell-stream puts
+   // it on Triangle, the usual space key) Circle takes over the backspace and Square types the space.
+   int circleIsFree = kg->closeButton != PAD_BTN_CIRCLE;
+   PadButton backspaceButton = circleIsFree ? PAD_BTN_CIRCLE : PAD_BTN_SQUARE;
+   if (isRepeatDue(&kg->backspaceRepeat, getPadButtonState(backspaceButton))) {
       if (kg->onKey) kg->onKey('\b');
+      return;
+   }
+   if (circleIsFree && isRepeatDue(&kg->spaceRepeat, getPadButtonState(PAD_BTN_SQUARE))) {
+      if (kg->onKey) kg->onKey(' ');
       return;
    }
    for (int i = 0; i < kg->extraBindingCount; i++) {

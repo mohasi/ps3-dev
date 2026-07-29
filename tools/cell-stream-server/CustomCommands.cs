@@ -4,14 +4,13 @@ using Microsoft.Win32;
 
 namespace CellStreamServer
 {
-   // one of the four PC actions the PS3 can fire by slot number. Run starts a program or URI;
-   // Guide taps the controller's Guide button (which is how Windows opens Game Bar).
-   internal enum CustomCommandKind { None, Run, Guide }
+   // one of the four PC actions the PS3 can fire by slot number. Run starts a program or URI.
+   internal enum CustomCommandKind { None, Run }
 
    internal sealed class CustomCommand
    {
       public CustomCommandKind Kind = CustomCommandKind.None;
-      public string Value = "";   // Run: a command line or URI (e.g. steam://open/bigpicture); Guide: unused
+      public string Value = "";   // Run: a command line or URI (e.g. steam://open/bigpicture)
       public string Label = "";   // short name shown in the log (and the PS3 toast, later)
    }
 
@@ -38,41 +37,28 @@ namespace CellStreamServer
          Save(slot, command);
       }
 
-      // runs the action bound to a slot. a Guide tap needs the virtual gamepad, so it goes through the
-      // pad receiver that owns it.
-      public static void Run(int slot, PadReceiver padReceiver)
+      // runs the action bound to a slot
+      public static void Run(int slot)
       {
          CustomCommand command = Get(slot);
-         if (command == null || command.Kind == CustomCommandKind.None)
+         if (command == null || command.Kind != CustomCommandKind.Run)
          {
             Server.Log("custom " + slot + ": nothing is bound to this slot");
             return;
          }
 
-         switch (command.Kind)
+         try
          {
-            case CustomCommandKind.Run:
-               try
-               {
-                  Process.Start(new ProcessStartInfo(command.Value) { UseShellExecute = true });
-                  Server.Log("custom " + slot + ": ran " + command.Value);
-               }
-               catch (Exception exception)
-               {
-                  Server.Log("custom " + slot + ": could not run " + command.Value + " - " + exception.Message);
-               }
-               break;
-
-            case CustomCommandKind.Guide:
-               if (padReceiver.PressGamepadGuide())
-                  Server.Log("custom " + slot + ": tapped Guide (Game Bar)");
-               else
-                  Server.Log("custom " + slot + ": no virtual gamepad - install ViGEmBus for Game Bar (use it once in controller mode)");
-               break;
+            Process.Start(new ProcessStartInfo(command.Value) { UseShellExecute = true });
+            Server.Log("custom " + slot + ": ran " + command.Value);
+         }
+         catch (Exception exception)
+         {
+            Server.Log("custom " + slot + ": could not run " + command.Value + " - " + exception.Message);
          }
       }
 
-      // first run seeds slot 1 = Game Bar and slot 2 = Steam Big Picture, matching the PS3's defaults
+      // first run seeds slot 1 = Steam Big Picture, matching the PS3's default
       private static CustomCommand[] LoadAll()
       {
          var loaded = new CustomCommand[SlotCount];
@@ -99,13 +85,25 @@ namespace CellStreamServer
          for (int i = 0; i < SlotCount; i++) if (loaded[i] == null) loaded[i] = new CustomCommand();
 
          if (!anySaved) SeedDefaults(loaded);
+         else MoveUpIntoEmptyFirstSlot(loaded);
          return loaded;
+      }
+
+      // the Guide action was dropped, which left slot 1 empty wherever it had been saved. move slot 2 up
+      // into it so the first slot is the one that does something, and remember the move.
+      private static void MoveUpIntoEmptyFirstSlot(CustomCommand[] loaded)
+      {
+         if (loaded[0].Kind != CustomCommandKind.None || loaded[1].Kind == CustomCommandKind.None) return;
+
+         loaded[0] = loaded[1];
+         loaded[1] = new CustomCommand();
+         Save(1, loaded[0]);
+         Save(2, loaded[1]);
       }
 
       private static void SeedDefaults(CustomCommand[] into)
       {
-         into[0] = new CustomCommand { Kind = CustomCommandKind.Guide, Label = "Game Bar" };
-         into[1] = new CustomCommand { Kind = CustomCommandKind.Run, Value = "steam://open/bigpicture", Label = "Big Picture" };
+         into[0] = new CustomCommand { Kind = CustomCommandKind.Run, Value = "steam://open/bigpicture", Label = "Big Picture" };
          for (int slot = 1; slot <= SlotCount; slot++) Save(slot, into[slot - 1]);
       }
 

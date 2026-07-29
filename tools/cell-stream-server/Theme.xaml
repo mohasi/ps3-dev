@@ -86,9 +86,13 @@
                    Data="M 0 0 L 4 4 L 8 0 Z" Fill="{StaticResource FgText}" />
            </Border>
            <ControlTemplate.Triggers>
-             <Trigger Property="IsMouseOver" Value="True">
+             <MultiTrigger>
+               <MultiTrigger.Conditions>
+                 <Condition Property="IsMouseOver" Value="True" />
+                 <Condition Property="IsEnabled" Value="True" />
+               </MultiTrigger.Conditions>
                <Setter TargetName="bd" Property="Background" Value="{StaticResource BgHover}" />
-             </Trigger>
+             </MultiTrigger>
            </ControlTemplate.Triggers>
          </ControlTemplate>
        </Setter.Value>
@@ -140,6 +144,11 @@
          </ControlTemplate>
        </Setter.Value>
      </Setter>
+     <Style.Triggers>
+       <Trigger Property="IsEnabled" Value="False">   <!-- greyed out, so a locked dropdown looks locked -->
+         <Setter Property="Opacity" Value="0.4" />
+       </Trigger>
+     </Style.Triggers>
    </Style>
 
    <!-- flat dark tabs: a plain strip with an accent underline on the selected tab -->

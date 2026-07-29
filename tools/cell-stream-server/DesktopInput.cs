@@ -6,14 +6,15 @@ namespace CellStreamServer
    // drives the PC's mouse and keyboard from the PS3 pad, so the streamed desktop is usable from the
    // couch. this needs nothing installed: Windows lets any program synthesize keyboard and mouse input
    // (SendInput). it is NOT a gamepad - a game that wants a controller sees nothing here; that is what
-   // VirtualGamepad is for, and SELECT + R3 on the PS3 swaps between the two.
+   // VirtualGamepad is for, and SELECT + Cross on the PS3 swaps between the two.
    //
-   // mapping (deliberately plain; change it here):
-   //   left stick   mouse pointer          right stick scroll
-   //   cross        left click             circle      right click
-   //   square       enter                  triangle    backspace
-   //   d-pad        arrow keys             L1 / R1     page up / page down
-   //   select       escape
+   // typing is the on-screen keyboard's job - its characters arrive separately as KEY packets
+   // (TypeCharacter). mapping, deliberately plain; change it here:
+   //   left stick   mouse pointer          right stick   scroll
+   //   cross        left click             circle        right click        square   middle click
+   //   d-pad        arrow keys             start         Windows key
+   //   triangle     shows/hides the PS3's on-screen keyboard, so it never reaches the PC
+   // every other button does nothing here.
    internal sealed class DesktopInput
    {
       // the sticks rest slightly off centre once a pad has some age on it (the PS3's reads -6 at
@@ -35,13 +36,13 @@ namespace CellStreamServer
       private const int InputMouse = 0, InputKeyboard = 1;
       private const uint MouseMove = 0x0001, MouseLeftDown = 0x0002, MouseLeftUp = 0x0004;
       private const uint MouseRightDown = 0x0008, MouseRightUp = 0x0010, MouseWheel = 0x0800;
+      private const uint MouseMiddleDown = 0x0020, MouseMiddleUp = 0x0040;
       private const uint KeyUp = 0x0002, KeyUnicode = 0x0004;
 
-      private const ushort VkReturn = 0x0D, VkBack = 0x08, VkEscape = 0x1B, VkTab = 0x09;
-      private const ushort VkLeft = 0x25, VkUp = 0x26, VkRight = 0x27, VkDown = 0x28;
-      private const ushort VkPrior = 0x21, VkNext = 0x22;
+      private const ushort VkReturn = 0x0D, VkBack = 0x08, VkTab = 0x09;   // the on-screen keyboard's control keys
+      private const ushort VkLeft = 0x25, VkUp = 0x26, VkRight = 0x27, VkDown = 0x28, VkLeftWindows = 0x5B;
 
-      // one row per pad button we forward, in PadButton bit order where it matters
+      // one row per pad button that presses a key
       private struct KeyBinding
       {
          public int Bit;
@@ -53,9 +54,22 @@ namespace CellStreamServer
       {
          new KeyBinding(PadBits.Up, VkUp), new KeyBinding(PadBits.Down, VkDown),
          new KeyBinding(PadBits.Left, VkLeft), new KeyBinding(PadBits.Right, VkRight),
-         new KeyBinding(PadBits.Square, VkReturn), new KeyBinding(PadBits.Triangle, VkBack),
-         new KeyBinding(PadBits.L1, VkPrior), new KeyBinding(PadBits.R1, VkNext),
-         new KeyBinding(PadBits.Select, VkEscape)
+         new KeyBinding(PadBits.Start, VkLeftWindows)
+      };
+
+      // one row per pad button that clicks a mouse button
+      private struct ClickBinding
+      {
+         public int Bit;
+         public uint DownFlag, UpFlag;
+         public ClickBinding(int bit, uint downFlag, uint upFlag) { Bit = bit; DownFlag = downFlag; UpFlag = upFlag; }
+      }
+
+      private static readonly ClickBinding[] ClickBindings =
+      {
+         new ClickBinding(PadBits.Cross, MouseLeftDown, MouseLeftUp),
+         new ClickBinding(PadBits.Circle, MouseRightDown, MouseRightUp),
+         new ClickBinding(PadBits.Square, MouseMiddleDown, MouseMiddleUp)
       };
 
       private int lastButtons;
@@ -77,10 +91,11 @@ namespace CellStreamServer
 
          int pressed = buttons & ~lastButtons, released = lastButtons & ~buttons;
 
-         if ((pressed & (1 << PadBits.Cross)) != 0) SendMouse(MouseLeftDown, 0, 0, 0);
-         if ((released & (1 << PadBits.Cross)) != 0) SendMouse(MouseLeftUp, 0, 0, 0);
-         if ((pressed & (1 << PadBits.Circle)) != 0) SendMouse(MouseRightDown, 0, 0, 0);
-         if ((released & (1 << PadBits.Circle)) != 0) SendMouse(MouseRightUp, 0, 0, 0);
+         foreach (ClickBinding binding in ClickBindings)
+         {
+            if ((pressed & (1 << binding.Bit)) != 0) SendMouse(binding.DownFlag, 0, 0, 0);
+            if ((released & (1 << binding.Bit)) != 0) SendMouse(binding.UpFlag, 0, 0, 0);
+         }
 
          foreach (KeyBinding binding in KeyBindings)
          {
@@ -90,7 +105,7 @@ namespace CellStreamServer
          lastButtons = buttons;
       }
 
-      // releases everything still held, so nothing is left stuck down when the stream ends
+      // releases anything still held, so nothing is left stuck down when the stream ends
       public void ReleaseAll()
       {
          Apply(0, 0, 0, 0, 0);

@@ -44,6 +44,10 @@ namespace CellStreamServer
          StartWithWindows.Checked += (sender, e) => SetStartWithWindows(true);
          StartWithWindows.Unchecked += (sender, e) => SetStartWithWindows(false);
 
+         SwapMouseSticks.IsChecked = Server.SwapMouseSticks;
+         SwapMouseSticks.Checked += (sender, e) => Server.SetSwapMouseSticks(true);
+         SwapMouseSticks.Unchecked += (sender, e) => Server.SetSwapMouseSticks(false);
+
          StateChanged += (sender, e) => { if (WindowState == WindowState.Minimized) HideToTray(); };
 
          refreshTimer.Interval = TimeSpan.FromMilliseconds(RefreshTickMs);
@@ -67,8 +71,8 @@ namespace CellStreamServer
       }
 
       // Custom Commands tab: one row per slot (action dropdown, command/URI, name), saved as you edit
-      private static readonly CustomCommandKind[] KindByIndex = { CustomCommandKind.None, CustomCommandKind.Run, CustomCommandKind.Guide };
-      private static readonly string[] KindLabels = { "None", "Run command / URI", "Press Guide (Game Bar)" };
+      private static readonly CustomCommandKind[] KindByIndex = { CustomCommandKind.None, CustomCommandKind.Run };
+      private static readonly string[] KindLabels = { "None", "Run command / URI" };
 
       private readonly Controls.ComboBox[] slotKind = new Controls.ComboBox[CustomCommands.SlotCount];
       private readonly Controls.TextBox[] slotValue = new Controls.TextBox[CustomCommands.SlotCount];
@@ -116,7 +120,7 @@ namespace CellStreamServer
          }
       }
 
-      // only a Run action needs a command/URI; Guide and None leave the field disabled
+      // only a Run action needs a command/URI; None leaves the field disabled
       private void UpdateSlotEnabled(int index)
       {
          slotValue[index].IsEnabled = KindByIndex[slotKind[index].SelectedIndex] == CustomCommandKind.Run;
@@ -141,9 +145,20 @@ namespace CellStreamServer
          Refresh();
       }
 
+      // the encoder cannot change under a live stream, so put the selection back if one starts between the
+      // dropdown being enabled and the choice being made
       private void OnEncoderChosen(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
       {
-         Server.ChosenEncoder = EncoderChoice.SelectedItem as VideoEncoder;
+         var chosen = EncoderChoice.SelectedItem as VideoEncoder;
+         if (chosen == null || chosen == Server.ChosenEncoder) return;
+
+         if (Server.IsPs3Connected)
+         {
+            Server.Log("encoders: stop the stream before changing the encoder");
+            EncoderChoice.SelectedItem = Server.ChosenEncoder;
+            return;
+         }
+         Server.ChosenEncoder = chosen;
       }
 
       // grey until a PS3 turns up, green while it is streaming - with a popup either way, so you know it
@@ -156,6 +171,7 @@ namespace CellStreamServer
 
          StatusText.Text = status;
          StatusDot.Fill = (Brush)FindResource(connected ? "BrLive" : "BrIdle");
+         EncoderChoice.IsEnabled = !connected;   // don't let the encoder change out from under a live stream
          StartStopButton.Content = Server.IsArmed ? "Stop" : "Start";
          SettingsText.Text = Server.IsArmed || Server.TripReason == null ? Server.SettingsSummary : Server.TripReason;
          trayIcon.Text = "Cell Stream - " + status;   // Windows caps the tooltip at 63 characters

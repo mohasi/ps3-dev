@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using Microsoft.Win32;
 
 
 namespace CellStreamServer
@@ -36,6 +37,10 @@ namespace CellStreamServer
       private static readonly DisplayMode displayMode = new DisplayMode();
       private static readonly object streamLock = new object();   // serialises start against stop across threads
 
+      private const string SettingsKey = @"Software\CellStreamServer";
+      // user preference: in mouse mode, drive the pointer from the right stick instead of the left
+      public static volatile bool SwapMouseSticks;
+
       [DllImport("winmm.dll")]
       private static extern uint timeBeginPeriod(uint milliseconds);
 
@@ -49,6 +54,27 @@ namespace CellStreamServer
       private static void keepDisplayAwake(bool streaming)
       {
          SetThreadExecutionState(streaming ? (EsContinuous | EsDisplayRequired | EsSystemRequired) : EsContinuous);
+      }
+
+      private static void loadPreferences()
+      {
+         try
+         {
+            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(SettingsKey))
+               SwapMouseSticks = key != null && (key.GetValue("SwapMouseSticks") as string) == "1";
+         }
+         catch { }
+      }
+
+      public static void SetSwapMouseSticks(bool on)
+      {
+         SwapMouseSticks = on;
+         try
+         {
+            using (RegistryKey key = Registry.CurrentUser.CreateSubKey(SettingsKey))
+               if (key != null) key.SetValue("SwapMouseSticks", on ? "1" : "0");
+         }
+         catch { }
       }
 
       // the settings, deliberately baked in: this is an appliance, not a command line. (the PS3 will get
@@ -69,6 +95,7 @@ namespace CellStreamServer
       public static bool Start()
       {
          timeBeginPeriod(1);   // 1ms Thread.Sleep resolution; the video pacing depends on it
+         loadPreferences();
          if (!BindSocket()) return false;
 
          string ffmpegPath = Path.Combine(ExeFolder, "ffmpeg.exe");
@@ -284,7 +311,7 @@ namespace CellStreamServer
             else if (text.StartsWith("CUSTOM "))
             {
                int slot;
-               if (int.TryParse(text.Substring(7).Trim(), out slot)) CustomCommands.Run(slot, padReceiver);
+               if (int.TryParse(text.Substring(7).Trim(), out slot)) CustomCommands.Run(slot);
             }
             else if (text.StartsWith("STOP"))
             {

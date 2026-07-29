@@ -45,14 +45,15 @@ ffmpeg only with that trade-off in mind.
 - **Video** — ffmpeg `ddagrab` (Windows' GPU screen capture) → GPU scaler → H.264, tuned for latency:
   no B-frames, intra refresh instead of keyframes, one slice, one frame of encoder queue. It prefers Intel
   (Quick Sync) because the PS3 decodes its stream most reliably, then NVIDIA (nvenc) or AMD (amf), and falls
-  back to the CPU (x264). You can pick a specific encoder in the window, which is then remembered. Each frame
+  back to the CPU (x264). You can pick a specific encoder in the window, which is then remembered — the
+  dropdown greys out while a PS3 is streaming, since the encoder cannot change mid-stream. Each frame
   goes out the moment it leaves the encoder — no file, no pacing, no buffering.
 - **Audio** — the desktop mix, alongside the picture.
-- **Input** — pad packets from the PS3 drive either the virtual gamepad or the mouse/keyboard; the
-  PS3 cycles input modes with SELECT + Cross. On-screen-keyboard characters arrive as `KEY` packets
+- **Input** — pad packets from the PS3 drive either the virtual gamepad or the mouse/keyboard (button
+  layout in `DesktopInput.cs`); the PS3 cycles input modes with SELECT + Cross. On-screen-keyboard
+  characters arrive as `KEY` packets
   and are typed via `SendInput`. **Custom Commands** (a tab in the window) map `CUSTOM 1-4` to a
-  program/URI or a Guide-button tap; the PS3 only sends the slot number, so the PC never runs anything
-  not set up there.
+  program or URI; the PS3 only sends the slot number, so the PC never runs anything not set up there.
 - **Discovery** — a `CELLSTREAM` beacon on :38311 every second, so the PS3 finds the PC on its own.
   Both sides hang up cleanly: 3 seconds of silence from the PS3 and the server stops encoding and
   puts the desktop resolution back.

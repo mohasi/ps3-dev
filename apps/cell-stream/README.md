@@ -20,16 +20,20 @@ a modifier for its own, and holds a combo's buttons back so the game never sees 
 
 | Combo | Does |
 |---|---|
-| SELECT + Cross | input mode: mouse only → mouse+keyboard → controller |
+| SELECT + Cross | input mode: mouse+keyboard → controller |
 | SELECT + Square | stream mode: 720p/60 vsync off → vsync → vsync + one-frame buffer |
 | SELECT + R3 | show/hide the stats panel (hidden by default) |
 | SELECT + Triangle/Circle/L1/R1 | custom 1-4 (PC actions set in the server's Custom Commands tab) |
 | START (not streaming) | exit |
 
-In mouse+keyboard mode an on-screen keyboard docks bottom-right: d-pad moves, Cross types, Circle
-backspaces, Triangle is space; the keys are injected on the PC. The combos are editable in
-`/dev_hdd0/tmp/cell-stream/settings.txt` (created with defaults on first launch). A shortcut list shows
-briefly on connect, and the waiting screen shows a QR code to the server's download page.
+In mouse+keyboard mode the left stick moves the pointer, the right stick scrolls, Cross/Circle/Square
+are left/right/middle click, the d-pad is the arrow keys and START is the Windows key. **Triangle** raises
+and lowers an on-screen keyboard (docked bottom-right) for the typing: d-pad moves, Cross types the key,
+Square is space, Circle backspaces; the characters are injected on the PC.
+
+The combos are editable in `/dev_hdd0/tmp/cell-stream/settings.txt` (created with defaults on first
+launch). A shortcut list shows briefly on connect, and the waiting screen shows a QR code to the
+server's download page.
 
 **Both sides hang up cleanly.** The PS3 treats 2s of no video as "the server is gone". The server treats
 3s of no pad (it arrives 60x/second while streaming) as "the PS3 is gone" — without that it would encode
@@ -40,8 +44,9 @@ the link can carry — **the PS3's WiFi radio tops out at ~22Mbps** (the console
 
 ## Where the 25ms goes
 
-The stats panel (and the log, every 5s) breaks the journey into its stages, each timed against the
-server's clock: `network + decode + present + display = total`.
+The stats panel breaks the journey into its stages, each timed against the server's clock:
+`network + decode + present + display = total`. It is on screen only, deliberately — a line every few
+seconds would fill `dbg.txt` over a long session.
 
 | Stage | Typical | What it is |
 |---|---|---|
@@ -191,8 +196,8 @@ driver normally comes with a client DLL, but that DLL is a wrapper around three 
 them ourselves (`VirtualGamepad.cs`) and ship nothing but the driver. Without it we log why and stay on
 the mouse.
 
-**Mouse and keyboard** (`SendInput` — nothing to install). Left stick = pointer, right = scroll,
-X/O = clicks, d-pad = arrows, L1/R1 = page up/down.
+**Mouse and keyboard** (`SendInput` — nothing to install). Sticks move the pointer and scroll; the
+buttons are listed under "Using it" above.
 
 ## Known rough edges
 

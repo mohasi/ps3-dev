@@ -56,13 +56,6 @@ namespace CellStreamServer
          desktopInput.TypeCharacter(character);
       }
 
-      // taps Guide on the virtual gamepad (opens Game Bar), for a Custom Command bound to it.
-      // false means there is no gamepad driver, so nothing was sent.
-      public bool PressGamepadGuide()
-      {
-         return gamepad.PressGuide();
-      }
-
       // the stream ended - let go of anything the PS3 was holding down, or it stays stuck on the PC
       public void Release()
       {
@@ -89,6 +82,7 @@ namespace CellStreamServer
          intervalPackets++;
 
          if (gamepadMode) gamepad.Send(buttons, leftX, leftY, rightX, rightY);
+         else if (Server.SwapMouseSticks) desktopInput.Apply(buttons, rightX, rightY, leftX, leftY);
          else desktopInput.Apply(buttons, leftX, leftY, rightX, rightY);
 
          // log every press and release as it happens - that is what proves the channel end to end

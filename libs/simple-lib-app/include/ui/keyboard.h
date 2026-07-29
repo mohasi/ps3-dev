@@ -27,9 +27,9 @@ void openKeyboard(KeyboardKeyCallback onKey);
 void closeKeyboard(void);
 int  isKeyboardOpen(void);
 
-// which button closes the keyboard (default Circle), or KEY_GRID_NO_CLOSE for none. with no
-// close button, Circle becomes a second backspace - use this when something else owns closing
-// (e.g. cell-stream closes the keyboard by switching input mode).
+// which button closes the keyboard (default Circle), or KEY_GRID_NO_CLOSE for none. once Circle is not
+// the close button it backspaces and Square types the space - so a caller that moves closing onto
+// Triangle (cell-stream does) still has a space key.
 void setKeyboardCloseButton(int button);
 
 // true while the keyboard is open AND L2 is held - the caller's document

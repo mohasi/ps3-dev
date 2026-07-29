@@ -54,12 +54,12 @@ static const char *statFieldNames[STAT_LINES] = {
 #define PAD_SEND_INTERVAL_US   4000   // 250Hz, the standard USB gamepad rate: a press waits ~2ms for its slot, not ~8ms
 #define PAD_MODE_INTERVAL_US   1000000
 
-// what the pad drives on the PC. SELECT+input-mode cycles through these; controller
-// forwards a virtual gamepad, the two mouse modes forward the mouse (keyboard mode
-// also lets the on-screen keyboard type). the PC only cares gamepad-vs-mouse.
-typedef enum { INPUT_MOUSE_ONLY, INPUT_MOUSE_KEYBOARD, INPUT_CONTROLLER, INPUT_MODE_COUNT } InputMode;
-static const char *inputModeNames[INPUT_MODE_COUNT] = { "Mouse only", "Mouse + keyboard", "Controller" };
-static const char *inputModeTokens[INPUT_MODE_COUNT] = { "mouse", "mouse+keyboard", "controller" };  // settings.txt values
+// what the pad drives on the PC. SELECT+input-mode cycles through these; controller forwards a virtual
+// gamepad, mouse+keyboard forwards the mouse and can raise the on-screen keyboard on demand (Triangle).
+// the PC only cares gamepad-vs-mouse.
+typedef enum { INPUT_MOUSE_KEYBOARD, INPUT_CONTROLLER, INPUT_MODE_COUNT } InputMode;
+static const char *inputModeNames[INPUT_MODE_COUNT] = { "Mouse + keyboard", "Controller" };
+static const char *inputModeTokens[INPUT_MODE_COUNT] = { "mouse+keyboard", "controller" };  // settings.txt values
 
 // the stream modes cycled with SELECT+Square - all 720p/60, differing only in how the PS3 presents the
 // picture: vsync off shows each frame the instant it decodes (lowest delay, a little tearing); vsync locks
@@ -152,7 +152,7 @@ static void formatStatValues(const StreamStats *s, char values[][STAT_VALUE_MAX]
 #define PAD_BIT(button) (1u << (button))
 
 // the render loop publishes these for the pad thread; the thread never reads UI state directly
-static volatile unsigned padForwardKeyboardHeldBack = 0;   // dpad/face held back while the on-screen keyboard is up
+static volatile unsigned padForwardUiHeldBack = 0;   // buttons the mouse/keyboard UI owns, held back from the PC
 static volatile int padForwardGamepad = 1;                 // 1 = drive the virtual gamepad, 0 = mouse and keyboard
 static volatile int padForwardStop = 0;                    // tells the pad thread to exit
 static sys_ppu_thread_t padForwardThreadId;
@@ -163,7 +163,7 @@ static sys_ppu_thread_t padForwardThreadId;
 static void sendPadStateToServer(void)
 {
    unsigned down = getPadDownButtons();
-   unsigned heldBack = padForwardKeyboardHeldBack;
+   unsigned heldBack = padForwardUiHeldBack;
 
    // SELECT is the app's modifier, but only when a combo button is pressed with it - hold back SELECT and
    // the combo buttons then. SELECT on its own passes straight through as the gamepad's Select/Back.
@@ -251,8 +251,8 @@ int main(int argc, char **argv)
    }
 
    initToast(&font);
-   initKeyboard(keyboardTheme);   // shown only in mouse+keyboard input mode
-   setKeyboardCloseButton(KEY_GRID_NO_CLOSE);   // input-mode owns closing; Circle backspaces instead
+   initKeyboard(keyboardTheme);
+   setKeyboardCloseButton(PAD_BTN_TRIANGLE);   // Triangle raises and lowers it; Square/Circle become space/backspace
    initCompanionPrompt(&font);    // the "server needed" + QR screen when nothing is streaming
    initShortcutHint(&font);       // the shortcut list shown briefly when a stream starts
 
@@ -291,8 +291,7 @@ int main(int argc, char **argv)
             switch (action) {
             case SHORTCUT_INPUT_MODE:
                inputMode = (inputMode + 1) % INPUT_MODE_COUNT;
-               if (inputMode == INPUT_MOUSE_KEYBOARD) openKeyboard(onKeyboardKey);
-               else if (isKeyboardOpen()) closeKeyboard();
+               if (inputMode != INPUT_MOUSE_KEYBOARD && isKeyboardOpen()) closeKeyboard();
                saveEnumSetting(KEY_INPUT_MODE, inputModeTokens[inputMode]);
                showToast(inputModeNames[inputMode]);
                break;
@@ -319,15 +318,23 @@ int main(int argc, char **argv)
             }
          }
 
-         // the on-screen keyboard reads the d-pad/face buttons itself (but not while a SELECT combo is
-         // being entered); those buttons are held back from the PC while it is up
-         if (inputMode == INPUT_MOUSE_KEYBOARD && !selectHeld) updateKeyboard();
+         // mouse+keyboard mode: Triangle raises the on-screen keyboard and lowers it again (the keyboard's
+         // own close button). while it is up it reads the d-pad/face buttons itself and they are held back
+         // from the PC. a SELECT combo being entered takes priority, so the keyboard ignores input during it.
+         if (inputMode == INPUT_MOUSE_KEYBOARD && !selectHeld) {
+            if (isKeyboardOpen()) updateKeyboard();
+            else if (isPadButtonPressed(PAD_BTN_TRIANGLE)) openKeyboard(onKeyboardKey);
+         }
       } else {
          if (isPadButtonPressed(PAD_BTN_START)) exitRequested = 1;
       }
 
       // hand the pad thread what to forward; it samples and sends on its own steady clock
-      padForwardKeyboardHeldBack = isKeyboardOpen() ? KEYBOARD_HELD_BACK : 0;
+      // the keyboard owns its buttons while up; when it is down, mouse+keyboard mode still holds Triangle
+      // back so the button that summons the keyboard never leaks a press to the PC
+      if (isKeyboardOpen()) padForwardUiHeldBack = KEYBOARD_HELD_BACK;
+      else if (inputMode == INPUT_MOUSE_KEYBOARD) padForwardUiHeldBack = PAD_BIT(PAD_BTN_TRIANGLE);
+      else padForwardUiHeldBack = 0;
       padForwardGamepad = (inputMode == INPUT_CONTROLLER);
 
       // streaming, and no new picture: don't redraw the same one, just keep the loop cheap

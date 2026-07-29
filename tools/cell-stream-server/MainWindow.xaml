@@ -31,7 +31,10 @@
                <ComboBox x:Name="EncoderChoice" Width="220" SelectionChanged="OnEncoderChosen" VerticalAlignment="Center" />
             </StackPanel>
 
-            <CheckBox Grid.Row="3" x:Name="StartWithWindows" Margin="0,16,0,0" Content="Start with Windows" />
+            <StackPanel Grid.Row="3" Margin="0,16,0,0">
+               <CheckBox x:Name="StartWithWindows" Content="Start with Windows" />
+               <CheckBox x:Name="SwapMouseSticks" Margin="0,8,0,0" Content="Swap sticks in mouse mode (right stick moves the pointer)" />
+            </StackPanel>
 
             <TextBlock Grid.Row="4" Style="{StaticResource TextDim}" Margin="0,10,0,8" TextWrapping="Wrap"
                        Text="Closing this window leaves the server running in the notification area. Exit from the tray icon to stop it." />

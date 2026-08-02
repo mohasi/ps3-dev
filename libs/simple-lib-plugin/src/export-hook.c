@@ -124,6 +124,11 @@ static Opd *findExport(const char *module, uint32_t fnid)
 static int writeCode(void *dst, const void *src, uint32_t size)
 {
    uint32_t pid = (uint32_t)scCall1(SYS_PROCESS_GETPID, 0);
+   // logged before the write, not just after: writeProcMem has been seen to hang
+   // rather than fail on some HEN setups, and dbg.txt only keeps what was written
+   // before the hang. This line is what tells the difference between "never
+   // started" and "started but never returned".
+   logInfo(TAG "writeCode start dst=0x%x size=%u\n", (uint32_t)(uintptr_t)dst, size);
    int rc = writeProcMem(pid, (uint32_t)(uintptr_t)dst, src, size);
    logInfo(TAG "writeCode rc=0x%x\n", (unsigned)rc);
    return rc;

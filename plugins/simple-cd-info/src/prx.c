@@ -33,6 +33,7 @@ SYS_MODULE_START(_start);
 
 #define LISTEN_PORT     80     // the firmware connects to the AMG host on :80; we redirect it here
 #define RESPONSE_MAX    16384  // ample: the 40 KB scratch arena caps the album at ~35 tracks (~6.5 KB body) first
+#define HEN_HOOK_SETTLE_MS  5000  // extra grace period before patching vsh code on HEN, see serveThread
 
 #define SYS_PROCESS_GETPID   1
 #define NID_GETHOSTBYNAME    0x71f4c717u   // vsh sys_net export we detour
@@ -93,6 +94,17 @@ static void serveThread(uint64_t arg)
    while (!isXmbReady()) {
       sleepMs(1000);
       if (++ticks > 60) { logError(TAG "xmb ready timeout\n"); exitThread(); return; }
+   }
+
+   // on HEN, isXmbReady() is already true the moment we get here -- the XMB was up
+   // and running long before the user enabled HEN, unlike CFW's quiet cold boot. HEN
+   // enable itself is still doing housekeeping (category refresh, unloading its own
+   // enabler plugin) right about now, so patching live VSH code this early has been
+   // reported to freeze the console on some HEN setups. Give that housekeeping room
+   // to finish before we touch VSH's code pages.
+   if (isHenActive()) {
+      logInfo(TAG "hen detected, waiting %dms before patching vsh code\n", HEN_HOOK_SETTLE_MS);
+      sleepMs(HEN_HOOK_SETTLE_MS);
    }
 
    // redirect the dead AMG host to us, so no XMB proxy setting is needed. Fail-safe:

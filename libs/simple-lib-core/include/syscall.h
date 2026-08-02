@@ -196,6 +196,20 @@ static inline int64_t syncDevice(const char *deviceRoot)
    return scCall1(839, (uint64_t)(uintptr_t)deviceRoot);
 }
 
+// true if the running kernel is PS3HEN rather than CFW/Cobra. Same syscall 8
+// opcode answers on both -- cobra returns something other than 0x1337, HEN
+// returns exactly that. Cached per translation unit: the answer can't change
+// while running, and re-probing costs a syscall for nothing.
+#define SYSCALL_COBRA        8
+#define SYSCALL8_OP_IS_HEN   0x1337
+
+static inline int isHenActive(void)
+{
+   static int cached = -1;
+   if (cached < 0) cached = (scCall1(SYSCALL_COBRA, SYSCALL8_OP_IS_HEN) == 0x1337);
+   return cached;
+}
+
 // lv2 syscall 379 - sys_sm_shutdown. modes (per psdevwiki):
 //   0x1100 = shutdown
 //   0x1200 = lv2 hard reboot (full system + hv restart)

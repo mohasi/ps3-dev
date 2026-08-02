@@ -35,4 +35,48 @@ There is no documentation for any of this, and no server left to watch, so the f
 
 ## Notes for developers
 
+The reply format has no field names, only numbered slots, and most slots are never displayed. What each one does was established on a real console by putting a different marker word in every candidate slot and reading them back off the TV. Everything known is below; "nothing" means a marker was placed there and never appeared on any screen.
+
+### The album record — 30 slots
+
+| Slot | What we send | What it does |
+|---|---|---|
+| 0 | *empty* | Chooses which artist the track screens use. Never displayed itself. See below. |
+| 1 | album title | **Album** |
+| 2, 3, 5, 8, 12, 19, 20, 22, 26, 27 | *empty* | Nothing. Tested with markers. |
+| 4 | album artist | **Artist**, on the disc's icon |
+| 6 | number: track count | Nothing. Sent 3 instead and no screen changed. |
+| 7 | number: 1 | Unknown, never varied |
+| 9 | genre from the record | **Genre**, on the track screens only. The disc icon's own Genre row comes from somewhere else we never found. |
+| 10, 13, 14, 16, 17, 18 | *nothing at all* | **Hard-locks the console if given text.** See the warning below. |
+| 11 | number: 1 | **Disc Number**, second half |
+| 15 | the track group | the tracks. See below. |
+| 21, 24, 25 | *nothing at all* | Never tested. Same kind as the locking slots, so treat as dangerous. |
+| 23 | number: 1 | Unknown, never varied |
+| 28 | number: 0 | Structural |
+| 29 | number: 7 | Selects the track view. Must be above 6. |
+
+### Slot 15 — the track group
+
+Slot 15 wraps a record of three things: the list of track records, then two numbers. The first number is **Disc Number**'s first half, so it is sent as 1. The second shows nothing. Neither number sizes the track list, which carries its own count — sending the track count in the first is what used to make the console report a 30-track CD as "disc 30 of 30".
+
+### A track record — 17 fields, one per track
+
+| Field | What we send | What it does |
+|---|---|---|
+| 0, 2, 3, 4, 5, 7–14 | *nothing at all* | Never tested |
+| 1 | track title | **Track**, on both the list and the properties screen |
+| 6 | a group of 4 strings | position 1 = title (shows nothing, but it is what it has always held), **position 2 = that track's own artist**, positions 3 and 4 empty and harmless |
+| 15, 16 | number: 0 | Required. Without them the console rejects the whole disc. |
+
+There are two artists, at two levels, and album slot 0 chooses between them. Slot 0's own contents are never displayed. Fill it and the track screens show the album-wide artist from slot 4; leave it empty and they show each track's own artist instead, which is what compilations need. This plugin leaves it empty. Get this wrong and the symptom is confusing rather than obvious: the original bug wrote the track title into every position of slot 6, so the Artist row faithfully displayed the track name.
+
+A slot sent as an empty string leaves whatever was already on screen untouched, so a blank slot looks like an old value lingering rather than a slot that was never filled. When testing, send a value that has never been used before; otherwise you cannot tell a fresh reply from a stale screen.
+
+Do not put text in album slots 10, 13, 14, 16, 17, 18, 21, 24 or 25. Writing text into them hard-locks the console and needs a power cycle. Two separate attempts using different slots from that group both locked, so treat all nine as off limits. The reason is in `docs/ps3-firmware-re.md`: the console walks these replies with a decoder that follows offsets into nested records, and a wrong value sends it round that loop forever. Leaving a slot completely empty is handled cleanly, so "absent" is safe and "present but wrong" is not.
+
+Two things are still missing from the display: the release year, which the lookup does return and nothing uses, and the Genre shown on the disc's own icon. Neither is in any slot we can safely reach. The more promising place to look is not these slots at all: a reply is a series of records, each with a one-letter tag, and the valid tags are `T A D G N P C O E`. This plugin only ever sends one `A` record. Those two missing values may well be whole records we never send rather than slots we never filled. `docs/ps3-firmware-re.md` also describes a much safer way to experiment than rebuilding and restarting the XMB each time, which is itself a documented lock-up risk.
+
+The screen is not a reliable indicator of which build is running. The plugin logs the size of every reply it sends, so comparing that number against the change you just made is the dependable way to confirm the console is running your build.
+
 The plugin stays resident and does not tear itself down, the same as the other XMB plugins here. The gethostbyname hook and the listener are simply dropped along with the rest of the XMB on a full power-off. Because the hook is a patch into the running XMB, always redeploy with a restart-xmb: that reloads the XMB from scratch, which clears the old patch and lets the fresh plugin reinstall it. Deploying without a restart-xmb would leave the previous hook pointing at stale memory.

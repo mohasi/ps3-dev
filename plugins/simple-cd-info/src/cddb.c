@@ -82,13 +82,15 @@ int parseCddbQuery(const char *reply, char *catOut, int catCap, char *idOut, int
 }
 
 // Walk the record one line at a time, NUL-terminating each line in place. DTITLE gives "Artist / Album";
-// TTITLE<n> gives track n's title. CDDB lets a value continue over repeated same-key lines; we take the
+// TTITLE<n> gives track n's title; DGENRE gives the genre, which many records leave empty. CDDB lets a
+// value continue over repeated same-key lines; we take the
 // first line of each key and do not concatenate continuations, so a title split across lines is truncated
 // to its first part (rare for the discs this targets).
 int parseCddbRecord(char *text, AmgAlbum *album, AmgTrack *trackBuf, int maxTracks)
 {
    album->albumArtist = "";
    album->albumTitle  = "";
+   album->albumGenre  = "";
    for (int i = 0; i < maxTracks; i++) trackBuf[i].title = "";
    int highestTrack = -1;
 
@@ -107,6 +109,8 @@ int parseCddbRecord(char *text, AmgAlbum *album, AmgTrack *trackBuf, int maxTrac
             if (q[0] == ' ' && q[1] == '/' && q[2] == ' ') { sep = q; break; }
          if (sep) { sep[0] = '\0'; album->albumArtist = value; album->albumTitle = sep + 3; }
          else     { album->albumTitle = value; }
+      } else if (startsWith(line, "DGENRE=") && album->albumGenre[0] == '\0') {   // first DGENRE wins
+         album->albumGenre = line + 7;
       } else if (startsWith(line, "TTITLE")) {
          char *q = line + 6;
          int index = 0, sawDigit = 0;

@@ -12,6 +12,7 @@ typedef struct {
 typedef struct {
    const char     *albumTitle;
    const char     *albumArtist;
+   const char     *albumGenre;   // often absent from a CDDB record; empty then
    const AmgTrack *tracks;
    int             trackCount;
 } AmgAlbum;

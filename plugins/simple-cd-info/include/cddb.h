@@ -18,6 +18,6 @@ int buildCddbQueryUrl(char *out, int outCap, uint32_t discId, const uint32_t *fr
 int parseCddbQuery(const char *reply, char *catOut, int catCap, char *idOut, int idCap);
 
 // Parse a CDDB "read" record (the xmcd text) IN PLACE: NUL-terminates the fields inside text and points
-// album->albumTitle/albumArtist and trackBuf[i].title into it. album->tracks is set to trackBuf.
+// album->albumTitle/albumArtist/albumGenre and trackBuf[i].title into it. album->tracks is set to trackBuf.
 // Returns the track count found (0 if the record carries no titles).
 int parseCddbRecord(char *text, AmgAlbum *album, AmgTrack *trackBuf, int maxTracks);

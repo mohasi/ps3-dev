@@ -16,6 +16,7 @@
 #include <cell/pad.h>
 
 #include "dbg.h"
+#include "printf.h"   // snprintf: format the dump-count status message
 #include "vsh.h"
 #include "thread.h"
 #include "vsh-ext.h"
@@ -26,6 +27,7 @@
 #include "raw-pad.h"
 #include "nav-repeat.h"
 #include "trigger.h"
+#include "texture-patch.h"   // dumpTextures + patch apply/revert for the Patches tab
 
 #define TAG "[cht] "
 
@@ -186,6 +188,7 @@ static void menuThread(uint64_t arg)
    uint32_t captureTicks = 0, rawQuietTicks = 0;
    int      selection = 0;        // current cheat row, moved by the d-pad
    int      voteDismissTicks = 0; // frames left showing a vote outcome before the rows return
+   char     dumpStatus[32];       // holds the "Dumped N textures" message (overlaySetUpdating keeps the pointer)
    uint32_t prevDpad = 0;         // last raw buttons, for the edge-triggered cross toggle
    NavRepeat navUp = { 0, 0, 0 }, navDown = { 0, 0, 0 };   // held-direction auto-repeat
    for (;;) {
@@ -301,6 +304,13 @@ static void menuThread(uint64_t arg)
             // game" once the opening hold has lifted.
             if (!psHeld && rawLength >= 0) psReleased = 1;
 
+            // circle is edge-triggered here — it both backs out of a patch's options and drops to the
+            // XMB. computed before prevDpad is updated below so the edge is real; backOut stops the same
+            // press from doing both (back out AND drop to XMB) on one tick.
+            uint32_t circleMask = (uint32_t)(CELL_PAD_CTRL_CIRCLE << 8);
+            int circleEdge = (rawButtons & circleMask) && !(prevDpad & circleMask);
+            int backOut = 0;
+
             // menu input, all disabled while an update is in flight (only XMB/PS work then):
             // d-pad moves the selection (auto-repeat via navFire), cross toggles the row, triangle
             // starts an update. these only set flags — the worker does the scan/poke.
@@ -309,14 +319,60 @@ static void menuThread(uint64_t arg)
                if (navFire(&navUp,   (rawButtons & CELL_PAD_CTRL_UP)   != 0) && selection > 0)            selection--;
                if (navFire(&navDown, (rawButtons & CELL_PAD_CTRL_DOWN) != 0) && selection < rowCount - 1) selection++;
 
-               uint32_t crossMask = (uint32_t)(CELL_PAD_CTRL_CROSS << 8);
-               if ((rawButtons & crossMask) && !(prevDpad & crossMask) && rowCount > 0) overlayRequestToggle(selection);
+               int patchesTab = overlayGetTab() == OVERLAY_TAB_PATCHES;
+               int inOptions  = overlayInPatchOptions();
 
-               // triangle (online only): re-download this title's cheats in the background. the cheats
-               // stay ON during the download; on success the menu refreshes live (revert → re-parse →
-               // re-apply what was on) and can grow/shrink. a centered "Updating…" shows meanwhile.
+               // L1/R1 switch tabs (Cheats <-> Patches). reset the selection to the top of the new list.
+               uint32_t l1Mask = (uint32_t)(CELL_PAD_CTRL_L1 << 8);
+               uint32_t r1Mask = (uint32_t)(CELL_PAD_CTRL_R1 << 8);
+               if ((rawButtons & r1Mask) && !(prevDpad & r1Mask)) { overlaySwitchTab(OVERLAY_TAB_PATCHES); selection = 0; menuSelection = 0; }
+               if ((rawButtons & l1Mask) && !(prevDpad & l1Mask)) { overlaySwitchTab(OVERLAY_TAB_CHEATS);  selection = 0; menuSelection = 0; }
+
+               // cross: Cheats tab toggles the row; Patches tab toggles a part (in options), drills into a
+               // patch that has options, or turns a plain patch on/off.
+               uint32_t crossMask = (uint32_t)(CELL_PAD_CTRL_CROSS << 8);
+               if ((rawButtons & crossMask) && !(prevDpad & crossMask) && rowCount > 0) {
+                  if (!patchesTab) overlayRequestToggle(selection);
+                  else if (inOptions) {
+                     overlaySetUpdating("Applying...");   // shown only during the (short) texture rebuild
+                     overlayToggleSelectedPart(selection);
+                     overlaySetUpdating(0);              // rows + the updated toggle come straight back
+                  } else if (overlayPatchHasParts(selection)) {
+                     overlayEnterPatchOptions(selection); selection = 0; menuSelection = 0;
+                  } else {
+                     overlaySetUpdating("Applying...");   // frame thread paints this while the toggle below blocks us
+                     int result = overlayToggleSelectedPatch(selection);
+                     overlaySetUpdating(result == 1 ? "Patch applied" : result == 2 ? "Patch removed" : "No matching textures found");
+                     voteDismissTicks = VOTE_DISMISS_TICKS;   // hold the result briefly, then the rows return
+                  }
+               }
+
+               // circle inside a patch's options backs out to the patch list (never drops to XMB — see backOut).
+               if (inOptions && circleEdge) { overlayExitPatchOptions(); selection = 0; menuSelection = 0; backOut = 1; }
+
+               // square (Patches tab, patch list): dump the on-screen textures (heap structs + the command
+               // buffer's binds) to dumps/<titleId>/ for Patch Studio. reads only while the game is frozen
+               // under the overlay — reading the live command buffer during play hard-locks lv2.
+               uint32_t squareMask = (uint32_t)(CELL_PAD_CTRL_SQUARE << 8);
+               if ((rawButtons & squareMask) && !(prevDpad & squareMask) && patchesTab && !inOptions) {
+                  char dumpTitleId[16];
+                  overlayGetTitleId(dumpTitleId, sizeof dumpTitleId);
+                  overlaySetUpdating("Dumping textures...");   // frame thread paints this while the dump below blocks us
+                  int added = dumpTextures(getGameProcessId(), dumpTitleId);
+                  if (added < 0)       overlaySetUpdating("Dump failed");
+                  else if (added == 0) overlaySetUpdating("No new textures");
+                  else { snprintf(dumpStatus, sizeof dumpStatus, "Dumped %d textures", added); overlaySetUpdating(dumpStatus); }
+                  voteDismissTicks = VOTE_DISMISS_TICKS;
+               }
+
+               // triangle: on the Patches tab, drill into the selected patch's options (if it has any); on the
+               // Cheats tab (online only), re-download this title's cheats in the background — the cheats stay
+               // ON during the download and the menu refreshes live on success, a centered "Updating…" meanwhile.
                uint32_t triangleMask = (uint32_t)(CELL_PAD_CTRL_TRIANGLE << 8);
-               if ((rawButtons & triangleMask) && !(prevDpad & triangleMask) && syncMode != SYNC_OFFLINE) {
+               int triangleEdge = (rawButtons & triangleMask) && !(prevDpad & triangleMask);
+               if (triangleEdge && patchesTab && !inOptions && overlayPatchHasParts(selection)) {
+                  overlayEnterPatchOptions(selection); selection = 0; menuSelection = 0;
+               } else if (triangleEdge && !patchesTab && syncMode != SYNC_OFFLINE) {
                   char titleId[16];
                   overlayGetTitleId(titleId, sizeof titleId);
                   // enter update mode ONLY if the fetch actually started; otherwise the menu would be
@@ -328,7 +384,7 @@ static void menuThread(uint64_t arg)
                // carrying the live pre-write snapshot (working-val). only for an APPLIED cheat, so the
                // vote has real evidence. non-blocking (a worker runs the github calls).
                uint32_t startMask = (uint32_t)CELL_PAD_CTRL_START;
-               if ((rawButtons & startMask) && !(prevDpad & startMask) && syncMode == SYNC_CONTRIBUTE && overlayIsCheatApplied(selection)) {
+               if ((rawButtons & startMask) && !(prevDpad & startMask) && !patchesTab && syncMode == SYNC_CONTRIBUTE && overlayIsCheatApplied(selection)) {
                   int r = sendCheatVote(selection, VOTE_WORKED);
                   if (r == 1)      overlaySetUpdating("Marking as working...");   // centered message; input locks until the vote returns
                   else if (r == 2) { overlaySetUpdating("Already marked"); voteDismissTicks = VOTE_DISMISS_TICKS; }
@@ -337,7 +393,7 @@ static void menuThread(uint64_t arg)
                // select (contribute only): mark the selected cheat FAILED — anonymous vote PR, empty
                // body (a failed original isn't stored). allowed whether or not the cheat is applied.
                uint32_t selectMask = (uint32_t)CELL_PAD_CTRL_SELECT;
-               if ((rawButtons & selectMask) && !(prevDpad & selectMask) && syncMode == SYNC_CONTRIBUTE && rowCount > 0) {
+               if ((rawButtons & selectMask) && !(prevDpad & selectMask) && !patchesTab && syncMode == SYNC_CONTRIBUTE && rowCount > 0) {
                   int r = sendCheatVote(selection, VOTE_FAILED);
                   if (r == 1)      overlaySetUpdating("Marking as failed...");
                   else if (r == 2) { overlaySetUpdating("Already marked"); voteDismissTicks = VOTE_DISMISS_TICKS; }
@@ -352,7 +408,7 @@ static void menuThread(uint64_t arg)
             int psExit = psHeld && psReleased;
             const char *releaseReason = 0;
             if (psExit)                                        releaseReason = "ps";
-            else if (rawButtons & (CELL_PAD_CTRL_CIRCLE << 8)) releaseReason = "circle";
+            else if (circleEdge && !backOut)                   releaseReason = "circle";
             else if (!inGame)                                  releaseReason = "game exited";
             else if (rawLength < 0)                            releaseReason = "read error";
             else if (rawQuietTicks >= CAPTURE_QUIET_TICKS)     releaseReason = "raw quiet";

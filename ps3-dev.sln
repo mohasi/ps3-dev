@@ -104,6 +104,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "rco-studio", "tools\rco-stu
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "theme-studio", "tools\theme-studio\theme-studio.csproj", "{7B4C1F62-9E3A-4D18-8C55-1A7E6B0D9F44}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "patch-studio", "tools\patch-studio\patch-studio.csproj", "{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|Any CPU = Release|Any CPU
@@ -233,6 +235,12 @@ Global
 		{7B4C1F62-9E3A-4D18-8C55-1A7E6B0D9F44}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{7B4C1F62-9E3A-4D18-8C55-1A7E6B0D9F44}.Release|PS3.ActiveCfg = Release|Any CPU
 		{7B4C1F62-9E3A-4D18-8C55-1A7E6B0D9F44}.Release|PS3.Build.0 = Release|Any CPU
+		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|Mixed Platforms.ActiveCfg = Release|Any CPU
+		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|Mixed Platforms.Build.0 = Release|Any CPU
+		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|PS3.ActiveCfg = Release|Any CPU
+		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|PS3.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -261,5 +269,6 @@ Global
 		{9B4E2D71-6C5A-4E3F-B8D2-1A7C4F9E6B25} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 		{3D2B1341-A6A0-499E-A571-E2FA3DF2A330} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 		{7B4C1F62-9E3A-4D18-8C55-1A7E6B0D9F44} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 	EndGlobalSection
 EndGlobal

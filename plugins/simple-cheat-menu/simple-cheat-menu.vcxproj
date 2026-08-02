@@ -42,7 +42,7 @@
    <ClCompile Include="src\overlay-bridge.c" />
    <ClCompile Include="src\raw-pad.c" />
    <ClCompile Include="src\game-mem.c" />
-   <ClCompile Include="src\texture-probe.c" />
+   <ClCompile Include="src\texture-patch.c" />
    <ClCompile Include="src\cheat-fetch.c" />
    <ClCompile Include="src\overlay.cpp">
      <AdditionalOptions>-fno-exceptions -fno-rtti %(AdditionalOptions)</AdditionalOptions>
@@ -52,7 +52,7 @@
   <ItemGroup>
    <ClInclude Include="include\vsh-ext.h" />
    <ClInclude Include="include\game-mem.h" />
-   <ClInclude Include="include\texture-probe.h" />
+   <ClInclude Include="include\texture-patch.h" />
    <ClInclude Include="include\raw-pad.h" />
    <ClInclude Include="include\nav-repeat.h" />
    <ClInclude Include="include\trigger.h" />

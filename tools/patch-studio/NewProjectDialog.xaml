@@ -1,0 +1,22 @@
+<Window x:Class="PatchStudio.NewProjectDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="New Project" SizeToContent="Height" Width="420" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        Background="{StaticResource BgBase}" Foreground="{StaticResource FgText}"
+        FontFamily="Segoe UI" FontSize="13">
+  <StackPanel Margin="18">
+    <TextBlock Text="Project name" Foreground="{StaticResource FgTextDim}" Margin="0,0,0,4" />
+    <TextBox x:Name="nameBox" Padding="6,4" />
+
+    <TextBlock Text="Title ID" Foreground="{StaticResource FgTextDim}" Margin="0,14,0,4" />
+    <TextBox x:Name="gameIdBox" Padding="6,4" />
+    <TextBlock Text="the game's title ID, e.g. BLES01234 or NPUB30890 — a patch deploys under it"
+               Foreground="{StaticResource FgTextDim}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+      <Button Content="Cancel" Style="{StaticResource FlatButton}" Click="Cancel_Click" IsCancel="True" MinWidth="80" />
+      <Button Content="Create" Style="{StaticResource FlatButton}" Click="Create_Click" IsDefault="True" Margin="8,0,0,0" MinWidth="80" />
+    </StackPanel>
+  </StackPanel>
+</Window>

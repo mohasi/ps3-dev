@@ -29,7 +29,6 @@ enum {
    EXPLORE_SLOT_EXEC_COMMAND = 6,     // explore_plugin: run an xmb command
    GAME_SLOT_EXIT            = 3,     // game_plugin: ExitGame(mode)
    GAME_EXIT_TO_XMB          = 0,
-   SYSCALL_COBRA             = 8,     // cfw multi-purpose syscall
    COBRA_OPCODE_MAP_PATHS    = 0x7964 // remap one system path onto another
 };
 

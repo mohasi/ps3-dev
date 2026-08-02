@@ -10,6 +10,11 @@
 // NAME (so that string stays empty and never allocates); text IS set, copied by
 // vsh's own allocator. The widgets live in an on-demand lv2 heap arena.
 
+// the two menu tabs (L1/R1 switch). the Cheats tab lists cheats; the Patches tab lists the title's
+// texture patches and applies one. shared with trigger.c so its input handler can route per tab.
+#define OVERLAY_TAB_CHEATS   0
+#define OVERLAY_TAB_PATCHES  1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -64,6 +69,37 @@ int overlayBuildVoteBody(int cheat, char *out, int cap);
 // MENU thread: flip a row's desired on/off. never blocks (the worker does the
 // scan/poke); toggling a pending row cancels it. call on the cross-button edge.
 void overlayRequestToggle(int index);
+
+// MENU thread: the active tab (OVERLAY_TAB_*), so the input handler routes Cross/Square per tab.
+int overlayGetTab(void);
+
+// MENU thread: switch tab (L1/R1). entering Patches re-lists the title's patch folders first. the
+// caller resets its selection to 0 after. returns the new tab's row count.
+int overlaySwitchTab(int tab);
+
+// MENU thread: toggle the selected patch on/off (Cross on the Patches tab) — apply if off, revert if on.
+// blocks briefly while it scans the game's textures. returns 1 = applied, 2 = reverted, 0 = nothing matched.
+int overlayToggleSelectedPatch(int row);
+
+// MENU thread: does the selected patch expose parts? if so Cross/Triangle drill into its options list
+// instead of applying the whole patch.
+int overlayPatchHasParts(int row);
+
+// MENU thread: drill into the selected patch's parts (Triangle, or Cross on a patch with parts). the
+// Patches tab then lists the parts until overlayExitPatchOptions. returns the part count, 0 if it has none
+// (caller applies the whole patch instead). the caller resets its selection to 0 after.
+int overlayEnterPatchOptions(int row);
+
+// MENU thread: leave the parts list, back to the patch list (Circle inside the options).
+void overlayExitPatchOptions(void);
+
+// MENU thread: are we inside a patch's parts list right now, so the input handler routes Cross/Circle there.
+int overlayInPatchOptions(void);
+
+// MENU thread: toggle the selected part on/off (Cross inside the options). a pick-one variant turns its
+// group siblings off first (radio), then the whole patch is rebuilt to last-wins. returns 1 = turned on,
+// 2 = turned off, 0 = no game.
+int overlayToggleSelectedPart(int row);
 
 // MENU thread: enter update mode with a centered message, or leave it with msg == NULL. while
 // updating, the rows + highlight are hidden and the message (a held string literal) is shown in their

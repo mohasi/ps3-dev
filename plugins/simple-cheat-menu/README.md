@@ -22,6 +22,9 @@ needed.
   background; re-download the latest any time with Triangle.
 - **Vote and contribute** — mark cheats working or failed to improve everyone's
   scores, and submit new cheats to the shared database.
+- **Texture patches** — a second tab (L1/R1 to switch) lists texture packs made for
+  the game and swaps its textures live; Square dumps the game's current textures for
+  making your own in Patch Studio.
 - **Tiny footprint** — one VSH plugin, no PC, nothing injected into the game, and
   no memory used until you first open the menu.
 

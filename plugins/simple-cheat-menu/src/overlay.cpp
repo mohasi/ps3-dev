@@ -2,6 +2,7 @@
 #include "cheat-sync.h"         // syncMode + settings, buildCheatPath, getAppVersion, isGameTitleId
 #include "string-utilities.h"   // memSet: libc-free fill (memset doesn't resolve in a vsh prx)
 #include "game-mem.h"           // readProcMem/writeProcMem + getGameScanRanges (game-mem.c)
+#include "texture-patch.h"      // listPatchNames / applyPatch: the Patches tab's disk + apply backend
 
 #include <string>
 #include <new>
@@ -114,9 +115,12 @@ struct FirmwareWstring {
 #define GLYPH_CROSS    "\xEF\xA2\x81"   // U+F881
 #define GLYPH_CIRCLE   "\xEF\xA2\x80"   // U+F880
 #define GLYPH_TRIANGLE "\xEF\xA2\x83"   // U+F883
+#define GLYPH_SQUARE   "\xEF\xA2\x82"   // U+F882
 #define GLYPH_SELECT   "\xEF\xA2\x8E"   // U+F88E
 #define GLYPH_START    "\xEF\xA2\x8F"   // U+F88F
 #define GLYPH_PS       "\xEF\xA2\x92"   // U+F892
+#define GLYPH_L1       "\xEF\xA2\x88"   // U+F888
+#define GLYPH_R1       "\xEF\xA2\x8B"   // U+F88B
 
 // panel sizing. height grows one row at a time between a 1-row min and a 10-row
 // max window; more cheats than the window scroll into view. derived so the header
@@ -187,6 +191,7 @@ PafWidget *dimmer = 0;
 PafWidget *box = 0;
 PafWidget *highlightBar = 0;
 int        highlightIndex = -1;        // the on-screen SLOT the bar sits on (not the cheat index)
+int        footerForRow = -1;          // patch row the footer's Options hint currently reflects (-1 = force refresh)
 int        scrollOffset = 0;           // first cheat shown in the window; cheat i sits at slot i-scrollOffset
 float      highlightPanelTop = 0.0f;
 void      *pageNotification = 0;
@@ -309,6 +314,31 @@ OverlayArena *arena = 0;
 int cheatCount = 0;   // parsed cheats (<= MAX_CHEATS), each a render slot as it scrolls in
 int cheatTotal = 0;   // name: blocks in the file (may exceed MAX_CHEATS)
 int matchPoolUsed = 0;   // high-water of matchPool held by ON cheats (compacted on disable)
+
+// the menu has two tabs. the Cheats tab lists parsed cheats; the Patches tab lists the title's texture
+// patch folders and applies one. L1/R1 switch tabs (menu thread). the Patches tab reuses the same row
+// widgets (no arena room for a second set), so activeTab picks which list layoutAndPaintRows paints.
+enum OverlayTab { TAB_CHEATS = OVERLAY_TAB_CHEATS, TAB_PATCHES = OVERLAY_TAB_PATCHES };
+volatile int activeTab = TAB_CHEATS;
+
+// the running title's patch folder names (patches/<titleId>/<name>), listed on open + tab switch. kept
+// in BSS, not the arena — tiny, and the arena is packed full. gameName is kept so the header line can be
+// rebuilt with the active tab's word ("Cheats" / "Patches") without another firmware name lookup.
+#define MAX_PATCHES     32
+#define PATCH_NAME_CAP  40
+#define MAX_PATCH_PARTS 24   // parts a single patch can expose (see texture-patch getPatchParts)
+char patchNames[MAX_PATCHES][PATCH_NAME_CAP];
+char patchApplied[MAX_PATCHES];   // 1 = patch is doing something in the game right now; toggled by ✕
+unsigned char patchHasParts[MAX_PATCHES];   // 1 = the patch exposes parts (Triangle drills into its options)
+unsigned char patchPartOn[MAX_PATCHES][MAX_PATCH_PARTS];   // per-part on/off for a parts patch (in memory, like patchApplied)
+int  patchCount = 0;
+char gameName[64];
+
+// drill-in: when >= 0, the Patches tab is showing the parts of patchNames[drillPatch] instead of the
+// patch list. drillParts holds that patch's part metadata; the live on/off is patchPartOn[drillPatch].
+int drillPatch = -1;
+PatchPart drillParts[MAX_PATCH_PARTS];
+int drillPartCount = 0;
 
 // crowd score for the running (titleId, version), parsed from the compiled file's `score` lines and
 // kept in fixed memory (not the arena — tiny, and keeps arena room for cheats). NO_SCORE = the file
@@ -836,18 +866,25 @@ void getGameHeader(char *titleIdOut, char *nameOut)
    strCopy(nameOut, 64, info + 0x14);
 }
 
-// "<name> - Cheats", or just "Cheats" when the name lookup failed
-void buildHeaderText(char *out, const char *name)
+// "<name> - <word>" (word is the active tab, "Cheats" / "Patches"), or just "<word>" when the name
+// lookup failed. the leading " - " is part of the separator, so pass the bare tab word.
+void buildHeaderText(char *out, const char *name, const char *word)
 {
-   const char *suffix = " - Cheats";
    int n = 0;
    if (name[0]) {
       while (name[n] && n < 63) { out[n] = name[n]; n++; }
-   } else {
-      suffix = "Cheats";
+      const char *sep = " - ";
+      for (int i = 0; sep[i] && n < 76; i++) out[n++] = sep[i];
    }
-   for (int i = 0; suffix[i] && n < 79; i++) out[n++] = suffix[i];
+   for (int i = 0; word[i] && n < 79; i++) out[n++] = word[i];
    out[n] = 0;
+}
+
+// the header word for the current view: the tab name, or the patch name when drilled into its options.
+const char *getTabWord()
+{
+   if (activeTab == TAB_PATCHES && drillPatch >= 0) return patchNames[drillPatch];
+   return activeTab == TAB_PATCHES ? "Patches" : "Cheats";
 }
 
 // the displayed state of a cheat, derived from the lock-free flags: a transition in flight
@@ -874,10 +911,52 @@ void paintToggleByState(int slot, int cheat, float alpha)
    }
 }
 
+// rows in the active tab's list (cheats or patches). every layout/scroll/nav path reads this, so a
+// tab switch resizes the panel and re-clamps the selection without any per-site tab checks.
+int getRowCount()
+{
+   if (activeTab == TAB_PATCHES && drillPatch >= 0) return drillPartCount;   // drilled into a patch: its parts
+   return activeTab == TAB_PATCHES ? patchCount : cheatCount;
+}
+
 // number of rows on screen at once: the whole list when it fits, else the window.
 int getWindowRows()
 {
-   return cheatCount < PANEL_MAX_ROWS ? cheatCount : PANEL_MAX_ROWS;
+   int rows = getRowCount();
+   return rows < PANEL_MAX_ROWS ? rows : PANEL_MAX_ROWS;
+}
+
+// (re)list the running title's patch folders into patchNames, carrying each patch's on/off state across
+// the re-list by name — the same way cheats keep their selection through a re-parse. called on open and
+// on every switch to the Patches tab (a deploy may have added folders since last time).
+void loadPatchList(const char *titleId)
+{
+   // remember each patch's on/off state (whole + per-part) by name, so it survives the re-list — the
+   // same way cheats keep their selection through a re-parse.
+   unsigned int oldHash[MAX_PATCHES];
+   char oldApplied[MAX_PATCHES];
+   unsigned char oldPartOn[MAX_PATCHES][MAX_PATCH_PARTS];
+   int oldCount = patchCount;
+   for (int i = 0; i < oldCount; i++) {
+      oldHash[i] = hashCheatName(patchNames[i]);
+      oldApplied[i] = patchApplied[i];
+      for (int p = 0; p < MAX_PATCH_PARTS; p++) oldPartOn[i][p] = patchPartOn[i][p];
+   }
+
+   patchCount = listPatchNames(titleId, patchNames[0], PATCH_NAME_CAP, MAX_PATCHES);
+   for (int i = 0; i < patchCount; i++) {
+      patchApplied[i] = 0;
+      for (int p = 0; p < MAX_PATCH_PARTS; p++) patchPartOn[i][p] = 0;
+      unsigned int hash = hashCheatName(patchNames[i]);
+      for (int j = 0; j < oldCount; j++) if (oldHash[j] == hash) {
+         patchApplied[i] = oldApplied[j];
+         for (int p = 0; p < MAX_PATCH_PARTS; p++) patchPartOn[i][p] = oldPartOn[j][p];
+         break;
+      }
+      PatchPart probe[MAX_PATCH_PARTS];   // a patch with parts is drilled into (Triangle), not applied whole
+      patchHasParts[i] = (unsigned char)(getPatchParts(titleId, patchNames[i], probe, MAX_PATCH_PARTS) > 0);
+   }
+   drillPatch = -1;   // a re-list invalidates the drilled-in view (indices may have moved)
 }
 
 // small unsigned decimal (0..999) into out, null-terminated. for the score badge.
@@ -910,18 +989,26 @@ void layoutAndPaintRows(int show)
    float rightEdge    =  PANEL_WIDTH * 0.5f - ROW_RIGHT_MARGIN;
    float toggleCenter = rightEdge - TOGGLE_WIDTH * 0.5f;
 
+   // the Patches tab reuses these same slots to list patch names — just the name column, no aob/score. when
+   // drilled into a patch it lists that patch's parts instead, each with an on/off toggle.
+   int onPatchesTab = (activeTab == TAB_PATCHES);
+   int onPartsList  = (onPatchesTab && drillPatch >= 0);
+   int rowCount = getRowCount();
+
    // sweep ALL slots (not just the current window): slots past the count paint at alpha 0, so a
    // list that shrank on a live Update doesn't leave stale rows visible below the shorter panel.
    for (int s = 0; s < PANEL_MAX_ROWS; s++) {
       int   row      = scrollOffset + s;
-      int   onScreen = show && row >= 0 && row < cheatCount;
-      int   cheat    = onScreen ? getRowCheat(row) : 0;   // rows are score-sorted; map to the real cheat
+      int   onScreen = show && row >= 0 && row < rowCount;
+      int   cheat    = (onScreen && !onPatchesTab) ? getRowCheat(row) : 0;   // cheat rows are score-sorted; map to the real cheat
       float alpha    = onScreen ? 1.0f : 0.0f;
+      float chromeAlpha = onPatchesTab ? 0.0f : alpha;   // the toggle/aob/score chrome belongs to the Cheats tab only
       float rowY     = getRowCenterY(s);
 
       if (rowSlot[s]) {
-         setPafWidgetText(rowSlot[s], onScreen ? getCheatName(cheat) : "");
-         setPafWidgetPosition(rowSlot[s], nameLeftX, rowY);
+         const char *name = !onScreen ? "" : onPartsList ? drillParts[row].name : onPatchesTab ? patchNames[row] : getCheatName(cheat);
+         setPafWidgetText(rowSlot[s], name);
+         setPafWidgetPosition(rowSlot[s], onPatchesTab ? nameLeftX - AOB_TAG_WIDTH - AOB_NAME_GAP : nameLeftX, rowY);   // no AoB column on the Patches tab: shift the name to the left margin
          setPafWidgetColor(rowSlot[s], 0.945f, 0.961f, 0.976f, alpha);   // SLATE_100 name
       }
       if (toggleSlot[s]) setPafWidgetPosition(toggleSlot[s], toggleCenter, rowY);
@@ -929,13 +1016,13 @@ void layoutAndPaintRows(int show)
       // AoB tag: fixed left column, shown only for an on-screen aob cheat (alpha 0 hides it otherwise)
       if (aobSlot[s]) {
          setPafWidgetPosition(aobSlot[s], aobCenterX, rowY + AOB_TAG_Y_OFFSET);
-         int showAob = onScreen && cheatHasAob(cheat);
+         int showAob = onScreen && !onPatchesTab && cheatHasAob(cheat);
          setPafWidgetColor(aobSlot[s], 0.220f, 0.741f, 0.973f, showAob ? 1.0f : 0.0f);   // SKY_400
       }
 
       // crowd score % on the right, coloured by the local build verdict (green ok / amber unknown / red won't)
       if (scoreSlot[s]) {
-         if (onScreen && cheatConfidence[cheat] != NO_SCORE) {
+         if (onScreen && !onPatchesTab && cheatConfidence[cheat] != NO_SCORE) {
             char scoreLabel[8];
             writeDecimal(scoreLabel, cheatConfidence[cheat]);
             int labelLen = 0; while (scoreLabel[labelLen]) labelLen++;
@@ -947,11 +1034,25 @@ void layoutAndPaintRows(int show)
             float red, green, blue;
             getVerdictColor(verdict, &red, &green, &blue);
             setPafWidgetColor(scoreSlot[s], red, green, blue, alpha);
+         } else if (onScreen && onPatchesTab && !onPartsList && patchHasParts[row]) {
+            setPafWidgetText(scoreSlot[s], GLYPH_TRIANGLE);   // "has options" marker; Triangle drills in
+            setPafWidgetPosition(scoreSlot[s], rightEdge - TOGGLE_WIDTH - TOGGLE_GAP - SCORE_TAG_WIDTH * 0.5f, rowY);
+            setPafWidgetColor(scoreSlot[s], 0.580f, 0.639f, 0.722f, alpha);   // SLATE_400 hint
          } else {
             setPafWidgetColor(scoreSlot[s], 0.5f, 0.5f, 0.5f, 0.0f);   // hide
          }
       }
-      if (toggleSlot[s]) paintToggleByState(s, cheat, alpha);
+      if (toggleSlot[s]) {
+         if (onPatchesTab) {
+            // parts list: the part's own on/off; patch list: the whole patch's on/off. ✕ flips either.
+            int on = onScreen && (onPartsList ? patchPartOn[drillPatch][row] : patchApplied[row]);
+            setPafWidgetText(toggleSlot[s], on ? TOGGLE_LABEL_ON : TOGGLE_LABEL_OFF);
+            if (on) setPafWidgetColor(toggleSlot[s], 0.204f, 0.827f, 0.600f, alpha);   // emerald ON
+            else    setPafWidgetColor(toggleSlot[s], 0.392f, 0.455f, 0.545f, alpha);   // slate OFF
+         } else {
+            paintToggleByState(s, cheat, chromeAlpha);
+         }
+      }
    }
 }
 
@@ -1011,13 +1112,27 @@ extern "C" unsigned int overlayFindPageNotification(void)
    return (unsigned int)(uintptr_t)pageNotification;
 }
 
+// the Patches list footer comes in two forms: a plain patch applies with ✕ (base line); a patch with
+// parts is opened with ✕ and drilled into with △ (options line). overlayHighlightRow swaps between them
+// as the highlight moves, so the Options hint only shows for a patch that actually has options.
+#define FOOTER_PATCH_LIST     GLYPH_L1 GLYPH_R1 " Tabs   " GLYPH_CROSS " Apply   " GLYPH_SQUARE " Dump   " GLYPH_CIRCLE " XMB   " GLYPH_PS " Resume"
+#define FOOTER_PATCH_OPTIONS  GLYPH_L1 GLYPH_R1 " Tabs   " GLYPH_CROSS " Open   " GLYPH_TRIANGLE " Options   " GLYPH_SQUARE " Dump   " GLYPH_CIRCLE " XMB   " GLYPH_PS " Resume"
+#define FOOTER_PATCH_EMPTY    GLYPH_L1 GLYPH_R1 " Tabs   " GLYPH_SQUARE " Dump   " GLYPH_CIRCLE " XMB   " GLYPH_PS " Resume"
+
 // the normal top hint line for the current mode. update mode shows a shorter line (below) with
 // only the buttons that still work.
 namespace { const char *getFooterTopLine(void)
 {
+   if (activeTab == TAB_PATCHES) {
+      if (drillPatch >= 0)   // inside a patch's options: ✕ toggles a part, ○ backs out to the patch list
+         return GLYPH_CROSS " Toggle    " GLYPH_CIRCLE " Back    " GLYPH_PS " Resume";
+      if (patchCount == 0)   // nothing to apply; dumping is still how you make a patch
+         return FOOTER_PATCH_EMPTY;
+      return FOOTER_PATCH_LIST;   // base line (no Options); overlayHighlightRow swaps in the Options variant per row
+   }
    return (syncMode != SYNC_OFFLINE)
-      ? GLYPH_CROSS " Toggle    " GLYPH_TRIANGLE " Update    " GLYPH_CIRCLE " XMB    " GLYPH_PS " Resume"
-      : GLYPH_CROSS " Toggle    " GLYPH_CIRCLE " XMB    " GLYPH_PS " Resume";
+      ? GLYPH_L1 GLYPH_R1 " Tabs    " GLYPH_CROSS " Toggle    " GLYPH_TRIANGLE " Update    " GLYPH_CIRCLE " XMB    " GLYPH_PS " Resume"
+      : GLYPH_L1 GLYPH_R1 " Tabs    " GLYPH_CROSS " Toggle    " GLYPH_CIRCLE " XMB    " GLYPH_PS " Resume";
 } }
 #define FOOTER_UPDATING  GLYPH_CIRCLE " XMB    " GLYPH_PS " Resume"
 
@@ -1027,8 +1142,9 @@ namespace { const char *getFooterTopLine(void)
 // footer is one line during an update (mark line hidden) — same as a non-contribute mode.
 namespace { void layoutPanel(void)
 {
-   int visibleRows = cheatCount < PANEL_MIN_ROWS ? PANEL_MIN_ROWS
-                   : cheatCount > PANEL_MAX_ROWS ? PANEL_MAX_ROWS : cheatCount;
+   int rowCount = getRowCount();
+   int visibleRows = rowCount < PANEL_MIN_ROWS ? PANEL_MIN_ROWS
+                   : rowCount > PANEL_MAX_ROWS ? PANEL_MAX_ROWS : rowCount;
    float panelHeight = PANEL_HEADER_BLOCK + visibleRows * PANEL_ROW_HEIGHT + PANEL_FOOTER_BLOCK;
    float panelTop = panelHeight * 0.5f;
    highlightPanelTop = panelTop;   // getRowCenterY / overlayHighlightRow read this
@@ -1045,7 +1161,7 @@ namespace { void layoutPanel(void)
 
    // footer band: bottom hint line 25px above the panel's bottom edge; the mark line (contribute mode,
    // and not while updating) sits one line + 12px above it.
-   bool twoLines = (syncMode == SYNC_CONTRIBUTE) && !updating;
+   bool twoLines = (syncMode == SYNC_CONTRIBUTE) && !updating && activeTab == TAB_CHEATS;   // the mark line is a Cheats-tab control
    float bottomY = -panelTop + 25.0f + FOOTER_TEXT_HEIGHT * 0.5f;
    float topY    = twoLines ? bottomY + FOOTER_TEXT_HEIGHT + 12.0f : bottomY;
    if (footer)  setPafWidgetPosition(footer,  0.0f, topY);
@@ -1058,7 +1174,10 @@ namespace { void layoutPanel(void)
 namespace { void repaintContent(void)
 {
    layoutPanel();   // FIRST: size the box + set highlightPanelTop, so the row layout below uses the current geometry
-   if (label)    setPafWidgetText(label, preppedHeader);       // refresh the title line (may be new after a re-parse)
+   footerForRow = -1;   // footer just reset to a base line below; let overlayHighlightRow re-apply the per-row Options hint
+   char header[80];
+   buildHeaderText(header, gameName, getTabWord());   // "<name> - Cheats" / "- Patches" for the active tab
+   if (label)    setPafWidgetText(label, header);
    if (subtitle) setPafWidgetText(subtitle, preppedSubtitle);
    if (updating) {
       layoutAndPaintRows(0);   // hide every row/toggle/tag (alpha 0)
@@ -1066,11 +1185,18 @@ namespace { void repaintContent(void)
       if (footer)  setPafWidgetText(footer, FOOTER_UPDATING);              // only XMB / Resume work now
       if (footer2) setPafWidgetColor(footer2, 0.392f, 0.455f, 0.545f, 0.0f);  // hide the mark line
       if (message) { setPafWidgetText(message, updateMessage ? updateMessage : ""); setPafWidgetColor(message, 0.945f, 0.961f, 0.976f, 1.0f); }
+   } else if (activeTab == TAB_PATCHES && patchCount == 0) {
+      // no patches for this game: show a centered note where the rows would be, no highlight bar
+      layoutAndPaintRows(0);
+      if (highlightBar) setPafWidgetColor(highlightBar, 0.200f, 0.255f, 0.333f, 0.0f);
+      if (footer)  setPafWidgetText(footer, getFooterTopLine());
+      if (footer2) setPafWidgetColor(footer2, 0.392f, 0.455f, 0.545f, 0.0f);
+      if (message) { setPafWidgetText(message, "No patches for this game"); setPafWidgetColor(message, 0.945f, 0.961f, 0.976f, 1.0f); }
    } else {
       if (message) setPafWidgetColor(message, 0.945f, 0.961f, 0.976f, 0.0f);   // hide the message
       if (highlightBar) setPafWidgetColor(highlightBar, 0.200f, 0.255f, 0.333f, 1.0f);
-      if (footer)  setPafWidgetText(footer, getFooterTopLine());            // restore the full hint line
-      if (footer2) setPafWidgetColor(footer2, 0.392f, 0.455f, 0.545f, 1.0f);   // show the mark line again
+      if (footer)  setPafWidgetText(footer, getFooterTopLine());            // restore the full hint line for this tab
+      if (footer2) setPafWidgetColor(footer2, 0.392f, 0.455f, 0.545f, activeTab == TAB_CHEATS ? 1.0f : 0.0f);   // mark line is Cheats-only
       highlightIndex = -1;     // force overlayHighlightRow to re-place the bar
       layoutAndPaintRows(1);   // show the rows again (positioned by the layoutPanel above)
    }
@@ -1166,7 +1292,8 @@ extern "C" void overlayShowBox(void)
 // freshly downloaded file). the caller has already read the header via getGameHeader.
 namespace { void loadTitle(const char *titleId, const char *name)
 {
-   buildHeaderText(preppedHeader, name);
+   strCopy(gameName, sizeof(gameName), name);   // kept so repaintContent can rebuild the header per tab
+   buildHeaderText(preppedHeader, name, "Cheats");
 
    char version[16];
    getAppVersion(titleId, version, sizeof(version));   // empty if unavailable
@@ -1204,7 +1331,13 @@ extern "C" int overlayPrepareForTitle(void)
    char titleId[16], name[64];
    getGameHeader(titleId, name);
    if (strCmpICase(titleId, lastParsedTitle) != 0) loadTitle(titleId, name);   // new title: (re)parse
-   return cheatCount;
+
+   // list the title's texture patches every open (a deploy may have added one since last time), then
+   // open on the last-used tab — but fall back if that tab has nothing to show for this title.
+   loadPatchList(titleId);
+   if (activeTab == TAB_PATCHES && patchCount == 0) activeTab = TAB_CHEATS;
+   if (activeTab == TAB_CHEATS && cheatCount == 0 && patchCount > 0) activeTab = TAB_PATCHES;
+   return cheatCount + patchCount;   // open the menu if the title has cheats OR patches
 }
 
 // MENU thread: the toast to show when the current title has no local cheats to open, or
@@ -1213,7 +1346,7 @@ extern "C" int overlayPrepareForTitle(void)
 extern "C" const char *overlayNoCheatsMessage(void)
 {
    if (!isGameTitleId(lastParsedTitle)) return 0;
-   if (syncMode == SYNC_OFFLINE) return "No local cheats found!  ";
+   if (syncMode == SYNC_OFFLINE) return "No cheats or patches found!  ";
    return 0;
 }
 
@@ -1260,6 +1393,12 @@ extern "C" void overlayHideBox(void)
 extern "C" void overlayOnGameExit(void)
 {
    resetAppliedState();
+   drillPatch = -1;
+   for (int i = 0; i < MAX_PATCHES; i++) {   // a relaunched game reloads originals: nothing applied
+      patchApplied[i] = 0;
+      for (int p = 0; p < MAX_PATCH_PARTS; p++) patchPartOn[i][p] = 0;
+   }
+   clearAppliedState(lastParsedTitle);   // the game's texture snapshots died with the process
    forgetOnHide = 1;
 }
 
@@ -1270,9 +1409,17 @@ extern "C" void overlayOnGameExit(void)
 // hidden, no rows, or nothing moved (keeps it off the per-frame path once settled).
 extern "C" void overlayHighlightRow(int index)
 {
-   if (!visible || !highlightBar || cheatCount <= 0) return;
+   int rowCount = getRowCount();
+   if (!visible || !highlightBar || rowCount <= 0) return;
    if (index < 0) index = 0;
-   if (index >= cheatCount) index = cheatCount - 1;
+   if (index >= rowCount) index = rowCount - 1;
+
+   // patch list: show the Options hint only while the highlighted patch has options. only on a real row
+   // change (not every frame — re-setting text per frame risks wedging the RSX).
+   if (activeTab == TAB_PATCHES && drillPatch < 0 && !updating && footer && index != footerForRow) {
+      setPafWidgetText(footer, patchHasParts[index] ? FOOTER_PATCH_OPTIONS : FOOTER_PATCH_LIST);
+      footerForRow = index;
+   }
 
    // scroll the window so the selection is inside it
    int visibleRows = getWindowRows();
@@ -1292,7 +1439,7 @@ extern "C" void overlayHighlightRow(int index)
 
 extern "C" int overlayGetRowCount(void)
 {
-   return cheatCount;
+   return getRowCount();
 }
 
 // MENU thread: a row's op-hash — its online identity, used to build the vote path. 0 if out of range.
@@ -1684,6 +1831,96 @@ extern "C" void overlayRequestToggle(int row)
 extern "C" int  overlayIsUpdating(void)             { return updating; }
 extern "C" void overlaySetUpdating(const char *msg) { updateMessage = msg; updating = msg != 0; __sync_synchronize(); contentDirty = 1; }
 
+// MENU thread: which tab is showing (OVERLAY_TAB_*), so the input handler routes Cross/Square correctly.
+extern "C" int overlayGetTab(void) { return activeTab; }
+
+// MENU thread: switch tabs (L1/R1). entering Patches re-lists the title's patch folders first so the
+// frame thread has the names before it repaints; the caller resets its selection to 0 after. the frame
+// thread picks up the change via contentDirty (same path the update-message mode uses). returns the new
+// row count.
+extern "C" int overlaySwitchTab(int tab)
+{
+   activeTab = (tab == TAB_PATCHES) ? TAB_PATCHES : TAB_CHEATS;
+   drillPatch = -1;   // switching tabs drops any drilled-in options view
+   if (activeTab == TAB_PATCHES) loadPatchList(lastParsedTitle);
+   __sync_synchronize();
+   contentDirty = 1;
+   return getRowCount();
+}
+
+// MENU thread: toggle the selected patch (✕ on the Patches tab) — apply it if off, revert it if on.
+// blocks this thread for a moment while it scans the game's textures; the frame thread keeps compositing,
+// so a progress message set by the caller still paints. returns 1 = applied, 2 = reverted, 0 = nothing
+// matched (the patch's originals aren't on screen). the new ON/OFF state lands in patchApplied.
+extern "C" int overlayToggleSelectedPatch(int row)
+{
+   if (activeTab != TAB_PATCHES || row < 0 || row >= patchCount) return 0;
+   unsigned int pid = vshmain_0624D3AE();
+   if (patchApplied[row]) {
+      revertPatch(pid, lastParsedTitle, patchNames[row]);
+      patchApplied[row] = 0;
+      return 2;
+   }
+   int replaced = applyPatch(pid, lastParsedTitle, patchNames[row]);
+   patchApplied[row] = (char)(replaced > 0);
+   return replaced > 0 ? 1 : 0;
+}
+
+// MENU thread: does the selected patch expose parts (so ✕/△ drill into its options instead of applying whole)?
+extern "C" int overlayPatchHasParts(int row)
+{
+   return activeTab == TAB_PATCHES && row >= 0 && row < patchCount && patchHasParts[row];
+}
+
+// MENU thread: drill into the selected patch's parts. returns the part count, 0 if it has none (the caller
+// applies the whole patch instead). the frame thread re-lays the panel via contentDirty.
+extern "C" int overlayEnterPatchOptions(int row)
+{
+   if (activeTab != TAB_PATCHES || drillPatch >= 0 || row < 0 || row >= patchCount) return 0;
+   drillPartCount = getPatchParts(lastParsedTitle, patchNames[row], drillParts, MAX_PATCH_PARTS);
+   if (drillPartCount <= 0) return 0;
+   drillPatch = row;
+   __sync_synchronize();
+   contentDirty = 1;
+   return drillPartCount;
+}
+
+// MENU thread: leave the parts list, back to the patch list.
+extern "C" void overlayExitPatchOptions(void)
+{
+   drillPatch = -1;
+   __sync_synchronize();
+   contentDirty = 1;
+}
+
+extern "C" int overlayInPatchOptions(void) { return drillPatch >= 0; }
+
+// MENU thread: toggle the selected part. a pick-one variant turns its group siblings off first (radio),
+// then the whole patch is rebuilt to last-wins. returns 1 = turned on, 2 = turned off, 0 = no game.
+extern "C" int overlayToggleSelectedPart(int row)
+{
+   if (drillPatch < 0 || row < 0 || row >= drillPartCount) return 0;
+   unsigned int pid = vshmain_0624D3AE();
+   if (!pid) return 0;
+
+   unsigned char *partOn = patchPartOn[drillPatch];
+   int turningOn = !partOn[row];
+   if (turningOn && drillParts[row].pickOne)   // radio: only one variant of this group on at a time
+      for (int i = 0; i < drillPartCount; i++)
+         if (drillParts[i].group == drillParts[row].group) partOn[i] = 0;
+   partOn[row] = (unsigned char)turningOn;
+
+   rebuildPatch(pid, lastParsedTitle, patchNames[drillPatch], partOn);
+
+   int anyOn = 0;   // the patch-list row shows ON while any part is on
+   for (int i = 0; i < drillPartCount; i++) if (partOn[i]) anyOn = 1;
+   patchApplied[drillPatch] = (char)anyOn;
+
+   __sync_synchronize();
+   contentDirty = 1;   // repaint the parts toggles
+   return turningOn ? 1 : 2;
+}
+
 // MENU thread: the menu is visible right now (used to choose in-menu message vs toast).
 extern "C" int  overlayIsMenuVisible(void)          { return visible; }
 
@@ -1854,7 +2091,7 @@ extern "C" void overlayFlushTogglePaint(void)
    togglePaintDirty = 0;
    for (int s = 0; s < PANEL_MAX_ROWS; s++) {   // all slots: hide toggles past a shrunk count too
       int row = scrollOffset + s;
-      int onScreen = row >= 0 && row < cheatCount;
+      int onScreen = activeTab == TAB_CHEATS && row >= 0 && row < cheatCount;   // the Patches tab has no toggles
       paintToggleByState(s, onScreen ? getRowCheat(row) : 0, onScreen ? 1.0f : 0.0f);
    }
 }

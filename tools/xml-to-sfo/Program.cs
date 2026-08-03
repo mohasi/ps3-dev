@@ -1,12 +1,14 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace XmlToSfo
 {
-   // usage: xml-to-sfo <paramsfo.xml> [outputPath]
+   // usage: xml-to-sfo <paramsfo.xml> [outputPath] [-version <text>]
    //
    // without an explicit output path, writes PARAM.SFO next to the input.
    // outputPath may be a full file path or a directory (PARAM.SFO is appended).
+   // -version replaces the xml's APP_VER, so the build can stamp its number in.
    //
    // on any parse / validation error, prints a message and pauses so the window
    // stays open when launched via drag-drop.
@@ -18,24 +20,32 @@ namespace XmlToSfo
      {
        try
        {
-         if (args.Length < 1 || args.Length > 2)
+         string appVersion = null;
+         var paths = new List<string>();
+         for (int i = 0; i < args.Length; i++)
          {
-            Console.Error.WriteLine("usage: xml-to-sfo <paramsfo.xml> [outputPath]");
+            if (args[i] == "-version" && i + 1 < args.Length) appVersion = args[++i];
+            else paths.Add(args[i]);
+         }
+
+         if (paths.Count < 1 || paths.Count > 2)
+         {
+            Console.Error.WriteLine("usage: xml-to-sfo <paramsfo.xml> [outputPath] [-version <text>]");
             Console.Error.WriteLine("       (or drag an .xml file onto the exe)");
             return Pause(2);
          }
 
-         string inputPath = args[0];
+         string inputPath = paths[0];
          if (!File.Exists(inputPath))
          {
             Console.Error.WriteLine("input not found: " + inputPath);
             return Pause(2);
          }
 
-         SfoModel model = SfoXmlParser.Parse(inputPath);
+         SfoModel model = SfoXmlParser.Parse(inputPath, appVersion);
 
          string inputDirectory = Path.GetDirectoryName(Path.GetFullPath(inputPath));
-         string outputPath = ResolveOutputPath(args.Length > 1 ? args[1] : null, inputDirectory);
+         string outputPath = ResolveOutputPath(paths.Count > 1 ? paths[1] : null, inputDirectory);
          EnsureDirectory(outputPath);
 
          SfoBuilder.Write(model, outputPath);

@@ -25,6 +25,7 @@ int _start(uint64_t arg)
    // everything after setLogCallback is tee'd to the host via forwardLogToHost,
    // with pre-connect lines buffered in the server-side ring.
    logInfo("[sdb] _start\n");
+   logBuildVersion();
    startServer();
    setLogCallback(forwardLogToHost);
    return SYS_PRX_RESIDENT;

@@ -59,6 +59,20 @@ The local Windows host never invokes the Sony SDK directly.
 dev/vmbuild.ps1 <plugins|apps|libs|tools> <name> [Build|Rebuild|Clean] [Release|Debug]
 ```
 
+### Build stamp
+
+Every build is stamped with `<commit count>-<commit>`, plus `-dirty` when it
+includes edits that were never committed (only changes under `libs/` or the
+project's own folder count). `vmbuild.ps1` works it out from git — the VM has
+no git — and hands it to msbuild, which passes it to the compiler as
+`BUILD_NAME` / `BUILD_STAMP`. Every app and plugin logs it at startup via
+`logBuildVersion()`, so any `dbg.txt` says which build produced it, and the
+commit says which source. Apps also carry the build number as `APP_VER`, which
+the console shows in the game's info screen.
+
+A build started any other way (msbuild or Visual Studio directly) stamps
+`unknown`, since nothing traced it to a commit.
+
 `deploy.ps1` is the one-shot "build + install on the live PS3" entry point.
 It auto-detects whether `<name>` is a plugin or an app from the folder layout:
 
@@ -178,7 +192,9 @@ into an embedded byte array (`icon-data.c`) and a name→codepoint header
 (`icon-ids.h`) — the icon font shared by simple-lib-app and its apps.
 
 ### xml-to-sfo
-Generates `PARAM.SFO` from a human-readable XML source. Used by app pre-build steps.
+Generates `PARAM.SFO` from a human-readable XML source. Every app build runs it
+(see `common/npdrm.targets`), stamping the build number into `APP_VER`, so
+`PARAM.SFO` is a build output rather than a committed file.
 
 ### nid-dump
 Dumps firmware NIDs (symbol IDs) from PS3 modules, for resolving VSH/system symbols.

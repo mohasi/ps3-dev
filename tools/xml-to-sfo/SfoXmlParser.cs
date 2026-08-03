@@ -89,7 +89,9 @@ namespace XmlToSfo
        { "XMB_APPS",            new KeyDefaults(SfoDataType.Int4,        4)    },
      };
 
-     public static SfoModel Parse(string path)
+     // appVersion, when given, replaces the xml's APP_VER text. the build passes the
+     // build number here so every package carries the version the console shows.
+     public static SfoModel Parse(string path, string appVersion)
      {
        XDocument document = LoadDocument(path);
 
@@ -105,7 +107,7 @@ namespace XmlToSfo
             throw new ParseException(LocationOf(element) + "unexpected element <" + element.Name.LocalName +
                ">; only <param> is allowed inside <paramsfo>.");
 
-         SfoParam param = ParseParam(element);
+         SfoParam param = ParseParam(element, appVersion);
          if (!seenKeys.Add(param.Key))
             throw new ParseException(LocationOf(element) + "duplicate key '" + param.Key + "'.");
 
@@ -130,7 +132,7 @@ namespace XmlToSfo
        }
      }
 
-     private static SfoParam ParseParam(XElement element)
+     private static SfoParam ParseParam(XElement element, string appVersion)
      {
        string key = GetRequiredAttribute(element, "key");
        if (!KeyPattern.IsMatch(key))
@@ -143,6 +145,8 @@ namespace XmlToSfo
 
        // the element's text is the value (a value= attribute would fight multi-line LICENSE text).
        string value = (element.Value ?? string.Empty).Trim();
+       if (key == "APP_VER" && !string.IsNullOrEmpty(appVersion))
+         value = appVersion;
 
        // int4 is always a fixed 4-byte slot; string types carry an explicit maxlength.
        if (type == SfoDataType.Int4)

@@ -28,7 +28,7 @@ int main(int argc, char **argv)
    initNet();
    registerWithBridge("app", "rpp");
 
-   logInfo("[rpp] starting\n");
+   logBuildVersion();
 
    if (initGfx(GFX_VSYNC_ON) != 0) { logError("[rpp] initGfx failed\n"); return 1; }
    if (initFont() != 0) { logError("[rpp] initFont failed\n"); return 1; }

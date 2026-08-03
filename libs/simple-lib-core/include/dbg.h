@@ -140,3 +140,9 @@ static inline void logError(const char *fmt, ...)
    logEmit("ERR ", fmt, ap);
    va_end(ap);
 }
+
+// BUILD_NAME / BUILD_STAMP come from the compiler command line (common/ps3.targets).
+// The stamp is "<build number>-<commit>", plus "-dirty" when the build included
+// edits that were never committed. Call this first thing at startup so every log
+// says which build produced it.
+static inline void logBuildVersion(void) { logInfo("%s %s\n", BUILD_NAME, BUILD_STAMP); }

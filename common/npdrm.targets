@@ -24,6 +24,13 @@
    EBOOT (scetool -i) and matching it field for field. Don't tweak them blind;
    re-dump and compare if a change is needed.
   -->
+  <!-- PARAM.SFO is generated, not committed: APP_VER carries the build number so the
+      console's info screen shows which build is installed. -->
+  <Target Name="GenerateParamSfo" BeforeTargets="ClCompile" DependsOnTargets="ComputeBuildStamp">
+   <Message Text="Generating PARAM.SFO (APP_VER $(BuildNumber))" Importance="high" />
+   <Exec Command="&quot;$(SolutionDir)tools\xml-to-sfo\bin\xml-to-sfo.exe&quot; &quot;$(ProjectDir)PARAM.SFO.xml&quot; &quot;$(ProjectDir)PARAM.SFO&quot; -version $(BuildNumber)" />
+  </Target>
+
   <ItemDefinitionGroup>
    <PostBuildEvent>
      <Message>Packaging $(MSBuildProjectName).pkg (NPDRM, vsh-privileged)</Message>

@@ -12,6 +12,54 @@
    </ClCompile>
   </ItemDefinitionGroup>
 
+  <!--
+   Build stamp: "<commit count>-<commit>", plus "-dirty" when the build includes
+   edits that were never committed. Only changes under libs/ and the project's own
+   folder count as dirty - an edit to an unrelated app doesn't reach this build.
+
+   Asked of git here rather than in a wrapper script so every way of building
+   (Visual Studio, msbuild, vmbuild.ps1) stamps the same value. Without git the
+   stamp is "unknown", which is honest: nothing ties that build to a commit.
+
+   The stamp rides on the compiler command line rather than a generated header,
+   so a changed stamp rebuilds the project and an unchanged one rebuilds nothing.
+  -->
+  <PropertyGroup>
+   <RepoRoot>$(MSBuildThisFileDirectory)..</RepoRoot>
+   <BuildNumber>0</BuildNumber>
+   <BuildStamp>unknown</BuildStamp>
+  </PropertyGroup>
+
+  <Target Name="ComputeBuildStamp" BeforeTargets="ClCompile">
+   <!-- ConsoleOutput captures stderr too, so every step is judged by its exit code, never by its text -->
+   <Exec Command="git -C &quot;$(RepoRoot)&quot; rev-list --count HEAD" ConsoleToMSBuild="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low">
+     <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitCount" />
+     <Output TaskParameter="ExitCode" PropertyName="GitCommitCountExit" />
+   </Exec>
+   <Exec Condition="'$(GitCommitCountExit)' == '0'" Command="git -C &quot;$(RepoRoot)&quot; rev-parse --short HEAD" ConsoleToMSBuild="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low">
+     <Output TaskParameter="ConsoleOutput" PropertyName="GitCommit" />
+     <Output TaskParameter="ExitCode" PropertyName="GitCommitExit" />
+   </Exec>
+   <Exec Condition="'$(GitCommitExit)' == '0'" Command="git -C &quot;$(RepoRoot)&quot; status --porcelain -- libs $(MSBuildProjectDirectory)" ConsoleToMSBuild="true" ContinueOnError="true" StandardOutputImportance="low" StandardErrorImportance="low">
+     <Output TaskParameter="ConsoleOutput" PropertyName="GitUncommittedEdits" />
+     <Output TaskParameter="ExitCode" PropertyName="GitStatusExit" />
+   </Exec>
+
+   <PropertyGroup Condition="'$(GitCommitExit)' == '0'">
+     <BuildNumber>$(GitCommitCount)</BuildNumber>
+     <BuildStamp>$(GitCommitCount)-$(GitCommit)</BuildStamp>
+     <BuildStamp Condition="'$(GitStatusExit)' == '0' and '$(GitUncommittedEdits)' != ''">$(BuildStamp)-dirty</BuildStamp>
+   </PropertyGroup>
+
+   <Message Text="build $(MSBuildProjectName) $(BuildStamp)" Importance="high" />
+
+   <ItemGroup>
+     <ClCompile>
+       <AdditionalOptions>%(ClCompile.AdditionalOptions) -DBUILD_NAME=\"$(MSBuildProjectName)\" -DBUILD_STAMP=\"$(BuildStamp)\"</AdditionalOptions>
+     </ClCompile>
+   </ItemGroup>
+  </Target>
+
   <!-- shared clean: wipe bin and obj contents so stale artifacts don't linger -->
   <Target Name="CustomClean" AfterTargets="Clean">
    <ItemGroup>

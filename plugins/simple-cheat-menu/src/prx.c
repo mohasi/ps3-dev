@@ -24,6 +24,7 @@ int _start(uint64_t arg)
    (void)arg;
    registerWithBridge("plugin", "cht");
    logInfo(TAG "_start\n");
+   logBuildVersion();
    startCheatMenuThreads();   // trigger + worker threads; _start must return promptly
    return SYS_PRX_RESIDENT;
 }

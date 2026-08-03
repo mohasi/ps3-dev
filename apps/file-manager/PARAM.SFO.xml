@@ -5,7 +5,7 @@
   see https://www.psdevwiki.com/ps3/PARAM.SFO for full reference.
 -->
 <paramsfo>
-  <!-- format: XX.YY, e.g. 01.00 for initial release -->
+  <!-- overwritten with the build number by vmbuild; only a direct msbuild run keeps this value -->
   <param key="APP_VER">01.00</param>
 
   <!-- bitfield flags, 0 = defaults. common: 0x08 = xmb forced, 0x20 = bg music -->

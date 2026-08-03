@@ -34,6 +34,7 @@ int main(int argc, char **argv)
    initRtc();
    mountDevBlind();
    initVfs();
+   logBuildVersion();
    initThemes();   // built-in + themes.txt palettes; must precede any screen that reads activeTheme
 
    initNet();

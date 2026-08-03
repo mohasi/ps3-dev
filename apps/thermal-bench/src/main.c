@@ -25,6 +25,7 @@ int main(int argc, char **argv)
 
    initRtc();
    initVfs();          // dbg.h logging and the run files both write through vfs
+   logBuildVersion();
    appRegisterExitCallback();
 
    initNet();

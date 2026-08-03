@@ -1,6 +1,8 @@
 #include <sys/process.h>
 
 #include "app.h"
+#include "dbg.h"
+#include "vfs.h"
 #include "gfx.h"
 #include "colors.h"
 #include "pad.h"
@@ -21,6 +23,8 @@ int main(int argc, char **argv)
    (void)argv;
 
    initRtc();
+   initVfs();          // dbg.h logging writes through vfs
+   logBuildVersion();
 
    appRegisterExitCallback();
 

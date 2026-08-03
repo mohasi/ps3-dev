@@ -36,10 +36,6 @@
      <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-av\bin\$(Configuration)" -lsimple-lib-av -L"$(SolutionDir)libs\simple-lib-https\bin\$(Configuration)" -lsimple-lib-https -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core -Wl,--strip-unused-data</AdditionalOptions>
      <GccOutputFormat>ELFFile</GccOutputFormat>
    </Link>
-   <PreBuildEvent>
-     <Message>Generating PARAM.SFO</Message>
-     <Command>"$(SolutionDir)tools\xml-to-sfo\bin\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
-   </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
    <ClCompile Include="src\main.c" />

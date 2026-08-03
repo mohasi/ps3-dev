@@ -207,6 +207,7 @@ int main(int argc, char **argv)
 
    initRtc();
    initVfs();   // file backends for settings.txt; must precede any read/write
+   logBuildVersion();
    appRegisterExitCallback();
 
    int netRc = initNet();

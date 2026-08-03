@@ -8,18 +8,20 @@ and by Sony's `make_package_npdrm`.
 
 ## How it's invoked
 
-Apps run it automatically as a pre-build step, right after packing sprites. For
-example in `file-manager.vcxproj`:
+Every app build runs it, from the shared `common/npdrm.targets`:
 
 ```
-"$(SolutionDir)tools\xml-to-sfo\bin\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"
+"$(SolutionDir)tools\xml-to-sfo\bin\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO" -version $(BuildNumber)
 ```
 
 You can also drop an XML onto `xml-to-sfo.exe` or pass paths on the command line:
 
 ```
-xml-to-sfo <paramsfo.xml> [outputPath]
+xml-to-sfo <paramsfo.xml> [outputPath] [-version <text>]
 ```
+
+`-version` replaces the XML's `APP_VER`, which is how the build number reaches
+the console's info screen. Without it the XML's own value is used.
 
 On success it writes `PARAM.SFO` and exits silently. On any validation or parse
 error it prints a message with a line number and pauses so you can read it.

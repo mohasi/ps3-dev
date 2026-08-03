@@ -39,6 +39,7 @@ int main(int argc, char **argv)
    appRegisterExitCallback();
    initRtc();
    initVfs();                    // file i/o routing (the temp download lands via openFs)
+   logBuildVersion();
 
    int netRc = initNet();
    initModernHttp();   // bind the modern (BearSSL) http transport; all requests + media streams go through it

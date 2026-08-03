@@ -10,3 +10,4 @@ out/
 .github/captures
 .github/ghidra
 secret-token.h
+PARAM.SFO

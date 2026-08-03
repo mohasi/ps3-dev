@@ -135,6 +135,6 @@
           Inputs="$(ProjectDir)icons\config.json;$(ProjectDir)icons\icons.ttf"
           Outputs="$(ProjectDir)src\ui\icon-data.c;$(ProjectDir)include\ui\icon-ids.h">
     <Message Text="Generating icon font from icons/" Importance="high" />
-    <Exec Command="&quot;$(SolutionDir)tools\sprite-packer.exe&quot; icons &quot;$(ProjectDir)icons\config.json&quot; &quot;$(ProjectDir)icons\icons.ttf&quot; -c &quot;$(ProjectDir)src\ui\icon-data.c&quot; -i &quot;$(ProjectDir)include\ui\icon-ids.h&quot;" />
+    <Exec Command="&quot;$(SolutionDir)tools\sprite-packer\bin\sprite-packer.exe&quot; icons &quot;$(ProjectDir)icons\config.json&quot; &quot;$(ProjectDir)icons\icons.ttf&quot; -c &quot;$(ProjectDir)src\ui\icon-data.c&quot; -i &quot;$(ProjectDir)include\ui\icon-ids.h&quot;" />
   </Target>
 </Project>

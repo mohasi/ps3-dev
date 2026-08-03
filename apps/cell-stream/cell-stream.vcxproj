@@ -38,7 +38,7 @@
    </Link>
    <PreBuildEvent>
      <Message>Generating PARAM.SFO from XML</Message>
-     <Command>"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
+     <Command>"$(SolutionDir)tools\xml-to-sfo\bin\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

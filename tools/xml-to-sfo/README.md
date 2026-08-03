@@ -12,7 +12,7 @@ Apps run it automatically as a pre-build step, right after packing sprites. For
 example in `file-manager.vcxproj`:
 
 ```
-"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"
+"$(SolutionDir)tools\xml-to-sfo\bin\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"
 ```
 
 You can also drop an XML onto `xml-to-sfo.exe` or pass paths on the command line:

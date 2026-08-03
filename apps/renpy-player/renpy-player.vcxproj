@@ -38,8 +38,8 @@
    </Link>
    <PreBuildEvent>
      <Message>Packing sprites and generating PARAM.SFO</Message>
-     <Command>"$(SolutionDir)tools\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
-"$(SolutionDir)tools\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
+     <Command>"$(SolutionDir)tools\sprite-packer\bin\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
+"$(SolutionDir)tools\xml-to-sfo\bin\xml-to-sfo.exe" "$(ProjectDir)PARAM.SFO.xml" "$(ProjectDir)PARAM.SFO"</Command>
    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

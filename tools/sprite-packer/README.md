@@ -16,7 +16,7 @@ Apps that still use a sprite sheet run it automatically as a pre-build step.
 `renpy-player.vcxproj` is the remaining one (its hand cursor):
 
 ```
-"$(SolutionDir)tools\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
+"$(SolutionDir)tools\sprite-packer\bin\sprite-packer.exe" "$(ProjectDir)sprites" -o "$(ProjectDir)res" -h "$(ProjectDir)include"
 ```
 
 So the sprite folder is the source of truth: add a PNG and it gets an enum entry
@@ -80,7 +80,7 @@ sprite-packer icons <config.json> <icons.ttf> -c <dataOut.c> -i <idsOut.h>
 `simple-lib-app.vcxproj` runs it as a pre-build step:
 
 ```
-"$(SolutionDir)tools\sprite-packer.exe" icons "$(ProjectDir)icons\config.json" "$(ProjectDir)icons\icons.ttf" -c "$(ProjectDir)src\ui\icon-data.c" -i "$(ProjectDir)include\ui\icon-ids.h"
+"$(SolutionDir)tools\sprite-packer\bin\sprite-packer.exe" icons "$(ProjectDir)icons\config.json" "$(ProjectDir)icons\icons.ttf" -c "$(ProjectDir)src\ui\icon-data.c" -i "$(ProjectDir)include\ui\icon-ids.h"
 ```
 
 So `icons/` is the source of truth: export a fresh set from Fontello over those

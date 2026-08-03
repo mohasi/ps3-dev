@@ -6,7 +6,7 @@ shows the logs the console sends back, and exposes file / memory / plugin tools.
 It also runs a small local web server so the `ps3` MCP tool (and any script) can
 drive the PS3 over plain HTTP.
 
-Run it: launch `debug-bridge-client.exe` and leave it open. It connects to the
+Run it: launch `tools\debug-bridge-client\bin\debug-bridge-client.exe` and leave it open. It connects to the
 PS3 on its own and reconnects if the console reboots. The `ps3` MCP `deploy` and
 bridge tools all go through this app, so it must be running for them to work.
 

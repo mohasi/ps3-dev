@@ -40,7 +40,4 @@
    <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <Target Name="AfterBuild">
-   <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ProjectDir)..\" />
-  </Target>
 </Project>

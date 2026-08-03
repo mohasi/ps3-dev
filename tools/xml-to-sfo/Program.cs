@@ -8,7 +8,9 @@ namespace XmlToSfo
    //
    // without an explicit output path, writes PARAM.SFO next to the input.
    // outputPath may be a full file path or a directory (PARAM.SFO is appended).
-   // -version replaces the xml's APP_VER, so the build can stamp its number in.
+   // -version replaces the xml's APP_VER, so the build can stamp its number in. A plain
+   // number is reshaped into the XX.YY the console insists on (166 -> 01.66); anything
+   // else that doesn't parse shows as "-" in the game's info screen.
    //
    // on any parse / validation error, prints a message and pauses so the window
    // stays open when launched via drag-drop.
@@ -24,7 +26,7 @@ namespace XmlToSfo
          var paths = new List<string>();
          for (int i = 0; i < args.Length; i++)
          {
-            if (args[i] == "-version" && i + 1 < args.Length) appVersion = args[++i];
+            if (args[i] == "-version" && i + 1 < args.Length) appVersion = toConsoleVersion(args[++i]);
             else paths.Add(args[i]);
          }
 
@@ -61,6 +63,18 @@ namespace XmlToSfo
          Console.Error.WriteLine("error: " + error.Message);
          return Pause(1);
        }
+     }
+
+     // the console only renders APP_VER as a version if it looks like XX.YY, so a build
+     // number gets a dot two digits from the end: 166 -> 01.66, 1004 -> 10.04. Strip the
+     // dot and the build number is back. Anything not purely numeric is passed through.
+     private static string toConsoleVersion(string raw)
+     {
+       foreach (char character in raw)
+         if (character < '0' || character > '9') return raw;
+
+       string digits = raw.PadLeft(4, '0');
+       return digits.Substring(0, digits.Length - 2) + "." + digits.Substring(digits.Length - 2);
      }
 
      // resolves an optional cli path. three cases:

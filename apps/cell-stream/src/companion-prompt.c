@@ -22,7 +22,7 @@
 
 static const char *TITLE = "Waiting for server...";
 static const char *HINT  = "To start, run the companion server on Windows®. Don't have it? Scan the code:";
-static const char *URL   = "codeberg.org/mohasi/ps3-dev/releases/latest";
+static const char *URL   = "github.com/mohasi/ps3-dev/releases/latest";
 
 static Font *promptFont;
 static Label title, hint, url;

@@ -32,7 +32,7 @@
      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
    </ClCompile>
    <Link>
-     <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;-lnetctl_stub;-lvdec_stub;-ladec_stub;-llv2_stub;%(AdditionalDependencies)</AdditionalDependencies>
+     <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;-lnetctl_stub;-lvdec_stub;-ladec_stub;-lsysutil_video_export_stub;-llv2_stub;%(AdditionalDependencies)</AdditionalDependencies>
      <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-av\bin\$(Configuration)" -lsimple-lib-av -L"$(SolutionDir)libs\simple-lib-https\bin\$(Configuration)" -lsimple-lib-https -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core -Wl,--strip-unused-data</AdditionalOptions>
      <GccOutputFormat>ELFFile</GccOutputFormat>
    </Link>
@@ -46,6 +46,7 @@
    <ClCompile Include="src\storage.c" />
    <ClCompile Include="src\stream-select.c" />
    <ClCompile Include="src\downloads.c" />
+   <ClCompile Include="src\video-export.c" />
    <ClCompile Include="src\extractor.c" />
    <ClCompile Include="src\extractors\youtube.c" />
    <ClCompile Include="src\sponsorblock.c" />
@@ -62,6 +63,7 @@
    <ClInclude Include="include\storage.h" />
    <ClInclude Include="include\stream-select.h" />
    <ClInclude Include="include\downloads.h" />
+   <ClInclude Include="include\video-export.h" />
    <ClInclude Include="include\extractor.h" />
    <ClInclude Include="include\sponsorblock.h" />
    <ClInclude Include="include\subtitles.h" />

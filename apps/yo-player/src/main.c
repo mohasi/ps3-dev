@@ -20,6 +20,7 @@
 #include "storage.h"
 #include "settings.h"
 #include "downloads.h"
+#include "video-export.h"
 #include "ui/console-glyphs.h"
 #include "ui/icon-font.h"
 #include "ui/stats.h"
@@ -56,6 +57,7 @@ int main(int argc, char **argv)
    initStorage();          // prefs (last category) + watch history, under /dev_hdd0/tmp/yo-player/
    loadSettings();         // user-editable settings.txt (created with defaults on first launch)
    loadConsoleGlyphs();    // decode the console's own button glyphs for the on-screen hints
+   initVideoExport();      // resolves the download staging folder, so it runs before initDownloads
    initDownloads();        // background download queue + its progress overlay
 
    logInfo("[yt] net rc=%d\n", netRc);
@@ -63,6 +65,7 @@ int main(int argc, char **argv)
 
    while (!appExitRequested) {
       appPoll();
+      updateVideoExport();   // right after the sysutil pump, which is what delivers its results
       updatePad();
       updateScreen();
 
@@ -74,6 +77,7 @@ int main(int argc, char **argv)
 
    changeScreen(NULL);
    shutdownDownloads();   // cancel + join any in-flight download before the http/vfs layers go away
+   shutdownVideoExport();
    freeConsoleGlyphs();
    termStats();
    termAudio();

@@ -2,8 +2,9 @@
 
 // downloads - background video downloads. Square/R3 on a grid queues a video; a single low-priority worker
 // drains the queue one at a time, remuxing the same H.264 + AAC streams the player would show into one
-// .mkv under /dev_hdd0/tmp/yo-player/downloads. The active download's progress shows top-right on the
-// browse screens. Everything runs off the UI thread; the queue is cancelled and cleared on app exit.
+// .mp4, then handing it to video-export so it turns up in the XMB's Video column. The active download's
+// progress shows top-right on the browse screens. Everything runs off the UI thread; the queue is
+// cancelled and cleared on app exit.
 
 #include "extractor.h"   // SearchResult
 

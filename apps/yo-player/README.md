@@ -27,8 +27,8 @@ It reuses what this repo already has:
 - **Subscriptions** — subscribe / unsubscribe from inside a channel; the Subscriptions feed gathers the latest
   uploads from every channel you follow, newest first.
 - **Watch Later** — its own home category; add or remove any video from the pad, tagged on the thumbnail.
-- **Download** — combine a video's video + audio into one `.mkv` file on the console, in the background, with a
-  queue and a progress readout. Live streams can't be downloaded.
+- **Download** — combine a video's video + audio into one `.mp4` file, in the background, with a queue and a
+  progress readout. Finished downloads are registered with the XMB and show up in its Video column.
 - **Volume** — adjust in the player with a pill meter; the level is remembered across videos.
 - **Description** — read the full video description over the playing video, scrollable, without pausing.
 - **Chapters** — jump around by chapter. Chapters come from the description's timestamps, falling back to
@@ -50,7 +50,7 @@ It reuses what this repo already has:
    streaming as it goes rather than waiting for a full download. The picture and sound streams open in parallel
    so the video starts roughly twice as fast.
 4. Downloads run on a background worker: it reads the same picture and sound streams and remuxes them (repackages
-   them, no re-encoding) into a single `.mkv` file on disk, while you keep browsing.
+   them, no re-encoding) into a single `.mp4` file on disk, while you keep browsing.
 
 ## Screens & controls
 
@@ -94,10 +94,19 @@ their category colours. Live streams have no seek bar (there's nothing to scrub)
 
 ## Downloads
 
-Pressing **R3** on a video queues a download. The picture and sound streams are combined into one `.mkv` file
-under `/dev_hdd0/tmp/yo-player/downloads/`, named after the video (as `Title [videoId].mkv`). Downloads run in
-the background so you can keep browsing, queue up if you start several, and show progress in the top-right
-corner. Live streams can't be downloaded.
+Pressing **R3** on a video queues a download. The picture and sound streams are combined into one `.mp4` file.
+Downloads run in the background so you can keep browsing, queue up if you start several, and show progress in
+the top-right corner. Live streams can't be downloaded.
+
+A finished download is handed to the system with `cellVideoExport`, which moves it out of the app's folder and
+registers it in the console's media database. That is what makes it appear in the XMB's Video column, named
+after the video, next to anything you would normally copy over from a USB stick. Copying a file into
+`/dev_hdd0/video` by hand does not work: the XMB lists videos from that database, not from the folder.
+
+Two constraints came out of getting that working, and both shape the code. The export only accepts files from
+the directory the game content utility hands back, so downloads are written straight into the app's own
+`USRDIR`. And it rejects filenames containing spaces or brackets, so the file is staged under the video id;
+the name you actually see comes from the title passed to the export.
 
 ## Settings
 
@@ -136,7 +145,6 @@ or move it to another console:
 - `watchlater.txt` — the Watch Later queue. It keeps full video details so the list opens instantly without
   re-fetching.
 - watch history and last-position files — used to dim already-watched tiles and to resume playback.
-- `downloads/` — finished `.mkv` downloads.
 
 ## Build & deploy
 

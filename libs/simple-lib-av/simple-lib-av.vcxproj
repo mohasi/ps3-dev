@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
    <ProjectConfiguration Include="Release|PS3">
@@ -41,7 +41,7 @@
    <ClCompile Include="src\demux.c" />
    <ClCompile Include="src\demux-mkv.c" />
    <ClCompile Include="src\demux-mp4.c" />
-   <ClCompile Include="src\mux-mkv.c" />
+   <ClCompile Include="src\mux-mp4.c" />
    <ClCompile Include="src\decode-h264.c" />
    <ClCompile Include="src\decode-aac.c" />
    <ClCompile Include="src\video-player.c" />
@@ -58,7 +58,7 @@
    <ClInclude Include="include\demux.h" />
    <ClInclude Include="include\demux-mkv.h" />
    <ClInclude Include="include\demux-mp4.h" />
-   <ClInclude Include="include\mux-mkv.h" />
+   <ClInclude Include="include\mux-mp4.h" />
    <ClInclude Include="include\decode-h264.h" />
    <ClInclude Include="include\decode-aac.h" />
    <ClInclude Include="include\video-player.h" />

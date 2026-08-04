@@ -1,12 +1,13 @@
-// downloads - background queue that remuxes a video's streams into one .mkv on disk (see downloads.h).
+// downloads - background queue that remuxes a video's streams into one .mp4 on disk (see downloads.h).
 
 #include "downloads.h"
 #include "stream-select.h"      // pickBestVideo / pickBestAudio
-#include "mux-mkv.h"
+#include "mux-mp4.h"
 #include "demux.h"              // VideoDemuxer + readVideoAu / readAudioAu
 #include "extractor.h"
+#include "video-export.h"   // hand the finished file to the xmb
 
-#include "vfs.h"                // openFs/writeFs + makeDir/deleteFile + MAX_PATH_LEN
+#include "vfs.h"                // renamePath/deleteFile + MAX_PATH_LEN
 #include "thread.h"            // lwmutex + spawnJoinableThread
 #include "string-utilities.h"   // strCopy
 #include "font.h"
@@ -19,9 +20,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define DOWNLOAD_DIR       "/dev_hdd0/tmp/yo-player/downloads"
 #define MAX_QUEUE          16
-#define TITLE_FILENAME_MAX 100      // longest title kept in a filename before truncating
 #define DISPLAY_TITLE_MAX  32       // longest title shown in the "Downloading ..." overlay
 #define OVERLAY_TEXT_SIZE  19       // matches the grid's Watch Later / duration badge
 
@@ -48,33 +47,17 @@ static Label overlayLabel;
 
 // ---- filename ----
 
-// map a video title to a filesystem-safe name: drop control bytes, turn reserved characters into spaces,
-// and trim trailing spaces/dots. UTF-8 continuation bytes (>= 0x80) pass through untouched.
-static void sanitizeTitle(const char *title, char *out, int cap)
+// the video id, which is always plain characters: the export refuses filenames with spaces or brackets,
+// and the name the XMB ends up showing comes from the title handed to the export, not from this one.
+static void buildDownloadPath(char *path, int cap, const char *videoId)
 {
-   int j = 0;
-   for (int i = 0; title[i] && j < cap - 1; i++) {
-      unsigned char ch = (unsigned char)title[i];
-      if (ch < 0x20) continue;
-      out[j++] = strchr("/\\:*?\"<>|", ch) ? ' ' : (char)ch;
-   }
-   while (j > 0 && (out[j - 1] == ' ' || out[j - 1] == '.')) j--;
-   out[j] = 0;
-}
-
-static void buildDownloadPath(char *path, int cap, const char *title, const char *videoId)
-{
-   char clean[160];
-   sanitizeTitle(title, clean, sizeof clean);
-   if (!clean[0]) strCopy(clean, sizeof clean, "video");
-   if ((int)strlen(clean) > TITLE_FILENAME_MAX) clean[TITLE_FILENAME_MAX] = 0;
-   snprintf(path, cap, "%s/%s [%s].mkv", DOWNLOAD_DIR, clean, videoId);
+   snprintf(path, cap, "%s/%s.mp4", getVideoStagingDir(), videoId);
 }
 
 // ---- the remux itself ----
 
-// remux the video (and optional audio) url into one .mkv at outPath. reads elementary access units from
-// the demuxers and writes MKV blocks, checking cancelAll each unit. 0 on a complete file, -1 otherwise
+// remux the video (and optional audio) url into one .mp4 at outPath. reads elementary access units from
+// the demuxers and writes MP4 samples, checking cancelAll each unit. 0 on a complete file, -1 otherwise
 // (the partial file is removed by the caller).
 static int remux(const char *videoUrl, const char *audioUrl, const char *outPath)
 {
@@ -84,14 +67,14 @@ static int remux(const char *videoUrl, const char *audioUrl, const char *outPath
 
    int result = -1;
    int videoOpen = 0, hasAudio = 0;
-   MkvMuxer mux;
+   Mp4Muxer mux;
 
    if (openVideoDemuxer(video, videoUrl) != 0) { logError("[dl] video demux open failed\n"); goto cleanup; }
    videoOpen = 1;
    if (audio && openAudioDemuxer(audio, audioUrl) == 0) hasAudio = 1;
 
-   if (openMkvMuxer(&mux, outPath, &video->h264, video->width, video->height, video->frameDurationNs,
-                    video->durationNs, hasAudio ? audio->audioRate : 0, hasAudio ? audio->audioChannels : 0) != 0)
+   if (openMp4Muxer(&mux, outPath, &video->h264, video->width, video->height, video->frameDurationNs,
+                    hasAudio ? audio->audioRate : 0, hasAudio ? audio->audioChannels : 0) != 0)
       goto cleanup;
 
    // interleave by presentation time: hold one pending AU from each stream and write whichever comes first.
@@ -104,18 +87,18 @@ static int remux(const char *videoUrl, const char *audioUrl, const char *outPath
 
    while (!dl.cancelAll && (videoRc == 1 || audioRc == 1)) {
       if (videoRc == 1 && (audioRc != 1 || videoAu.pts <= audioAu.pts)) {
-         if (writeMkvVideo(&mux, videoAu.data, videoAu.size, videoAu.pts, videoAu.keyframe)) { failed = 1; break; }
+         if (writeMp4Video(&mux, videoAu.data, videoAu.size, videoAu.pts, videoAu.keyframe)) { failed = 1; break; }
          if (total) { uint64_t done = videoAu.pts * 100 / total; dl.percent = done > 100 ? 100 : (int)done; }
          videoRc = readVideoAu(video, &videoAu);
          if (videoRc < 0) { failed = 1; break; }
       } else {
-         if (writeMkvAudio(&mux, audioAu.data, audioAu.size, audioAu.pts)) { failed = 1; break; }
+         if (writeMp4Audio(&mux, audioAu.data, audioAu.size, audioAu.pts)) { failed = 1; break; }
          audioRc = readAudioAu(audio, &audioAu);
          if (audioRc < 0) { failed = 1; break; }
       }
    }
 
-   if (closeMkvMuxer(&mux)) failed = 1;
+   if (closeMp4Muxer(&mux)) failed = 1;
    if (!failed && !dl.cancelAll) { dl.percent = 100; result = 0; }
 
 cleanup:
@@ -142,7 +125,7 @@ static void runOneDownload(const QueueItem *item)
    if (video->isLiveSegmented) { logInfo("[dl] %s is a live stream, not downloadable\n", item->videoId); free(info); return; }
 
    char finalPath[MAX_PATH_LEN], partPath[MAX_PATH_LEN];
-   buildDownloadPath(finalPath, sizeof finalPath, item->title, item->videoId);
+   buildDownloadPath(finalPath, sizeof finalPath, item->videoId);
    snprintf(partPath, sizeof partPath, "%s.part", finalPath);
    logInfo("[dl] %s -> %s (video itag %d, audio itag %d)\n", item->videoId, finalPath, video->itag, audio ? audio->itag : (video->hasAudio ? video->itag : 0));
 
@@ -153,7 +136,7 @@ static void runOneDownload(const QueueItem *item)
 
    if (rc != 0) { deleteFile(partPath); logInfo("[dl] %s %s\n", item->videoId, dl.cancelAll ? "cancelled" : "failed"); }
    else if (renamePath(partPath, finalPath) != 0) { deleteFile(partPath); logError("[dl] %s rename failed\n", item->videoId); }
-   else logInfo("[dl] %s done\n", item->videoId);
+   else { logInfo("[dl] %s done\n", item->videoId); queueVideoExport(finalPath, item->title); }
 }
 
 // ---- worker + queue ----
@@ -251,7 +234,6 @@ void initDownloads(void)
 {
    memset(&dl, 0, sizeof dl);
    createLock(&dl.mutex);
-   makeDir(DOWNLOAD_DIR);
    font = openSystemFont(FONT_POP);
    initLabel(&overlayLabel, &font, 0, 0, AUTO, AUTO, OVERLAY_TEXT_SIZE, activeTheme->textPrimary, TEXT_NOWRAP, "");
    dl.initialized = 1;

@@ -88,25 +88,35 @@ int prepareDiscDump(char *reasonOut, int cap)
    return 0;
 }
 
+// one read. returns 0, or the lv2 error, so callers can log why a read failed.
+static int readSectors(int driveHandle, uint64_t sector, uint32_t count, uint8_t *buffer)
+{
+   uint32_t sectorsRead = 0;
+   int rc = readStorageRaw(driveHandle, sector, count, buffer, &sectorsRead);
+   return (rc == 0 && sectorsRead != count) ? -1 : rc;   // a short read is as useless to us as a failed one
+}
+
 // one chunk, retried. a chunk that will not read as a whole is retried sector by sector so a
 // single bad spot costs only its own sectors; those that never read are left zeroed (the image
 // keeps its length) and counted by the caller. returns the number of unreadable sectors, or -1
 // if the user cancelled mid-retry.
 static int readChunk(int driveHandle, uint64_t sector, uint32_t count, uint8_t *buffer)
 {
-   uint32_t sectorsRead = 0;
+   int rc = 0;
    for (int attempt = 0; attempt < READ_ATTEMPTS; attempt++) {
-      if (readStorageRaw(driveHandle, sector, count, buffer, &sectorsRead) == 0 && sectorsRead == count) return 0;
+      rc = readSectors(driveHandle, sector, count, buffer);
+      if (rc == 0) return 0;
       if (isCancelRequested()) return -1;
    }
 
-   logWarn("[dump] chunk at sector %llu unreadable, falling back to single sectors\n", (unsigned long long)sector);
+   logWarn("[dump] chunk at sector %llu unreadable, rc=0x%x, falling back to single sectors\n",
+           (unsigned long long)sector, rc);
    int unreadable = 0;
    for (uint32_t index = 0; index < count; index++) {
       uint8_t *slot = buffer + (uint64_t)index * BD_SECTOR_SIZE;
       int ok = 0;
       for (int attempt = 0; attempt < READ_ATTEMPTS && !ok; attempt++) {
-         ok = readStorageRaw(driveHandle, sector + index, 1, slot, &sectorsRead) == 0 && sectorsRead == 1;
+         ok = readSectors(driveHandle, sector + index, 1, slot) == 0;
          if (!ok && isCancelRequested()) return -1;
       }
       if (!ok) {
@@ -154,6 +164,11 @@ void runDiscDump(void)
    Sha1State hashState;
    initSha1(&hashState);
    if (!buffer) { logError("[dump] out of memory for the read buffer\n"); goto cleanup; }
+   // check one sector before dumping any, so a disc lv2 will not read at sector level (a PS2 or
+   // video disc: ENXIO, even though it mounts and reads that same disc's files) stops here in a
+   // second rather than after hours of retries
+   int probeRc = readSectors(driveHandle, 0, 1, buffer);
+   if (probeRc != 0) { logError("[dump] the drive refused sector 0, rc=0x%x\n", probeRc); goto cleanup; }
 
    makeDirPath(DUMP_DIRECTORY);
    if (openFs(destinationPath, VFS_O_WRONLY | VFS_O_CREAT | VFS_O_TRUNC, &image) != 0) {
@@ -175,6 +190,15 @@ void runDiscDump(void)
       int unreadable = isCancelRequested() ? -1 : readChunk(driveHandle, sector, count, buffer);
       if (unreadable < 0) {
          strCopy(statusMessage, sizeof statusMessage, "Cancelled.");
+         removePartialImage = 1;
+         goto cleanup;
+      }
+
+      // a chunk where nothing at all read is the drive giving up, not a scratch - going on would
+      // only fill the image with zeroes for hours
+      if ((uint32_t)unreadable == count) {
+         logError("[dump] nothing readable at sector %llu, stopping\n", (unsigned long long)sector);
+         strCopy(statusMessage, sizeof statusMessage, "The disc stopped responding.");
          removePartialImage = 1;
          goto cleanup;
       }

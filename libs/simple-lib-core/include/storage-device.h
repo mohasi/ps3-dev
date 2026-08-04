@@ -83,63 +83,11 @@ static inline int readStorageRaw(int storageHandle, uint64_t sector, uint32_t co
                        (uint64_t)(uintptr_t)buffer, (uint64_t)(uintptr_t)outRead, 0);
 }
 
-// --- raw ATAPI drive reads ---
-// STORAGE_READ (602) authenticates the media first and refuses anything the XMB
-// didn't recognise (PS2, PSX, video DVD) with 0x8001002f. Sending the drive its
-// own ATAPI read command goes around that check - this is how MultiMAN/IRISMAN
-// dump those discs. Layout and the READ(12) command mirror IRISMAN's
-// read_raw_sector_bdvd (originally from MultiMAN).
+// STORAGE_READ (602) only serves media the XMB authenticated. A PS2 or video disc is refused with
+// ENXIO (0x8001002f) even though lv2 mounts and reads that same disc's files - measured on 4.93,
+// and MultiMAN's "Create ISO" fails there identically. Sending the drive its own ATAPI read
+// command instead was tried and refused too, so there is no sector-level route to those discs.
 #define STORAGE_SEND_DEVICE_CMD   604    // sys_storage_send_device_cmd
-#define STORAGE_DEVICE_CMD_ATAPI  1      // subcommand: the payload is an ATAPI packet
-#define ATAPI_READ_12             0xA8   // MMC READ(12): 2048-byte user data per sector
-
-typedef struct {
-   uint8_t  packet[32];     // ATAPI command descriptor block (12 bytes used)
-   uint32_t packetLength;   // 12 for ATAPI
-   uint32_t blocks;         // sectors to transfer
-   uint32_t blockSize;      // bytes per sector the drive returns
-   uint32_t protocol;       // 3 = DMA
-   uint32_t direction;      // 1 = device -> host
-   uint32_t reserved;
-} __attribute__((packed)) AtapiCommandBlock;
-
-// Reads `count` 2048-byte sectors from `sector` straight off the drive, skipping
-// media authentication. `buffer` must hold count*BD_SECTOR_SIZE bytes and be
-// aligned. Returns 0 on success, an lv2 error otherwise (0x8001000A = busy). The
-// LBA and length go in big-endian, which on this PPC target is just the sector's
-// natural byte order.
-static inline int readDiscRaw(int storageHandle, uint32_t sector, uint32_t count, void *buffer)
-{
-   AtapiCommandBlock command;
-   uint8_t *commandBytes = (uint8_t *)&command;
-   for (unsigned i = 0; i < sizeof command; i++) commandBytes[i] = 0;
-   command.packet[0] = ATAPI_READ_12;
-   command.packet[2] = (uint8_t)(sector >> 24);
-   command.packet[3] = (uint8_t)(sector >> 16);
-   command.packet[4] = (uint8_t)(sector >> 8);
-   command.packet[5] = (uint8_t)sector;
-   command.packet[6] = (uint8_t)(count >> 24);
-   command.packet[7] = (uint8_t)(count >> 16);
-   command.packet[8] = (uint8_t)(count >> 8);
-   command.packet[9] = (uint8_t)count;
-   command.packetLength = 12;
-   command.blocks       = count;
-   command.blockSize    = BD_SECTOR_SIZE;
-   command.protocol     = 3;   // DMA
-   command.direction    = 1;   // device -> host
-   return (int)scCall6(STORAGE_SEND_DEVICE_CMD, (uint64_t)storageHandle, STORAGE_DEVICE_CMD_ATAPI,
-                       (uint64_t)(uintptr_t)&command, sizeof command,
-                       (uint64_t)(uintptr_t)buffer, (uint64_t)count * BD_SECTOR_SIZE);
-}
-
-#define STORAGE_CTRL   864   // sys_storage_ctrl - reset/unlock the BD drive; needs a patched lv2
-
-// The XMB authenticates the drive only for the media it recognises, so raw-reading other media
-// (PS2, DVD) is refused (rc 0x8001002f) until we reset and unlock the drive ourselves. These are
-// the low-level steps; the caller sequences them (see file-manager disc-dump unlockDrive). They
-// mirror IRISMAN's storage.h wrappers. controlBdDrive passes a pointer to the control value.
-static inline int resetBdDrive(void)         { return (int)scCall2(STORAGE_CTRL, 0x5004, 0x29); }
-static inline int controlBdDrive(uint64_t function) { uint64_t value = function; return (int)scCall2(STORAGE_CTRL, 0x5007, (uint64_t)(uintptr_t)&value); }
 
 // --- disc table of contents (READ TOC) ---
 // Reads the disc's track layout via the native SCSI READ TOC command. Generic drive knowledge:

@@ -12,7 +12,7 @@
 
 #include "dbg.h"
 #include "vfs.h"
-#include "cobra.h"
+#include "disc-mount.h"
 #include "thread.h"
 #include "vsh.h"
 #include "string-utilities.h"
@@ -20,8 +20,6 @@
 #define SDM_PORT      8947
 #define SDM_BUF_MAX   2048
 #define SDM_PATH_MAX  1024
-
-static const char *pathLastMount = "/dev_hdd0/tmp/sdm_last.txt";
 
 // Tiny HTML page that closes the webrender browser as soon as it loads.
 // Sent on every served request — success and bail-out paths alike — so the
@@ -35,21 +33,8 @@ static const char httpRespAutoClose[] =
    "\r\n"
    "<script>window.close()</script>";
 
-static void httpWriteLastMount(const char *path)
-{
-   if (writeFile(pathLastMount, path, (uint64_t)getStrLen(path)) != 0)
-      logError("[sdm] could not remember %s for next boot\n", path);
-}
-
-// A real disc, or an explicit unmount, replaces the remembered image outright:
-// only picking an ISO from the menu mounts one again.
-static void forgetLastMount(void)
-{
-   deleteFile(pathLastMount);
-}
-
 // Parses the request in `buf` and, if it's a well-formed mount URL whose
-// target exists, fires cobraMountIso. All log/notify side-effects live here.
+// target exists, fires mountDiscImage. All log/notify side-effects live here.
 // Returns nothing — caller always sends the auto-close response so the
 // webrender browser never dangles, regardless of which bail path we take.
 static void httpParseAndMount(const char *buf, int off)
@@ -71,8 +56,7 @@ static void httpParseAndMount(const char *buf, int off)
       return;
    }
 
-   if (cobraMountIso(path) == 0) {
-      httpWriteLastMount(path);
+   if (mountDiscImage(path) == 0) {
       logInfo("[sdm] mounted: %s\n", path);
       vshNotify("Disc mounted.");
    } else {
@@ -81,12 +65,12 @@ static void httpParseAndMount(const char *buf, int off)
    }
 }
 
-static void httpHandle(int clientFd)
+static void httpHandle(int clientSocket)
 {
    char buf[SDM_BUF_MAX];
    int off = 0;
    while (off < (int)sizeof(buf) - 1) {
-      int got = recv(clientFd, buf + off, sizeof(buf) - 1 - off, 0);
+      int got = recv(clientSocket, buf + off, sizeof(buf) - 1 - off, 0);
       if (got <= 0) break;      // client went away mid-request; still answer what we have
       off += got;
       buf[off] = '\0';
@@ -95,7 +79,7 @@ static void httpHandle(int clientFd)
    }
 
    httpParseAndMount(buf, off);
-   send(clientFd, httpRespAutoClose, sizeof(httpRespAutoClose) - 1, 0);
+   send(clientSocket, httpRespAutoClose, sizeof(httpRespAutoClose) - 1, 0);
 }
 
 static void httpListenerThread(uint64_t arg)
@@ -103,13 +87,13 @@ static void httpListenerThread(uint64_t arg)
    (void)arg;
    logInfo("[sdm] http thread start\n");
 
-   int listenFd = -1;
+   int listenSocket = -1;
    int retries = 0;
-   while (listenFd < 0 && retries < 30) {
-      listenFd = socket(AF_INET, SOCK_STREAM, 0);
-      if (listenFd < 0) { sys_timer_sleep(2); retries++; }
+   while (listenSocket < 0 && retries < 30) {
+      listenSocket = socket(AF_INET, SOCK_STREAM, 0);
+      if (listenSocket < 0) { sys_timer_sleep(2); retries++; }
    }
-   if (listenFd < 0) { logError("[sdm] socket failed\n"); exitThread(); return; }
+   if (listenSocket < 0) { logError("[sdm] socket failed\n"); exitThread(); return; }
 
    struct sockaddr_in addr;
    addr.sin_family      = AF_INET;
@@ -117,19 +101,19 @@ static void httpListenerThread(uint64_t arg)
    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
    retries = 0;
-   while (bind(listenFd, (struct sockaddr *)&addr, sizeof addr) < 0) {
+   while (bind(listenSocket, (struct sockaddr *)&addr, sizeof addr) < 0) {
       if (++retries > 30) {
          logError("[sdm] bind failed\n");
-         socketclose(listenFd);
+         socketclose(listenSocket);
          exitThread();
          return;
       }
 
       sys_timer_sleep(2);
    }
-   if (listen(listenFd, 2) < 0) {
+   if (listen(listenSocket, 2) < 0) {
       logError("[sdm] listen failed\n");
-      socketclose(listenFd);
+      socketclose(listenSocket);
       exitThread();
       return;
    }
@@ -138,11 +122,11 @@ static void httpListenerThread(uint64_t arg)
 
    for (;;) {
       socklen_t remoteAddrLen = sizeof addr;
-      int clientFd = accept(listenFd, (struct sockaddr *)&addr, &remoteAddrLen);
-      if (clientFd < 0) { sys_timer_usleep(100000); continue; }
-      httpHandle(clientFd);
-      shutdown(clientFd, SHUT_RDWR);
-      socketclose(clientFd);
+      int clientSocket = accept(listenSocket, (struct sockaddr *)&addr, &remoteAddrLen);
+      if (clientSocket < 0) { sys_timer_usleep(100000); continue; }
+      httpHandle(clientSocket);
+      shutdown(clientSocket, SHUT_RDWR);
+      socketclose(clientSocket);
    }
 }
 

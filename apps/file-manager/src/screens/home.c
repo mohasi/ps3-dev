@@ -12,6 +12,7 @@
 #include "widgets/clock-widget.h"
 #include "widgets/footer-widget.h"
 #include "widgets/free-space-widget.h"
+#include "widgets/toast-widget.h"
 #include "widgets/file-list.h"
 #include "search-controller.h"
 #include "overlays/sidepanel.h"
@@ -139,6 +140,7 @@ static void initHome(void)
    initBreadcrumb(&breadcrumb, &pop, 70, 135, activeTheme->textPrimary, 20);
    initClockWidget(&pop, 1675, 55, 21);
    initFreeSpaceWidget(&pop, 1668, 951, 20, 210);
+   initToastWidget(&pop);
    initFooterWidget(&pop);
    initFileList(&pop, &clickSfx, &checkSfx, 177, 258, 860, 74, 24, &breadcrumb);   // name width leaves room for the permissions column
    initSearchController(&pop, &clickSfx, &checkSfx, 258, 74, 24, openSidepanel);
@@ -181,6 +183,7 @@ static void applyThemeToHome(void)
    rethemeBreadcrumb(&breadcrumb, activeTheme->textPrimary);
    rethemeClockWidget();
    rethemeFreeSpaceWidget();
+   rethemeToastWidget();
    rethemeFileList();
    rethemeSearchController();
    rethemeFooterWidget();
@@ -239,6 +242,7 @@ static void updateHome(void)
    updateOverlay(&propertiesOverlay);
    updateKeyboard();
    updateHexPad();
+   updateToastWidget();   // a toast expires on its own clock, whatever else is up
 
    if (!overlayWasVisible) {
       if (!isKeyboardOpen() && !isHexPadOpen()) handleThemeSwitch();
@@ -281,6 +285,7 @@ static void drawHome(void)
    drawOverlay(&propertiesOverlay);
    drawOverlay(&confirmOverlay);
    drawOverlay(&progressOverlay);
+   drawToastWidget();   // last, so it is never hidden behind an overlay
 }
 
 static void suspendHome(void) {}
@@ -304,6 +309,7 @@ static void termHome(void)
    termFooterWidget();
    termClockWidget();
    termFreeSpaceWidget();
+   termToastWidget();
    termBreadcrumb(&breadcrumb);
    freeLabel(&titleLabel);
 

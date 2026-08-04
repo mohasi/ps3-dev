@@ -64,6 +64,7 @@
    <ClCompile Include="src\widgets\clock-widget.c" />
    <ClCompile Include="src\widgets\footer-widget.c" />
    <ClCompile Include="src\widgets\free-space-widget.c" />
+   <ClCompile Include="src\widgets\toast-widget.c" />
    <ClCompile Include="src\widgets\file-list.c" />
    <ClCompile Include="src\widgets\search-list.c" />
   </ItemGroup>
@@ -93,6 +94,7 @@
    <ClInclude Include="include\widgets\clock-widget.h" />
    <ClInclude Include="include\widgets\footer-widget.h" />
    <ClInclude Include="include\widgets\free-space-widget.h" />
+   <ClInclude Include="include\widgets\toast-widget.h" />
    <ClInclude Include="include\widgets\file-list.h" />
    <ClInclude Include="include\widgets\list-row-chrome.h" />
    <ClInclude Include="include\widgets\search-list.h" />

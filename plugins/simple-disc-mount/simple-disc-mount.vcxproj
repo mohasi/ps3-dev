@@ -40,7 +40,6 @@
    <ClCompile Include="src\prx.c" />
   </ItemGroup>
   <ItemGroup>
-   <ClInclude Include="include\cobra.h" />
    <ClInclude Include="include\http.h" />
    <ClInclude Include="include\xmb-inject.h" />
   </ItemGroup>

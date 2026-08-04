@@ -1,11 +1,11 @@
-#pragma once
-
-// Cobra syscall8 helpers used by the disc mount flow in this plugin.
-
+// disc-mount - see disc-mount.h
+#include "disc-mount.h"
+#include "syscall.h"
+#include "string-utilities.h"
+#include "vfs.h"
+#include "dbg.h"
 #include <stdint.h>
 #include <sys/timer.h>
-#include "dbg.h"
-#include "syscall.h"
 
 #define SC_COBRA                8
 #define OP_GET_DISC_TYPE        0x7020
@@ -19,11 +19,20 @@
 #define STORAGE_EVENT_PRE_INSERT    7
 #define STORAGE_EVENT_INSERTED      3
 
-// Type of the disc physically in the BD drive, 0 when the drive is empty.
-// Cobra caches this from the last drive event rather than probing, and the fake
-// eject we send while mounting resets it to 0 — so it is only truthful until we
-// mount something. cobraMountIso captures it beforehand for that reason.
-static inline unsigned int getRealDiscType(void)
+static const char *pathLastMount = "/dev_hdd0/tmp/sdm_last.txt";
+
+// Set while Cobra is serving one of our images. Only a fallback for
+// isDiscImageMounted(), which asks Cobra directly.
+static int imageMounted = 0;
+
+// What the drive physically held when we mounted. Kept because our own fake
+// eject wipes Cobra's copy, so at unmount time nothing else can tell us.
+static unsigned int discTypeBeforeMount = 0;
+
+// Cobra caches the disc type from the last drive event rather than probing, and
+// the fake eject we send while mounting resets it to 0 — so it is only truthful
+// until we mount something. mountDiscImage captures it beforehand for that reason.
+unsigned int getRealDiscType(void)
 {
    unsigned int realType = 0, effectiveType = 0, fakeType = 0;
    int rc = (int)scCall4(SC_COBRA, OP_GET_DISC_TYPE, (uint64_t)(uintptr_t)&realType,
@@ -32,7 +41,7 @@ static inline unsigned int getRealDiscType(void)
       static int warned = 0;   // polled every couple of seconds, so warn once
       if (!warned) {
          warned = 1;
-         logError("[sdm] get_disc_type rc=0x%x\n", rc);
+         logError("[disc] get_disc_type rc=0x%x\n", rc);
       }
       return 0;
    }
@@ -40,8 +49,8 @@ static inline unsigned int getRealDiscType(void)
 }
 
 // Issue syscall8 opcode 0x7024 to switch Cobra's active emulated PS3 disc.
-// `files` points to a syscall-visible argv array of ISO part paths.
-static inline int cobraMountPs3(char *files[], unsigned int count)
+// `files` points to a syscall-visible argv array of image part paths.
+static int cobraMountPs3(char *files[], unsigned int count)
 {
    int ret;
    __asm__ volatile (
@@ -57,59 +66,45 @@ static inline int cobraMountPs3(char *files[], unsigned int count)
        : "r0","r3","r4","r5","r6","r7","r8","r9","r10","r11","r12",
          "cr0","ctr","xer","memory"
    );
-   if (ret != 0) logError("[sdm] sc8 mount_ps3 rc=0x%x\n", ret);
+   if (ret != 0) logError("[disc] sc8 mount_ps3 rc=0x%x\n", ret);
    return ret;
 }
 
 // Raise a synthetic BD-drive storage event so XMB updates disc state.
 // `discType` rides in the top half of the event parameter; Cobra reads it back
 // on the insert event to decide what the drive now holds. 0 means "let the
-// active emulation decide", which is what an ISO mount wants.
-static inline int cobraFakeEvent(uint64_t event, unsigned int discType)
+// active emulation decide", which is what an image mount wants.
+static int fakeStorageEvent(uint64_t event, unsigned int discType)
 {
    sys_timer_usleep(5000);
    return (int)scCall4(SC_COBRA, OP_FAKE_STORAGE_EVENT, event, (uint64_t)discType << 32, DEV_BDVD);
 }
 
-static inline int cobraFakeDiscEject(void)
+static int fakeDiscEject(void)
 {
-   int rc = cobraFakeEvent(STORAGE_EVENT_PRE_EJECT, 0);
+   int rc = fakeStorageEvent(STORAGE_EVENT_PRE_EJECT, 0);
    if (rc != 0) {
-      logError("[sdm] pre-eject rc=0x%x\n", rc);
+      logError("[disc] pre-eject rc=0x%x\n", rc);
       return rc;
    }
 
-   rc = cobraFakeEvent(STORAGE_EVENT_EJECTED, 0);
-   if (rc != 0) logError("[sdm] eject rc=0x%x\n", rc);
+   rc = fakeStorageEvent(STORAGE_EVENT_EJECTED, 0);
+   if (rc != 0) logError("[disc] eject rc=0x%x\n", rc);
    return rc;
 }
 
-static inline int cobraFakeDiscInsert(unsigned int discType)
+static int fakeDiscInsert(unsigned int discType)
 {
-   int rc = cobraFakeEvent(STORAGE_EVENT_PRE_INSERT, discType);
+   int rc = fakeStorageEvent(STORAGE_EVENT_PRE_INSERT, discType);
    if (rc != 0) {
-      logError("[sdm] pre-insert rc=0x%x\n", rc);
+      logError("[disc] pre-insert rc=0x%x\n", rc);
       return rc;
    }
 
-   rc = cobraFakeEvent(STORAGE_EVENT_INSERTED, discType);
-   if (rc != 0) logError("[sdm] insert rc=0x%x\n", rc);
+   rc = fakeStorageEvent(STORAGE_EVENT_INSERTED, discType);
+   if (rc != 0) logError("[disc] insert rc=0x%x\n", rc);
    return rc;
 }
-
-// Set while Cobra is serving one of our ISOs as the disc. Only a fallback for
-// isDiscImageMounted() below, which asks Cobra directly.
-static int isoMounted = 0;
-
-// What the drive physically held when we mounted. Kept because our own fake
-// eject wipes Cobra's copy, so at unmount time nothing else can tell us.
-static unsigned int discTypeBeforeMount = 0;
-
-typedef enum {
-   UNMOUNT_DONE = 0,
-   UNMOUNT_NOTHING_MOUNTED,
-   UNMOUNT_FAILED,
-} UnmountResult;
 
 // Cobra's emulation state, as sys_emu_state_t in its storage_ext.h. `size`
 // must match the kernel's sizeof() exactly or the syscall returns EINVAL —
@@ -123,11 +118,10 @@ typedef struct {
 
 static CobraEmuState emuState;   // ~1KB, kept out of the caller's small thread stack
 
-// True while Cobra serves a disc image instead of the drive. Cobra is the only
-// honest source here: the image survives an XMB restart, so our own flag can be
-// out of date after the plugin reloads. The flag covers the case where this
-// syscall is unavailable (a Cobra build whose struct doesn't match).
-static inline int isDiscImageMounted(void)
+// Cobra is the only honest source here: the image survives an XMB restart, so
+// our own flag can be out of date after a reload. The flag covers the case
+// where this syscall is unavailable (a Cobra build whose struct doesn't match).
+int isDiscImageMounted(void)
 {
    emuState.size = (int32_t)sizeof emuState;
    int rc = (int)scCall2(SC_COBRA, OP_GET_EMU_STATE, (uint64_t)(uintptr_t)&emuState);
@@ -135,23 +129,34 @@ static inline int isDiscImageMounted(void)
       static int warned = 0;   // polled every couple of seconds, so warn once
       if (!warned) {
          warned = 1;
-         logWarn("[sdm] get_emu_state rc=0x%x, falling back to local state\n", rc);
+         logWarn("[disc] get_emu_state rc=0x%x, falling back to local state\n", rc);
       }
-      return isoMounted;
+      return imageMounted;
    }
    return emuState.discEmulation != 0;
 }
 
-// End-to-end mount flow: force XMB eject state, mount ISO via Cobra, then
-// publish insert state so the icon appears in the BD slot.
-static inline int cobraMountIso(const char *fullPath)
+int getLastMountedImage(char *pathOut, int capacity)
+{
+   int length = readFile(pathLastMount, pathOut, (uint64_t)capacity);
+   return length > 0 ? length : 0;
+}
+
+// A real disc, or an explicit unmount, replaces the remembered image outright:
+// only mounting one again puts it back.
+void forgetLastMountedImage(void)
+{
+   deleteFile(pathLastMount);
+}
+
+int mountDiscImage(const char *isoPath)
 {
    char *files[1];
-   files[0] = (char *)fullPath;
+   files[0] = (char *)isoPath;
 
    unsigned int realType = getRealDiscType();   // capture before our eject wipes it
 
-   int rc = cobraFakeDiscEject();
+   int rc = fakeDiscEject();
    if (rc != 0) return rc;
 
    rc = cobraMountPs3(files, 1);
@@ -159,23 +164,25 @@ static inline int cobraMountIso(const char *fullPath)
       // Cobra drops whatever was mounted before it even looks at our file, so a
       // failure here leaves the drive genuinely empty. Re-publish what is really
       // in it, or the XMB sits in the ejected state with no way back.
-      cobraFakeDiscInsert(realType);
-      isoMounted = 0;
+      fakeDiscInsert(realType);
+      imageMounted = 0;
       return rc;
    }
 
-   rc = cobraFakeDiscInsert(0);
+   rc = fakeDiscInsert(0);
    if (rc != 0) return rc;
 
    discTypeBeforeMount = realType;
-   isoMounted = 1;
+   imageMounted = 1;
+
+   if (writeFile(pathLastMount, isoPath, (uint64_t)getStrLen(isoPath)) != 0)
+      logError("[disc] could not remember %s for next boot\n", isoPath);
    return 0;
 }
 
-// Drop the emulated disc and hand the BD drive back to reality. The insert event
-// carries the real disc type so a physical disc left in the drive shows up
-// again; with an empty drive we stop after the eject.
-static inline UnmountResult cobraUnmountIso(void)
+// The insert event carries the real disc type so a physical disc left in the
+// drive shows up again; with an empty drive we stop after the eject.
+UnmountResult unmountDiscImage(void)
 {
    // faking an eject with nothing mounted would tell the XMB a real disc left
    if (!isDiscImageMounted()) return UNMOUNT_NOTHING_MOUNTED;
@@ -185,18 +192,19 @@ static inline UnmountResult cobraUnmountIso(void)
    unsigned int realType = getRealDiscType();
    if (realType == 0) realType = discTypeBeforeMount;
 
-   if (cobraFakeDiscEject() != 0) return UNMOUNT_FAILED;
+   if (fakeDiscEject() != 0) return UNMOUNT_FAILED;
 
    int rc = (int)scCall1(SC_COBRA, OP_UMOUNT_DISCFILE);
    if (rc != 0) {
-      logError("[sdm] sc8 umount rc=0x%x\n", rc);
+      logError("[disc] sc8 umount rc=0x%x\n", rc);
       return UNMOUNT_FAILED;
    }
 
-   isoMounted = 0;
+   imageMounted = 0;
    discTypeBeforeMount = 0;
+   forgetLastMountedImage();
 
    // the image is gone either way, so a failed re-insert is not a failed unmount
-   if (realType != 0) cobraFakeDiscInsert(realType);
+   if (realType != 0) fakeDiscInsert(realType);
    return UNMOUNT_DONE;
 }

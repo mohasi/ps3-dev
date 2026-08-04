@@ -143,7 +143,7 @@ static int buildSdmXml(char *buf, int cap)
    // Each ISO becomes a module-action that, when X is pressed, wakes Sony's
    // built-in webrender_plugin with the configured URL. webrender fires an
    // HTTP GET at 127.0.0.1:8947 — our http.h listener catches that, parses
-   // the filename out of the path, and calls cobraMountIso(). Filename
+   // the filename out of the path, and calls mountDiscImage(). Filename
    // travels in the URL (percent-encoded) so the handler is stateless and
    // the last mount can be persisted as a plain filename for auto-mount on
    // reboot. Port 8947 is derived from fnv1a32("simple-disc-mount") — see

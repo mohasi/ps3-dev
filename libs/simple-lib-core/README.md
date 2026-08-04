@@ -101,6 +101,12 @@ never calls them never drags the heap in. Each entry below says which side it is
   `prxList`/`prxName`/`prxInfo`/`prxLinkage` (494/495), and `sysMemAllocate`/`sysMemFree` (348/349).
   Note: `sysMemAllocate` rounds a size up to the 64 KB page granularity — sizes are not rounded for
   you, so round before calling. (VSH-only NID stubs stay in `simple-lib-plugin/vsh.h`.)
+- **disc-mount.h / disc-mount.c** — mounting an `.iso` as the Blu-ray disc through Cobra's syscall 8:
+  `mountDiscImage` (fake eject, mount, fake insert, and remember the path), `unmountDiscImage`,
+  `isDiscImageMounted`, `getRealDiscType`, plus `getLastMountedImage` / `forgetLastMountedImage` for
+  the remembered path. Shared by the `simple-disc-mount` plugin's XMB menu and the file manager's X
+  action. Needs Cobra CFW; the image must live on a volume lv2 itself mounts (internal drive or
+  FAT32 USB), since Cobra reads it kernel-side.
 - **thread.h** — `spawnThread()` PPU-thread spawn helper and stack-size constants.
 - **dbg.h / dbg.c** — leveled, timestamped logging: `logInfo` / `logWarn` / `logError`. Each call
   writes one prefixed line to `/dev_hdd0/tmp/dbg.txt` with a single atomic `cellFsWrite`. An

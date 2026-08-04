@@ -23,7 +23,7 @@
 #include "syscall.h"
 #include "vfs.h"
 #include "thread.h"
-#include "cobra.h"
+#include "disc-mount.h"
 #include "xmb-inject.h"
 #include "http.h"
 #include "bridge-client.h"
@@ -38,12 +38,11 @@ static void autoMountLast(void)
    // a real disc always wins — never mount an image over it
    if (getRealDiscType() != 0) {
       logInfo("[sdm] real disc present, skipping auto-mount\n");
-      forgetLastMount();
+      forgetLastMountedImage();
       return;
    }
 
-   // read last mount path from file (0 bytes = nothing remembered)
-   if (readFile(pathLastMount, path, sizeof path) <= 0) return;
+   if (getLastMountedImage(path, sizeof path) == 0) return;
 
    // check iso still exists
    if (!fileExists(path)) {
@@ -52,7 +51,7 @@ static void autoMountLast(void)
    }
 
    // mount it
-   if (cobraMountIso(path) == 0) {
+   if (mountDiscImage(path) == 0) {
       logInfo("[sdm] auto-mounted: %s\n", path);
    } else {
       logError("[sdm] auto-mount failed: %s\n", path);
@@ -80,9 +79,8 @@ static void discWatchThread(uint64_t arg)
 
       if (getRealDiscType() == 0 || getGameProcessId() != 0) continue;
 
-      switch (cobraUnmountIso()) {
+      switch (unmountDiscImage()) {
       case UNMOUNT_DONE:
-         forgetLastMount();
          logInfo("[sdm] real disc inserted, disc image unmounted\n");
          vshNotify("Real disc inserted, disc image unmounted.");
          pollSeconds = DISC_POLL_SECONDS;

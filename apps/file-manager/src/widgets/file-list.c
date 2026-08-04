@@ -7,6 +7,7 @@
 #include "ui/breadcrumb.h"
 #include "ui/checkbox.h"
 #include "widgets/footer-widget.h"
+#include "widgets/toast-widget.h"
 #include "theme.h"
 #include "folder-sizer.h"
 #include "file-type.h"
@@ -16,6 +17,7 @@
 #include "zip-task.h"
 #include "unzip-task.h"
 #include "disc-dump.h"
+#include "disc-mount.h"
 #include "vfs.h"
 #include "file-task.h"
 #include "dynarray.h"
@@ -403,21 +405,44 @@ static void enterSelectedDir(void)
    loadDir(next);
 }
 
+// Cobra reads the image with its own kernel-side filesystem code, so only the volumes lv2 itself
+// mounts can hold a mountable image: the internal drive and FAT32 USB sticks. our NTFS/exFAT and
+// network volumes are visible to this app only.
+static int isKernelVisiblePath(const char *path)
+{
+   return strncmp(path, "/dev_hdd0/", sizeof "/dev_hdd0/" - 1) == 0 || strncmp(path, "/dev_usb", sizeof "/dev_usb" - 1) == 0;
+}
+
+// mounts a disc image as the Blu-ray disc, then toasts how it went - the result is invisible from
+// here, it shows up in the XMB.
+static void mountDiscImageAndReport(const char *fullPath)
+{
+   if (!isKernelVisiblePath(fullPath)) {
+      showToast("Disc images can only be mounted from the internal drive or a USB stick.");
+      return;
+   }
+
+   showToast(mountDiscImage(fullPath) == 0 ? "Disc mounted. Start it from the XMB Game column."
+                                           : "Could not mount that disc image.");
+}
+
 // opens fullPath in the right viewer for its type: supported images in the image viewer, playable
 // audio in the player, video in the player (which probes decodability itself), text in the editor,
-// and anything else in the hex viewer - so every non-folder always opens something. shared by the
-// file list's Cross handler and by search (a file result opens exactly as it would here).
+// disc images mount as the Blu-ray disc, and anything else opens in the hex viewer - so every
+// non-folder always does something. shared by the file list's Cross handler and by search (a file
+// result opens exactly as it would here).
 void openFile(const char *fullPath, FileType type)
 {
    const char *name = getBaseName(fullPath);
-   if (type == FILE_TYPE_IMAGE && isSupportedImageFormat(name)) openImageViewer(fullPath);
+   if (type == FILE_TYPE_DISC_ISO) mountDiscImageAndReport(fullPath);
+   else if (type == FILE_TYPE_IMAGE && isSupportedImageFormat(name)) openImageViewer(fullPath);
    else if (type == FILE_TYPE_AUDIO && isPlayableAudioFile(name)) openAudioPlayer(fullPath);
    else if (type == FILE_TYPE_VIDEO) openVideoPlayer(fullPath);
    else if (type == FILE_TYPE_TEXT)  openTextEditor(fullPath);
    else                              openHexViewer(fullPath);
 }
 
-// cross handler: folders enter, files open in their viewer (see openFile).
+// cross handler: folders enter, everything else goes to openFile.
 static void activateSelectedEntry(void)
 {
    if (selectedIndex < 0 || selectedIndex >= entryCount) return;
@@ -454,19 +479,21 @@ static void goToParentDir(void)
 static void syncFooterButtons(void)
 {
    int hasSelection = selectedIndex >= 0 && selectedIndex < entryCount;
-   int isFolder      = hasSelection && entries[selectedIndex].type == FILE_TYPE_FOLDER;
+   FileType type    = hasSelection ? entries[selectedIndex].type : FILE_TYPE_FOLDER;
 
    // every non-folder row opens something now (the hex viewer is the universal
    // fallback), so Cross is enabled whenever there's a selection at all.
    setFooterButtonEnabled(PAD_BTN_CROSS, hasSelection);
 
-   // only retouch the label when the cross action actually changes, so we
-   // don't re-rasterize the glyphs every frame.
-   static int crossShowsOpen = -1;
-   int showsOpen = hasSelection && !isFolder;
-   if (showsOpen != crossShowsOpen) {
-      setFooterButtonText(PAD_BTN_CROSS, showsOpen ? "Open" : "Enter");
-      crossShowsOpen = showsOpen;
+   // only retouch the label when the cross action actually changes, so we don't re-rasterize the
+   // glyphs every frame. the three labels are literals, so comparing the pointers compares the choice.
+   const char *crossLabel = type == FILE_TYPE_FOLDER  ? "Enter"
+                          : type == FILE_TYPE_DISC_ISO ? "Mount"
+                                                       : "Open";
+   static const char *lastCrossLabel = NULL;
+   if (crossLabel != lastCrossLabel) {
+      setFooterButtonText(PAD_BTN_CROSS, crossLabel);
+      lastCrossLabel = crossLabel;
    }
 
    setFooterButtonEnabled(PAD_BTN_SQUARE, entryCount > 0);   // Circle stays enabled: at root it offers to exit the app

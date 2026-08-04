@@ -39,6 +39,7 @@
 
 // visitor session endpoint: mints an anonymous visitorData that clears the
 // logged-out LOGIN_REQUIRED ("confirm you're not a bot") wall (see extract()).
+// the key below is youtube's own public web key, shipped in every youtube.com page. not a credential.
 #define VISITOR_URL "https://www.youtube.com/youtubei/v1/visitor_id?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false"
 
 // the ANDROID_VR client object, without the wrapping braces so visitorData can

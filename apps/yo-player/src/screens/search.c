@@ -11,7 +11,7 @@
 #include "ui/console-glyphs.h"
 
 #include "gfx.h"
-#include "colors.h"
+#include "theme.h"
 #include "pad.h"
 #include "font.h"
 #include "ui/label.h"
@@ -134,11 +134,11 @@ static void initSearch(void)
    }
 
    font = openSystemFont(FONT_POP);
-   initLabel(&titleLabel,  &font, MARGIN_X, HEADER_Y, search.screenW - 300, AUTO, TITLE_SIZE, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&sortLabel,   &font, 0, HEADER_Y, AUTO, AUTO, TITLE_SIZE, COLOR_SLATE_300, TEXT_NOWRAP, "");
-   initLabel(&statusLabel, &font, MARGIN_X, GRID_TOP, search.screenW - 2 * MARGIN_X, AUTO, 21, COLOR_SLATE_100, TEXT_NOWRAP, "Loading...");
+   initLabel(&titleLabel,  &font, MARGIN_X, HEADER_Y, search.screenW - 300, AUTO, TITLE_SIZE, activeTheme->textPrimary, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&sortLabel,   &font, 0, HEADER_Y, AUTO, AUTO, TITLE_SIZE, activeTheme->textSecondary, TEXT_NOWRAP, "");
+   initLabel(&statusLabel, &font, MARGIN_X, GRID_TOP, search.screenW - 2 * MARGIN_X, AUTO, 21, activeTheme->textSecondary, TEXT_NOWRAP, "Loading...");
 
-   initButtonHints(&hints, &font, search.screenH - HINTS_BOTTOM, HINT_GLYPH_H, HINT_TEXT, COLOR_SLATE_300);
+   initButtonHints(&hints, &font, search.screenH - HINTS_BOTTOM, HINT_GLYPH_H, HINT_TEXT, activeTheme->textSecondary);
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS),    "Play");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CIRCLE),   "Back");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE),   "Watch Later");
@@ -193,7 +193,7 @@ static void updateSearch(void)
 
 static void drawSearch(void)
 {
-   fillGfxRectangle(0, 0, search.screenW, search.screenH, COLOR_SLATE_900);
+   fillGfxRectangle(0, 0, search.screenW, search.screenH, activeTheme->appBg);
    drawLabel(&titleLabel);
    moveLabel(&sortLabel, search.screenW - MARGIN_X - sortLabel.tt.tex.w, HEADER_Y);   // right-aligned
    drawLabel(&sortLabel);

@@ -9,7 +9,7 @@
 #include "video-grid.h"
 
 #include "gfx.h"
-#include "colors.h"
+#include "theme.h"
 #include "pad.h"
 #include "http.h"
 #include "string-utilities.h"   // strCopy
@@ -29,12 +29,7 @@
 #define THUMB_CAP   (96 * 1024) // one mqdefault jpeg fits easily
 #define THUMB_UA    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
-#define PLACEHOLDER 0xFF1E293B
-#define BADGE_BG    0xCC000000
-#define BADGE_LIVE  0xE0CC0000
-#define WATCHED_TINT  0xFF4D4D4D // watched-tile thumbnail: opaque RGB darken (kept opaque so the amber
-                                 // selection border can't bleed through the tile), heavily dimmed
-#define WATCHED_ALPHA 70         // label alpha for already-watched tiles
+#define WATCHED_ALPHA 70        // label alpha for already-watched tiles
 
 // ---- thumbnail fetch (worker side) ----
 
@@ -302,11 +297,11 @@ void initVideoGrid(VideoGrid *grid, Font *font, int x, int y, int width, int hei
    if (grid->visibleRows < 1) grid->visibleRows = 1;
 
    for (int i = 0; i < MAX_SEARCH_RESULTS; i++) {
-      initLabel(&grid->rows[i],      font, 0, 0, grid->tileW, AUTO, ROW_TITLE, COLOR_SLATE_100, TEXT_NOWRAP_ELLIPSIS, "");
-      initLabel(&grid->metas[i],     font, 0, 0, grid->tileW, AUTO, META_SIZE, COLOR_SLATE_400, TEXT_NOWRAP_ELLIPSIS, "");
-      initLabel(&grid->durations[i], font, 0, 0, AUTO,        AUTO, DUR_SIZE,  COLOR_SLATE_100, TEXT_NOWRAP,          "");
+      initLabel(&grid->rows[i],      font, 0, 0, grid->tileW, AUTO, ROW_TITLE, activeTheme->textPrimary,   TEXT_NOWRAP_ELLIPSIS, "");
+      initLabel(&grid->metas[i],     font, 0, 0, grid->tileW, AUTO, META_SIZE, activeTheme->textSecondary, TEXT_NOWRAP_ELLIPSIS, "");
+      initLabel(&grid->durations[i], font, 0, 0, AUTO,        AUTO, DUR_SIZE,  activeTheme->textPrimary,   TEXT_NOWRAP,          "");
    }
-   initLabel(&grid->watchLaterBadge, font, 0, 0, AUTO, AUTO, WATCHLATER_BADGE_SIZE, COLOR_SLATE_100, TEXT_NOWRAP, "Watch Later");
+   initLabel(&grid->watchLaterBadge, font, 0, 0, AUTO, AUTO, WATCHLATER_BADGE_SIZE, activeTheme->textPrimary, TEXT_NOWRAP, "Watch Later");
 }
 
 void termVideoGrid(VideoGrid *grid)
@@ -382,25 +377,27 @@ static void drawTile(VideoGrid *grid, int i)
    const SearchResult *item = &grid->results.items[i];
    int watched = grid->isWatched && grid->isWatched(item->videoId);
 
-   if (i == grid->selected)
-      fillGfxRectangle(tx - 3, ty - 3, grid->tileW + 6, grid->thumbH + 6, COLOR_AMBER_300);
+   if (i == grid->selected) {
+      int ring = activeTheme->focusThickness;
+      fillGfxRectangle(tx - ring, ty - ring, grid->tileW + 2 * ring, grid->thumbH + 2 * ring, activeTheme->focusBorder);
+   }
 
    if (grid->thumbs[i].tex.offset)
-      drawGfxTexture(tx, ty, grid->tileW, grid->thumbH, grid->thumbs[i].tex, 0, 0, 1, 1, watched ? WATCHED_TINT : 0xFFFFFFFF, GFX_FILTER_LINEAR);
+      drawGfxTexture(tx, ty, grid->tileW, grid->thumbH, grid->thumbs[i].tex, 0, 0, 1, 1, watched ? activeTheme->watchedThumbTint : 0xFFFFFFFF, GFX_FILTER_LINEAR);
    else
-      fillGfxRectangle(tx, ty, grid->tileW, grid->thumbH, PLACEHOLDER);
+      fillGfxRectangle(tx, ty, grid->tileW, grid->thumbH, activeTheme->surface);
 
    if (item->duration[0] || item->isLive) {
       int badgeW = grid->durations[i].tt.tex.w + 12, badgeH = DUR_SIZE + 8;
       int badgeX = tx + grid->tileW - badgeW - 6, badgeY = ty + grid->thumbH - badgeH - 6;
-      fillGfxRectangle(badgeX, badgeY, badgeW, badgeH, item->isLive ? BADGE_LIVE : BADGE_BG);
+      fillGfxRectangle(badgeX, badgeY, badgeW, badgeH, item->isLive ? activeTheme->accent : activeTheme->badgeFill);
       drawLabelAt(&grid->durations[i], badgeX + 6, badgeY + 4);
    }
 
    if (grid->isWatchLater && grid->isWatchLater(item->videoId)) {
       int badgeW = grid->watchLaterBadge.tt.tex.w + 12, badgeH = WATCHLATER_BADGE_SIZE + 8;
       int badgeX = tx + grid->tileW - badgeW - 6, badgeY = ty + 6;
-      fillGfxRectangle(badgeX, badgeY, badgeW, badgeH, BADGE_BG);
+      fillGfxRectangle(badgeX, badgeY, badgeW, badgeH, activeTheme->badgeFill);
       drawLabelAt(&grid->watchLaterBadge, badgeX + 6, badgeY + 4);
    }
 

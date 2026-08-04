@@ -98,6 +98,11 @@ widgets expose a `retheme*` call to recolour on a live theme switch.
   progress and a cancel flag while the UI keeps rendering.
 - **Animation** (`anim.h`): easing curves and colour interpolation. **Timer** (`timer.h`): polling
   interval timer. **Colours** (`colors.h`): the Tailwind v4 palette as named constants.
+- **Themes** (`theme-registry.h`): the shared reader behind an app's colour themes. The app owns its
+  own theme struct and a table saying which `key=` in the file writes which colour; the registry does
+  the `themes.txt` format (`[Name]` blocks, `#RRGGBB[AA]` values), the name/slug lookup, the
+  override-or-add merge across several files, and writing the built-in out as an editable template.
+  Used by `file-manager` and `yo-player`.
 - **Google Drive** (`gdrive.h`, `gdrive-crypto.h`): mounts a Google Drive account as a VFS volume, so an
   app browses, downloads from and uploads to it with the ordinary `openFs`/`readFs`/`writeFs` calls.
   Uploads stream in 1 MB pieces through Drive's resumable-upload sessions, so file size isn't bound by

@@ -10,8 +10,9 @@
 // base layer) and /dev_hdd0/tmp/file-manager/themes.txt (the user's, seeded with a copy of the
 // built-ins on first launch, never overwritten after - editing a block overrides that built-in,
 // deleting one falls back to res, new blocks add the user's own). settings.txt beside the user file
-// names the one to start in. L1/R1 in-app cycles getThemeCount()/getThemeName() via
-// setActiveThemeIndex(), which also saves the choice to settings.txt. see theme.c for the file format.
+// names the one to start in. L1/R1 in-app cycles through getThemeCount() themes via
+// setActiveThemeIndex(), which also saves the choice to settings.txt. the file format and the parsing
+// are shared with the other apps - see simple-lib-app's theme-registry.h.
 
 #include <stdint.h>
 
@@ -64,6 +65,5 @@ void initThemes(void);
 const char *getSettingsPath(void);   // the app's shared settings.txt (theme + other keys)
 
 int         getThemeCount(void);
-const char *getThemeName(int index);
 int         getActiveThemeIndex(void);
 void        setActiveThemeIndex(int index);   // clamps to range; repoints activeTheme

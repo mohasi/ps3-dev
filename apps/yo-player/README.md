@@ -109,6 +109,21 @@ falls back to its default.
   - `off` — never skip anything (segments aren't even fetched).
   - `ads` (default) — skip paid promotions only: sponsors, self-promo, like / subscribe reminders.
   - `all` — also skip intros, outros, filler and non-music sections.
+- **`theme`** — which colour theme to start in, naming one of the blocks in `themes.txt` (see below).
+  Defaults to `youtube`.
+
+## Themes
+
+Every colour the app draws comes from one theme, and the shipped one is YouTube's own dark palette:
+`#0F0F0F` background, `#212121` surfaces, `#AAAAAA` secondary text, YouTube red for the seek bar, LIVE
+badges and the volume meter, and a white ring around the selected thumbnail. Everything is drawn flat
+from plain rectangles and text — there are no sprite sheets.
+
+`/dev_hdd0/tmp/yo-player/themes.txt` is written on first launch with the full YouTube block, so every key
+is there to edit over FTP. Change a colour in that block to restyle the app, or add a `[Name]` block of
+your own and point `settings.txt` at it with `theme=<name>` (lower case, spaces become hyphens). A new
+block inherits YouTube, so it only has to list what it changes. Colours are `#RRGGBB`, or `#RRGGBBAA` for
+transparency. Changes apply on the next launch; delete the file to get the shipped theme back.
 
 ## Storage
 

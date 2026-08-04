@@ -11,7 +11,7 @@
 #include "vfs.h"
 #include "http.h"
 #include "gfx.h"
-#include "colors.h"
+#include "theme.h"
 #include "pad.h"
 #include "audio.h"
 #include "font.h"
@@ -39,6 +39,7 @@ int main(int argc, char **argv)
    appRegisterExitCallback();
    initRtc();
    initVfs();                    // file i/o routing (the temp download lands via openFs)
+   initTheme();                  // palette from themes.txt: every colour below reads activeTheme
    logBuildVersion();
 
    int netRc = initNet();
@@ -51,7 +52,7 @@ int main(int argc, char **argv)
    if (initIconFont() != 0) logError("[yt] embedded icon font failed to load; icons will be blank\n");
    initPad();
 
-   initStats(5, 5, 14, COLOR_AMBER_300);
+   initStats(5, 5, 14, activeTheme->textSecondary);
    initStorage();          // prefs (last category) + watch history, under /dev_hdd0/tmp/yo-player/
    loadSettings();         // user-editable settings.txt (created with defaults on first launch)
    loadConsoleGlyphs();    // decode the console's own button glyphs for the on-screen hints
@@ -66,7 +67,7 @@ int main(int argc, char **argv)
       updateScreen();
 
       beginGfxFrame();
-      clearGfx(COLOR_SLATE_900);
+      clearGfx(activeTheme->appBg);
       drawScreen();
       endGfxFrame();
    }

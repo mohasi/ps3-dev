@@ -13,7 +13,11 @@ static const char *DEFAULT_SETTINGS =
    "\n"
    "sponsorblock-mode=ads\n"
    "# off = never skip anything, ads = skip paid promotions only (sponsors, self-promo,\n"
-   "# like/subscribe reminders), all = also skip intros, outros, filler and non-music sections\n";
+   "# like/subscribe reminders), all = also skip intros, outros, filler and non-music sections\n"
+   "\n"
+   "theme=youtube\n"
+   "# which colour theme to start in - one of the [Name] blocks in themes.txt (lower case,\n"
+   "# spaces become hyphens). the shipped one is youtube.\n";
 
 static SponsorblockMode sponsorblockMode = SPONSORBLOCK_ADS;
 

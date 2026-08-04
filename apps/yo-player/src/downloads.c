@@ -11,7 +11,7 @@
 #include "string-utilities.h"   // strCopy
 #include "font.h"
 #include "ui/label.h"
-#include "colors.h"
+#include "theme.h"
 #include "gfx.h"
 #include "dbg.h"
 
@@ -24,7 +24,6 @@
 #define TITLE_FILENAME_MAX 100      // longest title kept in a filename before truncating
 #define DISPLAY_TITLE_MAX  32       // longest title shown in the "Downloading ..." overlay
 #define OVERLAY_TEXT_SIZE  19       // matches the grid's Watch Later / duration badge
-#define OVERLAY_BG         0xCC000000
 
 typedef struct { char videoId[16]; char title[160]; } QueueItem;
 
@@ -242,7 +241,7 @@ void drawDownloadOverlay(int screenWidth)
    if (!dl.initialized || !dl.active || overlayLabel.tt.tex.w == 0) return;
    int badgeW = overlayLabel.tt.tex.w + 12, badgeH = OVERLAY_TEXT_SIZE + 8;
    int x = screenWidth - badgeW - 6, y = 6;
-   fillGfxRectangle(x, y, badgeW, badgeH, OVERLAY_BG);
+   fillGfxRectangle(x, y, badgeW, badgeH, activeTheme->badgeFill);
    drawLabelAt(&overlayLabel, x + 6, y + 4);
 }
 
@@ -254,7 +253,7 @@ void initDownloads(void)
    createLock(&dl.mutex);
    makeDir(DOWNLOAD_DIR);
    font = openSystemFont(FONT_POP);
-   initLabel(&overlayLabel, &font, 0, 0, AUTO, AUTO, OVERLAY_TEXT_SIZE, COLOR_SLATE_100, TEXT_NOWRAP, "");
+   initLabel(&overlayLabel, &font, 0, 0, AUTO, AUTO, OVERLAY_TEXT_SIZE, activeTheme->textPrimary, TEXT_NOWRAP, "");
    dl.initialized = 1;
 }
 

@@ -10,7 +10,7 @@
 #include "ui/console-glyphs.h"
 
 #include "gfx.h"
-#include "colors.h"
+#include "theme.h"
 #include "pad.h"
 #include "font.h"
 #include "ui/label.h"
@@ -167,10 +167,10 @@ static void initHome(void)
    home.screenH = getGfxScreenHeight();
 
    font = openSystemFont(FONT_POP);
-   initLabel(&titleLabel,  &font, MARGIN_X, HEADER_Y, home.screenW - 2 * MARGIN_X, AUTO, TITLE_SIZE, COLOR_AMBER_300, TEXT_NOWRAP_ELLIPSIS, "");
-   initLabel(&statusLabel, &font, MARGIN_X, GRID_TOP, home.screenW - 2 * MARGIN_X, AUTO, 21, COLOR_SLATE_100, TEXT_NOWRAP, "Loading...");
+   initLabel(&titleLabel,  &font, MARGIN_X, HEADER_Y, home.screenW - 2 * MARGIN_X, AUTO, TITLE_SIZE, activeTheme->textPrimary, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabel(&statusLabel, &font, MARGIN_X, GRID_TOP, home.screenW - 2 * MARGIN_X, AUTO, 21, activeTheme->textSecondary, TEXT_NOWRAP, "Loading...");
 
-   initButtonHints(&hints, &font, home.screenH - HINTS_BOTTOM, HINT_GLYPH_H, HINT_TEXT, COLOR_SLATE_300);
+   initButtonHints(&hints, &font, home.screenH - HINTS_BOTTOM, HINT_GLYPH_H, HINT_TEXT, activeTheme->textSecondary);
    addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS),    "Play");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE),   "Watch Later");
    addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "Channel");
@@ -223,7 +223,7 @@ static void updateHome(void)
 
 static void drawHome(void)
 {
-   fillGfxRectangle(0, 0, home.screenW, home.screenH, COLOR_SLATE_900);
+   fillGfxRectangle(0, 0, home.screenW, home.screenH, activeTheme->appBg);
    drawLabel(&titleLabel);
    if (gridStage(&home.grid) == GRID_READY) {
       drawVideoGrid(&home.grid);

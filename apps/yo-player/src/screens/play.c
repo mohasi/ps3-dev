@@ -14,7 +14,8 @@
 #include "stream-select.h"   // pickBestVideo / pickBestAudio (shared with download)
 
 #include "gfx.h"
-#include "colors.h"
+#include "theme.h"
+#include "colors.h"   // COLOR_BLACK: the letterbox bars are black whatever the theme
 #include "pad.h"
 #include "font.h"
 #include "ui/label.h"
@@ -38,9 +39,8 @@
 #include <stdio.h>              // snprintf (stats overlay)
 #include <sys/sys_time.h>       // sys_time_get_system_time (fps measure)
 
-// volume: up/down step the shared pill meter (ui/volume-meter.h), pills in youtube red.
+// volume: up/down step the shared pill meter (ui/volume-meter.h), pills in the theme accent.
 #define VOLUME_DEFAULT    12
-#define COLOR_PILL_FILL   0xFFFF0000u   // youtube red, matches the seek-bar fill
 
 // seek controls (bar + time) show on activity / pause, then auto-hide. left/right scrub the target
 // instantly; the engine seek (a decoder flush + fragment reload each time) fires once input goes quiet.
@@ -267,22 +267,22 @@ static void initPlay(void)
    state.screenH = getGfxScreenHeight();
 
    font = openSystemFont(FONT_POP);
-   initLabel(&statusLabel, &font, 0, 0, 1400, AUTO, 28, COLOR_SLATE_100, TEXT_NOWRAP, "");
+   initLabel(&statusLabel, &font, 0, 0, 1400, AUTO, 28, activeTheme->textPrimary, TEXT_NOWRAP, "");
    for (int i = 0; i < STAT_LINES; i++)
-      initLabel(&statLabels[i], &font, 0, 0, 600, AUTO, 22, COLOR_SLATE_100, TEXT_NOWRAP, "");
-   initLabel(&timeLeftLabel,  &font, 0, 0, 200, AUTO, 22, COLOR_SLATE_100, TEXT_NOWRAP, "");
-   initLabel(&timeRightLabel, &font, 0, 0, 200, AUTO, 22, COLOR_SLATE_100, TEXT_NOWRAP, "");
-   initLabelRaw(&toastLabel, &font, 0, 0, 400, AUTO, 22, COLOR_SLATE_100, TEXT_NOWRAP, "");   // raw: shows track names
-   initLabelRaw(&titleLabel, &font, 0, 0, 1100, AUTO, 22, COLOR_SLATE_100, TEXT_NOWRAP_ELLIPSIS, "");
-   initLabelRaw(&subtitleLabel, &font, 0, 0, 1600, AUTO, SUBTITLE_TEXT_SIZE, COLOR_SLATE_100, TEXT_WRAP, "");
-   initLabelRaw(&subsHudLabel, &font, 0, 0, 500, AUTO, 22, COLOR_SLATE_100, TEXT_NOWRAP_ELLIPSIS, "");
+      initLabel(&statLabels[i], &font, 0, 0, 600, AUTO, 22, activeTheme->textPrimary, TEXT_NOWRAP, "");
+   initLabel(&timeLeftLabel,  &font, 0, 0, 200, AUTO, 22, activeTheme->textPrimary, TEXT_NOWRAP, "");
+   initLabel(&timeRightLabel, &font, 0, 0, 200, AUTO, 22, activeTheme->textPrimary, TEXT_NOWRAP, "");
+   initLabelRaw(&toastLabel, &font, 0, 0, 400, AUTO, 22, activeTheme->textPrimary, TEXT_NOWRAP, "");   // raw: shows track names
+   initLabelRaw(&titleLabel, &font, 0, 0, 1100, AUTO, 22, activeTheme->textPrimary, TEXT_NOWRAP_ELLIPSIS, "");
+   initLabelRaw(&subtitleLabel, &font, 0, 0, 1600, AUTO, SUBTITLE_TEXT_SIZE, activeTheme->textPrimary, TEXT_WRAP, "");
+   initLabelRaw(&subsHudLabel, &font, 0, 0, 500, AUTO, 22, activeTheme->textPrimary, TEXT_NOWRAP_ELLIPSIS, "");
    for (int i = 0; i < MAX_CHAPTERS; i++) {
-      initLabelRaw(&chapterLabels[i], &font, 0, 0, 990, AUTO, CHAPTER_TEXT_SIZE, COLOR_SLATE_100, TEXT_NOWRAP_ELLIPSIS, "");
-      initLabel(&chapterTimeLabels[i], &font, 0, 0, 150, AUTO, CHAPTER_TEXT_SIZE, COLOR_SLATE_400, TEXT_NOWRAP, "");
+      initLabelRaw(&chapterLabels[i], &font, 0, 0, 990, AUTO, CHAPTER_TEXT_SIZE, activeTheme->textPrimary, TEXT_NOWRAP_ELLIPSIS, "");
+      initLabel(&chapterTimeLabels[i], &font, 0, 0, 150, AUTO, CHAPTER_TEXT_SIZE, activeTheme->textSecondary, TEXT_NOWRAP, "");
    }
    state.subtitlePick = state.subtitleFetched = -1;   // default off (memset left them 0)
 
-   initVolumeMeter(&volumeMeter, &font, COLOR_PILL_FILL, volumeLevel);
+   initVolumeMeter(&volumeMeter, &font, activeTheme->accent, volumeLevel);
    layoutVolumeMeter(&volumeMeter, state.screenW, state.screenH);
 
    state.threadActive = (spawnJoinableThread(&state.workerTid, worker, 0,
@@ -414,7 +414,7 @@ static void openDescription(void)
 {
    if (!state.descriptionRendered) {
       renderFontRaw(&descriptionTexture, &font, DESCRIPTION_TEXT_SIZE, state.description[0] ? state.description : "No description.",
-                    COLOR_SLATE_100, state.screenW - 2 * DESCRIPTION_MARGIN_X, TEXT_WRAP);
+                    activeTheme->textPrimary, state.screenW - 2 * DESCRIPTION_MARGIN_X, TEXT_WRAP);
       state.descriptionRendered = 1;
    }
    state.descriptionScroll = 0;
@@ -610,7 +610,7 @@ static void updateStatLabels(void)
 static void drawStatsOverlay(void)
 {
    int x = 40, y = 44, lineHeight = 30;
-   fillGfxRectangle(x - 14, y - 12, 500, STAT_LINES * lineHeight + 14, 0xC0000000);
+   fillGfxRectangle(x - 14, y - 12, 500, STAT_LINES * lineHeight + 14, activeTheme->badgeFill);
    for (int i = 0; i < STAT_LINES; i++) drawLabelAt(&statLabels[i], x, y + i * lineHeight);
 }
 
@@ -656,13 +656,13 @@ static void drawSeekBar(void)
    int barTopY  = barY - barH / 2;
    int filledW  = (int)(progress * span);
 
-   fillGfxRectangle(barLeft, barTopY, span, barH, 0x66FFFFFF);            // track
-   fillGfxRectangle(barLeft, barTopY, filledW, barH, 0xFFFF0000);        // progress (youtube red)
+   fillGfxRectangle(barLeft, barTopY, span, barH, activeTheme->seekTrack);
+   fillGfxRectangle(barLeft, barTopY, filledW, barH, activeTheme->accent);   // progress (youtube red)
    if (state.sbReady) drawSponsorSegments(barLeft, span, barTopY, barH, duration);
    if (duration > 0.0f)   // chapter boundaries notch the bar, youtube-style
       for (int i = 1; i < state.chapters.count; i++)
-         fillGfxRectangle(barLeft + (int)(state.chapters.chapters[i].start / duration * span), barTopY, 3, barH, 0xFF000000);
-   fillGfxRectangle(barLeft + filledW - 3, barY - 11, 6, 22, 0xFFFFFFFF);   // scrubber handle
+         fillGfxRectangle(barLeft + (int)(state.chapters.chapters[i].start / duration * span), barTopY, 3, barH, activeTheme->seekNotch);
+   fillGfxRectangle(barLeft + filledW - 3, barY - 11, 6, 22, activeTheme->textPrimary);   // scrubber handle
 
    char text[16];
    formatTime(text, sizeof text, (int)position);            setLabelText(&timeLeftLabel, text);
@@ -677,7 +677,7 @@ static void drawSeekBar(void)
 
 static void drawBadge(Label *label, int x, int y)
 {
-   fillGfxRectangle(x, y, label->tt.tex.w + 2 * BADGE_PAD_X, label->tt.tex.h + 8, 0xCC000000);
+   fillGfxRectangle(x, y, label->tt.tex.w + 2 * BADGE_PAD_X, label->tt.tex.h + 8, activeTheme->badgeFill);
    drawLabelAt(label, x + BADGE_PAD_X, y + 4);
 }
 
@@ -698,7 +698,7 @@ static void drawSubtitle(void)
    if (state.subtitlePick < 0 || subtitleLabel.tt.tex.w == 0) return;
    int x = state.screenW / 2 - subtitleLabel.tt.tex.w / 2;
    int y = (int)(state.screenH * 0.94f) - 40 - subtitleLabel.tt.tex.h;
-   fillGfxRectangle(x - 12, y - 6, subtitleLabel.tt.tex.w + 24, subtitleLabel.tt.tex.h + 12, 0xA0000000);
+   fillGfxRectangle(x - 12, y - 6, subtitleLabel.tt.tex.w + 24, subtitleLabel.tt.tex.h + 12, activeTheme->badgeFill);
    drawLabelAt(&subtitleLabel, x, y);
 }
 
@@ -706,7 +706,7 @@ static void drawSubtitle(void)
 // texture the scroll position selects (the texture is drawn through a window, so no clipping is needed).
 static void drawDescription(void)
 {
-   fillGfxRectangle(0, 0, state.screenW, state.screenH, 0xD9000000);   // 85% opaque black
+   fillGfxRectangle(0, 0, state.screenW, state.screenH, activeTheme->scrim);
    if (descriptionTexture.tex.w == 0) return;
 
    int viewHeight = state.screenH - 2 * DESCRIPTION_MARGIN_Y;
@@ -724,7 +724,7 @@ static void drawDescription(void)
 // the selected row gets a subtle highlight with a youtube-red accent on its left edge.
 static void drawChapters(void)
 {
-   fillGfxRectangle(0, 0, state.screenW, state.screenH, 0xD9000000);   // 85% opaque black
+   fillGfxRectangle(0, 0, state.screenW, state.screenH, activeTheme->scrim);
 
    // window the rows around the selection so long lists stay reachable without a scrollbar
    int rows = state.chapters.count < CHAPTER_VISIBLE_ROWS ? state.chapters.count : CHAPTER_VISIBLE_ROWS;
@@ -740,8 +740,8 @@ static void drawChapters(void)
       int index = firstRow + row;
       int rowY  = topY + row * CHAPTER_ROW_HEIGHT;
       if (index == state.chapterSelected) {
-         fillGfxRectangle(panelX - 19, rowY, state.chapterPanelWidth + 43, CHAPTER_ROW_HEIGHT, 0x28FFFFFF);
-         fillGfxRectangle(panelX - 24, rowY, 5, CHAPTER_ROW_HEIGHT, 0xFFFF0000);   // red accent, flush with the highlight
+         fillGfxRectangle(panelX - 19, rowY, state.chapterPanelWidth + 43, CHAPTER_ROW_HEIGHT, activeTheme->rowHighlight);
+         fillGfxRectangle(panelX - 24, rowY, 5, CHAPTER_ROW_HEIGHT, activeTheme->accent);   // red accent, flush with the highlight
       }
       drawLabelAt(&chapterTimeLabels[index], panelX + state.chapterTimeWidth - chapterTimeLabels[index].tt.tex.w,
                   getCenteredLabelY(&chapterTimeLabels[index], rowY, CHAPTER_ROW_HEIGHT));
@@ -758,7 +758,7 @@ static void drawToast(void)
 
 static void drawPlay(void)
 {
-   fillGfxRectangle(0, 0, state.screenW, state.screenH, COLOR_BLACK);   // letterbox bars read as black, not slate
+   fillGfxRectangle(0, 0, state.screenW, state.screenH, COLOR_BLACK);   // letterbox bars read as black, not the app background
 
    const uint8_t *frame = NULL;
    if (state.player) {

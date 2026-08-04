@@ -62,6 +62,7 @@
    <ClCompile Include="src\timer.c" />
    <ClCompile Include="src\file-task.c" />
    <ClCompile Include="src\osk-input.c" />
+   <ClCompile Include="src\theme-registry.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\gdrive.h" />
@@ -75,6 +76,7 @@
    <ClInclude Include="include\overlay.h" />
    <ClInclude Include="include\anim.h" />
    <ClInclude Include="include\colors.h" />
+   <ClInclude Include="include\theme-registry.h" />
    <ClInclude Include="include\app.h" />
    <ClInclude Include="include\ui\image.h" />
    <ClInclude Include="include\ui\button.h" />

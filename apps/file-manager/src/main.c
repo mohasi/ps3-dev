@@ -34,13 +34,13 @@ int main(int argc, char **argv)
    initRtc();
    mountDevBlind();
    initVfs();
-   logBuildVersion();
    initThemes();   // built-in + themes.txt palettes; must precede any screen that reads activeTheme
 
    initNet();
    initModernHttp();                       // BearSSL transport - modern TLS 1.2, proven against Google
    initGdrive(getSettingsPath());          // mounts "/Google Drive" only when settings.txt has the keys
    registerWithBridge("app", "file-manager");
+   logBuildVersion();   // after registration, so the build line also reaches the bridge client's Logs tab
 
    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
    if (initAudio() != 0) return 1;

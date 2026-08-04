@@ -207,12 +207,12 @@ int main(int argc, char **argv)
 
    initRtc();
    initVfs();   // file backends for settings.txt; must precede any read/write
-   logBuildVersion();
    appRegisterExitCallback();
 
    int netRc = initNet();
    logInfo("[cst] initNet rc=0x%x\n", netRc);
    registerWithBridge("app", "cell-stream");   // live logs in the bridge client's Logs tab
+   logBuildVersion();   // after registration, so the build line also reaches the Logs tab
 
    // a decoded picture goes to the screen the moment it is ready, never waiting for the display's next
    // refresh - that wait costs ~8ms and buys us nothing here (measured; see the README)

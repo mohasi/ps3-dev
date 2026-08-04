@@ -40,11 +40,11 @@ int main(int argc, char **argv)
    initRtc();
    initVfs();                    // file i/o routing (the temp download lands via openFs)
    initTheme();                  // palette from themes.txt: every colour below reads activeTheme
-   logBuildVersion();
 
    int netRc = initNet();
    initModernHttp();   // bind the modern (BearSSL) http transport; all requests + media streams go through it
    registerWithBridge("app", "yo-player");
+   logBuildVersion();   // after registration, so the build line also reaches the bridge client's Logs tab
 
    if (initGfx(GFX_VSYNC_ON) != 0) return 1;
    if (initAudio() != 0) return 1;

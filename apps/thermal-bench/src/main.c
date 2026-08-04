@@ -25,11 +25,11 @@ int main(int argc, char **argv)
 
    initRtc();
    initVfs();          // dbg.h logging and the run files both write through vfs
-   logBuildVersion();
    appRegisterExitCallback();
 
    initNet();
    registerWithBridge("app", "thermal-bench");   // live logs in the bridge client's Logs tab
+   logBuildVersion();   // after registration, so the build line also reaches the Logs tab
 
    loadSettings();     // safety cutoff, defaulted from the console model (settings.txt, created on first launch)
 

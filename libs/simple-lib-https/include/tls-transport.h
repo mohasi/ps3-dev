@@ -11,8 +11,26 @@
 
 typedef struct TlsConn TlsConn;
 
+// The bytes underneath TLS. By default this is a socket on the console's own network connection. An
+// app whose traffic must stay inside a tunnel binds its own instead: the handshake, the certificate
+// checking and the HTTP above it are the same either way, and the name is looked up by whoever owns
+// the connection rather than by the console.
+//
+// read and write return the number of bytes, or -1 once the connection is gone. Neither may return
+// 0: TLS reads that as the connection ending, so a channel with nothing to hand over yet waits.
+typedef struct {
+   int  (*open)(const char *host, int port);
+   int  (*read)(int handle, void *buffer, int length);
+   int  (*write)(int handle, const void *data, int length);
+   void (*close)(int handle);
+} TlsChannel;
+
+// bind a channel for every connection opened afterwards. 0 restores the console's own sockets.
+void bindTlsChannel(const TlsChannel *channel);
+
 // create the resolver lock that serialises gethostbyname across worker threads. call once at startup
-// (from the transport's init) before any connection is opened.
+// (from the transport's init) before any connection is opened. not used by a bound channel, which
+// looks names up itself.
 void initTlsResolver(void);
 
 // resolve host and run a full TLS 1.2 client handshake (cert + hostname validated against the bundled

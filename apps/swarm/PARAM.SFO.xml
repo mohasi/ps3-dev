@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PARAM.SFO source for swarm.
+  well-known keys don't need type= or maxlength= - the tool fills them in.
+-->
+<paramsfo>
+  <!-- overwritten with the build number by vmbuild; only a direct msbuild run keeps this value -->
+  <param key="APP_VER">01.00</param>
+  <param key="ATTRIBUTE">0</param>
+  <param key="BOOTABLE">1</param>
+  <param key="CATEGORY">HG</param>
+  <param key="LICENSE">Homebrew. Not affiliated with Sony Computer Entertainment Inc.</param>
+  <param key="PARENTAL_LEVEL">0</param>
+  <param key="PS3_SYSTEM_VER">04.7500</param>
+  <param key="RESOLUTION">63</param>
+  <param key="SOUND_FORMAT">279</param>
+  <param key="TITLE">Swarm</param>
+  <param key="TITLE_ID">SWARM0001</param>
+  <param key="VERSION">01.00</param>
+</paramsfo>

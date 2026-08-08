@@ -147,7 +147,8 @@ static inline int findBytes(const char *hay, int hayLength, const char *needle, 
    return -1;
 }
 
-// Appends src to dst at *off, respecting cap.
+// Appends src to dst at *off, respecting cap. It does NOT terminate: *off is the length, and a
+// caller that wants a C string writes dst[*off] = 0 itself.
 static inline void appendStr(char *dst, int cap, int *off, const char *src)
 {
    int o = *off;

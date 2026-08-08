@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+   <ProjectGuid>{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063}</ProjectGuid>
+   <ProjectName>simple-lib-torrent</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
+   <ConfigurationType>StaticLibrary</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="PropertySheets">
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <TargetName>libsimple-lib-torrent</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+     <AdditionalOptions>-ffunction-sections -fdata-sections</AdditionalOptions>
+   </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+   <ClCompile Include="src\bencode.c" />
+   <ClCompile Include="src\json.c" />
+   <ClCompile Include="src\magnet.c" />
+   <ClCompile Include="src\peer.c" />
+   <ClCompile Include="src\sha1.c" />
+   <ClCompile Include="src\torrent-engine.c" />
+   <ClCompile Include="src\torrent-feed.c" />
+   <ClCompile Include="src\torrent-file.c" />
+   <ClCompile Include="src\torrent-net.c" />
+   <ClCompile Include="src\torrent-storage.c" />
+   <ClCompile Include="src\tracker.c" />
+   <ClCompile Include="src\torrent-selftest.c" />
+   <ClCompile Include="src\torrent-source.c" />
+  </ItemGroup>
+  <ItemGroup>
+   <ClInclude Include="include\bencode.h" />
+   <ClInclude Include="include\json.h" />
+   <ClInclude Include="include\magnet.h" />
+   <ClInclude Include="include\peer.h" />
+   <ClInclude Include="include\sha1.h" />
+   <ClInclude Include="include\torrent-engine.h" />
+   <ClInclude Include="include\torrent-feed.h" />
+   <ClInclude Include="include\torrent-file.h" />
+   <ClInclude Include="include\torrent-net.h" />
+   <ClInclude Include="include\torrent-storage.h" />
+   <ClInclude Include="include\tracker.h" />
+   <ClInclude Include="include\torrent-selftest.h" />
+   <ClInclude Include="include\torrent-source.h" />
+  </ItemGroup>
+  <ItemGroup>
+   <None Include="README.md" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)common\ps3.targets" />
+</Project>

@@ -50,25 +50,27 @@ void initTlsResolver(void)  { if (!resolveLockReady) { createLock(&resolveLock);
 static void lockResolve(void)   { if (resolveLockReady) lock(&resolveLock); }
 static void unlockResolve(void) { if (resolveLockReady) unlock(&resolveLock); }
 
-static int readSocket(void *context, unsigned char *buffer, size_t length)
+static int readSocket(int handle, void *buffer, int length)
 {
-   int got = recv(*(int *)context, buffer, length, 0);
+   int got = recv(handle, buffer, length, 0);
    return got <= 0 ? -1 : got;
 }
 
-static int writeSocket(void *context, const unsigned char *buffer, size_t length)
+static int writeSocket(int handle, const void *data, int length)
 {
-   int sent = send(*(int *)context, buffer, length, 0);
+   int sent = send(handle, data, length, 0);
    return sent <= 0 ? -1 : sent;
 }
 
+static void closeSocket(int handle) { socketclose(handle); }
+
 // resolve host and open a TCP connection to port 443. returns the socket, or -1.
-static int connectHost(const char *host)
+static int connectHost(const char *host, int port)
 {
    struct sockaddr_in address;
    memset(&address, 0, sizeof address);
    address.sin_family = AF_INET;
-   address.sin_port = htons(TLS_PORT);
+   address.sin_port = htons((uint16_t)port);
 
    // resolve and copy the address under the lock: gethostbyname's result is shared static storage that the
    // next thread's call overwrites, so we must be done reading it before releasing.
@@ -94,15 +96,34 @@ static int connectHost(const char *host)
    return socketHandle;
 }
 
+// section: the channel under TLS
+
+static const TlsChannel socketChannel = { connectHost, readSocket, writeSocket, closeSocket };
+static const TlsChannel *boundChannel;
+
+void bindTlsChannel(const TlsChannel *channel) { boundChannel = channel; }
+
+static const TlsChannel *getTlsChannel(void) { return boundChannel ? boundChannel : &socketChannel; }
+
+static int readChannel(void *context, unsigned char *buffer, size_t length)
+{
+   return getTlsChannel()->read(*(int *)context, buffer, (int)length);
+}
+
+static int writeChannel(void *context, const unsigned char *data, size_t length)
+{
+   return getTlsChannel()->write(*(int *)context, data, (int)length);
+}
+
 // section: connection setup
 
 TlsConn *openTlsConn(const char *host)
 {
-   int socketHandle = connectHost(host);
+   int socketHandle = getTlsChannel()->open(host, TLS_PORT);
    if (socketHandle < 0) return NULL;
 
    TlsConn *conn = malloc(sizeof *conn);
-   if (!conn) { socketclose(socketHandle); return NULL; }
+   if (!conn) { getTlsChannel()->close(socketHandle); return NULL; }
    conn->socketHandle = socketHandle;
    conn->remaining = -1;
    conn->leftover = NULL;
@@ -126,7 +147,7 @@ TlsConn *openTlsConn(const char *host)
 
    br_ssl_engine_set_buffer(&conn->client.eng, conn->ioBuffer, sizeof conn->ioBuffer, 1);
    br_ssl_client_reset(&conn->client, host, 0);   // host also sets SNI
-   br_sslio_init(&conn->io, &conn->client.eng, readSocket, &conn->socketHandle, writeSocket, &conn->socketHandle);
+   br_sslio_init(&conn->io, &conn->client.eng, readChannel, &conn->socketHandle, writeChannel, &conn->socketHandle);
    return conn;
 }
 
@@ -148,7 +169,7 @@ int splitHttpsUrl(const char *url, char *hostOut, int hostCap, const char **path
 void closeTlsConn(TlsConn *conn)
 {
    if (!conn) return;
-   socketclose(conn->socketHandle);
+   getTlsChannel()->close(conn->socketHandle);
    free(conn);
 }
 

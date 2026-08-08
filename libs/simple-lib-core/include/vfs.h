@@ -203,6 +203,9 @@ int      copyTree(const char *src, const char *dst, void *buf, int bufSize);
 int      moveTree(const char *src, const char *dst, void *buf, int bufSize);
 // recursive delete; adds each removed regular file's size into *bytesFreed (NULL to ignore).
 int      deleteTree(const char *path, uint64_t *bytesFreed);
+// the same, with every byte written over before the file goes, so it cannot be read back. buffer is
+// caller scratch space. it costs the time of writing the whole tree again, so it is not the default.
+int      shredTree(const char *path, uint64_t *bytesFreed, void *buffer, int bufferSize);
 
 // progress-reporting, cancellable cousins: onBytes(n) per chunk/file, cancelled()
 // polled between entries; either callback may be NULL.

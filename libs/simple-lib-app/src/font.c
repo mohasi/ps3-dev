@@ -710,8 +710,7 @@ static uint8_t *rasterize(Font *f, int size, const char *text, uint32_t color, i
 void freeTextTexture(TextTexture *tt)
 {
    if (tt->valid) {
-      finishGfx();               // never free VRAM the RSX may still be reading
-      freeGfxTexture(&tt->tex);  // also zeroes tt->tex
+      retireGfxTexture(&tt->tex);   // given back once the frame that may name it has been shown
       tt->valid = 0;
    }
    tt->slotW = 0;
@@ -827,20 +826,9 @@ static void renderImpl(TextTexture *tt, Font *f, int size, const char *text, uin
       return;
    }
 
-   // reuse the existing slot when the new content still fits its high-water size.
-   if (tt->valid && drawW <= tt->slotW && drawH <= tt->slotH) {
-      // overwrite in place -- updateGfxTexture clears stale pixels. finishGfx first: the RSX
-      // may still be sampling this slot for a draw call queued from the previous frame.
-      finishGfx();
-      updateGfxTexture(tt->tex.offset, buf, drawW, drawH, surfW * 4, tt->slotW, tt->slotH);
-      tt->tex.w = drawW;
-      tt->tex.h = drawH;
-      tt->tex.pitch = (tt->slotW * 4 + 63) & ~63;
-      free(buf);
-      return;
-   }
-
-   // need a bigger slot: release the old one (after the RSX drains) and allocate.
+   // A slot the GPU may still be sampling cannot be overwritten, and waiting for it to finish shows
+   // as a stutter and as torn text when a screen changes a lot of labels at once. The new picture
+   // goes somewhere else and the old slot is handed back once this frame has been shown.
    freeTextTexture(tt);
 
    uint32_t offset = uploadGfxTexture(buf, drawW, drawH, surfW * 4);

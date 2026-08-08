@@ -146,3 +146,7 @@ size_t     getLargestFreeBlock(void);    // largest single free run
 // frees the VRAM backing a texture and zeroes it. safe on a zeroed/empty tex.
 void       freeGfxTexture(GfxTexture *tex);
 
+// As freeGfxTexture, but for a texture the frame being drawn may still name: the memory goes back
+// at the start of the next frame instead, so nothing has to wait for the GPU mid-frame.
+void       retireGfxTexture(GfxTexture *tex);
+

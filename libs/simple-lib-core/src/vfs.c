@@ -716,12 +716,40 @@ int deleteTreeProgress(const char *path, void (*onBytes)(uint64_t), int (*cancel
    return rc;
 }
 
-static int deleteTreeDepth(const char *path, uint64_t *bytesFreed, int depth)
+// Writes zeros over every byte of the file. On a hard disk the same physical sectors are rewritten,
+// so what was there cannot be read back; on flash storage the drive may keep the old blocks alive
+// internally, which nothing at this level can reach.
+static int overwriteContents(const char *path, uint64_t size, void *buffer, int bufferSize)
+{
+   VfsFile file;
+   if (openFs(path, VFS_O_WRONLY, &file) != 0) return -1;
+
+   memSet(buffer, 0, bufferSize);
+
+   int rc = 0;
+   for (uint64_t written = 0; written < size;) {
+      uint64_t left = size - written;
+      uint64_t take = left < (uint64_t)bufferSize ? left : (uint64_t)bufferSize;
+
+      if (writeFs(&file, buffer, take) != (int64_t)take) { rc = -1; break; }
+      written += take;
+   }
+
+   if (rc == 0) rc = fsyncFs(&file);
+   closeFs(&file);
+   return rc;
+}
+
+static int deleteTreeDepth(const char *path, uint64_t *bytesFreed, void *scrubBuffer, int scrubSize, int depth)
 {
    VfsStat info;
    if (statPath(path, &info) != 0) return removeFilePath(path);
 
    if (!info.isDir) {
+      // a file that cannot be opened for writing is still deleted, and the walk carries on: stopping
+      // would leave the rest of the tree in place, which is worse than one file going unscrubbed
+      if (scrubBuffer && info.size > 0) overwriteContents(path, info.size, scrubBuffer, scrubSize);
+
       int rc = deleteFile(path);
       if (rc == 0 && bytesFreed) *bytesFreed += info.size;   // count only what was actually removed
       return rc;
@@ -737,7 +765,7 @@ static int deleteTreeDepth(const char *path, uint64_t *bytesFreed, int depth)
    while ((readResult = readDir(&dir, name, sizeof name, NULL)) == 1) {
       if (strEq(name, ".") || strEq(name, "..")) continue;
       if (!joinPath(child, MAX_PATH_LEN, path, name)) { closeDir(&dir); return -1; }
-      if (deleteTreeDepth(child, bytesFreed, depth + 1) < 0) { closeDir(&dir); return -1; }
+      if (deleteTreeDepth(child, bytesFreed, scrubBuffer, scrubSize, depth + 1) < 0) { closeDir(&dir); return -1; }
    }
    closeDir(&dir);
    if (readResult < 0) return -1;   // directory read error: a partial walk must not claim success
@@ -750,7 +778,17 @@ static int deleteTreeDepth(const char *path, uint64_t *bytesFreed, int depth)
 int deleteTree(const char *path, uint64_t *bytesFreed)
 {
    if (isDeviceRoot(path)) return -1;   // never delete a whole device root
-   return deleteTreeDepth(path, bytesFreed, 0);
+   return deleteTreeDepth(path, bytesFreed, NULL, 0, 0);
+}
+
+// as deleteTree, but every byte is written over first, which costs the time of writing the whole
+// tree again. buffer is the caller's scratch space (64 KB is a sensible size).
+int shredTree(const char *path, uint64_t *bytesFreed, void *buffer, int bufferSize)
+{
+   if (isDeviceRoot(path)) return -1;
+   if (!buffer || bufferSize <= 0) return -1;
+
+   return deleteTreeDepth(path, bytesFreed, buffer, bufferSize, 0);
 }
 
 // ---- move ------------------------------------------------------------------

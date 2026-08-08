@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+   <ProjectGuid>{6B2D9E17-45AC-4F30-8C91-7A0E5D3B62C4}</ProjectGuid>
+   <ProjectName>swarm</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
+   <ConfigurationType>Application</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <TargetName>$(MSBuildProjectName).ppu</TargetName>
+   <TargetExt>.elf</TargetExt>
+   <ExtensionsToDeleteOnClean>*.pkg;*.obj;$(TargetPath);$(ExtensionsToDeleteOnClean)</ExtensionsToDeleteOnClean>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-app\include;$(SolutionDir)libs\simple-lib-core\include;$(SolutionDir)libs\simple-lib-https\include;$(SolutionDir)libs\simple-lib-torrent\include;$(SolutionDir)libs\simple-lib-wireguard\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+   </ClCompile>
+   <Link>
+     <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;-lnetctl_stub;-llv2_stub;%(AdditionalDependencies)</AdditionalDependencies>
+     <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-https\bin\$(Configuration)" -lsimple-lib-https -L"$(SolutionDir)libs\simple-lib-torrent\bin\$(Configuration)" -lsimple-lib-torrent -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core -L"$(SolutionDir)libs\simple-lib-wireguard\bin\$(Configuration)" -lsimple-lib-wireguard -Wl,--strip-unused-data</AdditionalOptions>
+     <GccOutputFormat>ELFFile</GccOutputFormat>
+   </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+   <ClCompile Include="src\direct-https.c" />
+   <ClCompile Include="src\direct-torrent.c" />
+   <ClCompile Include="src\log-store.c" />
+   <ClCompile Include="src\main.c" />
+   <ClCompile Include="src\screens\home.c" />
+   <ClCompile Include="src\widgets\ask-overlay.c" />
+   <ClCompile Include="src\widgets\chrome.c" />
+   <ClCompile Include="src\torrent-service.c" />
+   <ClCompile Include="src\settings.c" />
+   <ClCompile Include="src\tunnel-https.c" />
+   <ClCompile Include="src\tunnel-torrent.c" />
+  </ItemGroup>
+  <ItemGroup>
+   <ClInclude Include="include\blocked-words.h" />
+   <ClInclude Include="include\direct-https.h" />
+   <ClInclude Include="include\direct-torrent.h" />
+   <ClInclude Include="include\log-store.h" />
+   <ClInclude Include="include\tunnel-https.h" />
+   <ClInclude Include="include\tunnel-torrent.h" />
+   <ClInclude Include="include\screens\home.h" />
+   <ClInclude Include="include\widgets\ask-overlay.h" />
+   <ClInclude Include="include\widgets\chrome.h" />
+   <ClInclude Include="include\widgets\theme.h" />
+   <ClInclude Include="include\settings.h" />
+   <ClInclude Include="include\torrent-service.h" />
+  </ItemGroup>
+  <ItemGroup>
+   <None Include="swarm.conf" />
+   <None Include="PARAM.SFO" />
+   <None Include="PARAM.SFO.xml" />
+   <None Include="README.md" />
+   <None Include="ICON0.PNG" />
+   <None Include="res\logo.png" />
+   <None Include="sources\README.md" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)common\npdrm.targets" />
+  <Import Project="$(SolutionDir)common\ps3.targets" />
+</Project>

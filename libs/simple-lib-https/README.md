@@ -18,6 +18,21 @@ This library sidesteps the firmware entirely: it links [BearSSL](https://bearssl
 raw network socket itself, so it can negotiate ECDHE-ECDSA / ECDHE-RSA, TLS 1.2, with SNI — exactly
 what those hosts require.
 
+## What carries the bytes
+
+By default a socket on the console's own network connection, and the host name is looked up by the
+console. An app whose traffic must stay inside a tunnel binds its own channel instead:
+
+```c
+bindTlsChannel(&myChannel);   // open / read / write / close, see tls-transport.h
+initModernHttp();
+```
+
+Four functions, because that is all TLS needs underneath it. The handshake, the certificate checking
+and the HTTP above are the same either way, and the name is looked up by whoever owns the connection,
+so nothing reaches the console's own resolver. Swarm does this to put every request on its WireGuard
+tunnel (`apps/swarm/src/tunnel-https.c`). An app that binds nothing is unaffected.
+
 ## Guarantees
 
 - **Real certificate checking.** The server's certificate chain is verified against a bundled set of

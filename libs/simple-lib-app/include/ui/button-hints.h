@@ -17,11 +17,13 @@ typedef struct {
    Label      caption;
    int        width;       // full width of this hint, precomputed
    int        pairNext;    // caption-less glyph: cluster tightly with the next hint (e.g. L1 + R1)
+   int        hidden;      // a button that does nothing here, left out of the row entirely
 } ButtonHint;
 
 typedef struct {
    Font    *font;
    int      y, glyphHeight, captionSize;
+   int      gap;            // between one hint and the next; 0 means the usual spacing
    uint32_t captionColor;
    ButtonHint hints[MAX_BUTTON_HINTS];
    int      count;
@@ -32,5 +34,10 @@ void initButtonHints(ButtonHints *bar, Font *font, int y, int glyphHeight, int c
 int addButtonHint(ButtonHints *bar, GfxTexture glyph, const char *caption);
 // retitle an existing hint (e.g. Subscribe <-> Unsubscribe); recomputes its width so the row stays centered.
 void setButtonHintCaption(ButtonHints *bar, int index, const char *caption);
+// leave a hint out of the row, for a button that does nothing on what is picked right now
+void setButtonHintShown(ButtonHints *bar, int index, int shown);
+void setButtonHintGap(ButtonHints *bar, int gap);   // wider or tighter spacing than the usual
 void drawButtonHints(ButtonHints *bar, int screenWidth);
+// the same row starting at x rather than centred
+void drawButtonHintsAt(ButtonHints *bar, int x);
 void termButtonHints(ButtonHints *bar);

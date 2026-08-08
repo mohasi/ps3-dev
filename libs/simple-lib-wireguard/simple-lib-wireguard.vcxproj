@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+   <ProjectConfiguration Include="Release|PS3">
+     <Configuration>Release</Configuration>
+     <Platform>PS3</Platform>
+   </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+   <ProjectGuid>{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8}</ProjectGuid>
+   <ProjectName>simple-lib-wireguard</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="Configuration">
+   <ConfigurationType>StaticLibrary</ConfigurationType>
+   <PlatformToolset>GCC</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'" Label="PropertySheets">
+   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup>
+   <OutDir>$(ProjectDir)bin\$(Configuration)\</OutDir>
+   <IntDir>$(ProjectDir)obj\$(Configuration)\</IntDir>
+   <TargetName>libsimple-lib-wireguard</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
+   <ClCompile>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+     <AdditionalOptions>-ffunction-sections -fdata-sections</AdditionalOptions>
+   </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+   <ClCompile Include="src\blake2s.c" />
+   <ClCompile Include="src\chacha20.c" />
+   <ClCompile Include="src\chacha20-poly1305.c" />
+   <ClCompile Include="src\poly1305.c" />
+   <ClCompile Include="src\wg-config.c" />
+   <ClCompile Include="src\wg-dns.c" />
+   <ClCompile Include="src\wg-handshake.c" />
+   <ClCompile Include="src\wg-ip.c" />
+   <ClCompile Include="src\wg-net.c" />
+   <ClCompile Include="src\wg-random.c" />
+   <ClCompile Include="src\wg-replay.c" />
+   <ClCompile Include="src\wg-session.c" />
+   <ClCompile Include="src\wg-tcp.c" />
+   <ClCompile Include="src\wg-tunnel.c" />
+   <ClCompile Include="src\wg-transport.c" />
+   <ClCompile Include="src\wg-selftest.c" />
+   <ClCompile Include="src\x25519.c" />
+  </ItemGroup>
+  <ItemGroup>
+   <ClInclude Include="include\blake2s.h" />
+   <ClInclude Include="include\chacha20.h" />
+   <ClInclude Include="include\chacha20-poly1305.h" />
+   <ClInclude Include="include\poly1305.h" />
+   <ClInclude Include="include\wg-bytes.h" />
+   <ClInclude Include="include\wg-config.h" />
+   <ClInclude Include="include\wg-dns.h" />
+   <ClInclude Include="include\wg-handshake.h" />
+   <ClInclude Include="include\wg-ip.h" />
+   <ClInclude Include="include\wg-net.h" />
+   <ClInclude Include="include\wg-random.h" />
+   <ClInclude Include="include\wg-replay.h" />
+   <ClInclude Include="include\wg-session.h" />
+   <ClInclude Include="include\wg-tcp.h" />
+   <ClInclude Include="include\wg-tunnel.h" />
+   <ClInclude Include="include\wg-transport.h" />
+   <ClInclude Include="include\wg-selftest.h" />
+   <ClInclude Include="include\x25519.h" />
+  </ItemGroup>
+  <ItemGroup>
+   <None Include="README.md" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(SolutionDir)common\ps3.targets" />
+</Project>

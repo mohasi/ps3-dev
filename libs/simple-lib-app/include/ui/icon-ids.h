@@ -61,5 +61,11 @@ typedef enum {
    ICON_HDD               = 0xF0A0,
    ICON_FOLDER_OPEN       = 0xE819,
    ICON_INFO_CIRCLED_ALT  = 0xF086,
-   ICON_GOOGLE            = 0xF1A0
+   ICON_GOOGLE            = 0xF1A0,
+   ICON_DOWN_BIG          = 0xE81A,
+   ICON_LEFT_BIG          = 0xE81B,
+   ICON_RIGHT_BIG         = 0xE81C,
+   ICON_UP_BIG            = 0xE81D,
+   ICON_ARROWS_CW         = 0xE81E,
+   ICON_CIRCLE            = 0xF111
 } IconId;

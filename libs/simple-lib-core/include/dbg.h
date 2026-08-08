@@ -141,6 +141,25 @@ static inline void logError(const char *fmt, ...)
    va_end(ap);
 }
 
+// Lines nobody wants by default: one per peer, per packet or per retry, and anything naming what a
+// person is doing rather than what the program is doing. They are silent unless the app turns them
+// on, so an ordinary log stays small and says nothing about its owner.
+extern int logDetailed;
+
+static inline void setLogDetailed(int on) { logDetailed = on; }
+
+static inline void logTrace(const char *fmt, ...)
+   __attribute__((format(printf, 1, 2)));
+
+static inline void logTrace(const char *fmt, ...)
+{
+   if (!logDetailed) return;
+
+   va_list ap; va_start(ap, fmt);
+   logEmit("TRCE", fmt, ap);
+   va_end(ap);
+}
+
 // BUILD_NAME / BUILD_STAMP come from the compiler command line (common/ps3.targets).
 // The stamp is "<build number>-<commit>", plus "-dirty" when the build included
 // edits that were never committed. Call this first thing at startup so every log

@@ -93,6 +93,13 @@ static int        batchVertCount = 0;
 static int        batchFlushStart = 0;
 static int        frameDroppedCalls = 0;     // draw calls the frame could not afford
 
+// textures handed back during a frame, released once that frame has been shown
+#define GFX_RETIRED_MAX 256
+static uint32_t   retired[GFX_RETIRED_MAX];
+static int        retiredCount = 0;
+
+static void freeRetiredTextures(void);
+
 // shader state
 extern struct _CGprogram _binary_vpshader_vpo_start;
 extern struct _CGprogram _binary_fpshader_fpo_start;
@@ -468,6 +475,7 @@ void beginGfxFrame(void)
 {
    if (!initialized) return;
 
+   freeRetiredTextures();   // the frame that named them has been shown
    setRenderTarget();   // binds the display buffer + sets viewport/scissor to the screen
 
    cellGcmSetColorMask(CTX, CELL_GCM_COLOR_MASK_R | CELL_GCM_COLOR_MASK_G | CELL_GCM_COLOR_MASK_B | CELL_GCM_COLOR_MASK_A);
@@ -955,6 +963,24 @@ void freeGfxTexture(GfxTexture *tex)
    if (!tex || tex->offset == 0) return;
    freeVram((uint8_t *)vramBase + tex->offset);
    memset(tex, 0, sizeof(*tex));
+}
+
+// Hand a texture back without waiting for the GPU. The frame being drawn may still name it, so it
+// is only released once that frame has been shown, which is what the next beginGfxFrame means.
+void retireGfxTexture(GfxTexture *tex)
+{
+   if (!tex || tex->offset == 0) return;
+
+   if (retiredCount < GFX_RETIRED_MAX) retired[retiredCount++] = tex->offset;
+   else freeGfxTexture(tex);   // the list is full, so this one waits for the GPU the old way
+
+   memset(tex, 0, sizeof(*tex));
+}
+
+static void freeRetiredTextures(void)
+{
+   for (int index = 0; index < retiredCount; index++) freeVram((uint8_t *)vramBase + retired[index]);
+   retiredCount = 0;
 }
 
 // loadGfxTexture now lives in image-loader.c (generic PNG/JPEG); see image-loader.h.

@@ -1,4 +1,4 @@
-Microsoft Visual Studio Solution File, Format Version 11.00
+﻿Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-disc-mount", "plugins\simple-disc-mount\simple-disc-mount.vcxproj", "{0417CB38-3C70-412E-975F-1EB4D76F64E3}"
 	ProjectSection(ProjectDependencies) = postProject
@@ -39,6 +39,19 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-lib-av", "libs\simple-lib-av\simple-lib-av.vcxproj", "{A1F2B3C4-5D6E-4F7A-8B9C-0D1E2F3A4B5C}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-lib-https", "libs\simple-lib-https\simple-lib-https.vcxproj", "{C7D8E9F0-1A2B-4C3D-8E4F-5A6B7C8D9E0F}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "swarm", "apps\swarm\swarm.vcxproj", "{6B2D9E17-45AC-4F30-8C91-7A0E5D3B62C4}"
+	ProjectSection(ProjectDependencies) = postProject
+		{D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A} = {D4F7A1B3-9E2C-4F5D-8A6B-3C7E9D1F5B2A}
+		{C7D8E9F0-1A2B-4C3D-8E4F-5A6B7C8D9E0F} = {C7D8E9F0-1A2B-4C3D-8E4F-5A6B7C8D9E0F}
+		{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063} = {6B21D9F4-3C08-47A6-9E51-2D74A8C1B063}
+		{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8} = {3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8}
+		{B2C3D4E5-6F7A-4B8C-9D0E-1F2A3B4C5D6E} = {B2C3D4E5-6F7A-4B8C-9D0E-1F2A3B4C5D6E}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-lib-torrent", "libs\simple-lib-torrent\simple-lib-torrent.vcxproj", "{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "simple-lib-wireguard", "libs\simple-lib-wireguard\simple-lib-wireguard.vcxproj", "{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "apps", "apps", "{6350263B-0E33-4590-BA8A-8FD49451E9FA}"
 EndProject
@@ -241,6 +254,21 @@ Global
 		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|Mixed Platforms.Build.0 = Release|Any CPU
 		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|PS3.ActiveCfg = Release|Any CPU
 		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F}.Release|PS3.Build.0 = Release|Any CPU
+		{6B2D9E17-45AC-4F30-8C91-7A0E5D3B62C4}.Release|Any CPU.ActiveCfg = Release|PS3
+		{6B2D9E17-45AC-4F30-8C91-7A0E5D3B62C4}.Release|Mixed Platforms.ActiveCfg = Release|PS3
+		{6B2D9E17-45AC-4F30-8C91-7A0E5D3B62C4}.Release|Mixed Platforms.Build.0 = Release|PS3
+		{6B2D9E17-45AC-4F30-8C91-7A0E5D3B62C4}.Release|PS3.ActiveCfg = Release|PS3
+		{6B2D9E17-45AC-4F30-8C91-7A0E5D3B62C4}.Release|PS3.Build.0 = Release|PS3
+		{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063}.Release|Any CPU.ActiveCfg = Release|PS3
+		{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063}.Release|Mixed Platforms.ActiveCfg = Release|PS3
+		{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063}.Release|Mixed Platforms.Build.0 = Release|PS3
+		{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063}.Release|PS3.ActiveCfg = Release|PS3
+		{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063}.Release|PS3.Build.0 = Release|PS3
+		{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8}.Release|Any CPU.ActiveCfg = Release|PS3
+		{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8}.Release|Mixed Platforms.ActiveCfg = Release|PS3
+		{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8}.Release|Mixed Platforms.Build.0 = Release|PS3
+		{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8}.Release|PS3.ActiveCfg = Release|PS3
+		{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8}.Release|PS3.Build.0 = Release|PS3
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -270,5 +298,8 @@ Global
 		{3D2B1341-A6A0-499E-A571-E2FA3DF2A330} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 		{7B4C1F62-9E3A-4D18-8C55-1A7E6B0D9F44} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 		{B7E4C9A2-6F31-4D88-9C4E-1A2B3C4D5E6F} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
+		{6B2D9E17-45AC-4F30-8C91-7A0E5D3B62C4} = {6350263B-0E33-4590-BA8A-8FD49451E9FA}
+		{6B21D9F4-3C08-47A6-9E51-2D74A8C1B063} = {8C1D3F5E-2A4B-4D6C-9E7F-1B3A5C7D9E2F}
+		{3F7A1C64-9D2E-4B85-A0C7-6E1B4D93F2A8} = {8C1D3F5E-2A4B-4D6C-9E7F-1B3A5C7D9E2F}
 	EndGlobalSection
 EndGlobal

@@ -52,18 +52,38 @@ static int drawHint(ButtonHints *bar, ButtonHint *hint, int x)
    return x + hint->caption.tt.tex.w;
 }
 
+void setButtonHintGap(ButtonHints *bar, int gap)
+{
+   bar->gap = gap;
+}
+
+void setButtonHintShown(ButtonHints *bar, int index, int shown)
+{
+   if (index < 0 || index >= bar->count) return;
+   bar->hints[index].hidden = !shown;
+}
+
+void drawButtonHintsAt(ButtonHints *bar, int x)
+{
+   for (int i = 0; i < bar->count; i++) {
+      if (bar->hints[i].hidden) continue;
+
+      x = drawHint(bar, &bar->hints[i], x);
+      x += bar->hints[i].pairNext ? PAIR_GAP : (bar->gap > 0 ? bar->gap : HINT_GAP);
+   }
+}
+
 void drawButtonHints(ButtonHints *bar, int screenWidth)
 {
    int total = 0;
    for (int i = 0; i < bar->count; i++) {
+      if (bar->hints[i].hidden) continue;
+
       total += bar->hints[i].width;
-      if (i < bar->count - 1) total += bar->hints[i].pairNext ? PAIR_GAP : HINT_GAP;
+      if (i < bar->count - 1) total += bar->hints[i].pairNext ? PAIR_GAP : (bar->gap > 0 ? bar->gap : HINT_GAP);
    }
-   int x = (screenWidth - total) / 2;
-   for (int i = 0; i < bar->count; i++) {
-      x = drawHint(bar, &bar->hints[i], x);
-      x += bar->hints[i].pairNext ? PAIR_GAP : HINT_GAP;
-   }
+
+   drawButtonHintsAt(bar, (screenWidth - total) / 2);
 }
 
 void termButtonHints(ButtonHints *bar)

@@ -1,6 +1,7 @@
 # ps3-dev
 
-Small collection of PS3 Cobra/EVILNAT VSH plugins and apps, built with Sony's official SDK on FW 4.75.
+PS3 Cobra/EVILNAT VSH plugins and apps, built with Sony's official SDK on FW 4.75, plus the Windows
+tools that build and feed them.
 
 ## Layout
 
@@ -15,26 +16,36 @@ ps3-dev/
 │   ├── simple-lib-app/         static library for apps (gfx, font, pad, screen, anim, ui)
 │   ├── simple-lib-av/          audio + H.264/AAC video playback (mixer, demux, decode, streaming source)
 │   ├── simple-lib-https/       modern TLS (BearSSL) — the HTTPS transport the firmware can't do
+│   ├── simple-lib-torrent/     BitTorrent: peers, magnets, trackers, piece checking and storage
+│   ├── simple-lib-wireguard/   WireGuard client, with its own TCP and DNS inside the tunnel
 │   ├── simple-lib-plugin/     header-only PRX-only extras (vsh NID stubs, module hook/inspect)
 │   ├── libvshtask_export_stub.a
 │   └── libvshmain_export_stub.a
 ├── apps/
 │   ├── app-sample/             demo app showcasing engine features
+│   ├── cell-stream/            plays a live stream of a Windows PC, and sends the pad back
 │   ├── file-manager/           PS3 file browser, flat themeable UI (image/audio/video/text/hex viewers)
+│   ├── renpy-player/           runs Ren'Py visual novels packaged as .rpk
+│   ├── swarm/                  torrent client that speaks its own WireGuard tunnel
+│   ├── thermal-bench/          heat, fan and clock test tool, saves every run for comparison
 │   └── yo-player/              native YouTube client (streams video + audio directly)
 ├── plugins/
+│   ├── simple-cd-info/       puts album and track names back on the XMB for audio CDs
 │   ├── simple-cheat-menu/    in-game cheat overlay, synced with the shared cheat repo
 │   ├── simple-debug-bridge/  remote debug/control over TCP (port 8785)
 │   ├── simple-disc-mount/    mounts ISOs from an XMB submenu
 │   └── simple-ftp/           anonymous, binary-only FTP server on port 21
 ├── tools/
 │   ├── debug-bridge-client/    Windows host app: HTTP proxy to the on-console bridge (Logs, install, mem/file)
+│   ├── cell-stream-server/     PC side of cell-stream: captures, encodes, and takes the pad back
 │   ├── sprite-packer/          packs sprite PNGs into atlas + C header
 │   ├── xml-to-sfo/             generates PARAM.SFO from XML
 │   ├── nid-dump/               dumps firmware NIDs for symbol resolution
+│   ├── patch-studio/           makes texture patches from textures dumped on the console
 │   ├── renpy-to-ps3/           packages Ren'Py visual novels to run on PS3
 │   ├── rco-studio/             GUI for editing PS3 XMB resource files (RCOs)
 │   ├── theme-studio/           GUI to author PS3 static + dynamic 3D themes (.p3t)
+│   ├── pkg-custom/             builds the .pkg during an app build
 │   └── scetool/                PRX signing tool + keys
 ├── out/                        build outputs (.sprx plugins, .pkg apps)
 └── README.md
@@ -125,6 +136,18 @@ firmware's RSA-only TLS can't (ECDSA certs, e.g. Cloudflare). It plugs in as the
 `initModernHttp()` and every `fetchHttp` / `openHttpStream` runs over BearSSL. Adds
 ~80 KB, so it is opt-in and apps-only. See `libs/simple-lib-https/README.md`.
 
+### simple-lib-wireguard
+A WireGuard client written from the protocol paper: the handshake, the crypto it
+needs (ChaCha20-Poly1305, BLAKE2s, X25519), and a hand-written TCP and DNS on top,
+so an app's traffic leaves the console inside the tunnel rather than beside it.
+See `libs/simple-lib-wireguard/README.md`.
+
+### simple-lib-torrent
+The parts of a BitTorrent client that do not depend on how the traffic gets out:
+peers (BEP 3), magnet links (BEP 9/10), UDP trackers (BEP 15), piece checking and
+storage. The app lends it a network, which for Swarm means the tunnel.
+See `libs/simple-lib-torrent/README.md`.
+
 ### simple-lib-plugin
 Header-only library for the PRX-only extras: VSH NID stubs (`vsh.h`) and
 module hook/inspect helpers (`module-hook.h`, `module-inspect.h`). No archive
@@ -132,6 +155,12 @@ output — plugins just add its `include/` path. The LV2 syscall trampolines and
 all other non-PRX-specific helpers (printf, dbg, VFS, …) live in `simple-lib-core`.
 
 ## Plugins
+
+### simple-cd-info
+Puts the album, artist and track names back on the XMB when an audio CD goes in. The service the
+console used for that was shut down years ago, so current firmware shows "Track 1, Track 2, …".
+The names come from the gnudb database instead. Nothing to configure. See
+`plugins/simple-cd-info/README.md` for details.
 
 ### simple-cheat-menu
 In-game cheat overlay. A short PS press over a running game opens a panel listing that title's
@@ -161,6 +190,12 @@ Demo app showcasing the engine features: RSX 2D renderer, system fonts, audio,
 animation, input, and screen/overlay lifecycle. See
 `apps/app-sample/README.md` for details.
 
+### cell-stream
+Plays a live stream of a Windows PC on the console: picture and sound down, the pad back up, in the
+manner of Steam Remote Play. 720p60 over WiFi with about 25 ms from the encoder to the screen, so
+games are playable. The pad arrives at the PC either as a mouse and keyboard or as an Xbox
+controller. PC side is `tools/cell-stream-server`. See `apps/cell-stream/README.md` for details.
+
 ### file-manager
 PS3 file browser with a flat, themeable UI. Features directory listing with file-type
 icons, checkboxes, breadcrumb navigation, hold-to-scroll, search, image/audio/video viewers,
@@ -168,6 +203,22 @@ a text editor and hex viewer, read/write access to **exFAT and NTFS USB drives**
 shared VFS, with hotplug), a built-in FTP server, and a runtime theme system (Original Blue /
 Light / Dark, switch with R1, user-editable `themes.txt`). See
 `apps/file-manager/README.md` for details.
+
+### renpy-player
+Runs Ren'Py visual novels on the console. It reads the `.rpk` bundle that `tools/renpy-to-ps3`
+produces and plays the script itself: scenes, choices, saves and history, with the typewriter text
+and the game menus the originals have.
+
+### swarm
+Torrent client that runs its own VPN: the WireGuard tunnel is spoken by the app, so
+trackers and peers see the VPN's address and never the console's. Searches the sites
+listed in its sources folder, downloads to the hard disk, and can write over content
+before deleting it. See `apps/swarm/README.md` for details.
+
+### thermal-bench
+Heat, fan and clock test tool. It shows what the console is doing thermally, puts it under a
+controlled load, and saves every run, so two runs can be compared: before against after a repaste,
+or stock clocks against an overclock. See `apps/thermal-bench/README.md` for details.
 
 ### yo-player
 Native YouTube client — browse feeds, search, open channels, and play up to 1080p
@@ -184,6 +235,11 @@ local HTTP proxy at `http://localhost:8786` that all deploys and the ps3 MCP bri
 talk to, and provides a Logs tab (the source of truth for forwarded console logs),
 Install & Launch, and memory/file transfer. See `tools/debug-bridge-client/README.md`.
 
+### cell-stream-server
+Windows side of the `cell-stream` app. Captures the desktop, encodes it to H.264 on the graphics
+card, sends it to the console over UDP, and turns the pad packets coming back into a virtual Xbox
+360 controller (ViGEmBus) or into mouse and keyboard. See `tools/cell-stream-server/README.md`.
+
 ### sprite-packer
 Two modes. **Sprite mode** packs a directory of PNGs into a power-of-2 atlas and
 generates a C header (`sprite-regions.h`) of named `SpriteRegion` coordinates (used
@@ -199,6 +255,12 @@ Generates `PARAM.SFO` from a human-readable XML source. Every app build runs it
 ### nid-dump
 Dumps firmware NIDs (symbol IDs) from PS3 modules, for resolving VSH/system symbols.
 See `tools/nid-dump/README.md`.
+
+### patch-studio
+Windows tool for making PS3 texture patches. Textures are dumped from a running game on the console,
+edited on the PC, and sent back as a patch that `simple-cheat-menu` applies in game. Nothing is
+injected into the game: textures are swapped in video memory and matched by content, so a patch keeps
+working across reboots and reloads. See `tools/patch-studio/README.md`.
 
 ### renpy-to-ps3
 Dark-theme WPF GUI that converts Ren'Py visual-novel games into a single `.rpk`

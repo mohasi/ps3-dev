@@ -15,6 +15,12 @@ void termFileList(void);
 void updateFileList(void);
 void drawFileList(void);
 
+// steps the listing to the next sort order: name, size then modified time, each ascending
+// then descending, wrapping back to name ascending. the choice is saved to settings.txt and
+// restored on the next launch. every sortable column's header is marked, the active one with
+// its direction.
+void cycleFileListSort(void);
+
 // the directory currently being browsed (valid until the next directory change).
 const char *getCurrentPath(void);
 

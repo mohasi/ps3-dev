@@ -33,10 +33,11 @@ static int   searchDisplaced;               // the list was moved by a jump; res
 static const SelectionAction searchActions[] = { ACTION_COPY, ACTION_CUT, ACTION_DELETE, ACTION_RENAME };
 
 // while search is active the results list replaces the file list, and the file-list-only footer
-// actions (FTP / Search) hide. Options (Triangle) stays available in both modes.
+// actions (Sort / FTP / Search) hide. Options (Triangle) stays available in both modes.
 static void setSearchMode(int on)
 {
    searchActive = on;
+   setFooterButtonVisible(PAD_BTN_L1, !on);
    setFooterButtonVisible(PAD_BTN_SELECT, !on);
    setFooterButtonVisible(PAD_BTN_START, !on);
 }

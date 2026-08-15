@@ -11,6 +11,7 @@ PS3 homebrew file browser with a flat, themeable UI. Sony official SDK 4.75, tar
 - **Breadcrumb navigation** — path-driven breadcrumb bar, rebuilt on directory change
 - **Selection** — per-row checkboxes with a checked counter. Tap square toggles the focused row; hold square (≥ 400 ms) checks all rows in the directory, or unchecks if all are already checked.
 - **Folder sizes** — folder rows show recursively-totalled size alongside files
+- **Sorting** — L1 cycles through Name, Size and Modified, each ascending then descending. Folders always come before files and the name breaks ties. Name, Size and Modified each carry a mark in their heading; the column being sorted on shows the direction. The chosen order is saved to `settings.txt` as `sort=` and restored on the next launch.
 - **Hold-to-scroll** — press-and-hold D-pad for continuous scrolling with repeat delay
 - **Search** — Start opens a search: type a query on the on-screen keyboard and it walks the current folder tree on a background worker, showing a live "N found" count in the standard progress dialog. Results are their own list (same columns as the file list) that you can act on or jump into.
 - **Sidepanel** — triangle opens a slide-in action menu (copy, cut, paste, delete, rename, new file/dir, edit, zip/unzip, dump disc, properties) with a header summarizing the current selection (single file, single folder with recursive file count, or multi-selection totals)
@@ -98,6 +99,7 @@ Conflicts are pre-scanned on the main thread before the background paste worker 
 - **Circle** — go up a folder / close an overlay
 - **Square** — toggle row checkbox (hold to select all)
 - **Triangle** — Options (sidepanel)
+- **L1** — cycle sort order
 - **R1** — cycle theme
 - **Start** — Search
 - **Select** — toggle FTP server

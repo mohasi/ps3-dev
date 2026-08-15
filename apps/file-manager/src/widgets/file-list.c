@@ -9,6 +9,7 @@
 #include "widgets/footer-widget.h"
 #include "widgets/toast-widget.h"
 #include "theme.h"
+#include "settings-file.h"   // the saved sort order lives in the app's settings.txt
 #include "folder-sizer.h"
 #include "file-type.h"
 #include "clipboard.h"
@@ -91,6 +92,13 @@ static const struct { int x; const char *text; } COLUMN_HEADERS[] = {
 };
 #define COLUMN_HEADER_COUNT ((int)(sizeof COLUMN_HEADERS / sizeof COLUMN_HEADERS[0]))
 static Label columnHeaderLabels[COLUMN_HEADER_COUNT];
+
+// every sortable column carries a mark at its x, with the heading text SORT_MARK_SPACING further
+// right: the plain mark when it isn't the column being sorted on, up or down when it is.
+#define SORT_MARK_SIZE    24
+#define SORT_MARK_SPACING 28
+static Icon sortableMark, ascendingMark, descendingMark;
+
 static int listY, listRowHeight;
 static int labelsStale;
 static char currentPath[MAX_PATH_LEN];
@@ -146,14 +154,56 @@ static void sizerApplyResult(int i, uint64_t bytes, int files, int approx, int g
 
 static const FolderSizeCallbacks sizerCallbacks = { sizerCount, sizerNeedsSizing, sizerApplyResult };
 
-// folders before files, then case-insensitive by name. insertion sort:
+// the sort order L1 cycles through: two modes per key, ascending then descending, so the key is
+// sortMode / 2 and the direction is the low bit. the slugs are what settings.txt stores.
+typedef enum {
+   SORT_NAME_ASC, SORT_NAME_DESC,
+   SORT_SIZE_ASC, SORT_SIZE_DESC,
+   SORT_MODIFIED_ASC, SORT_MODIFIED_DESC,
+   SORT_MODE_COUNT
+} SortMode;
+
+enum { SORT_KEY_NAME, SORT_KEY_SIZE, SORT_KEY_MODIFIED };
+
+static const char *const SORT_SLUGS[SORT_MODE_COUNT] = {
+   "name-asc", "name-desc", "size-asc", "size-desc", "modified-asc", "modified-desc"
+};
+
+// the column each sort key marks, as an index into COLUMN_HEADERS
+static const int SORTABLE_COLUMNS[] = { 0, 2, 3 };
+#define SORTABLE_COLUMN_COUNT ((int)(sizeof SORTABLE_COLUMNS / sizeof SORTABLE_COLUMNS[0]))
+
+static SortMode sortMode = SORT_NAME_ASC;
+
+static int getSortKey(void)        { return sortMode / 2; }
+static int isSortDescending(void)  { return sortMode & 1; }
+static int getSortedColumnIndex(void) { return SORTABLE_COLUMNS[getSortKey()]; }
+
+static int isSortableColumn(int column)
+{
+   for (int i = 0; i < SORTABLE_COLUMN_COUNT; i++)
+      if (SORTABLE_COLUMNS[i] == column) return 1;
+   return 0;
+}
+
+// compares two entries on the active sort key, ascending, with the name as the tiebreak.
+static int compareSortKey(const FileEntry *a, const FileEntry *b)
+{
+   int key = getSortKey();
+   if (key == SORT_KEY_SIZE && a->size != b->size)             return a->size < b->size ? -1 : 1;
+   if (key == SORT_KEY_MODIFIED && a->modified != b->modified) return a->modified < b->modified ? -1 : 1;
+   return strCmpICase(a->name, b->name);
+}
+
+// folders always come before files, whatever the sort key. insertion sort:
 // directory listings are small and already mostly-sorted on most fs's.
 static int entryLess(const FileEntry *a, const FileEntry *b)
 {
    int aIsDir = a->type == FILE_TYPE_FOLDER;
    int bIsDir = b->type == FILE_TYPE_FOLDER;
    if (aIsDir != bIsDir) return aIsDir > bIsDir;
-   return strCmpICase(a->name, b->name) < 0;
+   int order = compareSortKey(a, b);
+   return isSortDescending() ? order > 0 : order < 0;
 }
 
 static void sortEntries(void)
@@ -167,6 +217,20 @@ static void sortEntries(void)
       }
       entries[j + 1] = key;
    }
+}
+
+// reads the saved "sort=" line from settings.txt; an absent or unknown value leaves name ascending.
+static void loadSortSetting(void)
+{
+   char text[SETTINGS_FILE_CAP];
+   int length = readFile(getSettingsPath(), text, sizeof text - 1);
+   if (length <= 0) return;
+   text[length] = '\0';
+
+   const char *value = findSettingValue(text, "sort");
+   if (!value) return;
+   for (int mode = 0; mode < SORT_MODE_COUNT; mode++)
+      if (settingValueEquals(value, SORT_SLUGS[mode])) { sortMode = (SortMode)mode; return; }
 }
 
 // At root the listing shows storage devices as folders; this flags the removable (USB)
@@ -517,10 +581,13 @@ void initFileList(Font *font, Audio *click, Audio *check, int x, int y, int maxW
    historyDepth = 0;
 
    setMountsChangedCallback(refreshMounts);   // pollMounts() refreshes the root listing on USB hotplug
+   loadSortSetting();                         // before the first loadDir, so it lists in the saved order
 
    initLabel(&counterLabel, font, 55, 953, 200, AUTO, 20, color, TEXT_NOWRAP, NULL);
-   for (int i = 0; i < COLUMN_HEADER_COUNT; i++)
-      initLabel(&columnHeaderLabels[i], font, COLUMN_HEADERS[i].x, COLUMN_HEADER_Y, 240, AUTO, fontSize, color, TEXT_NOWRAP, COLUMN_HEADERS[i].text);
+   for (int i = 0; i < COLUMN_HEADER_COUNT; i++) {
+      int textX = COLUMN_HEADERS[i].x + (isSortableColumn(i) ? SORT_MARK_SPACING : 0);   // room for the sort mark
+      initLabel(&columnHeaderLabels[i], font, textX, COLUMN_HEADER_Y, 240, AUTO, fontSize, color, TEXT_NOWRAP, COLUMN_HEADERS[i].text);
+   }
    addFooterButton(PAD_BTN_CROSS,  GLYPH_CROSS,  "Enter", activateSelectedEntry);
    addFooterButton(PAD_BTN_CIRCLE, GLYPH_CIRCLE, "Back",  goToParentDir);
    addFooterButton(PAD_BTN_SQUARE, GLYPH_SQUARE, "Mark",  NULL);
@@ -529,6 +596,9 @@ void initFileList(Font *font, Audio *click, Audio *check, int x, int y, int maxW
       initIcon(&fileIcons[t], getFileTypeIcon(t), 35);
    initIcon(&hddIcon, ICON_HDD, 35);
    initIcon(&googleBadge, ICON_GOOGLE, 12);
+   initIcon(&sortableMark, ICON_SORT, SORT_MARK_SIZE);
+   initIcon(&ascendingMark, ICON_SORT_UP, SORT_MARK_SIZE);
+   initIcon(&descendingMark, ICON_SORT_DOWN, SORT_MARK_SIZE);
 
    for (int i = 0; i < FILE_LIST_PAGE_SIZE; i++) {
       int ry = y + i * rowHeight;
@@ -643,6 +713,15 @@ void drawFileList(void)
 {
    for (int i = 0; i < COLUMN_HEADER_COUNT; i++) drawLabel(&columnHeaderLabels[i]);
 
+   int sortedColumn = getSortedColumnIndex();
+   for (int i = 0; i < SORTABLE_COLUMN_COUNT; i++) {
+      int column = SORTABLE_COLUMNS[i];
+      Icon *mark = column != sortedColumn  ? &sortableMark
+                 : isSortDescending()      ? &descendingMark
+                                           : &ascendingMark;
+      drawIcon(mark, COLUMN_HEADERS[column].x, COLUMN_HEADER_Y, activeTheme->textPrimary);
+   }
+
    // hide top separator when the first visible row is selected (highlight replaces it)
    if (entryCount == 0 || selectedIndex != scrollOffset) {
       drawRowSeparator(0);
@@ -700,6 +779,9 @@ void termFileList(void)
    for (int t = 0; t < FILE_TYPE_COUNT; t++) freeIcon(&fileIcons[t]);
    freeIcon(&hddIcon);
    freeIcon(&googleBadge);
+   freeIcon(&sortableMark);
+   freeIcon(&ascendingMark);
+   freeIcon(&descendingMark);
 
    free(entries);
    entries = NULL;
@@ -891,6 +973,21 @@ static void selectEntryByName(const char *name)
       if (strEq(entries[i].name, name)) { selectedIndex = i; break; }
    scrollToSelected();
    labelsStale = 1;
+}
+
+// steps to the next sort order (wrapping), re-sorts, and leaves the cursor on the same entry.
+void cycleFileListSort(void)
+{
+   sortMode = (SortMode)((sortMode + 1) % SORT_MODE_COUNT);
+   upsertSettingValue(getSettingsPath(), "sort", SORT_SLUGS[sortMode]);
+   playAudioOnce(clickSfx);
+   if (entryCount == 0) return;
+
+   char activeName[NAME_LEN];
+   strCopy(activeName, NAME_LEN, entries[selectedIndex].name);
+   sortEntries();
+   selectedIndex = 0;
+   selectEntryByName(activeName);
 }
 
 // creates an empty file or a folder named name in the current directory. a file

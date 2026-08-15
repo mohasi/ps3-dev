@@ -1,6 +1,6 @@
 // theme.c - the file manager's palette and its theme files (see theme.h). The file format and the
 // parsing live in simple-lib-app's theme-registry; this file is the built-in palette, the field table
-// that maps its colours onto "key=" lines, the file paths, and the L1/R1 selection.
+// that maps its colours onto "key=" lines, the file paths, and the R1 selection.
 //
 // Two files are read every launch and merged (a later block overrides an earlier one of the same name):
 //   - res/themes.txt          the shipped built-ins (Original Blue / Light / Dark): the base layer.
@@ -9,7 +9,7 @@
 //                             built-in; deleting one falls back to its shipped form; new [Name]
 //                             blocks add the user's own themes.
 // settings.txt (same tmp folder) holds one line, "theme=<slug>", naming which theme to start in;
-// L1/R1 in-app rewrites it so the choice survives a relaunch. an unknown/malformed slug falls back to
+// R1 in-app rewrites it so the choice survives a relaunch. an unknown/malformed slug falls back to
 // Original Blue.
 #include "theme.h"
 #include "theme-registry.h"
@@ -101,7 +101,7 @@ static void buildSettings(const char *slug, char *out, int cap)
    int length = 0;
    appendStr(out, cap, &length,
       "# file-manager settings - edit over FTP; changes apply on the next launch\n"
-      "# (in-app: press L1 / R1 to switch theme, which also saves your choice here)\n"
+      "# (in-app: press R1 to switch theme, which also saves your choice here)\n"
       "\ntheme=");
    appendStr(out, cap, &length, slug);
    appendStr(out, cap, &length, "\n# available: ");

@@ -156,6 +156,7 @@ static void initHome(void)
    initKeyboard(keyGridTheme);
    initHexPad(keyGridTheme);
    addFooterButton(PAD_BTN_TRIANGLE, GLYPH_TRIANGLE, "Options", openSidepanel);
+   addFooterButton(PAD_BTN_L1, GLYPH_L1, "Sort", cycleFileListSort);
    addFooterButton(PAD_BTN_R1, GLYPH_R1, "Theme", NULL);   // hint only; handleThemeSwitch owns the R1 press
    addFooterButton(PAD_BTN_START, GLYPH_START, "Search", launchSearch);
    addFooterButton(PAD_BTN_SELECT, GLYPH_SELECT, "Start FTP Server", toggleFtpServer);

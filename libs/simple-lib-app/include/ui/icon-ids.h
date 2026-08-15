@@ -67,5 +67,8 @@ typedef enum {
    ICON_RIGHT_BIG         = 0xE81C,
    ICON_UP_BIG            = 0xE81D,
    ICON_ARROWS_CW         = 0xE81E,
-   ICON_CIRCLE            = 0xF111
+   ICON_CIRCLE            = 0xF111,
+   ICON_SORT              = 0xF0DC,
+   ICON_SORT_DOWN         = 0xF0DD,
+   ICON_SORT_UP           = 0xF0DE
 } IconId;

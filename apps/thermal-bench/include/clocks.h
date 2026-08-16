@@ -1,13 +1,8 @@
 #pragma once
 
-// clocks - reads and changes the graphics chip's core and memory clocks live,
-// no reboot. the mechanism is a hypervisor register holding a multiplier:
-// core MHz = multiplier * 50, memory MHz = multiplier * 25. Taken from the
-// working webMAN-MOD implementation (include/feat/clock.h), which credits
-// Chattrapat Sangmanee.
-//
-// This writes below the operating system. A silly value can hang the console,
-// so the steps are fixed and the range is clamped.
+// clocks - what this app adds on top of the shared RSX clock control in
+// simple-lib-core's rsx-clocks.h, which owns the registers, the multipliers,
+// the safe ranges and the memory clock's settling period.
 //
 // A clock change is global and outlives the app: the XMB and every game
 // launched afterwards run at whatever was left here, until the console is
@@ -15,13 +10,10 @@
 // but the clocks the app started with are remembered so the screen can show
 // them and the safety cutoff can put them back.
 
+#include "rsx-clocks.h"   // getRsxCoreClockMhz / getRsxMemoryClockMhz / stepRsx*Clock
+
 // remembers the clocks the console booted with. call once at startup.
 void initClocks(void);
-
-// the live clocks, or 0 when the hypervisor register cannot be read (no cfw
-// support) - the same condition that makes a change impossible.
-int getRsxCoreClockMhz(void);
-int getRsxMemoryClockMhz(void);
 
 int getBootRsxCoreClockMhz(void);
 int getBootRsxMemoryClockMhz(void);
@@ -30,8 +22,3 @@ int getBootRsxMemoryClockMhz(void);
 // one step at a time, so this can take a second - it is only used when the
 // safety cutoff fires.
 void restoreBootRsxClocks(void);
-
-// one step up or down (direction +1 / -1). memory moves in single steps on
-// purpose - it must not jump.
-void stepRsxCoreClock(int direction);
-void stepRsxMemoryClock(int direction);

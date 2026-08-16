@@ -1,36 +1,23 @@
 #include "overlay.h"
+#include "paf-widget.h"         // PafWidget + the make/set primitives shared with the stats counter
+#include "stats-overlay.h"      // the Stats Counter tab's rows and their values
 #include "cheat-sync.h"         // syncMode + settings, buildCheatPath, getAppVersion, isGameTitleId
 #include "string-utilities.h"   // memSet: libc-free fill (memset doesn't resolve in a vsh prx)
 #include "game-mem.h"           // readProcMem/writeProcMem + getGameScanRanges (game-mem.c)
 #include "texture-patch.h"      // listPatchNames / applyPatch: the Patches tab's disk + apply backend
 
-#include <string>
-#include <new>
 #include <stdint.h>
 #include <sys/timer.h>   // sys_timer_usleep: bounded waits in the live Update handshake
 
 // Draw a box over a running game through vsh's PAF compositor (never the raw
-// framebuffer — that hard-locked us). A PAF widget is a C++ object whose second
-// field is a std::string name; PAF reads that name during its per-frame widget
-// walk. Constructing the object into a *zeroed* buffer leaves the string's
-// internal pointer null, so the walk faults and the console hard-locks. The fix
-// is to let the C++ compiler construct the object (so the string is a valid,
-// empty COW string) and only then hand it to PAF's own constructor, exactly as
-// the proven VshFpsCounter reference does. We never set a name, so the string
-// stays empty and never mallocs (libc malloc doesn't resolve in a vsh prx). The
-// widget objects themselves live in a heap arena (OverlayArena) taken from lv2 on
-// demand — see overlayEnsureArena — not in the C++ heap.
+// framebuffer — that hard-locked us). The widget primitives and the rules that
+// come with them live in paf-widget.h; this file is the cheat menu panel built
+// on top of them. The widget objects live in a heap arena (OverlayArena) taken
+// from lv2 on demand — see overlayEnsureArena — not in the C++ heap.
 //
 // All hardware-verified in-game 2026-07-09: backdrop plane (construct, layout,
 // colour) and title text (PhText ctor, vtable-70 SetText with a firmware-layout
-// wstring, render styles). Rules learned the hard way (FREEZE-WRITEUP.md):
-// - never reuse a paf widget pointer across the XMB<->game boundary; re-find it
-//   per use, on the frame thread.
-// - any string crossing into firmware must use the Dinkumware SSO layout with
-//   16-bit chars (FirmwareWstring below), never our GCC COW strings.
-// Placement-new into the arena's storage is fine; PhPlane needs no SetName.
-// Field offsets mirror vsh's PhWidget layout (size 0x290) from the community
-// PAF headers.
+// wstring, render styles).
 //
 // Storage (Rung 1): the on-screen widgets follow the 10 visible SLOTS, not the
 // cheats, so widget memory is fixed however many cheats a title has; the cheat
@@ -57,54 +44,6 @@ extern "C" void  overlayHeapFree(void *ptr);
 // memory accessors + segment enumeration come from game-mem.h above.
 extern "C" unsigned int vshmain_0624D3AE(void);
 
-// paf exports, resolved by NID from libpaf_export_stub.a. the asm label binds
-// each readable name to its NID symbol; the trailing comment gives the real
-// firmware method for cross-referencing community headers.
-extern "C" {
-   uint32_t findPafView(const char *pluginName)                              __asm__("paf_F21655F3"); // paf::View::Find
-   uint32_t findPafViewWidget(uint32_t view, const char *widgetName)         __asm__("paf_794CEACB"); // paf::View::FindWidget
-   void     constructPafPlane(void *plane, void *parent, void *appear)       __asm__("paf_D0197A7D"); // paf::PhPlane::PhPlane
-   void     constructPafText(void *text, void *parent, void *appear)         __asm__("paf_7F0930C6"); // paf::PhText::PhText
-   void     updatePafLayoutPos(void *widget)                                 __asm__("paf_BF4B155C"); // paf::PhWidget::UpdateLayoutPos
-   void     updatePafLayoutSize(void *widget)                                __asm__("paf_DF031EDD"); // paf::PhWidget::UpdateLayoutSize
-   int      killPafTimerCallback(void *handler, int callbackId)              __asm__("paf_2CBA5A33"); // paf::PhHandler::KillTimerCB
-   void     setPafTextStyleInt(void *textRender, int style, int value)       __asm__("paf_983EA578"); // paf::PhSText::SetStyle(int, int)
-   void     setPafTextStyleFloat(void *textRender, int style, float value)   __asm__("paf_165AD4A6"); // paf::PhSText::SetStyle(int, float)
-   void     preparePafWidgetUpdate(void *widget)                             __asm__("paf_384F93FC"); // paf::PhWidget::UpdatePrepare
-   void    *getPafPluginInterface(uint32_t view, int identifier)             __asm__("paf_23AFB290"); // paf plugin GetInterface
-}
-
-#define PAF_COLOR_HANDLER       0x1000002   // PhHandler::ColorHandler
-#define PAF_VTABLE_SET_TEXT     70          // PhText::SetText slot (from the reference)
-#define PHTEXT_SIZE             0x2A4       // PhWidget 0x290 + PhText's 0x14 extra
-
-// SetText is virtual: (this, const std::wstring &, 0), where the wstring is the
-// FIRMWARE's std::wstring — the SDK's Dinkumware SSO layout (0x1C bytes: 4-byte
-// allocator pad, 16-byte union of 8 inline 16-bit chars / heap pointer, length
-// at 0x14, capacity at 0x18; wchar_t on PS3 is 16-bit per sdk yvals.h). NOT the
-// GCC COW single-pointer string — passing that froze the console (SetText read
-// length/capacity from garbage past the object and did a wild copy).
-typedef void (*PafSetTextFn)(void *widget, const void *fwWstring, int unused);
-
-// two modes by capacity: < 8 keeps the text in the inline chars; >= 8 makes
-// the 0x04 union a pointer to a char buffer (see setPafWidgetText). the union
-// makes the pointer a real member — no type-punning the char array.
-struct FirmwareWstring {
-   unsigned int allocatorPad;         // 0x00
-   union {
-      unsigned short  inlineChars[8]; // 0x04  SSO text when inline
-      unsigned short *heapBuffer;     // 0x04  buffer pointer when heap
-   } text;
-   unsigned int length;               // 0x14  _Mysize
-   unsigned int capacity;             // 0x18  _Myres; < 8 = inline, >= 8 = heap
-};
-
-// text render styles (PhSText::SetStyle). 0x28 is line height per the
-// reference; 0x13=0x70 is set by the reference at every text widget's
-// creation, meaning undocumented — text stays invisible without both.
-#define PAF_STYLE_TEXT_SETUP   0x13
-#define PAF_STYLE_LINE_HEIGHT  0x28
-
 #define HEADER_TEXT_HEIGHT     22.0f
 #define SUBTITLE_TEXT_HEIGHT   16.0f
 #define ROW_TEXT_HEIGHT        18.0f
@@ -120,6 +59,10 @@ struct FirmwareWstring {
 #define GLYPH_START    "\xEF\xA2\x8F"   // U+F88F
 #define GLYPH_PS       "\xEF\xA2\x92"   // U+F892
 #define GLYPH_L1       "\xEF\xA2\x88"   // U+F888
+#define GLYPH_UP       "\xEF\xA2\x84"   // U+F884
+#define GLYPH_DOWN     "\xEF\xA2\x85"   // U+F885
+#define GLYPH_LEFT     "\xEF\xA2\x86"   // U+F886
+#define GLYPH_RIGHT    "\xEF\xA2\x87"   // U+F887
 #define GLYPH_R1       "\xEF\xA2\x8B"   // U+F88B
 
 // panel sizing. height grows one row at a time between a 1-row min and a 10-row
@@ -154,36 +97,7 @@ struct FirmwareWstring {
 #define HIGHLIGHT_INSET      6.0f   // bar shrinks this far from each panel edge
 #define HIGHLIGHT_Y_OFFSET   -3.0f  // nudge the bar up so it sits centered on the text
 
-// horizontal alignment styles (PhWidget::SetStyle int overload). 0x31 justifies
-// the glyphs, 0x12 moves the anchor to the matching edge so the position x is
-// that edge; set both. values: 0 center, 1 left, 2 right.
-#define PAF_STYLE_TEXT_ALIGN   0x31
-#define PAF_STYLE_ANCHOR       0x12
-#define PAF_ALIGN_CENTER       0
-#define PAF_ALIGN_LEFT         1
-#define PAF_ALIGN_RIGHT        2
-
 namespace {
-
-// Minimal mirror of vsh's PhWidget data layout. We name only the fields we
-// touch; everything else is opaque bytes the firmware constructor fills —
-// including the widget's real name string at 0x004 (a 0x1C-byte Dinkumware
-// std::string, not our GCC one; our member is effectively padding and pad0 is
-// sized from sizeof(std::string) so the offsets we use stay exact).
-struct PafWidget {
-   void        *vtable;                                        // 0x000
-   std::string  name;                                          // 0x004
-   char         pad0[0x0F0 - 0x004 - sizeof(std::string)];     // .. 0x0F0
-   void        *renderHandle;                                  // 0x0F0 sRender; PhSText at +0x28
-   char         pad0b[0x120 - 0x0F4];                          // .. 0x120
-   float        colorScaleRGBA[4];                             // 0x120
-   char         pad1[0x250 - 0x130];                           // .. 0x250
-   int          positionFactor[3];                             // 0x250 x,y,z
-   float        positionLayout[4];                             // 0x25C vec4
-   int          sizeFactor[3];                                 // 0x26C x,y,z
-   float        sizeLayout[4];                                 // 0x278 vec4
-   char         pad2[0x290 - 0x288];                           // .. 0x290
-};
 
 // overlay chrome: the dimmer, the panel box, the selection bar, the header /
 // subtitle / footer. one each, placement-new'd into the arena.
@@ -318,7 +232,7 @@ int matchPoolUsed = 0;   // high-water of matchPool held by ON cheats (compacted
 // the menu has two tabs. the Cheats tab lists parsed cheats; the Patches tab lists the title's texture
 // patch folders and applies one. L1/R1 switch tabs (menu thread). the Patches tab reuses the same row
 // widgets (no arena room for a second set), so activeTab picks which list layoutAndPaintRows paints.
-enum OverlayTab { TAB_CHEATS = OVERLAY_TAB_CHEATS, TAB_PATCHES = OVERLAY_TAB_PATCHES };
+enum OverlayTab { TAB_CHEATS = OVERLAY_TAB_CHEATS, TAB_PATCHES = OVERLAY_TAB_PATCHES, TAB_STATS = OVERLAY_TAB_STATS };
 volatile int activeTab = TAB_CHEATS;
 
 // the running title's patch folder names (patches/<titleId>/<name>), listed on open + tab switch. kept
@@ -464,111 +378,14 @@ enum ToggleDisplay { TOGGLE_OFF = 0, TOGGLE_PENDING = 1, TOGGLE_ON = 2, TOGGLE_F
 // the text each state paints. PENDING is the ellipsis "..." (queued or scanning) —
 // spelled out here so it reads as a deliberate label, not a stray placeholder. FAIL is
 // a poke that didn't apply or revert (see rowFailed).
+// shown in the first row when the list is empty, in place of the rows
+#define EMPTY_CHEATS_TEXT   "No cheats for this title yet"
+#define EMPTY_PATCHES_TEXT  "No patches for this title"
+
 #define TOGGLE_LABEL_ON        "ON"
 #define TOGGLE_LABEL_OFF       "OFF"
 #define TOGGLE_LABEL_PENDING   "..."
 #define TOGGLE_LABEL_FAIL      "FAIL"
-
-// shared scratch for building a firmware wstring of any length. SetText copies
-// the source synchronously into the widget's own string, so one scratch buffer
-// serves every call. wchar_t on ps3 is 16-bit, so the buffer is 16-bit chars.
-unsigned short  textScratch[128];
-FirmwareWstring textSource;
-
-// set a widget's text from a UTF-8 C string, decoded to 16-bit units via the shared
-// utf8ToUtf16 (wchar_t is 16-bit on ps3, and game titles are UTF-8 with the odd
-// ® / ™ — decoding avoids mojibake). <=7 units use the Dinkumware SSO inline union;
-// longer strings put a pointer to our scratch in the union with capacity >= 8 to
-// select heap mode (SetText then copies via vsh's allocator, never ours). astral code
-// points become a surrogate pair; malformed bytes are dropped.
-void setPafWidgetText(PafWidget *widget, const char *text)
-{
-   const int maxChars = (int)(sizeof(textScratch) / sizeof(textScratch[0])) - 1;
-   utf8ToUtf16(text, textScratch, maxChars);
-   int length = 0;
-   while (textScratch[length]) length++;
-
-   textSource.allocatorPad = 0;
-   textSource.length = length;
-   if (length <= 7) {
-      for (int i = 0; i <= length; i++) textSource.text.inlineChars[i] = textScratch[i];
-      textSource.capacity = 7;      // < 8 selects inline mode
-   } else {
-      textSource.text.heapBuffer = textScratch;   // union pointer at 0x04
-      textSource.capacity = length;   // >= 8 selects heap mode
-   }
-   ((PafSetTextFn)((void **)widget->vtable)[PAF_VTABLE_SET_TEXT])(widget, &textSource, 0);
-}
-
-// direct m_Data writes + the matching update export — the reference's
-// SetPosition/SetSize/SetColor idiom (factors 6,5,0 = viewport coords,
-// colour committed by killing paf's colour animation timer).
-void setPafWidgetPosition(PafWidget *widget, float x, float y)
-{
-   widget->positionFactor[0] = 6; widget->positionFactor[1] = 5; widget->positionFactor[2] = 0;
-   widget->positionLayout[0] = x; widget->positionLayout[1] = y; widget->positionLayout[2] = 0.0f; widget->positionLayout[3] = 0.0f;
-   updatePafLayoutPos(widget);
-}
-
-void setPafWidgetSize(PafWidget *widget, float width, float height)
-{
-   widget->sizeFactor[0] = 6; widget->sizeFactor[1] = 5; widget->sizeFactor[2] = 0;
-   widget->sizeLayout[0] = width; widget->sizeLayout[1] = height; widget->sizeLayout[2] = 0.0f; widget->sizeLayout[3] = 0.0f;
-   updatePafLayoutSize(widget);
-}
-
-void setPafWidgetColor(PafWidget *widget, float red, float green, float blue, float alpha)
-{
-   widget->colorScaleRGBA[0] = red; widget->colorScaleRGBA[1] = green; widget->colorScaleRGBA[2] = blue;
-   widget->colorScaleRGBA[3] = alpha;
-   killPafTimerCallback(widget, PAF_COLOR_HANDLER);
-}
-
-// construct a PhText into arena storage with its text, size and position.
-// the render styles (0x13=0x70 setup + 0x28 height) are required or the text
-// is invisible; colour is applied later via setOverlayVisible.
-PafWidget *makeTextWidget(void *storage, const char *text, float x, float y, float height, int align)
-{
-   memSet(storage, 0, PHTEXT_SIZE);   // clear any stale prior widget in this storage
-   PafWidget *widget = new (storage) PafWidget;   // default-init: memSet already zeroed; no redundant zero-fill
-   constructPafText(widget, pageNotification, 0);
-   setPafWidgetText(widget, text);
-
-   void *renderHandle = widget->renderHandle;
-   void *textRender = renderHandle ? *(void **)((char *)renderHandle + 0x28) : 0;
-   if (textRender) {
-      setPafTextStyleInt(textRender, PAF_STYLE_TEXT_SETUP, 0x70);
-      setPafTextStyleFloat(textRender, PAF_STYLE_LINE_HEIGHT, height);
-   }
-
-   // horizontal alignment (only when non-center, so the proven centered path for
-   // the header/subtitle is untouched). PhWidget::SetStyle(int,int) dispatches to
-   // the render object's vtable method 12 with (sRender, style, value), and
-   // renderHandle IS sRender - matches the VshFpsCounter reference.
-   if (renderHandle && align != PAF_ALIGN_CENTER) {
-      typedef void (*StyleIntFn)(void *sRender, int style, int value);
-      void **renderVtable = *(void ***)renderHandle;
-      StyleIntFn setStyle = (StyleIntFn)renderVtable[12];
-      setStyle(renderHandle, PAF_STYLE_TEXT_ALIGN, align);
-      setStyle(renderHandle, PAF_STYLE_ANCHOR, align);
-   }
-   preparePafWidgetUpdate(widget);
-   setPafWidgetPosition(widget, x, y);
-   return widget;
-}
-
-// construct a PhPlane into arena storage at a position/size. colour is applied
-// later via setOverlayVisible. used for the dimmer, the highlight bar and the
-// panel box (all the same shape, so it lives in one place).
-PafWidget *makePlaneWidget(void *storage, float x, float y, float width, float height)
-{
-   memSet(storage, 0, sizeof(PafWidget));   // clear any stale prior widget
-   PafWidget *widget = new (storage) PafWidget;   // default-init: memSet already zeroed; no redundant zero-fill
-   constructPafPlane(widget, pageNotification, 0);
-   setPafWidgetPosition(widget, x, y);
-   setPafWidgetSize(widget, width, height);
-   return widget;
-}
 
 // centered-coord y of a row's center. the row band starts PANEL_HEADER_BLOCK
 // below the panel's top edge and steps down one PANEL_ROW_HEIGHT per row.
@@ -884,6 +701,7 @@ void buildHeaderText(char *out, const char *name, const char *word)
 const char *getTabWord()
 {
    if (activeTab == TAB_PATCHES && drillPatch >= 0) return patchNames[drillPatch];
+   if (activeTab == TAB_STATS) return "Stats";
    return activeTab == TAB_PATCHES ? "Patches" : "Cheats";
 }
 
@@ -915,6 +733,7 @@ void paintToggleByState(int slot, int cheat, float alpha)
 // tab switch resizes the panel and re-clamps the selection without any per-site tab checks.
 int getRowCount()
 {
+   if (activeTab == TAB_STATS) return STATS_ROW_COUNT;
    if (activeTab == TAB_PATCHES && drillPatch >= 0) return drillPartCount;   // drilled into a patch: its parts
    return activeTab == TAB_PATCHES ? patchCount : cheatCount;
 }
@@ -992,6 +811,7 @@ void layoutAndPaintRows(int show)
    // the Patches tab reuses these same slots to list patch names — just the name column, no aob/score. when
    // drilled into a patch it lists that patch's parts instead, each with an on/off toggle.
    int onPatchesTab = (activeTab == TAB_PATCHES);
+   int onStatsTab   = (activeTab == TAB_STATS);
    int onPartsList  = (onPatchesTab && drillPatch >= 0);
    int rowCount = getRowCount();
 
@@ -1000,29 +820,39 @@ void layoutAndPaintRows(int show)
    for (int s = 0; s < PANEL_MAX_ROWS; s++) {
       int   row      = scrollOffset + s;
       int   onScreen = show && row >= 0 && row < rowCount;
-      int   cheat    = (onScreen && !onPatchesTab) ? getRowCheat(row) : 0;   // cheat rows are score-sorted; map to the real cheat
+      int   onCheatsTab = !onPatchesTab && !onStatsTab;
+      int   cheat    = (onScreen && onCheatsTab) ? getRowCheat(row) : 0;   // cheat rows are score-sorted; map to the real cheat
       float alpha    = onScreen ? 1.0f : 0.0f;
-      float chromeAlpha = onPatchesTab ? 0.0f : alpha;   // the toggle/aob/score chrome belongs to the Cheats tab only
+      float chromeAlpha = onCheatsTab ? alpha : 0.0f;   // the aob/score chrome belongs to the Cheats tab only
       float rowY     = getRowCenterY(s);
 
+      // an empty list still opens (a game with no cheats yet is a normal thing to see), so the
+      // first slot says so in the dim hint colour instead of leaving a blank panel.
+      int emptyRow = show && rowCount == 0 && s == 0;
+
       if (rowSlot[s]) {
-         const char *name = !onScreen ? "" : onPartsList ? drillParts[row].name : onPatchesTab ? patchNames[row] : getCheatName(cheat);
+         const char *name = emptyRow ? (onPatchesTab ? EMPTY_PATCHES_TEXT : EMPTY_CHEATS_TEXT)
+                          : !onScreen ? "" : onStatsTab ? getStatsRowLabel(row)
+                          : onPartsList ? drillParts[row].name : onPatchesTab ? patchNames[row] : getCheatName(cheat);
          setPafWidgetText(rowSlot[s], name);
-         setPafWidgetPosition(rowSlot[s], onPatchesTab ? nameLeftX - AOB_TAG_WIDTH - AOB_NAME_GAP : nameLeftX, rowY);   // no AoB column on the Patches tab: shift the name to the left margin
-         setPafWidgetColor(rowSlot[s], 0.945f, 0.961f, 0.976f, alpha);   // SLATE_100 name
+         setPafWidgetPosition(rowSlot[s], (onPatchesTab || onStatsTab) ? nameLeftX - AOB_TAG_WIDTH - AOB_NAME_GAP : nameLeftX, rowY);   // no AoB column on those tabs: shift the name to the left margin
+         // a row the master switch has turned off is listed dimmed, so it reads as present but inert
+         if (emptyRow || (onStatsTab && onScreen && isStatsRowDisabled(row)))
+                       setPafWidgetColor(rowSlot[s], 0.580f, 0.639f, 0.722f, alpha ? 1.0f : 0.0f);   // SLATE_400 hint
+         else          setPafWidgetColor(rowSlot[s], 0.945f, 0.961f, 0.976f, alpha);                 // SLATE_100 name
       }
       if (toggleSlot[s]) setPafWidgetPosition(toggleSlot[s], toggleCenter, rowY);
 
       // AoB tag: fixed left column, shown only for an on-screen aob cheat (alpha 0 hides it otherwise)
       if (aobSlot[s]) {
          setPafWidgetPosition(aobSlot[s], aobCenterX, rowY + AOB_TAG_Y_OFFSET);
-         int showAob = onScreen && !onPatchesTab && cheatHasAob(cheat);
+         int showAob = onScreen && onCheatsTab && cheatHasAob(cheat);
          setPafWidgetColor(aobSlot[s], 0.220f, 0.741f, 0.973f, showAob ? 1.0f : 0.0f);   // SKY_400
       }
 
       // crowd score % on the right, coloured by the local build verdict (green ok / amber unknown / red won't)
       if (scoreSlot[s]) {
-         if (onScreen && !onPatchesTab && cheatConfidence[cheat] != NO_SCORE) {
+         if (onScreen && onCheatsTab && cheatConfidence[cheat] != NO_SCORE) {
             char scoreLabel[8];
             writeDecimal(scoreLabel, cheatConfidence[cheat]);
             int labelLen = 0; while (scoreLabel[labelLen]) labelLen++;
@@ -1043,7 +873,15 @@ void layoutAndPaintRows(int show)
          }
       }
       if (toggleSlot[s]) {
-         if (onPatchesTab) {
+         if (onStatsTab) {
+            // each row shows its own value: ON/OFF for a switch, the side for the position row
+            const char *value = onScreen ? getStatsRowValue(row) : "";
+            setPafWidgetText(toggleSlot[s], value);
+            int on = onScreen && !isStatsRowDisabled(row) && strEq(value, TOGGLE_LABEL_ON);
+            if (isStatsRowDisabled(row)) setPafWidgetColor(toggleSlot[s], 0.300f, 0.340f, 0.400f, alpha);   // dimmed with its row
+            else if (on)                 setPafWidgetColor(toggleSlot[s], 0.204f, 0.827f, 0.600f, alpha);   // emerald ON
+            else                         setPafWidgetColor(toggleSlot[s], 0.392f, 0.455f, 0.545f, alpha);   // slate OFF / a side
+         } else if (onPatchesTab) {
             // parts list: the part's own on/off; patch list: the whole patch's on/off. ✕ flips either.
             int on = onScreen && (onPartsList ? patchPartOn[drillPatch][row] : patchApplied[row]);
             setPafWidgetText(toggleSlot[s], on ? TOGGLE_LABEL_ON : TOGGLE_LABEL_OFF);
@@ -1056,6 +894,8 @@ void layoutAndPaintRows(int show)
    }
 }
 
+const char *getFooterSecondLine(void);   // defined with the other footer text, below
+
 // hide/show without destroying: alpha 0 keeps the widgets alive, so re-show is
 // just a colour write (widget destruction is its own unproven rung, deferred)
 void setOverlayVisible(int show)
@@ -1064,14 +904,14 @@ void setOverlayVisible(int show)
    // dimmer = near-black 90% over the frozen xmb; panel = SLATE_900 (the app's
    // clear colour); header = SLATE_100; subtitle = SLATE_400.
    setPafWidgetColor(dimmer, 0.02f, 0.02f, 0.04f, show ? 0.9f : 0.0f);
-   setPafWidgetColor(box, 0.059f, 0.090f, 0.165f, show ? 1.0f : 0.0f);   // SLATE_900 #0F172A
+   setPafWidgetColor(box, 0.035f, 0.063f, 0.129f, show ? 1.0f : 0.0f);   // #091021, a deeper blue than SLATE_900 so the white rows and the dim hints both read better
    if (highlightBar) setPafWidgetColor(highlightBar, 0.200f, 0.255f, 0.333f, show ? 1.0f : 0.0f); // SLATE_700 selection
    setPafWidgetColor(label, 0.945f, 0.961f, 0.976f, show ? 1.0f : 0.0f); // SLATE_100 #F1F5F9
    setPafWidgetColor(subtitle, 0.580f, 0.639f, 0.722f, show ? 1.0f : 0.0f); // SLATE_400 #94A3B8
 
    float alpha = show ? 1.0f : 0.0f;
    if (footer)  setPafWidgetColor(footer,  0.392f, 0.455f, 0.545f, alpha); // SLATE_500 hint
-   if (footer2) setPafWidgetColor(footer2, 0.392f, 0.455f, 0.545f, alpha); // SLATE_500 hint
+   if (footer2) setPafWidgetColor(footer2, 0.392f, 0.455f, 0.545f, alpha && getFooterSecondLine()[0] ? 1.0f : 0.0f);
    if (message) setPafWidgetColor(message, 0.945f, 0.961f, 0.976f, 0.0f);  // shown only via repaintContent while updating
    layoutAndPaintRows(show);   // slots filled from the current scroll window
    visible = show;
@@ -1106,9 +946,7 @@ void forgetOverlayWidgets()
 
 extern "C" unsigned int overlayFindPageNotification(void)
 {
-   uint32_t view = findPafView("system_plugin");
-   if (!view) { pageNotification = 0; return 0; }
-   pageNotification = (void *)(uintptr_t)findPafViewWidget(view, "page_notification");
+   pageNotification = findPageNotification();
    return (unsigned int)(uintptr_t)pageNotification;
 }
 
@@ -1123,6 +961,9 @@ extern "C" unsigned int overlayFindPageNotification(void)
 // only the buttons that still work.
 namespace { const char *getFooterTopLine(void)
 {
+   if (activeTab == TAB_STATS)
+      return GLYPH_L1 GLYPH_R1 " Tabs    " GLYPH_CROSS " Toggle    " GLYPH_CIRCLE " XMB    " GLYPH_PS " Resume";
+
    if (activeTab == TAB_PATCHES) {
       if (drillPatch >= 0)   // inside a patch's options: ✕ toggles a part, ○ backs out to the patch list
          return GLYPH_CROSS " Toggle    " GLYPH_CIRCLE " Back    " GLYPH_PS " Resume";
@@ -1135,6 +976,18 @@ namespace { const char *getFooterTopLine(void)
       : GLYPH_L1 GLYPH_R1 " Tabs    " GLYPH_CROSS " Toggle    " GLYPH_CIRCLE " XMB    " GLYPH_PS " Resume";
 } }
 #define FOOTER_UPDATING  GLYPH_CIRCLE " XMB    " GLYPH_PS " Resume"
+
+// the second hint line, per tab. Cheats gets the vote controls in contribute mode; Stats gets the
+// clock tuning, which is SELECT held plus the d-pad (the combination thermal-bench uses).
+#define FOOTER_MARK_LINE   GLYPH_SELECT " Mark Failed    " GLYPH_START " Mark Working"
+#define FOOTER_CLOCK_LINE  GLYPH_SELECT " + " GLYPH_UP " Overclock RSX    " GLYPH_SELECT " + " GLYPH_RIGHT " Overclock Memory"
+
+namespace { const char *getFooterSecondLine(void)
+{
+   if (activeTab == TAB_STATS)  return FOOTER_CLOCK_LINE;
+   if (activeTab == TAB_CHEATS && syncMode == SYNC_CONTRIBUTE) return FOOTER_MARK_LINE;
+   return "";
+} }
 
 // (re)position the panel and its fixed chrome for the current cheat count, so a count change
 // (a live Update, or a reopen after one) resizes the box and moves the header/subtitle/footer
@@ -1161,7 +1014,7 @@ namespace { void layoutPanel(void)
 
    // footer band: bottom hint line 25px above the panel's bottom edge; the mark line (contribute mode,
    // and not while updating) sits one line + 12px above it.
-   bool twoLines = (syncMode == SYNC_CONTRIBUTE) && !updating && activeTab == TAB_CHEATS;   // the mark line is a Cheats-tab control
+   bool twoLines = !updating && getFooterSecondLine()[0] != '\0';   // only the tabs that have a second line
    float bottomY = -panelTop + 25.0f + FOOTER_TEXT_HEIGHT * 0.5f;
    float topY    = twoLines ? bottomY + FOOTER_TEXT_HEIGHT + 12.0f : bottomY;
    if (footer)  setPafWidgetPosition(footer,  0.0f, topY);
@@ -1196,7 +1049,11 @@ namespace { void repaintContent(void)
       if (message) setPafWidgetColor(message, 0.945f, 0.961f, 0.976f, 0.0f);   // hide the message
       if (highlightBar) setPafWidgetColor(highlightBar, 0.200f, 0.255f, 0.333f, 1.0f);
       if (footer)  setPafWidgetText(footer, getFooterTopLine());            // restore the full hint line for this tab
-      if (footer2) setPafWidgetColor(footer2, 0.392f, 0.455f, 0.545f, activeTab == TAB_CHEATS ? 1.0f : 0.0f);   // mark line is Cheats-only
+      if (footer2) {
+         const char *secondLine = getFooterSecondLine();
+         setPafWidgetText(footer2, secondLine);
+         setPafWidgetColor(footer2, 0.392f, 0.455f, 0.545f, secondLine[0] ? 1.0f : 0.0f);
+      }
       highlightIndex = -1;     // force overlayHighlightRow to re-place the bar
       layoutAndPaintRows(1);   // show the rows again (positioned by the layoutPanel above)
    }
@@ -1244,35 +1101,37 @@ extern "C" void overlayShowBox(void)
 
    // planes, back to front (paf draws later children on top): a full-screen dark dimmer, then the
    // panel box on top of it, then the selection highlight bar (before the row text so text is on top).
-   dimmer = makePlaneWidget(arena->dimmerStorage, 0.0f, 0.0f, 1920.0f, 1080.0f);
-   box    = makePlaneWidget(arena->boxStorage,    0.0f, 0.0f, PANEL_WIDTH, PANEL_ROW_HEIGHT);
-   highlightBar = makePlaneWidget(arena->highlightBarStorage, 0.0f, 0.0f, PANEL_WIDTH - 2.0f * HIGHLIGHT_INSET, HIGHLIGHT_HEIGHT);
+   dimmer = makePlaneWidget(arena->dimmerStorage, pageNotification, 0.0f, 0.0f, 1920.0f, 1080.0f);
+   box    = makePlaneWidget(arena->boxStorage,    pageNotification, 0.0f, 0.0f, PANEL_WIDTH, PANEL_ROW_HEIGHT);
+   highlightBar = makePlaneWidget(arena->highlightBarStorage, pageNotification, 0.0f, 0.0f, PANEL_WIDTH - 2.0f * HIGHLIGHT_INSET, HIGHLIGHT_HEIGHT);
    highlightIndex = 0;
 
    // header ("<name> - Cheats") + a smaller dim subtitle (title id + version), text parented to
    // page_notification like the reference, never to a custom plane.
-   label    = makeTextWidget(arena->labelStorage,    preppedHeader,   0.0f, 0.0f, HEADER_TEXT_HEIGHT,   PAF_ALIGN_CENTER);
-   subtitle = makeTextWidget(arena->subtitleStorage, preppedSubtitle, 0.0f, 0.0f, SUBTITLE_TEXT_HEIGHT, PAF_ALIGN_CENTER);
+   label    = makeTextWidget(arena->labelStorage,    pageNotification, preppedHeader,   0.0f, 0.0f, HEADER_TEXT_HEIGHT,   PAF_ALIGN_CENTER);
+   subtitle = makeTextWidget(arena->subtitleStorage, pageNotification, preppedSubtitle, 0.0f, 0.0f, SUBTITLE_TEXT_HEIGHT, PAF_ALIGN_CENTER);
 
    // build ALL PANEL_MAX_ROWS slots (not just the current window): a live Update can grow the list,
    // and the extra slots must already exist to show the new rows. unused slots paint at alpha 0.
    float rowX = -PANEL_WIDTH * 0.5f + ROW_LEFT_MARGIN;
    for (int s = 0; s < PANEL_MAX_ROWS; s++) {
-      rowSlot[s]     = makeTextWidget(arena->rowStorage[s], "", rowX, 0.0f, ROW_TEXT_HEIGHT, PAF_ALIGN_LEFT);
-      toggleSlot[s]  = makeTextWidget(arena->toggleStorage[s], TOGGLE_LABEL_OFF, 0.0f, 0.0f, TOGGLE_TEXT_HEIGHT, PAF_ALIGN_CENTER);
-      aobSlot[s]     = makeTextWidget(arena->aobStorage[s], "AoB", 0.0f, 0.0f, TAG_TEXT_HEIGHT, PAF_ALIGN_CENTER);
-      scoreSlot[s]   = makeTextWidget(arena->scoreStorage[s], "", 0.0f, 0.0f, TAG_TEXT_HEIGHT, PAF_ALIGN_CENTER);
+      rowSlot[s]     = makeTextWidget(arena->rowStorage[s], pageNotification, "", rowX, 0.0f, ROW_TEXT_HEIGHT, PAF_ALIGN_LEFT);
+      toggleSlot[s]  = makeTextWidget(arena->toggleStorage[s], pageNotification, TOGGLE_LABEL_OFF, 0.0f, 0.0f, TOGGLE_TEXT_HEIGHT, PAF_ALIGN_CENTER);
+      aobSlot[s]     = makeTextWidget(arena->aobStorage[s], pageNotification, "AoB", 0.0f, 0.0f, TAG_TEXT_HEIGHT, PAF_ALIGN_CENTER);
+      scoreSlot[s]   = makeTextWidget(arena->scoreStorage[s], pageNotification, "", 0.0f, 0.0f, TAG_TEXT_HEIGHT, PAF_ALIGN_CENTER);
    }
 
    // centered button-hint footer. the top line (toggle / xmb / resume, plus update when online) is
    // always built; the mark line (mark working / failed) only in contribute mode. repaintContent
    // swaps the top line to a shorter one and hides the mark line while an update is in flight.
-   footer = makeTextWidget(arena->footerStorage, getFooterTopLine(), 0.0f, 0.0f, FOOTER_TEXT_HEIGHT, PAF_ALIGN_CENTER);
-   if (syncMode == SYNC_CONTRIBUTE)
-      footer2 = makeTextWidget(arena->footer2Storage, GLYPH_SELECT " Mark Failed    " GLYPH_START " Mark Working", 0.0f, 0.0f, FOOTER_TEXT_HEIGHT, PAF_ALIGN_CENTER);
+   footer = makeTextWidget(arena->footerStorage, pageNotification, getFooterTopLine(), 0.0f, 0.0f, FOOTER_TEXT_HEIGHT, PAF_ALIGN_CENTER);
+
+   // the second hint line is always built now: the Cheats tab uses it for the mark controls in
+   // contribute mode, the Stats tab for the clock tuning. Its text is set per tab in repaintContent.
+   footer2 = makeTextWidget(arena->footer2Storage, pageNotification, "", 0.0f, 0.0f, FOOTER_TEXT_HEIGHT, PAF_ALIGN_CENTER);
 
    // centered update message, hidden until an update is in flight (repaintContent shows it).
-   message = makeTextWidget(arena->messageStorage, "", 0.0f, 0.0f, HEADER_TEXT_HEIGHT, PAF_ALIGN_CENTER);
+   message = makeTextWidget(arena->messageStorage, pageNotification, "", 0.0f, 0.0f, HEADER_TEXT_HEIGHT, PAF_ALIGN_CENTER);
 
    layoutPanel();   // size the box + place the chrome for the current count
    builtUnder = parent;   // remember the parent so a later open can just re-show
@@ -1337,7 +1196,10 @@ extern "C" int overlayPrepareForTitle(void)
    loadPatchList(titleId);
    if (activeTab == TAB_PATCHES && patchCount == 0) activeTab = TAB_CHEATS;
    if (activeTab == TAB_CHEATS && cheatCount == 0 && patchCount > 0) activeTab = TAB_PATCHES;
-   return cheatCount + patchCount;   // open the menu if the title has cheats OR patches
+   // a game opens the menu whether or not anything was found for it — an empty list is a useful
+   // answer, and Update is on the footer to go and fetch one. anything else opens only if it
+   // actually has something to show.
+   return isGameTitleId(titleId) || cheatCount + patchCount > 0;
 }
 
 // MENU thread: the toast to show when the current title has no local cheats to open, or
@@ -1838,9 +1700,17 @@ extern "C" int overlayGetTab(void) { return activeTab; }
 // frame thread has the names before it repaints; the caller resets its selection to 0 after. the frame
 // thread picks up the change via contentDirty (same path the update-message mode uses). returns the new
 // row count.
+// MENU thread: repaint the visible rows on the next frame. Used after a Stats Counter row is
+// flipped, so its ON/OFF and the dimming of the rows below it follow immediately.
+extern "C" void overlayRefreshRows(void)
+{
+   __sync_synchronize();
+   contentDirty = 1;
+}
+
 extern "C" int overlaySwitchTab(int tab)
 {
-   activeTab = (tab == TAB_PATCHES) ? TAB_PATCHES : TAB_CHEATS;
+   activeTab = (tab == TAB_PATCHES) ? TAB_PATCHES : (tab == TAB_STATS) ? TAB_STATS : TAB_CHEATS;
    drillPatch = -1;   // switching tabs drops any drilled-in options view
    if (activeTab == TAB_PATCHES) loadPatchList(lastParsedTitle);
    __sync_synchronize();
@@ -2089,9 +1959,14 @@ extern "C" void overlayFlushTogglePaint(void)
 {
    if (!togglePaintDirty) return;
    togglePaintDirty = 0;
+
+   // Cheats only. The other tabs own their toggle column and paint it in layoutAndPaintRows; this
+   // running over them blanked the Stats tab's values until something else forced a repaint.
+   if (activeTab != TAB_CHEATS) return;
+
    for (int s = 0; s < PANEL_MAX_ROWS; s++) {   // all slots: hide toggles past a shrunk count too
       int row = scrollOffset + s;
-      int onScreen = activeTab == TAB_CHEATS && row >= 0 && row < cheatCount;   // the Patches tab has no toggles
+      int onScreen = row >= 0 && row < cheatCount;
       paintToggleByState(s, onScreen ? getRowCheat(row) : 0, onScreen ? 1.0f : 0.0f);
    }
 }

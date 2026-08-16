@@ -22,6 +22,11 @@
 #include "vsh-ext.h"
 #include "export-hook.h"
 #include "overlay.h"
+#include "stats-overlay.h" // always-on fps counter, drawn from the same frame hook
+
+// rsx overclocking from the Stats Counter tab, shimmed in overlay-bridge.c
+void stepStatsCoreClock(int direction);
+void stepStatsMemoryClock(int direction);
 #include "cheat-sync.h"    // loadSyncMode + syncMode: create/read settings at startup
 #include "cheat-fetch.h"   // maybeFetchForGame: proactive online cheat download at game launch
 #include "raw-pad.h"
@@ -37,6 +42,7 @@
 #define PAF_FRAMEWORK_BEGIN_FNID  0x59BDA198u
 
 #define PAD_POLL_USEC      (33 * 1000)   // ~30 Hz
+#define SENSOR_POLL_USEC   (500 * 1000)  // stats counter clocks + temps, twice a second
 
 // ps-menu detection thresholds, in poll ticks
 #define PS_MENU_QUIET_TICKS  30   // ~1s with no pad report = ps menu closed
@@ -68,6 +74,7 @@ static volatile int menuSelection = 0;
 // one paf composites on), which is why drawing rides the frame hook.
 static void onPafFrame(void)
 {
+   updateStatsOverlay();   // always on, menu or not — and it must run before the freeze check
    if (overlayFrameFrozen()) return;   // parked while a live Update re-parses; also does the post-parse repaint
    if (menuOpen) {
       overlayShowBox();
@@ -87,9 +94,15 @@ static void onPafFrame(void)
 static void jobWorkerThread(uint64_t arg)
 {
    (void)arg;
+   uint64_t sinceSensorPollUsec = 0;
    for (;;) {
       int did = overlayServiceJobs();
-      sys_timer_usleep(did ? 2000 : 50000);   // busy: 2ms between rows; idle: 50ms
+      uint32_t sleepUsec = did ? 2000 : 50000;   // busy: 2ms between rows; idle: 50ms
+      sys_timer_usleep(sleepUsec);
+
+      // the stats counter's clocks and temperatures, read here rather than on the frame thread
+      sinceSensorPollUsec += sleepUsec;
+      if (sinceSensorPollUsec >= SENSOR_POLL_USEC) { sinceSensorPollUsec = 0; pollStatsSensors(); }
    }
 }
 
@@ -142,6 +155,7 @@ static void menuThread(uint64_t arg)
    // so the file exists to edit and the mode is known before any game launches - no
    // waiting on XMB-ready or the first menu open.
    loadSyncMode();
+   loadStatsSettings();   // which parts of the stats counter are switched on
    logInfo(TAG "sync mode=%d\n", syncMode);
 
    // wait for XMB, ~60s budget
@@ -199,6 +213,7 @@ static void menuThread(uint64_t arg)
       if (inGame != lastInGame) {
          logInfo(TAG "inGame=%d\n", inGame);
          lastInGame = inGame;
+         notifyStatsGameChanged(inGame);   // vsh is about to rebuild the widget tree; put the counter down
          if (!inGame) {
             // game gone: forget applied state (its match addresses died with the process) and
             // arm the no-touch hide, THEN publish menuOpen=0 so the hide frame sees the arm and
@@ -316,23 +331,44 @@ static void menuThread(uint64_t arg)
             // starts an update. these only set flags — the worker does the scan/poke.
             if (rawLength >= 0 && !overlayIsUpdating()) {
                int rowCount = overlayGetRowCount();
-               if (navFire(&navUp,   (rawButtons & CELL_PAD_CTRL_UP)   != 0) && selection > 0)            selection--;
-               if (navFire(&navDown, (rawButtons & CELL_PAD_CTRL_DOWN) != 0) && selection < rowCount - 1) selection++;
 
-               int patchesTab = overlayGetTab() == OVERLAY_TAB_PATCHES;
+               // Stats Counter tab, SELECT held: the d-pad tunes the RSX clocks instead of moving
+               // the selection, the same combination thermal-bench uses. Up/Down is the core clock,
+               // Left/Right the memory clock. Held down, the memory clock still only moves one step
+               // per settling period, which is enforced where the poke happens.
+               int tuningClocks = overlayGetTab() == OVERLAY_TAB_STATS && (rawButtons & CELL_PAD_CTRL_SELECT);
+               if (tuningClocks) {
+                  if (navFire(&navUp,   (rawButtons & CELL_PAD_CTRL_UP)    != 0)) stepStatsCoreClock(+1);
+                  if (navFire(&navDown, (rawButtons & CELL_PAD_CTRL_DOWN)  != 0)) stepStatsCoreClock(-1);
+                  if ((rawButtons & CELL_PAD_CTRL_RIGHT) && !(prevDpad & CELL_PAD_CTRL_RIGHT)) stepStatsMemoryClock(+1);
+                  if ((rawButtons & CELL_PAD_CTRL_LEFT)  && !(prevDpad & CELL_PAD_CTRL_LEFT))  stepStatsMemoryClock(-1);
+               } else {
+                  if (navFire(&navUp,   (rawButtons & CELL_PAD_CTRL_UP)   != 0) && selection > 0)            selection--;
+                  if (navFire(&navDown, (rawButtons & CELL_PAD_CTRL_DOWN) != 0) && selection < rowCount - 1) selection++;
+               }
+
+               int currentTab = overlayGetTab();
+               int patchesTab = currentTab == OVERLAY_TAB_PATCHES;
+               int statsTab   = currentTab == OVERLAY_TAB_STATS;
                int inOptions  = overlayInPatchOptions();
 
-               // L1/R1 switch tabs (Cheats <-> Patches). reset the selection to the top of the new list.
+               // L1/R1 cycle the tabs (Cheats, Patches, Stats Counter), wrapping at either end.
+               // reset the selection to the top of the new list.
                uint32_t l1Mask = (uint32_t)(CELL_PAD_CTRL_L1 << 8);
                uint32_t r1Mask = (uint32_t)(CELL_PAD_CTRL_R1 << 8);
-               if ((rawButtons & r1Mask) && !(prevDpad & r1Mask)) { overlaySwitchTab(OVERLAY_TAB_PATCHES); selection = 0; menuSelection = 0; }
-               if ((rawButtons & l1Mask) && !(prevDpad & l1Mask)) { overlaySwitchTab(OVERLAY_TAB_CHEATS);  selection = 0; menuSelection = 0; }
+               if ((rawButtons & r1Mask) && !(prevDpad & r1Mask)) {
+                  overlaySwitchTab((currentTab + 1) % OVERLAY_TAB_COUNT); selection = 0; menuSelection = 0;
+               }
+               if ((rawButtons & l1Mask) && !(prevDpad & l1Mask)) {
+                  overlaySwitchTab((currentTab + OVERLAY_TAB_COUNT - 1) % OVERLAY_TAB_COUNT); selection = 0; menuSelection = 0;
+               }
 
                // cross: Cheats tab toggles the row; Patches tab toggles a part (in options), drills into a
                // patch that has options, or turns a plain patch on/off.
                uint32_t crossMask = (uint32_t)(CELL_PAD_CTRL_CROSS << 8);
                if ((rawButtons & crossMask) && !(prevDpad & crossMask) && rowCount > 0) {
-                  if (!patchesTab) overlayRequestToggle(selection);
+                  if (statsTab) { toggleStatsRow(selection); overlayRefreshRows(); }
+                  else if (!patchesTab) overlayRequestToggle(selection);
                   else if (inOptions) {
                      overlaySetUpdating("Applying...");   // shown only during the (short) texture rebuild
                      overlayToggleSelectedPart(selection);
@@ -393,7 +429,7 @@ static void menuThread(uint64_t arg)
                // select (contribute only): mark the selected cheat FAILED — anonymous vote PR, empty
                // body (a failed original isn't stored). allowed whether or not the cheat is applied.
                uint32_t selectMask = (uint32_t)CELL_PAD_CTRL_SELECT;
-               if ((rawButtons & selectMask) && !(prevDpad & selectMask) && !patchesTab && syncMode == SYNC_CONTRIBUTE && rowCount > 0) {
+               if ((rawButtons & selectMask) && !(prevDpad & selectMask) && !patchesTab && !statsTab && syncMode == SYNC_CONTRIBUTE && rowCount > 0) {
                   int r = sendCheatVote(selection, VOTE_FAILED);
                   if (r == 1)      overlaySetUpdating("Marking as failed...");
                   else if (r == 2) { overlaySetUpdating("Already marked"); voteDismissTicks = VOTE_DISMISS_TICKS; }

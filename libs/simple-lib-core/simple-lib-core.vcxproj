@@ -49,6 +49,7 @@
    <ClCompile Include="src\zip.c" />
    <ClCompile Include="src\tree-walk.c" />
    <ClCompile Include="src\disc-mount.c" />
+   <ClCompile Include="src\rsx-clocks.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\ftp.h" />

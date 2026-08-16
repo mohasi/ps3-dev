@@ -47,6 +47,12 @@
    <ClCompile Include="src\overlay.cpp">
      <AdditionalOptions>-fno-exceptions -fno-rtti %(AdditionalOptions)</AdditionalOptions>
    </ClCompile>
+   <ClCompile Include="src\paf-widget.cpp">
+     <AdditionalOptions>-fno-exceptions -fno-rtti %(AdditionalOptions)</AdditionalOptions>
+   </ClCompile>
+   <ClCompile Include="src\stats-overlay.cpp">
+     <AdditionalOptions>-fno-exceptions -fno-rtti %(AdditionalOptions)</AdditionalOptions>
+   </ClCompile>
    <ClCompile Include="src\cheat-sync.c" />
   </ItemGroup>
   <ItemGroup>
@@ -57,6 +63,8 @@
    <ClInclude Include="include\nav-repeat.h" />
    <ClInclude Include="include\trigger.h" />
    <ClInclude Include="include\overlay.h" />
+   <ClInclude Include="include\paf-widget.h" />
+   <ClInclude Include="include\stats-overlay.h" />
    <ClInclude Include="include\cheat-sync.h" />
    <ClInclude Include="include\cheat-fetch.h" />
   </ItemGroup>

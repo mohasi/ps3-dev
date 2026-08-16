@@ -23,6 +23,12 @@ enum SyncMode { SYNC_OFFLINE, SYNC_FETCH, SYNC_CONTRIBUTE };
 extern enum SyncMode syncMode;
 
 void loadSyncMode(void);                                      // settings.txt -> syncMode (creates the data dirs + file if missing)
+
+// the stats counter's rows, sharing settings.txt with the sync mode. A key missing from the file
+// leaves that row at whatever default the caller passed in.
+void loadStatsSettingsFromFile(int *enabled, int *showGraph, int *showClocks, int *showTemps, int *topRight);
+void saveStatsSettings(int enabled, int showGraph, int showClocks, int showTemps, int topRight);
+
 int  isGameTitleId(const char *titleId);                      // 1 for a real ps3 game id (BC/BL/NP), 0 for homebrew/apps
 void buildCheatPath(char *out, int cap, const char *titleId); // CHEATS_DIR<titleId>.txt
 int  getAppVersion(const char *titleId, char *out, int cap);  // APP_VER from PARAM.SFO; returns length written (0 if unavailable)

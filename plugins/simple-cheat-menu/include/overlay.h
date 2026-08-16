@@ -14,6 +14,8 @@
 // texture patches and applies one. shared with trigger.c so its input handler can route per tab.
 #define OVERLAY_TAB_CHEATS   0
 #define OVERLAY_TAB_PATCHES  1
+#define OVERLAY_TAB_STATS    2
+#define OVERLAY_TAB_COUNT    3
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,10 +25,10 @@ extern "C" {
 // so poll it during early boot). the widget we parent the overlay on.
 unsigned int overlayFindPageNotification(void);
 
-// MENU thread: read the running title's id and parse its cheat file (the file
-// I/O that would otherwise stall the frame thread). returns the cheat count, so
-// the caller opens the menu only when there is something to show. re-parses only
-// when the title changed, so a live cheat's resolved address survives a re-open.
+// MENU thread: read the running title's id and parse its cheat file (the file I/O that would
+// otherwise stall the frame thread). returns non-zero if the menu should open: always for a
+// real game, empty list or not, and for anything else only when it has cheats or patches.
+// re-parses only when the title changed, so a live cheat's resolved address survives a re-open.
 int overlayPrepareForTitle(void);
 
 // MENU thread: the toast to show when the running title has no local cheats (NULL = none).
@@ -72,6 +74,9 @@ void overlayRequestToggle(int index);
 
 // MENU thread: the active tab (OVERLAY_TAB_*), so the input handler routes Cross/Square per tab.
 int overlayGetTab(void);
+
+// MENU thread: repaint the visible rows on the next frame, after something changed what they say.
+void overlayRefreshRows(void);
 
 // MENU thread: switch tab (L1/R1). entering Patches re-lists the title's patch folders first. the
 // caller resets its selection to 0 after. returns the new tab's row count.

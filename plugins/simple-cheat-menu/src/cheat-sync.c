@@ -41,12 +41,80 @@ int getAppVersion(const char *titleId, char *out, int cap)
    return written > 0 ? written : 0;
 }
 
-// real ps3 game ids start BC/BL (disc) or NP (psn); homebrew and apps don't. used to
-// skip the "no cheats" toast / online lookup for non-games (they never have cheats).
+// the prefixes a real ps3 game's id starts with: BL/BC are disc releases, NP is psn, and the
+// rest are publisher ranges (Koei, Kadokawa, Marvelous, Asia region, Gust).
+static const char *gameIdPrefixes[] = { "BL", "BC", "NP", "KOEI3", "KTGS3", "MRTC0", "ASIA0", "GUST0" };
+
+// homebrew and tools that borrow a game-shaped id, so the prefix test alone lets them through.
+// BLES806xx is the range homebrew packagers use (webMAN, IRISMAN and friends).
+static const char *toolIdPrefixes[] = { "BLES806" };
+
+// is this the id of a real game, as opposed to homebrew or a tool? The menu opens for a game
+// whether or not it has any cheats, and stays shut for everything else.
 int isGameTitleId(const char *titleId)
 {
-   return (titleId[0] == 'B' && (titleId[1] == 'C' || titleId[1] == 'L'))
-       || (titleId[0] == 'N' && titleId[1] == 'P');
+   for (unsigned int i = 0; i < sizeof(toolIdPrefixes) / sizeof(toolIdPrefixes[0]); i++)
+      if (startsWith(titleId, toolIdPrefixes[i])) return 0;
+
+   // a psn id's third character is its region letter (NPEA, NPUB, ...). Homebrew that squats on
+   // the NP prefix puts a digit there instead, which is one rule rather than a list to maintain.
+   if (startsWith(titleId, "NP") && (titleId[2] < 'A' || titleId[2] > 'Z')) return 0;
+
+   for (unsigned int i = 0; i < sizeof(gameIdPrefixes) / sizeof(gameIdPrefixes[0]); i++)
+      if (startsWith(titleId, gameIdPrefixes[i])) return 1;
+   return 0;
+}
+
+// The stats counter's rows share settings.txt with the sync mode. Each is one "key=0" or "key=1"
+// line; a key that is missing keeps its default, so an older file still loads.
+static const char *statsKeys[] = { "stats", "statsGraph", "statsClocks", "statsTemps", "statsRight" };
+#define STATS_KEY_COUNT  (int)(sizeof(statsKeys) / sizeof(statsKeys[0]))
+
+// the value after "<key>=" on its own line, or -1 if the key is not in the text
+static int readSettingValue(const char *text, const char *key)
+{
+   for (int at = 0; text[at]; at++) {
+      if (at != 0 && text[at - 1] != '\n') continue;
+      int k = 0;
+      while (key[k] && text[at + k] == key[k]) k++;
+      if (key[k] || text[at + k] != '=') continue;
+      return text[at + k + 1] == '0' ? 0 : 1;
+   }
+   return -1;
+}
+
+void loadStatsSettingsFromFile(int *enabled, int *showGraph, int *showClocks, int *showTemps, int *topRight)
+{
+   int *values[STATS_KEY_COUNT] = { enabled, showGraph, showClocks, showTemps, topRight };
+
+   char text[512];
+   int bytes = readFile(SETTINGS_PATH, text, sizeof(text) - 1);
+   if (bytes <= 0) return;   // no file yet: every row keeps its default
+   text[bytes] = '\0';
+
+   for (int i = 0; i < STATS_KEY_COUNT; i++) {
+      int value = readSettingValue(text, statsKeys[i]);
+      if (value >= 0) *values[i] = value;
+   }
+}
+
+// Rewrites the whole file, sync mode included, since there is no in-place edit for one line.
+void saveStatsSettings(int enabled, int showGraph, int showClocks, int showTemps, int topRight)
+{
+   int values[STATS_KEY_COUNT] = { enabled, showGraph, showClocks, showTemps, topRight };
+
+   char text[512];
+   int end = 0;
+   appendStr(text, sizeof(text), &end, "mode=");
+   appendStr(text, sizeof(text), &end, syncMode == SYNC_OFFLINE ? "offline" : syncMode == SYNC_FETCH ? "fetch" : "contribute");
+   appendStr(text, sizeof(text), &end, "\n");
+
+   for (int i = 0; i < STATS_KEY_COUNT; i++) {
+      appendStr(text, sizeof(text), &end, statsKeys[i]);
+      appendStr(text, sizeof(text), &end, values[i] ? "=1\n" : "=0\n");
+   }
+
+   writeFile(SETTINGS_PATH, text, (uint64_t)end);
 }
 
 // read the "mode=" value from settings.txt into syncMode. no file -> default to

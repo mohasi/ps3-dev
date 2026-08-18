@@ -29,15 +29,15 @@
 #define SEEK_COAST_BYTES  (256 * 1024)   // a forward seek gap this small streams through faster than a reconnect
 #define PREFETCH_ERROR_RETRIES 3       // reconnects to try on a failed recv/open before latching an error
 
-// a query-range host (see usesQueryRange) serves only so far ahead of playback: measured on 2026-08-19, a
-// first request covering the next 65 seconds of a stream is served and the one after it refused until
-// playback catches up. so on those hosts the window and the prefetch are both sized in seconds of media,
-// from the stream's own byte rate, and a refusal is a "come back later" rather than a failure.
-#define RANGE_WINDOW       (4 * 1024 * 1024)   // upper bound on one request, whatever the byte rate says
-#define PREFETCH_SECONDS   20   // media the prefetch may run ahead of the reader
-#define WINDOW_SECONDS     10   // media one request asks for
-#define REFUSED_BACKOFF_MS 500
-#define REFUSED_RETRIES    120  // a minute of being told to come back later before giving up on the stream
+// a query-range host (see usesQueryRange) serves exactly six requests per address and then refuses every
+// one after it, measured on 2026-08-19: the budget does not refill with time, and a freshly resolved
+// address will not serve a request that starts part way in. so a refusal is final for that address - the
+// stream fails rather than retrying, because retrying can only hammer a server that will never say yes.
+// windows are sized in seconds of the stream's own media so those six cover as much as they can.
+#define RANGE_WINDOW     (4 * 1024 * 1024)   // upper bound on one request, whatever the byte rate says
+#define PREFETCH_SECONDS 20   // media the prefetch may run ahead of the reader
+#define WINDOW_SECONDS   10   // media one request asks for
+
 
 // prefetch-thread idle/backoff waits, in milliseconds.
 #define ERROR_IDLE_MS        20   // latched failure: idle until the reader closes the stream
@@ -57,7 +57,9 @@ struct HttpStream {
    uint64_t         connEnd;       // one past the last byte the open connection serves (prefetch-thread owned)
    int              rangeInQuery;  // ask for the byte window in the url instead of a Range header (see usesQueryRange)
    uint64_t         bytesPerSecond; // the media's own byte rate, 0 if unknown: paces requests on a query-range host
-   int              refusals;      // consecutive "come back later" refusals (reset on a served request)
+   int              slot;          // index in streams[], so the log can tell one stream from another
+   int              refused;       // the last open was turned down by the server, not broken by the network
+   int              emptyWindows;  // consecutive connections that ended without delivering anything
    int              needReconnect; // reader -> prefetch: position moved off the window, reopen there
    int              errorRetries;  // consecutive failed recv/reconnect attempts (reset on progress)
    volatile int     running;       // prefetch thread runs while set
@@ -172,7 +174,7 @@ static void *openConnection(HttpStream *stream, uint64_t offset, uint64_t *total
    int status = 0;
    void *conn = transport->open("GET", request, headers, headerCount, NULL, 0, &status, totalSize);
    int refused = conn && status == 403 && stream->rangeInQuery;
-   stream->refusals = refused ? stream->refusals + 1 : 0;
+   stream->refused = refused;
 
    if (conn && status != 200 && status != 206) {
       if (!refused) {
@@ -181,7 +183,7 @@ static void *openConnection(HttpStream *stream, uint64_t offset, uint64_t *total
          int i = 0;
          while (stream->url[i] && stream->url[i] != '?' && i < (int)sizeof endpoint - 1) { endpoint[i] = stream->url[i]; i++; }
          endpoint[i] = '\0';
-         logError("[http] status %d streaming %s at offset %llu\n", status, endpoint, (unsigned long long)offset);
+         logError("[http] s%d status %d streaming %s at offset %llu\n", stream->slot, status, endpoint, (unsigned long long)offset);
       }
       transport->close(conn);
       conn = NULL;
@@ -228,21 +230,28 @@ static void prefetchThread(uint64_t arg)
          continue;
       }
 
-      // reopen when the reader seeked off the window, or when this connection's range window is used up
-      int seeked = needReconnect || !stream->conn || position < ringStart || position > ringEnd + FORWARD_RECONNECT;
-      if (seeked || windowSpent) {
-         uint64_t offset = seeked ? position : ringEnd;   // a spent window carries on where it ended; a seek restarts the ring
+      // reopen when the reader seeked off the window, when the window is used up, or when a refusal or a
+      // failure left no connection. only a real seek restarts the ring: reopening at the read position after
+      // a refusal would throw away what is already buffered and fetch it a second time, which is what the
+      // server is counting when it refuses.
+      int seeked = needReconnect || position < ringStart || position > ringEnd + FORWARD_RECONNECT;
+      if (seeked || windowSpent || !stream->conn) {
+         uint64_t offset = seeked ? position : ringEnd;
          if (stream->conn) { transport->close(stream->conn); stream->conn = NULL; }
 
          uint64_t tReconnect = sys_time_get_system_time();
          void *conn = openConnection(stream, offset, NULL);
-         if (conn && seeked) logInfo("[http] reconnect at offset %llu took %llums\n", (unsigned long long)offset,
+         if (conn && seeked) logInfo("[http] s%d reconnect at offset %llu took %llums\n", stream->slot, (unsigned long long)offset,
                                      (unsigned long long)((sys_time_get_system_time() - tReconnect) / 1000));
 
-         // refused for running ahead of playback: leave the ring alone and ask again once the reader has drained it
-         if (!conn && stream->refusals) {
-            if (stream->refusals < REFUSED_RETRIES) { sleepMs(REFUSED_BACKOFF_MS); continue; }
-            logError("[http] refused %d times at offset %llu, giving up\n", stream->refusals, (unsigned long long)offset);
+         // turned down rather than broken: this address has served all six of its requests and will refuse
+         // every one after them, so the stream fails here instead of handshaking again for another no.
+         if (!conn && stream->refused) {
+            logError("[http] s%d refused at offset %llu, this address is spent\n", stream->slot, (unsigned long long)offset);
+            lock(&stream->stateLock);
+            stream->error = 1;
+            unlock(&stream->stateLock);
+            continue;
          }
 
          lock(&stream->stateLock);
@@ -287,6 +296,7 @@ static void prefetchThread(uint64_t arg)
          stream->ringEnd += (uint64_t)got;
          if (stream->ringEnd - stream->ringStart > RING_SIZE) stream->ringStart = stream->ringEnd - RING_SIZE;
          stream->errorRetries = 0;
+         stream->emptyWindows = 0;
       } else if (got == -2) {
          // stalled this turn but the connection is alive; just retry
       } else if (got == -1) {
@@ -298,12 +308,13 @@ static void prefetchThread(uint64_t arg)
             stream->error = 1;
          }
       } else if (!stream->needReconnect) {
-         // got == 0: the connection ended. that is the end of the resource only when we have streamed all of
-         // it; a connection that stops short of its window reopens there. ignore it when a seek has already
-         // asked for a reconnect - the zero was the pre-seek connection's end, not the new position's.
-         if (stream->size && stream->ringEnd < stream->size && stream->errorRetries < PREFETCH_ERROR_RETRIES) {
-            stream->errorRetries++;
-            stream->needReconnect = 1;
+         // got == 0: the connection ended. with more of the resource left, carry on from where its bytes
+         // stopped by treating the window as spent - reopening at the read position instead would throw the
+         // buffered window away and starve the reader. ignore it when a seek has already asked for a
+         // reconnect: the zero was the pre-seek connection's end, not the new position's.
+         if (stream->size && stream->ringEnd < stream->size && stream->emptyWindows < PREFETCH_ERROR_RETRIES) {
+            stream->emptyWindows++;
+            stream->connEnd = stream->ringEnd;
          } else {
             stream->atEof = 1;
          }
@@ -328,6 +339,7 @@ HttpStream *openHttpStream(const char *url)
    if (!stream) { unlock(&streamsLock); free(ring); return NULL; }
    memset(stream, 0, sizeof *stream);
    stream->inUse = 1;
+   stream->slot = (int)(stream - streams);
    unlock(&streamsLock);
 
    stream->ring = ring;
@@ -382,7 +394,7 @@ int64_t readHttpStream(HttpStream *stream, void *buffer, uint64_t length)
       sleepMs(READER_WAIT_MS);   // nothing buffered yet; let the prefetch thread catch up
       starvedMs += READER_WAIT_MS;
       if (starvedMs >= 3000) {   // repeats every 3s while starved, so a long stall leaves a trail in the log
-         logWarn("[http] reader starved %dms at offset %llu\n", starvedMs, (unsigned long long)stream->position);
+         logWarn("[http] s%d reader starved %dms at offset %llu\n", stream->slot, starvedMs, (unsigned long long)stream->position);
          starvedMs = 0;
       }
    }

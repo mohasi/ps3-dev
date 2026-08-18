@@ -32,6 +32,9 @@ struct TlsConn {
    br_x509_minimal_context x509;
    br_sslio_context       io;
    int64_t                remaining;     // body bytes left per Content-Length; -1 when close-delimited
+   int                    chunked;       // body arrives in chunks, each with its own size line, instead
+   int64_t                chunkLeft;     // bytes left in the chunk being served
+   int                    chunkedEnd;    // the zero-sized chunk that ends a chunked body has been read
    const unsigned char   *leftover;      // body bytes read while parsing the head (points into head)
    int                    leftoverLen;
    char                   host[256];     // remembered for connection reuse (pool key)
@@ -284,8 +287,14 @@ int readTlsHead(TlsConn *conn, int *status, uint64_t *totalSize)
       if (strncmp(headers, "HTTP/1.", 7) == 0 && space) *status = atoi(space + 1);
    }
 
-   // body length: Content-Length delimits this response; Content-Range's "/total" gives the full resource
+   // body length: Content-Length delimits this response; Content-Range's "/total" gives the full resource.
+   // a server that starts sending before it knows the length (youtube's media replies) sends the body in
+   // chunks instead, each behind its own size line, which recvTls strips back out.
    const char *length = findHeader(headers, "content-length");
+   const char *encoding = findHeader(headers, "transfer-encoding");
+   conn->chunked = encoding && strncmp(encoding, "chunked", 7) == 0;
+   conn->chunkLeft = 0;
+   conn->chunkedEnd = 0;
    conn->remaining = length ? (int64_t)strtoull(length, NULL, 10) : -1;
    if (totalSize) {
       const char *range = findHeader(headers, "content-range");
@@ -309,9 +318,74 @@ int getTlsHeader(TlsConn *conn, const char *name, char *out, int cap)
    return 0;
 }
 
+// pulls up to cap bytes of the raw stream, the bytes read while parsing the head first. >0 bytes,
+// 0 the connection ended cleanly, -1 it failed.
+static int64_t readRaw(TlsConn *conn, void *buffer, uint64_t cap)
+{
+   if (conn->leftoverLen > 0) {
+      uint64_t n = (uint64_t)conn->leftoverLen < cap ? (uint64_t)conn->leftoverLen : cap;
+      memcpy(buffer, conn->leftover, (size_t)n);
+      conn->leftover += n;
+      conn->leftoverLen -= (int)n;
+      return (int64_t)n;
+   }
+   int got = br_sslio_read(&conn->io, buffer, (size_t)cap);
+   if (got > 0) return got;
+   return getLastTlsError(conn) == BR_ERR_OK ? 0 : -1;
+}
+
+static int hexValue(unsigned char c)
+{
+   if (c >= '0' && c <= '9') return c - '0';
+   if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+   if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+   return -1;
+}
+
+// each chunk is introduced by its size in hex on a line of its own, and a zero size ends the body. the
+// line may carry a ";extension" tail, and the blank line closing the previous chunk's data is skipped
+// here rather than tracked separately. 0 when a size was read, -1 on a broken or malformed stream.
+static int readChunkSize(TlsConn *conn)
+{
+   int64_t size = 0;
+   int sawDigit = 0, inExtension = 0;
+   for (;;) {
+      unsigned char c;
+      int64_t got = readRaw(conn, &c, 1);
+      if (got <= 0) return -1;
+      if (c == '\n') {
+         if (!sawDigit) { inExtension = 0; continue; }   // the empty line after the previous chunk's data
+         break;
+      }
+      if (c == '\r' || inExtension) continue;
+      int value = hexValue(c);
+      if (value < 0) { inExtension = 1; continue; }
+      size = size * 16 + value;
+      sawDigit = 1;
+   }
+   conn->chunkLeft = size;
+   conn->chunkedEnd = (size == 0);
+   return 0;
+}
+
+// serves body bytes out of a chunked stream, so callers never see the framing.
+static int64_t recvChunked(TlsConn *conn, void *buffer, uint64_t cap)
+{
+   if (conn->chunkedEnd) return 0;
+   if (conn->chunkLeft == 0 && readChunkSize(conn) != 0) return -1;
+   if (conn->chunkedEnd) return 0;
+
+   uint64_t want = cap < (uint64_t)conn->chunkLeft ? cap : (uint64_t)conn->chunkLeft;
+   int64_t got = readRaw(conn, buffer, want);
+   if (got <= 0) return -1;   // a chunk that stops short is a broken body, not the end of one
+   conn->chunkLeft -= got;
+   return got;
+}
+
 int64_t recvTls(TlsConn *conn, void *buffer, uint64_t cap)
 {
    if (cap == 0) return 0;
+   if (conn->chunked) return recvChunked(conn, buffer, cap);
 
    // serve the bytes already read past the head first
    if (conn->leftoverLen > 0) {

@@ -57,6 +57,10 @@ void loadStatsSettings(void);
 // FRAME thread, every frame from the paf hook: time the frame and repaint when due.
 void updateStatsOverlay(void);
 
+// Is the counter actually up: switched on, and a game running. The worker uses it to skip the
+// sensor reads entirely, since those are syscalls and a hypervisor peek.
+int isStatsCounterActive(void);
+
 // WORKER thread, a couple of times a second: read the RSX clocks and the temperatures into
 // memory for the drawing thread to display. These are syscalls and a hypervisor peek and have no
 // business on the frame thread, which only ever reads the numbers left here.

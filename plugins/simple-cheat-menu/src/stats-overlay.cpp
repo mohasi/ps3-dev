@@ -112,17 +112,22 @@ int lastShownCpuTenths = -1, lastShownRsxTenths = -1;
 PafWidget *bars[BAR_COUNT] = { 0 };
 PafWidget *averageLine = 0;
 
-// the last BAR_COUNT frame times, oldest first. barOldest is the ring slot the leftmost bar
-// shows, so advancing it by one is the whole scroll. lastDrawnUs is what each bar is currently
-// showing, so a bar that would not change is left alone.
-uint32_t barValues[BAR_COUNT] = { 0 };
-uint32_t lastDrawnUs[BAR_COUNT] = { 0 };
-int      barOldest = 0;
+// The frame samples, taken from the firmware's heap along with the widgets and given back with
+// them, so a switched-off counter holds no memory at all.
+//   bars      the last BAR_COUNT frame times, oldest first. barOldest is the ring slot the
+//             leftmost bar shows, so advancing it by one is the whole scroll. drawn is what each
+//             bar currently shows, so a bar that would not change is left alone.
+//   window    the last second of frame times with their running total, which is the average to
+//             compare one set of clocks against another. The graph moves far too fast to read an
+//             average off, and a whole-session average would barely budge when the clocks change.
+struct StatsSamples {
+   uint32_t bars[BAR_COUNT];
+   uint32_t drawn[BAR_COUNT];
+   uint32_t window[AVERAGE_RING_SIZE];
+};
 
-// the last few seconds of frame times, oldest to newest, with their running total. This is the
-// number to compare one set of clocks against another: the graph itself moves far too fast to
-// read an average off, and a whole-session average would barely budge when the clocks change.
-uint32_t frameRing[AVERAGE_RING_SIZE] = { 0 };
+StatsSamples *samples = 0;
+int      barOldest = 0;
 int      ringNext = 0;    // where the next frame goes
 int      ringCount = 0;
 uint64_t ringTotalUs = 0;
@@ -174,6 +179,8 @@ void dropWidget(AbsentReason reason, const char *why)
       destroyPafWidget(backdrop);
       destroyPafWidget(fpsText);
    }
+
+   if (samples) { _sys_free(samples); samples = 0; }
 
    for (int i = 0; i < BAR_COUNT; i++) bars[i] = 0;
    averageLine = 0;
@@ -291,7 +298,7 @@ void placeWidgets(const Layout &layout)
       if (!bars[i]) continue;
       setPafWidgetPosition(bars[i], layout.contentLeft + i * layout.barPitch, layout.graphBottomY);
       setPafWidgetSize(bars[i], layout.barWidth, BAR_MIN_HEIGHT);
-      lastDrawnUs[i] = 0;   // force a repaint at the new size
+      samples->drawn[i] = 0;   // force a repaint at the new size
    }
 
    if (averageLine) setPafWidgetSize(averageLine, layout.graphWidth, 1.0f);
@@ -327,8 +334,8 @@ void placeWidgets(const Layout &layout)
 // build. That halves the per-frame layout work, which is what the frame rate here is paying for.
 void paintBar(int index, uint32_t frameTimeUs, const Layout &layout)
 {
-   if (!bars[index] || lastDrawnUs[index] == frameTimeUs) return;
-   lastDrawnUs[index] = frameTimeUs;
+   if (!bars[index] || samples->drawn[index] == frameTimeUs) return;
+   samples->drawn[index] = frameTimeUs;
 
    float fraction = (float)frameTimeUs / FRAME_TIME_CEILING_US;
    if (fraction > 1.0f) fraction = 1.0f;
@@ -350,17 +357,17 @@ void paintBar(int index, uint32_t frameTimeUs, const Layout &layout)
 void addFrameToWindow(uint32_t frameTimeUs)
 {
    if (ringCount == AVERAGE_RING_SIZE) {   // full: the slot about to be written is the oldest
-      ringTotalUs -= frameRing[ringNext];
+      ringTotalUs -= samples->window[ringNext];
       ringCount--;
    }
-   frameRing[ringNext] = frameTimeUs;
+   samples->window[ringNext] = frameTimeUs;
    ringNext = (ringNext + 1) % AVERAGE_RING_SIZE;
    ringCount++;
    ringTotalUs += frameTimeUs;
 
    while (ringTotalUs > AVERAGE_WINDOW_US && ringCount > 1) {
       int oldest = (ringNext - ringCount + AVERAGE_RING_SIZE) % AVERAGE_RING_SIZE;
-      ringTotalUs -= frameRing[oldest];
+      ringTotalUs -= samples->window[oldest];
       ringCount--;
    }
 }
@@ -495,6 +502,11 @@ void loadStatsSettings(void)
    settingsChanged = 1;
 }
 
+int isStatsCounterActive(void)
+{
+   return settings.enabled && gameRunning;
+}
+
 void pollStatsSensors(void)
 {
    int coreMhz, memoryMhz, cpuTenths, rsxTenths;
@@ -507,6 +519,10 @@ void pollStatsSensors(void)
 
 void updateStatsOverlay(void)
 {
+   // Switched off: nothing is drawn, nothing is allocated, and this is all it costs per frame.
+   // The one exception is the frame a change lands on, which has widgets to give back.
+   if (!settings.enabled && !settingsChanged && !fpsText) return;
+
    // section: stay clear of the teardown. A game starting or ending is when the firmware rebuilds
    // the widget tree, so that transition is handled before anything else can return early and
    // leave it unconsumed. Nothing in here asks the firmware anything.
@@ -549,6 +565,9 @@ void updateStatsOverlay(void)
    if (!fpsText) {
       void *storage = _sys_malloc(PHTEXT_SIZE);
       if (!storage) return;   // no memory, no counter; the menu is unaffected
+
+      samples = (StatsSamples *)_sys_malloc(sizeof(StatsSamples));
+      if (!samples) { _sys_free(storage); return; }
 
       Layout layout = getLayout();
       overlayLogHex("stats: building under parent", (unsigned int)(uintptr_t)parent);
@@ -639,10 +658,10 @@ void updateStatsOverlay(void)
    // hand neighbour showed last frame. Skipped entirely when the graph is switched off, or the
    // bars would repaint themselves visible on top of the readout.
    if (settings.showGraph) {
-      barValues[barOldest] = (uint32_t)frameTimeUs;
+      samples->bars[barOldest] = (uint32_t)frameTimeUs;
       barOldest = (barOldest + 1) % BAR_COUNT;
       for (int position = 0; position < BAR_COUNT; position++)
-         paintBar(position, barValues[(barOldest + position) % BAR_COUNT], layout);
+         paintBar(position, samples->bars[(barOldest + position) % BAR_COUNT], layout);
    }
 
    // section: the readout and the average line, four times a second — text is re-measured and

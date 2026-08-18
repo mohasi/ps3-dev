@@ -22,17 +22,17 @@
 #include "vsh-ext.h"
 #include "export-hook.h"
 #include "overlay.h"
-#include "stats-overlay.h" // always-on fps counter, drawn from the same frame hook
-
-// rsx overclocking from the Stats Counter tab, shimmed in overlay-bridge.c
-void stepStatsCoreClock(int direction);
-void stepStatsMemoryClock(int direction);
+#include "stats-overlay.h" // in-game stats counter, drawn from the same frame hook
 #include "cheat-sync.h"    // loadSyncMode + syncMode: create/read settings at startup
 #include "cheat-fetch.h"   // maybeFetchForGame: proactive online cheat download at game launch
 #include "raw-pad.h"
 #include "nav-repeat.h"
 #include "trigger.h"
 #include "texture-patch.h"   // dumpTextures + patch apply/revert for the Patches tab
+
+// rsx overclocking from the Stats tab, shimmed in overlay-bridge.c
+void stepStatsCoreClock(int direction);
+void stepStatsMemoryClock(int direction);
 
 #define TAG "[cht] "
 
@@ -100,9 +100,13 @@ static void jobWorkerThread(uint64_t arg)
       uint32_t sleepUsec = did ? 2000 : 50000;   // busy: 2ms between rows; idle: 50ms
       sys_timer_usleep(sleepUsec);
 
-      // the stats counter's clocks and temperatures, read here rather than on the frame thread
+      // the stats counter's clocks and temperatures, read here rather than on the frame thread,
+      // and not read at all unless the counter is actually up: these are syscalls
       sinceSensorPollUsec += sleepUsec;
-      if (sinceSensorPollUsec >= SENSOR_POLL_USEC) { sinceSensorPollUsec = 0; pollStatsSensors(); }
+      if (sinceSensorPollUsec >= SENSOR_POLL_USEC) {
+         sinceSensorPollUsec = 0;
+         if (isStatsCounterActive()) pollStatsSensors();
+      }
    }
 }
 
@@ -205,6 +209,7 @@ static void menuThread(uint64_t arg)
    char     dumpStatus[32];       // holds the "Dumped N textures" message (overlaySetUpdating keeps the pointer)
    uint32_t prevDpad = 0;         // last raw buttons, for the edge-triggered cross toggle
    NavRepeat navUp = { 0, 0, 0 }, navDown = { 0, 0, 0 };   // held-direction auto-repeat
+   int      statsTitlePending = 0;   // a game launched; waiting for its id to say whether it is one
    for (;;) {
       // section: game-boundary bookkeeping
       int inGame = getGameProcessId() != 0;
@@ -213,7 +218,11 @@ static void menuThread(uint64_t arg)
       if (inGame != lastInGame) {
          logInfo(TAG "inGame=%d\n", inGame);
          lastInGame = inGame;
-         notifyStatsGameChanged(inGame);   // vsh is about to rebuild the widget tree; put the counter down
+
+         // the stats counter goes down either way: on a launch it stays down until the title id
+         // proves this is a real game rather than homebrew, which is the same test the menu uses.
+         notifyStatsGameChanged(0);
+         statsTitlePending = inGame;
          if (!inGame) {
             // game gone: forget applied state (its match addresses died with the process) and
             // arm the no-touch hide, THEN publish menuOpen=0 so the hide frame sees the arm and
@@ -222,6 +231,18 @@ static void menuThread(uint64_t arg)
             __sync_synchronize();
             menuOpen = 0;   // the arena is kept and reused across games, never freed
             fetchAttempted = 0;   // next game gets its own fetch
+         }
+      }
+
+      // section: is the running title a game? Homebrew and tools run as a process too, so the
+      // counter waits for a readable title id before deciding whether to come up. The id is not
+      // there the instant the process spawns, hence the poll.
+      if (statsTitlePending) {
+         char statsTitleId[16];
+         overlayGetTitleId(statsTitleId, sizeof statsTitleId);
+         if (statsTitleId[0]) {
+            statsTitlePending = 0;
+            notifyStatsGameChanged(isGameTitleId(statsTitleId));
          }
       }
 

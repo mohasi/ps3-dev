@@ -84,7 +84,10 @@ never calls them never drags the heap in. Each entry below says which side it is
   backend in `transport-cellhttp.c` / `cellhttp-stack.c`) is malloc-free; the streaming engine
   (4 MB ring + prefetch thread, `http-stream.c`) is a separate file pulled in only by a caller that
   references `openHttpStream`, so a plugin that only does one-shot fetches never brings the heap
-  into a VSH PRX.
+  into a VSH PRX. The engine asks an ordinary server for everything from the read position on, with a
+  `Range` header. YouTube's media hosts no longer answer that (the reply is a redirect whose target is
+  refused), so for those it asks for one window at a time as a `&range=start-end` query parameter, sized
+  and paced from the stream's own byte rate because they only serve so far ahead of playback.
 - **network.h** — `getLocalIpv4()` resolves the console's primary IPv4 address.
 - **ftp.h / ftp.c** — the shared anonymous FTP server, run as a singleton (`startFtpServer`,
   `stopFtpServer`, `isFtpServerRunning`, `isFtpPortAvailable`). Usable from both apps and plugins;

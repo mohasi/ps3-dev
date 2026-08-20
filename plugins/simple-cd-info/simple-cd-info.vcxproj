@@ -42,12 +42,14 @@
    <ClCompile Include="src\cddb.c" />
    <ClCompile Include="src\amg-response.c" />
    <ClCompile Include="src\lookup.c" />
+   <ClCompile Include="src\port-patch.c" />
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\toc.h" />
    <ClInclude Include="include\cddb.h" />
    <ClInclude Include="include\amg-response.h" />
    <ClInclude Include="include\lookup.h" />
+   <ClInclude Include="include\port-patch.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="README.md" />

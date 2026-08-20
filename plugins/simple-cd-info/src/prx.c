@@ -3,7 +3,9 @@
 // Restores audio-CD metadata to the XMB. The stock lookup (AMG, dmr.allmusic.com)
 // is dead, so we impersonate it. The firmware resolves that host through vsh's own
 // gethostbyname; we hook it and, only for the AMG host, rewrite the name to loopback
-// (127.0.0.1) so the disc-info POST lands on our own listener on :80.
+// (127.0.0.1). The port it connects to is a constant inside the firmware's own lookup
+// module, which patchAmgLookupPort rewrites, so the POST lands on our listener and
+// port 80 stays free for webMAN.
 // We then read the disc, look the album up on gnudb, build the AMG binary response
 // on the fly (buildLiveResponse) and reply with it; the firmware's own parser turns
 // it into album/artist/track text on screen. No XMB proxy setting is needed.
@@ -22,6 +24,7 @@
 #include "export-hook.h"  // installExportHook - detour a vsh export at runtime
 #include "proc-mem.h"     // writeProcMem - kernel poke (writes read-only pages)
 #include "bridge-client.h"
+#include "port-patch.h"   // patchAmgLookupPort - move the firmware's lookup off port 80
 #include "toc.h"          // readCdToc - read the audio CD's track layout from the drive
 #include "cddb.h"         // computeCddbDiscId + the gnudb lookup helpers
 #include "lookup.h"       // buildLiveResponse - TOC -> gnudb -> AMG response
@@ -31,9 +34,11 @@ SYS_MODULE_START(_start);
 
 #define TAG "[cdi] "
 
-#define LISTEN_PORT     80     // the firmware connects to the AMG host on :80; we redirect it here
-#define RESPONSE_MAX    16384  // ample: the 40 KB scratch arena caps the album at ~35 tracks (~6.5 KB body) first
-#define HEN_HOOK_SETTLE_MS  5000  // extra grace period before patching vsh code on HEN, see serveThread
+#define LISTEN_PORT         8790   // any free port: patchAmgLookupPort sends the lookup here, leaving :80 to webMAN
+#define PORT_PATCH_TRIES    30     // x3_amgsdk is loaded at boot, so this only covers a slow one
+#define PORT_PATCH_RETRY_MS 2000
+#define RESPONSE_MAX        16384  // ample: the 40 KB scratch arena caps the album at ~35 tracks (~6.5 KB body) first
+#define HEN_HOOK_SETTLE_MS  5000   // extra grace period before patching vsh code on HEN, see serveThread
 
 #define SYS_PROCESS_GETPID   1
 #define NID_GETHOSTBYNAME    0x71f4c717u   // vsh sys_net export we detour
@@ -111,6 +116,15 @@ static void serveThread(uint64_t arg)
    // if the export can't be resolved this logs and does nothing (networking untouched).
    int hookRc = installExportHook("sys_net", NID_GETHOSTBYNAME, (void (*)(void))gethostbynameHook);
    logInfo(TAG "dns hook install rc=%d\n", hookRc);
+
+   // send the lookup to our port instead of :80. x3_amgsdk is part of the boot set, but
+   // retry in case a slow boot has not got to it yet.
+   int portRc = AMG_MODULE_NOT_LOADED;
+   for (int retry = 0; portRc == AMG_MODULE_NOT_LOADED && retry < PORT_PATCH_TRIES; retry++) {
+      portRc = patchAmgLookupPort(LISTEN_PORT);
+      if (portRc == AMG_MODULE_NOT_LOADED) sleepMs(PORT_PATCH_RETRY_MS);
+   }
+   if (portRc < 0) logError(TAG "lookup port still 80, webman conflict remains (rc=%d)\n", portRc);
 
    int listenSocket = -1;
    for (int retry = 0; listenSocket < 0 && retry < 30; retry++) {

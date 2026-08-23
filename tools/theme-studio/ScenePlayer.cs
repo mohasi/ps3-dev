@@ -35,7 +35,7 @@ namespace ThemeStudio
       public static ScenePlayer Start(ThemeProject project, string script, double width, double height,
                                       Action<string> report)
       {
-         SceneView view = ScenePreview.Build(project.Scene, project.ContentDir, width, height);
+         SceneView view = ScenePreview.Build(project.Scene, project.ContentDir, width, height, report);
          var player = new ScenePlayer(view, PsjsMachine.Start(project.Scene, script, width / height, report), width / height);
          player.showFrame();
          player.elapsed.Start();

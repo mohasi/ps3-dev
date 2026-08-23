@@ -769,6 +769,22 @@ namespace ThemeStudio
       private void onSave(object sender, RoutedEventArgs e)
       {
          readProject();
+
+         // a file that has gone would be saved as a reference to nothing, and the copy inside the
+         // project is usually the only one left. saving to a new file is still allowed, so this
+         // cannot trap someone's work in the window.
+         List<string> missing = project.FindMissingAssets();
+         if (missing.Count > 0) {
+            log(missing.Count + (missing.Count == 1 ? " file this project uses is" : " files this project uses are") +
+                " missing:");
+            foreach (string entry in missing) log("   " + entry);
+            if (project.ProjectPath.Length > 0) {
+               log("not saved, so " + Path.GetFileName(project.ProjectPath) + " keeps what it still holds -- " +
+                   "put the files back, or remove the objects that use them");
+               return;
+            }
+         }
+
          if (project.ProjectPath.Length == 0) {
             var dialog = new SaveFileDialog { Filter = "theme project (*.themeproj)|*.themeproj",
                                               FileName = project.Name + ".themeproj" };

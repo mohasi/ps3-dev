@@ -38,7 +38,8 @@ namespace ThemeStudio
    // console's shaders.
    public static class ScenePreview
    {
-      public static SceneView Build(SceneProject scene, string projectDir, double width, double height)
+      public static SceneView Build(SceneProject scene, string projectDir, double width, double height,
+                                    Action<string> report)
       {
          SceneDefaults.Fill(scene, stored => resolve(projectDir, stored));
 
@@ -47,7 +48,7 @@ namespace ThemeStudio
          view.Viewport = new Viewport3D { Width = width, Height = height, Camera = view.Camera };
 
          addLights(view, scene);
-         addActors(view, scene, projectDir);
+         addActors(view, scene, projectDir, report);
          view.Viewport.Children.Add(new ModelVisual3D { Content = view.Root });
          return view;
       }
@@ -132,21 +133,31 @@ namespace ThemeStudio
          mesh.TriangleIndices.Add(third);
       }
 
-      private static void addActors(SceneView view, SceneProject scene, string projectDir)
+      // an object that cannot be drawn is said out loud. it stays in the list looking healthy, so
+      // dropping it in silence reads as "the editor only shows one model" -- which is what it was
+      // reported as.
+      private static void addActors(SceneView view, SceneProject scene, string projectDir, Action<string> report)
       {
          var meshCache = new Dictionary<string, MeshGeometry3D>();
          var brushCache = new Dictionary<string, Brush>();
 
          foreach (SceneActor actor in scene.Actors) {
             SceneModel model = scene.FindModel(actor.ModelId);
-            if (model == null) continue;
+            if (model == null) {
+               report("\"" + actor.Id + "\" is not drawn: it has no model");
+               continue;
+            }
 
             MeshGeometry3D mesh;
             if (!meshCache.TryGetValue(model.Id, out mesh)) {
                mesh = DaeFile.LoadMesh(resolve(projectDir, model.DaePath));
                meshCache[model.Id] = mesh;
             }
-            if (mesh == null) continue;
+            if (mesh == null) {
+               report("\"" + actor.Id + "\" is not drawn: " + Path.GetFileName(model.DaePath) +
+                      " is missing, or is not a model this can read");
+               continue;
+            }
 
             Vec3 position, rotation, scale;
             SceneDefaults.StartingPlacement(scene, actor, out position, out rotation, out scale);

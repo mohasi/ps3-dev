@@ -323,7 +323,7 @@ namespace ThemeStudio
          string alreadyStaged;
          if (stagedNameBySource.TryGetValue(source, out alreadyStaged)) return alreadyStaged;
 
-         string fileName = makeFreeStagedName(Path.GetFileName(source));
+         string fileName = makeFreeStagedName(MakeStagedFileName(Path.GetFileName(source)));
          File.Copy(source, Path.Combine(stageDir, fileName), true);
          stagedNameBySource[source] = fileName;
          stagedNamesUsed.Add(fileName);
@@ -367,6 +367,18 @@ namespace ThemeStudio
          foreach (char character in name)
             text.Append(char.IsLetterOrDigit(character) ? character : '_');
          return text.Length == 0 ? "theme" : text.ToString();
+      }
+
+      // these tools build their own child command lines without quoting them, so one space in a
+      // file name splits the path and the tool reads the wrong thing -- raf_geom answers
+      // "Loading have..." to a model called "what have i done.dae". only the staged copy is
+      // renamed; the file the user picked is left alone.
+      public static string MakeStagedFileName(string fileName)
+      {
+         var text = new StringBuilder();
+         foreach (char character in fileName)
+            text.Append(char.IsLetterOrDigit(character) || character == '.' || character == '-' ? character : '_');
+         return text.ToString();
       }
    }
 }

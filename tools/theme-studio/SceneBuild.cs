@@ -49,7 +49,7 @@ namespace ThemeStudio
    {
       public static string RafCompilerExe { get { return ToolRun.Find("raf_compiler.exe"); } }
 
-      public static SceneBuildResult Build(SceneProject scene, string projectDir, string sceneName, Action<string> log)
+      public static SceneBuildResult Build(SceneProject scene, string contentDir, string sceneName, Action<string> log)
       {
          var result = new SceneBuildResult();
          if (!File.Exists(RafCompilerExe)) {
@@ -63,15 +63,16 @@ namespace ThemeStudio
             return result;
          }
 
-         // stage: the raf tools are reported to break on paths containing spaces, and the
-         // compiler resolves every asset relative to the scene xml. this sits inside the theme's
-         // own folder, which is named after the theme (the scene shares its name).
-         string stageDir = Path.Combine(ThemeBuild.GetOutputDir(projectDir, sceneName), sceneName + "_scene");
+         // stage: the compiler resolves every asset relative to the scene xml and writes its
+         // intermediates beside it, so this goes in the program's own scratch folder. staging it
+         // in the project's content folder packed all of that into the saved .themeproj, which
+         // turned one 3MB project into 59MB and carried a second copy of every model.
+         string stageDir = Path.Combine(ThemeBuild.OutputDir, sceneName + "_scene");
          if (Directory.Exists(stageDir)) Directory.Delete(stageDir, true);
          Directory.CreateDirectory(stageDir);
 
          string xmlPath = Path.Combine(stageDir, sceneName + ".xml");
-         writeSceneXml(scene, projectDir, stageDir, xmlPath, log);
+         writeSceneXml(scene, contentDir, stageDir, xmlPath, log);
          log("staged scene to " + stageDir);
 
          // compile
@@ -82,8 +83,7 @@ namespace ThemeStudio
 
          string producedPath = Path.ChangeExtension(xmlPath, ".raf");
          if (!File.Exists(producedPath)) {
-            log(lastMeaningfulLine(output));
-            log("scene build failed");
+            reportFailure(output, log);
             return result;
          }
 
@@ -141,6 +141,43 @@ namespace ThemeStudio
          return -1;
       }
 
+      // raf_compiler ends on "RAF Compiler Failed", which says nothing. why it failed is in the
+      // "error:" lines above that, so those are what gets reported. reporting only the last line
+      // is what left "the 3D scene failed to build" as the whole of the answer.
+      private static void reportFailure(string output, Action<string> log)
+      {
+         bool anyReported = false;
+         double worstOverBudget = 0;
+         foreach (string line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)) {
+            string complaint = line.Trim();
+            if (!complaint.StartsWith("error", StringComparison.OrdinalIgnoreCase)) continue;
+            log(complaint);
+            anyReported = true;
+            worstOverBudget = Math.Max(worstOverBudget, getTimesOverBudget(complaint));
+         }
+
+         if (!anyReported) log(lastMeaningfulLine(output));
+         if (worstOverBudget > 1)
+            log("this scene is " + worstOverBudget.ToString("0.#", CultureInfo.InvariantCulture) +
+                " times the size the console allows -- a model straight out of a modelling program " +
+                "usually is. reduce its triangles there and import it again.");
+         log("scene build failed");
+      }
+
+      // "error: total geometry & script size 4111747 Bytes ( > 1048576)". the limits are the
+      // compiler's own numbers rather than any written down here, so they cannot drift out of date.
+      private static double getTimesOverBudget(string complaint)
+      {
+         Match match = Regex.Match(complaint, @"size\s+(\d+)\s+Bytes\s*\(\s*>\s*(\d+)", RegexOptions.IgnoreCase);
+         double used, allowed;
+         if (!match.Success ||
+             !double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out used) ||
+             !double.TryParse(match.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out allowed) ||
+             allowed <= 0)
+            return 0;
+         return used / allowed;
+      }
+
       private static string lastMeaningfulLine(string output)
       {
          string[] lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
@@ -153,7 +190,7 @@ namespace ThemeStudio
 
       // scene xml
 
-      private static void writeSceneXml(SceneProject scene, string projectDir, string stageDir, string xmlPath, Action<string> log)
+      private static void writeSceneXml(SceneProject scene, string contentDir, string stageDir, string xmlPath, Action<string> log)
       {
          var settings = new XmlWriterSettings { Indent = true, IndentChars = "  " };
          using (XmlWriter writer = XmlWriter.Create(xmlPath, settings)) {
@@ -183,7 +220,7 @@ namespace ThemeStudio
             var modelIdMap = new Dictionary<string, string>();     // project model id -> the model an actor should use
             foreach (SceneModel model in scene.Models) {
                if (!usedModels.Contains(model.Id)) continue;
-               string staged = stageModel(projectDir, model.DaePath, stageDir, stagedModels, log);
+               string staged = stageModel(contentDir, model.DaePath, stageDir, stagedModels, log);
                if (staged.Length == 0) continue;
 
                string owner;
@@ -212,7 +249,7 @@ namespace ThemeStudio
                writer.WriteStartElement("material");
                writer.WriteAttributeString("id", material.Id);
                writer.WriteAttributeString("effect", material.Effect);
-               string staged = stage(projectDir, material.TexturePath, stageDir);
+               string staged = stage(contentDir, material.TexturePath, stageDir);
                if (staged.Length > 0) {
                   writer.WriteStartElement("texture");
                   writer.WriteAttributeString("file", staged);
@@ -273,7 +310,7 @@ namespace ThemeStudio
             }
 
             // script -- at most one
-            string stagedScript = stage(projectDir, scene.ScriptPath, stageDir);
+            string stagedScript = stage(contentDir, scene.ScriptPath, stageDir);
             if (stagedScript.Length > 0) {
                writer.WriteStartElement("script");
                writer.WriteAttributeString("file", stagedScript);
@@ -290,19 +327,19 @@ namespace ThemeStudio
       }
 
       // the on-disk path of an asset, whether it is stored absolute or relative to the project
-      private static string findAsset(string projectDir, string storedPath)
+      private static string findAsset(string contentDir, string storedPath)
       {
          if (string.IsNullOrEmpty(storedPath)) return "";
-         string source = Path.IsPathRooted(storedPath) ? storedPath : Path.Combine(projectDir, storedPath);
+         string source = Path.IsPathRooted(storedPath) ? storedPath : Path.Combine(contentDir, storedPath);
          return File.Exists(source) ? source : "";
       }
 
       // copies an asset beside the scene xml and returns the bare filename, or "" if unusable
-      private static string stage(string projectDir, string storedPath, string stageDir)
+      private static string stage(string contentDir, string storedPath, string stageDir)
       {
-         string source = findAsset(projectDir, storedPath);
+         string source = findAsset(contentDir, storedPath);
          if (source.Length == 0) return "";
-         string fileName = Path.GetFileName(source);
+         string fileName = ThemeBuild.MakeStagedFileName(Path.GetFileName(source));
          File.Copy(source, Path.Combine(stageDir, fileName), true);
          return fileName;
       }
@@ -310,13 +347,13 @@ namespace ThemeStudio
       // stages a model, mending anything the compiler would reject (Z-up, no material binding) into
       // the staged copy first. the user's own file is left alone; the mend is reported. a file
       // shared by several models is staged only once.
-      private static string stageModel(string projectDir, string storedPath, string stageDir,
+      private static string stageModel(string contentDir, string storedPath, string stageDir,
                                        HashSet<string> alreadyStaged, Action<string> log)
       {
-         string source = findAsset(projectDir, storedPath);
+         string source = findAsset(contentDir, storedPath);
          if (source.Length == 0) return "";
 
-         string fileName = Path.GetFileName(source);
+         string fileName = ThemeBuild.MakeStagedFileName(Path.GetFileName(source));
          if (!alreadyStaged.Add(fileName)) return fileName;
 
          string staged = Path.Combine(stageDir, fileName);

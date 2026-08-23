@@ -16,9 +16,15 @@ A `.themeproj` is **one self-contained file** — a zip (written through `System
 the same idea as a `.docx`. `ProjectPackage` unpacks it to a temp folder while open and packs it back
 on save, writing a temp file and swapping it in so a failed save cannot destroy the original. Older
 XML-only projects (which stored fragile absolute paths) still open and are imported on the next save.
+Saving over an existing project is refused while any file it points at is missing: the copy inside the
+project is usually the only one left, and a save would write the reference without the file, after
+which nothing can tell one was ever meant to be there. Saving to a new file is still allowed.
 
 `ThemeBuild` checks every referenced file exists **before** writing anything, stages the assets into a
-folder named after the theme, runs p3tcompiler and leaves the `.p3t` there — one folder per theme, so
+folder named after the theme (renaming each staged copy to letters, digits, dots and dashes — these
+tools build their child command lines unquoted, so one space in a file name splits the path and
+raf_geom answers `Loading have...` to a model called `what have i done.dae`), runs p3tcompiler and
+leaves the `.p3t` there — one folder per theme, so
 projects sharing a directory never overwrite each other. `Ps3Deploy` uploads over FTP; Deploy builds
 first, since there is no telling whether the last build still matches the project. It lists the
 console's theme folder before sending: the XMB shows **at most 100 themes**, and the ones past that are
@@ -152,7 +158,9 @@ here: it says which corner is already taken. When the background is the project'
 `ScenePreview` renders it with WPF 3D and composites the icons on top. It is a
 likeness, not a facsimile: placement, size, texture and motion are faithful, shading is not. Point
 lights draw a small coloured dot at their position (toggle with "Show lights"); the camera cannot
-appear in its own view, so it is reported in words.
+appear in its own view, so it is reported in words. An object it cannot draw — its model file gone, or
+a `.dae` the reader does not understand — is named in the log and marked red in the object list, since
+dropping it in silence reads as the editor only showing one model.
 
 The scene *plays*. No JavaScript engine can run PSJS, so the editor reads and runs it itself
 (`PsjsSyntax`, `PsjsNodes`, `PsjsValues`, `PsjsMachine`) at 30fps, moving already-built shapes rather

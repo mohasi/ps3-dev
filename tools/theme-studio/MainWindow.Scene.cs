@@ -86,7 +86,13 @@ namespace ThemeStudio
          if (material != null) parts.Add(SceneEffects.ToPlainName(material.Effect));
          if (model != null) parts.Add(describePlacement(model));
 
-         return makeRow(actor.Id, string.Join("   -   ", parts.ToArray()), Colors.Transparent);
+         // a model whose file has gone is the failure that looks like nothing at all: the object
+         // keeps its row and simply never appears in the preview
+         bool fileMissing = model == null || !File.Exists(project.ResolveAsset(model.DaePath));
+         if (fileMissing) parts.Insert(0, "file missing, so it is not drawn");
+
+         return makeRow(actor.Id, string.Join("   -   ", parts.ToArray()),
+                        fileMissing ? Colors.Red : Colors.Transparent);
       }
 
       // a model brings its own starting place and size, and the console uses them. saying so here

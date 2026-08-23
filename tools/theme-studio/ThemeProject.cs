@@ -173,6 +173,20 @@ namespace ThemeStudio
          ProjectPackage.Pack(ContentDir, path);
       }
 
+      // every file the project points at that is not there any more. a save writes the reference
+      // either way, and once it has been written relative nothing can tell the file was ever meant
+      // to be inside -- so the copy on disk is not overwritten while any are missing.
+      public List<string> FindMissingAssets()
+      {
+         var missing = new List<string>();
+         var checkedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);   // one texture serves several materials
+         changeEveryAssetPath(stored => {
+            if (stored.Length > 0 && checkedPaths.Add(stored) && !File.Exists(ResolveAsset(stored))) missing.Add(stored);
+            return stored;
+         });
+         return missing;
+      }
+
       // copies anything still living outside the project into it, and rewrites the path to match.
       // a file already inside is left where it is, so saving twice does not pile up copies.
       private void importAssets()

@@ -11,6 +11,8 @@
 #include <sys/synchronization.h>
 #include <sys/timer.h>
 
+#include "syscall.h"   // scCall1, for the raw thread-exit in exitLoaderThread
+
 // background plugin threads. 0x400 is the conventional vsh-plugin priority
 // (matches webMAN/cobra). lower number = higher priority on lv2.
 //   HIGH    (0x3E8): audio mixer / anything that must not underrun.
@@ -80,6 +82,17 @@ static inline int unlock(sys_lwmutex_t *m)      { return sys_lwmutex_unlock(m); 
 static inline void exitThread(void)     { sys_ppu_thread_exit(0); }
 static inline void sleepMs(unsigned ms) { sys_timer_usleep(ms * 1000); }
 static inline void yieldThread(void)    { sys_ppu_thread_yield(); }
+
+// end a module's _start/_stop. the kernel runs the entry on a loader thread and
+// joins on it; HEN 4.93 hard-locks the console if that thread returns normally
+// (the return routes through the user-mode thread-exit). exit with the raw lv2
+// syscall instead. call at the end of _start/_stop in place of the return; the
+// module still goes resident because the kernel finalizes it after the join.
+// matches every working webMAN/cobra plugin (see webftp main.c, VshFpsCounter).
+static inline void exitLoaderThread(void)
+{
+   scCall1(41, 0);   // lv2 syscall 41 = sys_ppu_thread_exit
+}
 
 // join a previously-spawned joinable thread, discarding its exit status.
 // callers that need the status can still use sys_ppu_thread_join directly,

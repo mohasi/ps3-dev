@@ -13,6 +13,7 @@
 #include "dbg.h"
 #include "syscall.h"
 #include "server.h"
+#include "thread.h"   // exitLoaderThread
 
 SYS_MODULE_INFO(SimpleDebugBridge, 0, 1, 0);
 SYS_MODULE_START(_start);
@@ -28,7 +29,8 @@ int _start(uint64_t arg)
    logBuildVersion();
    startServer();
    setLogCallback(forwardLogToHost);
-   return SYS_PRX_RESIDENT;
+   exitLoaderThread();
+   return SYS_PRX_RESIDENT;   // unreachable
 }
 
 int _stop(void)
@@ -36,5 +38,6 @@ int _stop(void)
    logInfo("[sdb] _stop\n");
    stopServer();      // joins the connection threads first
    prxFinalizeSelf();
-   return SYS_PRX_STOP_OK;
+   exitLoaderThread();
+   return SYS_PRX_STOP_OK;   // unreachable
 }

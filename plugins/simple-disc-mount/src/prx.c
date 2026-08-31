@@ -175,5 +175,6 @@ int _start(uint64_t arg)
    sys_ppu_thread_t tid;
    int rc = spawnThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "sdm-main");
    if (rc != 0) logError("[sdm] plugin thread spawn rc=0x%x\n", rc);
-   return SYS_PRX_RESIDENT;
+   exitLoaderThread();
+   return SYS_PRX_RESIDENT;   // unreachable
 }

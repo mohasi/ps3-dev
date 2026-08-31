@@ -1,11 +1,11 @@
 // Simple CD Info - VSH plugin.
 //
 // Restores audio-CD metadata to the XMB. The stock lookup (AMG, dmr.allmusic.com)
-// is dead, so we impersonate it. The firmware resolves that host through vsh's own
-// gethostbyname; we hook it and, only for the AMG host, rewrite the name to loopback
-// (127.0.0.1). The port it connects to is a constant inside the firmware's own lookup
-// module, which patchAmgLookupPort rewrites, so the POST lands on our listener and
-// port 80 stays free for webMAN.
+// is dead, so we impersonate it. Two data patches to the firmware's own lookup
+// module (x3_amgsdk) point it at us: patchAmgHost rewrites the dead hostname to
+// loopback (127.0.0.1) and patchAmgLookupPort moves the connect port off 80, so the
+// POST lands on our listener and port 80 stays free for webMAN. Both are data writes,
+// not code patches, so they are safe on HEN as well as CFW.
 // We then read the disc, look the album up on gnudb, build the AMG binary response
 // on the fly (buildLiveResponse) and reply with it; the firmware's own parser turns
 // it into album/artist/track text on screen. No XMB proxy setting is needed.
@@ -18,11 +18,8 @@
 #include "dbg.h"
 #include "vsh.h"
 #include "thread.h"
-#include "syscall.h"      // scCall1 (getpid)
-#include "string-utilities.h"  // getStrLen, startsWith, findBytes, memSet
+#include "string-utilities.h"  // findBytes, memSet
 #include "wire.h"         // sendBytes - full-send loop over a socket
-#include "export-hook.h"  // installExportHook - detour a vsh export at runtime
-#include "proc-mem.h"     // writeProcMem - kernel poke (writes read-only pages)
 #include "bridge-client.h"
 #include "port-patch.h"   // patchAmgLookupPort - move the firmware's lookup off port 80
 #include "toc.h"          // readCdToc - read the audio CD's track layout from the drive
@@ -38,12 +35,6 @@ SYS_MODULE_START(_start);
 #define PORT_PATCH_TRIES    30     // x3_amgsdk is loaded at boot, so this only covers a slow one
 #define PORT_PATCH_RETRY_MS 2000
 #define RESPONSE_MAX        16384  // ample: the 40 KB scratch arena caps the album at ~35 tracks (~6.5 KB body) first
-#define HEN_HOOK_SETTLE_MS  5000   // extra grace period before patching vsh code on HEN, see serveThread
-
-#define SYS_PROCESS_GETPID   1
-#define NID_GETHOSTBYNAME    0x71f4c717u   // vsh sys_net export we detour
-#define AMG_HOST_MARK        "allmusic"    // substring identifying the dead AMG lookup host
-#define REDIRECT_IP          "127.0.0.1"   // loopback: the console talks to its own listener, network-independent
 
 static char           responseBuffer[RESPONSE_MAX];
 
@@ -66,30 +57,6 @@ static int openListener(uint16_t port)
    return fd;
 }
 
-// resident gethostbyname detour (installed once at startup). The XMB resolves the
-// dead AMG host dmr.allmusic.com through vsh's own gethostbyname; when we see that
-// name we poke it to loopback so the firmware's numeric fast-path returns 127.0.0.1
-// and the disc-info POST lands on our listener. Every other lookup passes through
-// untouched. Runs on whatever thread makes the DNS call, so it stays tiny: a bounded
-// name check plus, at most, one kernel poke.
-static void gethostbynameHook(const char *name)
-{
-   if (!name) return;
-   int isAmgHost = 0;
-   for (int i = 0; i < 48 && name[i]; i++)
-      if (name[i] == 'a' && startsWith(name + i, AMG_HOST_MARK)) { isAmgHost = 1; break; }
-   if (!isAmgHost) return;   // not the AMG host - leave the lookup alone
-
-   // name is read-only rodata inside x3_amgsdk; the kernel poke (same one the code
-   // hooks use) bypasses the page protection. Only poke when the original host is at
-   // least as long as our replacement, so we never write past its buffer.
-   static const char redirectIp[] = REDIRECT_IP;   // "127.0.0.1\0"
-   if (getStrLen(name) + 1 < (int)sizeof redirectIp) return;
-   uint32_t pid = (uint32_t)scCall1(SYS_PROCESS_GETPID, 0);
-   int rc = writeProcMem(pid, (uint32_t)(uintptr_t)name, redirectIp, sizeof redirectIp);
-   logInfo(TAG "dns: AMG host -> %s rc=0x%x\n", redirectIp, (unsigned)rc);
-}
-
 static void serveThread(uint64_t arg)
 {
    (void)arg;
@@ -101,28 +68,15 @@ static void serveThread(uint64_t arg)
       if (++ticks > 60) { logError(TAG "xmb ready timeout\n"); exitThread(); return; }
    }
 
-   // on HEN, isXmbReady() is already true the moment we get here -- the XMB was up
-   // and running long before the user enabled HEN, unlike CFW's quiet cold boot. HEN
-   // enable itself is still doing housekeeping (category refresh, unloading its own
-   // enabler plugin) right about now, so patching live VSH code this early has been
-   // reported to freeze the console on some HEN setups. Give that housekeeping room
-   // to finish before we touch VSH's code pages.
-   if (isHenActive()) {
-      logInfo(TAG "hen detected, waiting %dms before patching vsh code\n", HEN_HOOK_SETTLE_MS);
-      sleepMs(HEN_HOOK_SETTLE_MS);
-   }
-
-   // redirect the dead AMG host to us, so no XMB proxy setting is needed. Fail-safe:
-   // if the export can't be resolved this logs and does nothing (networking untouched).
-   int hookRc = installExportHook("sys_net", NID_GETHOSTBYNAME, (void (*)(void))gethostbynameHook);
-   logInfo(TAG "dns hook install rc=%d\n", hookRc);
-
-   // send the lookup to our port instead of :80. x3_amgsdk is part of the boot set, but
-   // retry in case a slow boot has not got to it yet.
+   // point the dead AMG host at our listener with two data patches to x3_amgsdk: its
+   // lookup port (80 -> our port) and its hostname string (-> 127.0.0.1). both are
+   // safe on live vsh under HEN, unlike a gethostbyname code hook. x3_amgsdk is in the
+   // boot set, but retry in case a slow boot has not loaded it yet.
    int portRc = AMG_MODULE_NOT_LOADED;
    for (int retry = 0; portRc == AMG_MODULE_NOT_LOADED && retry < PORT_PATCH_TRIES; retry++) {
       portRc = patchAmgLookupPort(LISTEN_PORT);
-      if (portRc == AMG_MODULE_NOT_LOADED) sleepMs(PORT_PATCH_RETRY_MS);
+      if (portRc == AMG_MODULE_NOT_LOADED) { sleepMs(PORT_PATCH_RETRY_MS); continue; }
+      logInfo(TAG "amg host patch rc=%d\n", patchAmgHost());
    }
    if (portRc < 0) logError(TAG "lookup port still 80, webman conflict remains (rc=%d)\n", portRc);
 
@@ -132,7 +86,7 @@ static void serveThread(uint64_t arg)
       if (listenSocket < 0) { logWarn(TAG "listen failed, retrying\n"); sleepMs(2000); }
    }
    if (listenSocket < 0) { logError(TAG "port %d unavailable, giving up\n", LISTEN_PORT); exitThread(); return; }
-   logInfo(TAG "listening on :%d - AMG host redirected to " REDIRECT_IP ", no proxy needed\n", LISTEN_PORT);
+   logInfo(TAG "listening on :%d - AMG host redirected to 127.0.0.1, no proxy needed\n", LISTEN_PORT);
 
    static const char emptyOk[] = "HTTP/1.0 200 OK\r\nContent-Length: 0\r\n\r\n";
 
@@ -185,7 +139,8 @@ int _start(uint64_t arg)
    sys_ppu_thread_t tid;
    int rc = spawnThread(&tid, serveThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "cdi-serve");
    if (rc != 0) logError(TAG "serve thread spawn rc=0x%x\n", rc);
-   return SYS_PRX_RESIDENT;
+   exitLoaderThread();
+   return SYS_PRX_RESIDENT;   // unreachable
 }
 
 // No _stop, matching the other resident vsh plugins (disc-mount, ftp): the plugin

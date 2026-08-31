@@ -86,3 +86,47 @@ int patchAmgLookupPort(uint16_t port)
    if (sitesFound == 0) { logError(TAG "amg module loaded but no port constant found\n"); return AMG_PORT_NOT_FOUND; }
    return patched;
 }
+
+#define AMG_HOST_MARK   "allmusic"     // substring identifying the dead AMG host
+#define REDIRECT_IP     "127.0.0.1"    // loopback: the console talks to its own listener
+
+// Overwrite the dead AMG hostname string in x3_amgsdk with a loopback address so
+// the firmware's own lookup resolves to our listener. This replaces the old
+// gethostbyname code detour, which corrupts vsh on HEN: patching vsh CODE is
+// rejected there, a data write to the string is not. Only a bare hostname (no
+// '/') is touched, so a URL that merely contains the marker is never truncated.
+int patchAmgHost(void)
+{
+   uint32_t segmentSize = 0;
+   uint32_t segmentBase = findAmgCodeSegment(&segmentSize);
+   if (!segmentBase || segmentSize < sizeof REDIRECT_IP) return AMG_MODULE_NOT_LOADED;
+
+   const char *segment = (const char *)(uintptr_t)segmentBase;
+   uint32_t    pid     = (uint32_t)scCall1(SYS_PROCESS_GETPID, 0);
+   int         found   = 0;
+   int         patched = 0;
+
+   for (uint32_t i = 0; i + sizeof AMG_HOST_MARK - 1 < segmentSize; i++) {
+      if (!startsWith(segment + i, AMG_HOST_MARK)) continue;
+      found++;
+
+      // walk back to the string start (the byte after the previous terminator)
+      uint32_t start = i;
+      while (start > 0 && segment[start - 1] != '\0') start--;
+      const char *host    = segment + start;
+      int         hostLen = getStrLen(host);
+
+      if (hostLen < (int)sizeof REDIRECT_IP - 1) continue;        // too short to hold 127.0.0.1
+      if (findBytes(host, hostLen, "/", 1) >= 0) continue;        // a URL, not a bare host
+      if (startsWith(host, REDIRECT_IP)) continue;                // already redirected
+
+      uint32_t address = segmentBase + start;
+      int rc = writeProcMem(pid, address, REDIRECT_IP, sizeof REDIRECT_IP);
+      if (rc != 0) { logError(TAG "host patch at 0x%x failed rc=0x%x\n", (unsigned)address, (unsigned)rc); continue; }
+      logInfo(TAG "amg host -> %s at 0x%x\n", REDIRECT_IP, (unsigned)address);
+      patched++;
+   }
+
+   if (found == 0) { logError(TAG "amg module loaded but no host string found\n"); return AMG_HOST_NOT_FOUND; }
+   return patched;
+}

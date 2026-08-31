@@ -40,6 +40,7 @@ static uint32_t exportHookTrampoline = 0;   // trampoline code address
 // this module unloads (else the export keeps branching into our freed memory).
 static uint32_t hookedEntry     = 0;
 static uint32_t hookedEntryWord = 0;
+static uint32_t hookedLandingPad = 0;   // 0 when the entry reached the stub directly
 
 // inbound stub. reached by a raw far-jump from the patched export entry, so
 // r2 = callee toc and lr = original caller. save the inbound state, switch to
@@ -187,6 +188,83 @@ static int relocateInstr(uint32_t *out, uint32_t srcAddr, uint32_t instr)
    return emitBranch(out, srcAddr + (uint32_t)offset, bo, bi, instr & 1, 1, 0);
 }
 
+// a landing pad holds a far jump to our stub, so the entry only ever needs a
+// short branch to reach it. 4 instructions: build the target in r11 and jump.
+// r11 is not preserved because exportHookStub overwrites it a few instructions
+// later regardless, and a shorter pad fits in far more places.
+#define LANDING_PAD_WORDS  4
+
+static int forceLandingPad = 0;
+
+// force the two-hop path even when a direct branch would reach. the only way to
+// exercise it on a console where the plugin happens to load near its target.
+void setHookForceLandingPad(int on) { forceLandingPad = on; }
+
+// find unused space for the landing pad near the entry. the hooked code lives in
+// the main executable, which has no module id to ask about its bounds, so the
+// search is a window around the entry instead - close enough that the pad is
+// always within the entry's +-32MB branch reach either way.
+//
+// every read goes through readProcMem rather than a direct dereference: the window
+// can run off the end of mapped memory, and the syscall returns an error there
+// where a dereference would fault and take the console down.
+#define PAD_SEARCH_SPAN   0x2000000u   // the whole branch reach, so a dense image still yields one
+#define PAD_CHUNK_WORDS   256
+
+// does this instruction end a function? a run of zeros immediately after one is
+// alignment padding inside executable code. a run anywhere else is far more likely
+// to be an empty slot in a table, and writing a jump into vsh's data is exactly the
+// kind of damage this hook exists to avoid.
+// only the two register-indirect returns count. an unconditional b would also end a
+// function, but its encoding is common enough in data to be worthless as evidence -
+// the first pad we found this way sat behind 0x48000000, a branch to itself, which
+// no compiler emits.
+static int isFunctionEnd(uint32_t instr)
+{
+   return instr == 0x4E800020u || instr == 0x4E800420u;   // blr, bctr
+}
+
+// precedingOut receives the instruction the run sits behind, for the install log.
+static uint32_t findPadInRange(uint32_t pid, uint32_t from, uint32_t to, uint32_t *precedingOut)
+{
+   uint32_t chunk[PAD_CHUNK_WORDS];
+   uint32_t run = 0, lastNonZero = 0;
+
+   for (uint32_t addr = from; addr < to; addr += sizeof chunk) {
+      uint32_t bytes = (to - addr < sizeof chunk) ? to - addr : (uint32_t)sizeof chunk;
+      // a skipped chunk also forgets the preceding word: we never saw what sits in
+      // front of the next run, so it cannot be vouched for.
+      if (readProcMem(pid, addr, chunk, bytes) != 0) { run = 0; lastNonZero = 0; continue; }
+
+      for (uint32_t i = 0; i < bytes / 4; i++) {
+         if (chunk[i] != 0) { run = 0; lastNonZero = chunk[i]; continue; }
+         if (++run != LANDING_PAD_WORDS || !isFunctionEnd(lastNonZero)) continue;
+         *precedingOut = lastNonZero;
+         return addr + (i + 1) * 4 - LANDING_PAD_WORDS * 4;
+      }
+   }
+   return 0;
+}
+
+static uint32_t findLandingPad(uint32_t entry)
+{
+   uint32_t pid = (uint32_t)scCall1(SYS_PROCESS_GETPID, 0);
+
+   // above the entry first: padding after a function is further from live code than
+   // padding before it, so it is the safer half of the window to borrow from.
+   uint32_t preceding = 0;
+   uint32_t pad = findPadInRange(pid, entry + 16, entry + PAD_SEARCH_SPAN, &preceding);
+   if (!pad) pad = findPadInRange(pid, entry > PAD_SEARCH_SPAN ? entry - PAD_SEARCH_SPAN : 0x10000, entry, &preceding);
+   if (!pad) {
+      logError(TAG "pad: no %u-word gap within 0x%x of entry 0x%x\n", LANDING_PAD_WORDS, PAD_SEARCH_SPAN, entry);
+      return 0;
+   }
+
+   logInfo(TAG "pad: 0x%x, %d bytes from entry 0x%x, preceded by %08x\n",
+           pad, (int)(pad - entry), entry, preceding);
+   return pad;
+}
+
 // detour an arbitrary code address (same mechanism as the export hook, but the
 // entry is given directly - used to patch on-demand firmware modules resolved
 // at runtime). one hook at a time (single trampoline slot).
@@ -196,8 +274,31 @@ int installCodeHook(uint32_t entry, void (*hookFn)(void))
    logInfo(TAG "hook prologue @0x%x: %08x %08x %08x %08x\n",
            entry, entryCode[0], entryCode[1], entryCode[2], entryCode[3]);
 
-   // trampoline = the 4 displaced instructions (branches relocated) followed
-   // by an unconditional jump back to entry+16, preserving r11.
+   // section: decide what the entry will branch to, before anything is written.
+   // the entry always gets ONE branch: a single aligned 4-byte store is atomic, so
+   // a thread calling this function mid-install never executes a half-written
+   // multi-instruction patch. that race hard-locked the console when we hooked the
+   // boot-busy connect(). a branch only reaches +-32MB, so when our stub is further
+   // away than that the branch goes to a landing pad inside the target's own
+   // module, and the pad carries the far jump.
+   uint32_t stub = (uint32_t)(uintptr_t)exportHookStub;
+   uint32_t landingPad = 0;
+   int32_t  rel = (int32_t)(stub - entry);
+   if (forceLandingPad || rel < -0x2000000 || rel >= 0x2000000) {
+      landingPad = findLandingPad(entry);
+      if (!landingPad) {
+         logError(TAG "hook: stub 0x%x out of reach of entry 0x%x and no landing pad\n", stub, entry);
+         return -4;
+      }
+      rel = (int32_t)(landingPad - entry);
+      if (rel < -0x2000000 || rel >= 0x2000000) {
+         logError(TAG "hook: landing pad 0x%x out of reach of entry 0x%x\n", landingPad, entry);
+         return -4;
+      }
+   }
+
+   // section: trampoline = the 4 displaced instructions (branches relocated)
+   // followed by an unconditional jump back to entry+16, preserving r11.
    uint32_t tramp[64];
    int n = 0;
    for (int i = 0; i < 4; i++) n += relocateInstr(&tramp[n], entry + (uint32_t)i * 4, entryCode[i]);
@@ -213,18 +314,24 @@ int installCodeHook(uint32_t entry, void (*hookFn)(void))
    exportHookUserFn     = ((uint32_t *)(uintptr_t)hookFn)[0];   // opd -> code entry
    __sync_synchronize();
 
-   // patch the entry with a SINGLE relative branch to our stub. one aligned
-   // 4-byte store is atomic, so a thread calling this function mid-install
-   // never executes a half-written multi-instruction patch. that race hard-
-   // locked the console when we hooked the boot-busy connect(): a 4-instruction
-   // far jump left a window where a concurrent call ran 1-2 written words then
-   // garbage. only usable when the stub is within a branch's +-32MB reach.
-   int32_t rel = (int32_t)((uint32_t)(uintptr_t)exportHookStub - entry);
-   if (rel < -0x2000000 || rel >= 0x2000000) {
-      logError(TAG "hook: stub 0x%x out of branch range of entry 0x%x\n",
-               (uint32_t)(uintptr_t)exportHookStub, entry);
-      return -4;
+   // section: landing pad, read back before it is used. an unverified pad would
+   // send the entry into whatever those words held instead of into our stub.
+   if (landingPad) {
+      uint32_t jump[LANDING_PAD_WORDS];
+      int words = emitBranch(jump, stub, 20, 0, 0, 0, 11);
+      if (writeCode((void *)(uintptr_t)landingPad, jump, (uint32_t)words * 4) != 0) {
+         logError(TAG "hook: landing pad write failed\n");
+         return -4;
+      }
+      for (int i = 0; i < words; i++) {
+         if (*(const volatile uint32_t *)(uintptr_t)(landingPad + (uint32_t)i * 4) == jump[i]) continue;
+         logError(TAG "hook: landing pad did not verify at word %d\n", i);
+         return -4;
+      }
+      hookedLandingPad = landingPad;   // saved so uninstall can clear it again
    }
+
+   // section: patch the entry with the single branch decided above
    uint32_t branch = PPC_OP_B | ((uint32_t)rel & 0x03FFFFFCu);
    hookedEntry     = entry;          // saved so uninstallCodeHook can restore it
    hookedEntryWord = entryCode[0];
@@ -234,8 +341,8 @@ int installCodeHook(uint32_t entry, void (*hookFn)(void))
       return -4;
    }
 
-   logInfo(TAG "hook installed entry=0x%x stub=0x%x tramp=0x%x\n",
-           entry, (uint32_t)(uintptr_t)exportHookStub, exportHookTrampoline);
+   logInfo(TAG "hook installed entry=0x%x stub=0x%x tramp=0x%x pad=0x%x\n",
+           entry, stub, exportHookTrampoline, landingPad);
    return 0;
 }
 
@@ -247,6 +354,13 @@ void uninstallCodeHook(void)
    int rc = writeCode((uint32_t *)(uintptr_t)hookedEntry, &hookedEntryWord, sizeof hookedEntryWord);
    logInfo(TAG "hook removed entry=0x%x rc=%d\n", hookedEntry, rc);
    hookedEntry = 0;
+
+   // only once nothing branches there any more: put the padding back as we found it
+   if (hookedLandingPad) {
+      uint32_t zeros[LANDING_PAD_WORDS] = { 0 };
+      writeCode((void *)(uintptr_t)hookedLandingPad, zeros, sizeof zeros);
+      hookedLandingPad = 0;
+   }
 }
 
 int installExportHook(const char *libName, uint32_t fnid, void (*hookFn)(void))

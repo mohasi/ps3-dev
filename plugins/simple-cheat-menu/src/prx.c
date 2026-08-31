@@ -13,6 +13,7 @@
 #include "dbg.h"
 #include "bridge-client.h"
 #include "trigger.h"
+#include "thread.h"   // exitLoaderThread
 
 SYS_MODULE_INFO(SimpleCheatMenu, 0, 1, 1);
 SYS_MODULE_START(_start);
@@ -26,5 +27,6 @@ int _start(uint64_t arg)
    logInfo(TAG "_start\n");
    logBuildVersion();
    startCheatMenuThreads();   // trigger + worker threads; _start must return promptly
-   return SYS_PRX_RESIDENT;
+   exitLoaderThread();
+   return SYS_PRX_RESIDENT;   // unreachable
 }

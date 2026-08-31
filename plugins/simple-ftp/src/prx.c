@@ -53,5 +53,6 @@ int _start(uint64_t arg)
 
    sys_ppu_thread_t tid;
    spawnThread(&tid, pluginThread, 0, THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_16KB, "ftp-main");
-   return SYS_PRX_RESIDENT;
+   exitLoaderThread();
+   return SYS_PRX_RESIDENT;   // unreachable
 }

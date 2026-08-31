@@ -31,6 +31,13 @@ int installCodeHook(uint32_t entry, void (*hookFn)(void));
 // branching into memory the loader is about to reclaim. safe to call unhooked.
 void uninstallCodeHook(void);
 
+// a branch reaches only +-32MB. when the plugin loads further than that from its
+// target the entry branches to a landing pad in the target's own module instead,
+// and the pad carries the far jump. call this before installing to take that path
+// even when a direct branch would reach, which is the only way to exercise it on
+// a console where the plugin happens to load nearby.
+void setHookForceLandingPad(int on);
+
 #ifdef __cplusplus
 }
 #endif

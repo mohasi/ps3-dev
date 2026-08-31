@@ -1,13 +1,13 @@
 // youtube extractor - InnerTube player request + parse.
 //
-// POSTs the player endpoint as the ANDROID_VR (Oculus) client, which returns
+// POSTs the player endpoint as the VISIONOS (Apple Vision Pro) client, which returns
 // direct (unciphered) urls and - unlike plain ANDROID/WEB - is not behind the
 // GVS PoToken wall, so its adaptive (fragmented) urls above 360p don't 403.
 // Those streams are fragmented mp4 (moof); the demuxer handles them.
 //
-// Fragile by nature: Google keeps closing these token-exempt clients (VR must be
-// pinned to 1.65.10 - newer builds hand back SABR-only streams). The durable fix
-// is a multi-client fallback chain (VR -> ANDROID itag 18 -> ...) layered here.
+// Fragile by nature: Google keeps closing these token-exempt clients. ANDROID_VR
+// (Oculus) was capped to ~60 seconds of media on 2026-08-26; VISIONOS replaced it
+// and serves full-length urls. Expect this to need swapping again in future.
 
 #include "extractor.h"
 #include "http.h"               // fetchHttp
@@ -25,41 +25,39 @@
 #define RESP_CAP   (2 * 1024 * 1024)   // player JSON can pass 1 MB; a truncated response loses formats (and their urls)
 
 // two clients, each for what it does best:
-//  - ANDROID_VR (playback), see below. WEB/plain ANDROID are PoToken-gated for
+//  - VISIONOS (playback), see below. WEB/plain ANDROID are PoToken-gated for
 //    adaptive (their googlevideo urls 403 above 360p - only progressive itag 18
 //    is token-exempt); TVHTML5 hit the bot wall; iOS gave only fragmented adaptive.
-//  - ANDROID_VR (Oculus) is currently exempt from the GVS PO-token wall and
-//    returns direct (un-ciphered) adaptive urls, so it plays above 360p. Pin the
-//    version to 1.65.10 - newer VR builds hand back SABR-only streams we can't
-//    read. Erratic on some videos, so ANDROID itag 18 stays the 360p fallback.
+//  - VISIONOS (Apple Vision Pro) is currently exempt from the GVS PO-token wall and
+//    returns direct (un-ciphered) adaptive urls that serve full-length, so it plays
+//    above 360p past the ~60s cap that now hits ANDROID_VR (the client it replaced).
 //  - WEB (search): search isn't PoToken-gated, and WEB reliably returns the
 //    videoRenderer result structure we parse.
-#define VR_VERSION  "1.65.10"
-#define WEB_VERSION "2.20250701.00.00"
+#define PLAYER_VERSION "1.02"
+#define WEB_VERSION    "2.20250701.00.00"
 
 // visitor session endpoint: mints an anonymous visitorData that clears the
 // logged-out LOGIN_REQUIRED ("confirm you're not a bot") wall (see extract()).
 // the key below is youtube's own public web key, shipped in every youtube.com page. not a credential.
 #define VISITOR_URL "https://www.youtube.com/youtubei/v1/visitor_id?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8&prettyPrint=false"
 
-// the ANDROID_VR client object, without the wrapping braces so visitorData can
+// the VISIONOS client object, without the wrapping braces so visitorData can
 // be appended before the player request closes it.
-#define VR_CLIENT \
-   "\"clientName\":\"ANDROID_VR\",\"clientVersion\":\"" VR_VERSION "\"," \
-   "\"deviceMake\":\"Oculus\",\"deviceModel\":\"Quest 3\",\"androidSdkVersion\":32," \
-   "\"osName\":\"Android\",\"osVersion\":\"12L\",\"hl\":\"en\",\"gl\":\"US\"," \
-   "\"timeZone\":\"UTC\",\"utcOffsetMinutes\":0"
+#define PLAYER_CLIENT \
+   "\"clientName\":\"VISIONOS\",\"clientVersion\":\"" PLAYER_VERSION "\"," \
+   "\"deviceMake\":\"Apple\",\"deviceModel\":\"RealityDevice17,1\"," \
+   "\"osName\":\"visionOS\",\"osVersion\":\"26.5.23O471\",\"hl\":\"en\",\"gl\":\"US\""
 #define WEB_CONTEXT \
    "{\"context\":{\"client\":{\"clientName\":\"WEB\",\"clientVersion\":\"" WEB_VERSION "\",\"hl\":\"en\",\"gl\":\"US\"}}"
 
-static const char *VR_UA =
-   "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
+static const char *PLAYER_UA =
+   "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15";
 static const char *WEB_UA =
    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
-// player body: VR client + the minted visitorData, then the video id. two %s: visitorData, videoId.
+// player body: the client + the minted visitorData, then the video id. two %s: visitorData, videoId.
 static const char *PLAYER_BODY_FMT =
-   "{\"context\":{\"client\":{" VR_CLIENT ",\"visitorData\":\"%s\"}},\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true}";
+   "{\"context\":{\"client\":{" PLAYER_CLIENT ",\"visitorData\":\"%s\"}},\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true}";
 static const char *VISITOR_BODY   = WEB_CONTEXT "}";   // WEB_CONTEXT leaves the root object open; close it
 // search params combine the "Videos" filter (drops the Shorts shelf, channels and playlists) with a sort
 // order. index by SortOrder. canonical values from youtube's own filter menu. two %s: escaped query, params.
@@ -343,7 +341,7 @@ static void parseLiveManifest(const char *resp, const char *end, StreamInfo *out
    int cap = 4 * 1024 * 1024;   // live DVR manifests enumerate every segment and can pass 1 MB
    char *mpd = (char *)malloc(cap);
    if (!mpd) return;
-   HttpHeader headers[] = { { "User-Agent", VR_UA }, { "Accept-Encoding", "identity" } };
+   HttpHeader headers[] = { { "User-Agent", PLAYER_UA }, { "Accept-Encoding", "identity" } };
    int length = 0, status = 0;
    if (fetchHttp("GET", manifestUrl, headers, 2, NULL, 0, mpd, cap, &length, &status) != 0 || status != 200) {
       logError("[yt] live manifest fetch status=%d len=%d\n", status, length);
@@ -400,9 +398,9 @@ static int extract(const char *input, StreamInfo *out)
 
    HttpHeader headers[] = {
       { "Content-Type", "application/json" },
-      { "User-Agent", VR_UA },
-      { "X-YouTube-Client-Name", "28" },
-      { "X-YouTube-Client-Version", VR_VERSION },
+      { "User-Agent", PLAYER_UA },
+      { "X-YouTube-Client-Name", "101" },
+      { "X-YouTube-Client-Version", PLAYER_VERSION },
       { "X-Goog-Visitor-Id", visitorData },
       { "Origin", "https://www.youtube.com" },
       { "Accept-Encoding", "identity" },

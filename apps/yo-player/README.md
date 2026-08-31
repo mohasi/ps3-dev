@@ -168,3 +168,8 @@ keep the old library code.
 - **1080p60** videos aren't played at 60 fps — the console's hardware decoder can't keep up, so those fall back
   to 720p.
 - The Subscriptions feed is a merged list, so it can't page past the first batch it gathers from each channel.
+
+## Credits
+
+- **TheErsysEnding** found that the VISIONOS (Apple Vision Pro) client identity still serves full-length
+  streams after Google capped the previous one, which is what keeps playback working past a minute.

@@ -63,9 +63,16 @@ a number between 50 and 88. The file is created with comments on first launch an
 over FTP. The override is what a console with a swapped graphics chip needs: the console id is
 written once at the factory and does not change when the chip does.
 
-Load profiles are real for CPU and GPU: the CPU load is busy worker threads running below
-the UI's priority, the GPU load is heavy overlapping translucent geometry with the frame
-cap removed. If either temperature reaches the safety cutoff — **or the console refuses to report a
+Load profiles are real for CPU and GPU, and each step adds a different part of the chip
+rather than more of the same work. Heat comes from lighting up units that were idle. The
+CPU steps run vector arithmetic, then scalar floating-point arithmetic, then traffic to
+main memory, on worker threads below the UI's priority. Two of those are hardware threads
+and the third mostly waits on memory, which is why there is no fourth: the CPU is only two
+hardware threads, so another busy thread would share time with the others instead of adding
+anything. The GPU steps are overlapping translucent geometry (blending, which is fill rate)
+plus layers of a large noise texture drawn smaller than it is, which is what puts the
+texture units and video memory to work; flat geometry alone leaves both idle. The frame cap
+comes off while there is GPU load. If either temperature reaches the safety cutoff — **or the console refuses to report a
 temperature at all** — the load drops itself to off, the clocks go back to what they were
 at startup, and the screen and log both say why. The tool must never be the thing that
 cooks the console, and it must never keep burning while flying blind. The watch also runs
@@ -77,6 +84,14 @@ game they produce most of the heat, so they follow the CPU dial (2 / 4 / 6 threa
 program is `src/spu/spu-burn.c`, built by the separate SPU compiler and wrapped into the
 app's own binary by the `BuildSpuBurn` step in the project file — nothing extra to ship or
 sign. If some SPUs are already taken the app quietly settles for fewer and says so.
+
+Each SPU runs two things at once, because either alone leaves half the unit idle: six
+multiply-add chains on one pipeline and six shuffle chains on the other, interleaved so both
+have work every cycle. A ring of memory transfers runs alongside them, moving a window of
+main memory in and out, since the memory interface is on the same chip and draws its own
+power. The shape of these loops is taken from
+[cellmark](https://github.com/sagemono/cellmark), which measures them against the chip's
+documented limits.
 
 On startup the newest previous run is read back in and drawn behind the live one as faded,
 dashed ghost lines in the same colours, aligned on elapsed time — so the gap between the solid and
@@ -100,3 +115,14 @@ afterwards run at the new clocks until the console reboots. That is deliberate: 
 exists to find an overclock and settle on it. The clocks the app started with are shown
 next to the current ones so the change is never invisible, and the safety cutoff puts them
 back if the console gets too hot.
+
+## Credits
+
+[cellmark](https://github.com/sagemono/cellmark) by sagemono, for the shape of the burn
+loops and the measurements behind them: how many independent chains a pipeline needs before
+it stops waiting on itself, that the SPU's two pipelines have to be fed separately, and that
+the memory interface is a load in its own right. Its `cell_tuning.md` is a characterisation
+of the Cell measured on real hardware, with every figure sourced.
+
+webMAN-MOD, for the graphics clock register in `include/feat/clock.h`, credited there to
+Chattrapat Sangmanee.

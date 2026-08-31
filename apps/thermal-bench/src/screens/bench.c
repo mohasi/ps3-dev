@@ -57,6 +57,7 @@ static const int WINDOW_CHOICES[] = { 120, 300, 600, 1800 };
 #define HEADER_LIFT_PIXELS   30
 #define SUBTITLE_GAP_PIXELS   5
 #define GRAPH_AXIS_GUTTER    50   // room for the tick captions either side of the plot
+#define HINT_ROW_GAP_PIXELS  12   // between the two hint rows
 
 // every position the screen is laid out from, worked out once from the screen size
 typedef struct BenchLayout {
@@ -65,6 +66,7 @@ typedef struct BenchLayout {
    int headerTop;     // the stats and the notice line
    int titleTop;      // the title and the load line, a little higher
    int subtitleTop;   // the model line and the frame-time line
+   int hintsTop;      // the first of the two hint rows, which the graph sits above
 } BenchLayout;
 
 static Font font;
@@ -78,7 +80,8 @@ static Label noticeLabel;
 static Label keyLabels[KEY_ENTRY_COUNT];
 static int keySwatchX[KEY_ENTRY_COUNT];
 static Graph graph;
-static ButtonHints hints;
+static ButtonHints settingsHints;   // clocks, units and the graph window
+static ButtonHints loadHints;       // the three load toggles, on their own row
 static int timeWindowHintIndex;
 
 static uint64_t lastReadoutUs;
@@ -218,7 +221,7 @@ static void setTimeWindow(int choice)
 
    char caption[32];
    snprintf(caption, sizeof caption, "Time (%dm)", graph.windowSeconds / 60);
-   setButtonHintCaption(&hints, timeWindowHintIndex, caption);
+   setButtonHintCaption(&settingsHints, timeWindowHintIndex, caption);
    refreshGraph();
 }
 
@@ -277,22 +280,29 @@ static void initBenchLabels(int valueColumnX)
    initLabelRaw(&noticeLabel, &font, left, statTop, AUTO, AUTO, size, COLOR_AMBER_300, TEXT_NOWRAP, "");
 }
 
-// the clock hints lead the row; each is a caption-less Select clustered with its
-// d-pad glyph, which is what a caption-less hint means to the widget.
+// two rows, each centred on its own: what the run is set up like on top, the
+// three load toggles underneath. the clock hints lead the first row; each is a
+// caption-less Select clustered with its d-pad glyph, which is what a
+// caption-less hint means to the widget.
 static void initBenchHints(int screenHeight)
 {
-   int hintsY = screenHeight - layout.verticalMargin;
-   initButtonHints(&hints, &font, hintsY, layout.textSize + 4, layout.textSize, COLOR_SLATE_300);
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT), "");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_DPAD_UP), "Overclock RSX");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_SELECT), "");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_DPAD_RIGHT), "Overclock Mem");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_START), "Toggle Units");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_L1), "");
-   timeWindowHintIndex = addButtonHint(&hints, getConsoleGlyph(GLYPH_R1), "Time");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_CROSS), "Parallel Load");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_SQUARE), "CELL Load");
-   addButtonHint(&hints, getConsoleGlyph(GLYPH_TRIANGLE), "RSX Load");
+   int glyphHeight = layout.textSize + 4;
+   int bottomRowY = screenHeight - layout.verticalMargin;
+   layout.hintsTop = bottomRowY - glyphHeight - HINT_ROW_GAP_PIXELS;
+
+   initButtonHints(&settingsHints, &font, layout.hintsTop, glyphHeight, layout.textSize, COLOR_SLATE_300);
+   addButtonHint(&settingsHints, getConsoleGlyph(GLYPH_SELECT), "");
+   addButtonHint(&settingsHints, getConsoleGlyph(GLYPH_DPAD_UP), "Overclock RSX");
+   addButtonHint(&settingsHints, getConsoleGlyph(GLYPH_SELECT), "");
+   addButtonHint(&settingsHints, getConsoleGlyph(GLYPH_DPAD_RIGHT), "Overclock Mem");
+   addButtonHint(&settingsHints, getConsoleGlyph(GLYPH_START), "Toggle Units");
+   addButtonHint(&settingsHints, getConsoleGlyph(GLYPH_L1), "");
+   timeWindowHintIndex = addButtonHint(&settingsHints, getConsoleGlyph(GLYPH_R1), "Time");
+
+   initButtonHints(&loadHints, &font, bottomRowY, glyphHeight, layout.textSize, COLOR_SLATE_300);
+   addButtonHint(&loadHints, getConsoleGlyph(GLYPH_CROSS), "Parallel Load");
+   addButtonHint(&loadHints, getConsoleGlyph(GLYPH_SQUARE), "CELL Load");
+   addButtonHint(&loadHints, getConsoleGlyph(GLYPH_TRIANGLE), "RSX Load");
 }
 
 static void initBench(void)
@@ -304,14 +314,18 @@ static void initBench(void)
    computeBenchLayout(screenWidth, screenHeight);
    initBenchLabels(layout.sideMargin + layout.textSize * 15 / 2);   // room for the longest name ("RSX Clock")
 
-   // graph, with the key centred above it
+   initBenchHints(screenHeight);
+
+   // graph, with the key centred above it: it fills what is left between the
+   // last stat row and the top hint row
    int graphX = layout.sideMargin + GRAPH_AXIS_GUTTER;
-   int graphHeight = (screenHeight - layout.verticalMargin * 2) * 55 / 100;
-   int graphY = screenHeight - layout.verticalMargin - layout.spacing - graphHeight;
+   int keyRowHeight = layout.textSize * 2;
+   int graphY = layout.headerTop + layout.spacing * (2 + STAT_ROW_COUNT) + keyRowHeight;
+   int graphHeight = layout.hintsTop - layout.spacing - graphY;
    int graphWidth = screenWidth - graphX - layout.sideMargin - GRAPH_AXIS_GUTTER;
    initGraph(&graph, &font, layout.textSize, graphX, graphY, graphWidth, graphHeight, WINDOW_CHOICES[windowChoice]);
 
-   int keyY = graphY - layout.textSize * 2 - layout.spacing / 3;
+   int keyY = graphY - keyRowHeight + layout.spacing / 3;   // inside the row reserved for it, just above the plot
    for (int entry = 0; entry < KEY_ENTRY_COUNT; entry++)
    {
       StatRow row = KEY_ROWS[entry];
@@ -320,12 +334,11 @@ static void initBench(void)
    }
    layoutKey(screenWidth, keyY);
 
-   initBenchHints(screenHeight);
-
    // start the run
    lastReadoutUs = sys_time_get_system_time();
    framesSinceReadout = 0;
 
+   initStress();
    initClocks();
    readSensors(&latestSensors);
    startMetricsLog(&latestSensors, getLoadState());
@@ -427,7 +440,8 @@ static void drawBench(void)
 
    drawKey();
    drawGraph(&graph, getRunSamples(), getBaselineSamples());
-   drawButtonHints(&hints, getGfxScreenWidth());
+   drawButtonHints(&settingsHints, getGfxScreenWidth());
+   drawButtonHints(&loadHints, getGfxScreenWidth());
 }
 
 // the run is saved here rather than on a quit button: leaving via the PS button
@@ -437,7 +451,8 @@ static void termBench(void)
    stopStress();
    finishMetricsLog();
 
-   termButtonHints(&hints);
+   termButtonHints(&settingsHints);
+   termButtonHints(&loadHints);
    freeGraph(&graph);
    freeLabel(&title);
    freeLabel(&modelLabel);

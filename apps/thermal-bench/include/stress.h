@@ -5,9 +5,16 @@
 // the same four steps.
 //
 // cpu load is busy worker threads running below the ui's priority, so the
-// overlay stays responsive while the cell is pinned. gpu load is heavy
-// overlapping translucent geometry filling the whole screen - fill rate with
-// blending is what actually heats the rsx.
+// overlay stays responsive while the cell is pinned. each step adds a different
+// part of the chip rather than another thread: the vector unit, then the scalar
+// floating-point unit, then traffic to main memory. the ppu is only two hardware
+// threads, so a third busy thread would share time with the other two instead of
+// adding anything, while those three parts each draw their own power.
+//
+// gpu load is overlapping translucent geometry (blending, which is fill rate)
+// plus layers of a large noisy texture drawn smaller than it is, which is what
+// puts the texture units and video memory to work. flat geometry alone leaves
+// both idle.
 
 typedef enum LoadLevel {
    LOAD_OFF,
@@ -27,6 +34,10 @@ typedef struct LoadState {
    int spuThreadCount;   // how many spus the cell dial actually got, 0..MAX_SPU_THREADS
 } LoadState;
 
+// allocates the buffer the memory loads move around and the texture the gpu load
+// samples. call once before any load is switched on.
+void initStress(void);
+
 const char *getLoadLevelName(LoadLevel level);
 const LoadState *getLoadState(void);
 
@@ -41,7 +52,7 @@ void setLoadOff(void);   // how the safety cutoff drops everything
 // back. used while the XMB is open over the app.
 void setStressSuspended(int suspended);
 
-// stops every worker for good; call before the app exits.
+// stops every worker for good and frees what initStress took; call before the app exits.
 void stopStress(void);
 
 // the full-screen geometry that heats the graphics chip; also advances its own

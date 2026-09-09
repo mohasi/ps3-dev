@@ -4,6 +4,8 @@ A torrent client for the PS3 that runs its own VPN. The WireGuard tunnel is spok
 rather than by the console, so the trackers and the peers see the VPN's address and never the
 console's.
 
+[TUTORIAL.md](TUTORIAL.md) walks through it with screenshots. This file is the reference.
+
 ## Setting up the VPN
 
 1. Get an ordinary WireGuard `.conf` from your provider. It is the same file their desktop client

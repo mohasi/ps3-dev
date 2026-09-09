@@ -14,6 +14,7 @@ typedef struct {
    int  itag;              // source-specific format id (0 if n/a)
    int  width, height;
    int  fps;               // frames per second (0 if the source doesn't say)
+   int  bitrate;           // declared stream bitrate in bits/sec (0 if the source doesn't say)
    int  hasVideo, hasAudio;
    int  needsCipher;       // 1 = url is signature-ciphered, not yet playable
    char container[8];      // "mp4"

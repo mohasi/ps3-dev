@@ -14,3 +14,7 @@ typedef enum {
 void loadSettings(void);   // reads settings.txt, creating it with defaults when missing
 
 SponsorblockMode getSponsorblockMode(void);
+
+int  getPreferredMaxHeight(void);        // video resolution ceiling for playback and download: 720 or 1080
+void setPreferredMaxHeight(int height);  // set the choice in memory (720 or 1080); does not write to disk
+void savePreferredMaxHeight(void);       // write a changed choice to settings.txt so it sticks next launch

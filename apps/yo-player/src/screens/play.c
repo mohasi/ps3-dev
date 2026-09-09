@@ -72,6 +72,9 @@ static char requestedInput[256] = "jNQXAC9IVRw";   // "Me at the zoo"
 
 typedef enum { STAGE_LOADING, STAGE_FAILED, STAGE_PLAYING } Stage;
 
+// one selectable resolution tier, copied from the resolved StreamFormat (which is freed after resolve).
+typedef struct { char url[MAX_STREAM_URL]; int itag, width, height, fps, bitrate, hasAudio; } VideoTier;
+
 static struct {
    volatile Stage   stage;
    char             message[128];     // failure reason (worker writes, UI reads)
@@ -105,8 +108,21 @@ static struct {
    int              chapterSelected;
    int              chapterTimeWidth;    // widest time label (the right-aligned time column)
    int              chapterPanelWidth;
-   int              vidItag, vidW, vidH, vidFps, audItag;   // picked formats (worker sets, UI reads)
+   int              audItag;          // audio itag, for the stats overlay (0 = none)
    int              isLive;           // a live stream: no duration, no resume/save, no seek
+
+   // resolution switch (Square): both tiers' urls are kept from the resolve so a switch reopens the player
+   // at the current position without re-resolving. tier[0] is <=720p; tier[1] is 1080p and populated only
+   // when it is a distinct higher tier (its url stays empty otherwise). audioUrl is the shared AAC track a
+   // video-only tier pairs with, kept even when the started tier is muxed so a later switch still has it.
+   VideoTier        tier[2];
+   char             audioUrl[MAX_STREAM_URL];
+   int              currentTier;      // index of the tier on screen (0 = low, 1 = high)
+   int              switchTarget;     // switchWorker input: the tier index it is building
+   int              switchPending;                  // a resolution switch is building (old player freed)
+   int              switchReverting;                // this build is a fallback to the tier we came from
+   int              switchWasPaused;                // carry the paused state across the rebuild
+   float            switchStartSec;                 // position to resume the rebuilt player at
    const uint8_t   *lastFrame;        // fps measure: a changed pointer means a newly presented frame
    int              framesThisSecond, measuredFps;
    uint64_t         fpsTickUs;
@@ -141,7 +157,7 @@ static struct {
    sys_ppu_thread_t subWorkerTid;
 } state;
 
-#define STAT_LINES 4
+#define STAT_LINES 5
 
 static Font  font;
 static Label statusLabel;
@@ -179,6 +195,27 @@ static int isRenderableSubtitleLanguage(const char *code)
    return 0;
 }
 
+// copy the fields the play state keeps from a resolved format (info is freed once resolve finishes).
+static void setTier(VideoTier *tier, const StreamFormat *format)
+{
+   strCopy(tier->url, sizeof tier->url, format->url);
+   tier->itag = format->itag; tier->width = format->width; tier->height = format->height;
+   tier->fps = format->fps; tier->bitrate = format->bitrate; tier->hasAudio = format->hasAudio;
+}
+
+// the separate audio url a tier needs: none for a muxed tier (its audio rides the video stream), else the
+// shared AAC track. NULL when no separate track is needed or available.
+static const char *tierAudioUrl(int index)
+{
+   if (state.tier[index].hasAudio) return NULL;
+   return state.audioUrl[0] ? state.audioUrl : NULL;
+}
+
+static VideoPlayer *buildPlayer(const char *videoUrl, const char *audioUrl)
+{
+   return createVideoPlayerSplit(videoUrl, audioUrl, allocGfxVideoBuffer, freeGfxVideoBuffer);
+}
+
 static void worker(uint64_t arg)
 {
    (void)arg;
@@ -195,20 +232,32 @@ static void worker(uint64_t arg)
       if (isRenderableSubtitleLanguage(info->captions[i].languageCode))
          state.captionTracks[state.captionCount++] = info->captions[i];
 
-   const StreamFormat *video = pickBestVideo(info);
-   if (!video) { fail("no playable mp4 video"); goto done; }
-   // a muxed pick (itag 18) already carries audio; a video-only pick needs a separate audio track
-   const StreamFormat *audio = video->hasAudio ? NULL : pickBestAudio(info);
-   logInfo("[yt] play video itag %d %dx%d %s, audio itag %d\n", video->itag, video->width, video->height,
-           video->hasAudio ? "muxed" : "video-only", audio ? audio->itag : (video->hasAudio ? video->itag : 0));
+   // the two resolution tiers, so Square can switch between them without re-resolving. tier[1] (1080p) is
+   // kept only when it is a genuine step up from tier[0] (many videos top out at 720p). preferred height is
+   // always 720 or 1080, so the played tier is one of these two picks; no third selection is needed.
+   const StreamFormat *low  = pickBestVideo(info, 720);
+   const StreamFormat *high = pickBestVideo(info, 1080);
+   if (!low) { fail("no playable mp4 video"); goto done; }   // low null => high null too (both scan the same set)
+   int haveTwoTiers = low->itag != high->itag;
+   setTier(&state.tier[0], low);
+   if (haveTwoTiers) setTier(&state.tier[1], high);
 
-   state.vidItag = video->itag; state.vidW = video->width; state.vidH = video->height; state.vidFps = video->fps;
-   state.audItag = audio ? audio->itag : (video->hasAudio ? video->itag : 0);
+   // the shared AAC track for a video-only tier, kept even if the started tier is muxed so a later switch
+   // to a video-only tier still has audio. a muxed tier carries its own audio and ignores this.
+   const StreamFormat *audio = pickBestAudio(info);
+   strCopy(state.audioUrl, sizeof state.audioUrl, audio ? audio->url : "");
+
+   int startHigh = haveTwoTiers && getPreferredMaxHeight() >= 1080;
+   state.currentTier = startHigh ? 1 : 0;
+   const StreamFormat *video = startHigh ? high : low;
+   state.audItag = video->hasAudio ? video->itag : (audio ? audio->itag : 0);
    state.isLive = video->isLiveSegmented;
+   logInfo("[yt] play video itag %d %dx%d %s, audio itag %d\n", video->itag, video->width, video->height,
+           video->hasAudio ? "muxed" : "video-only", state.audItag);
 
    // open the decoder: both streams ride the http module by range request. an audio open
    // failure inside the player just means silent playback. NULL if it can't be demuxed/decoded.
-   state.pendingPlayer = createVideoPlayerSplit(video->url, audio ? audio->url : NULL, allocGfxVideoBuffer, freeGfxVideoBuffer);
+   state.pendingPlayer = buildPlayer(video->url, tierAudioUrl(state.currentTier));
    if (!state.pendingPlayer) { fail("couldn't open stream"); goto done; }
 
    // resume where we left off. seekVideoPlayer only posts the target; the decode thread does the
@@ -226,6 +275,68 @@ done:
    __sync_synchronize();
    state.workerDone = 1;
    exitThread();
+}
+
+// build the player for the switchTarget tier at switchStartSec. runs on a worker thread because
+// createVideoPlayerSplit blocks on network i/o. the old player is already gone (toggleResolution frees it
+// before spawning us), so its frame buffers do not have to coexist with the new tier's larger ones.
+static void switchWorker(uint64_t arg)
+{
+   (void)arg;
+   VideoPlayer *player = buildPlayer(state.tier[state.switchTarget].url, tierAudioUrl(state.switchTarget));
+   if (player && state.switchStartSec > 1.0f) seekVideoPlayer(player, state.switchStartSec);
+   state.pendingPlayer = player;
+   __sync_synchronize();
+   state.workerDone = 1;
+   exitThread();
+}
+
+static void showToast(const char *text);   // defined with the other HUD helpers below
+
+// spawn switchWorker to build the switchTarget tier. the current player must already be gone.
+static void startSwitchWorker(void)
+{
+   state.workerDone = 0;
+   state.threadActive = (spawnJoinableThread(&state.workerTid, switchWorker, 0,
+                         THREAD_PRIORITY_DEFAULT, THREAD_STACK_SIZE_64KB, "yt-switch") == 0);
+}
+
+// Square flips 720p <-> 1080p during playback, saves the choice, and shows it top-right. the caller keeps
+// this off live streams; it also no-ops while a switch (or the initial open) is still building. the old
+// player is torn down before the new tier is built, so its frame buffers free up for the larger tier; the
+// screen shows "Loading..." for the rebuild, and switchStartSec carries the position across it.
+static void toggleResolution(void)
+{
+   if (state.threadActive) return;
+   int target = state.currentTier ^ 1;
+   const VideoTier *targetTier = &state.tier[target];
+   if (!targetTier->url[0]) {   // this video has a single decodable tier, so name it
+      char only[32];
+      snprintf(only, sizeof only, "Only %dp available", state.tier[state.currentTier].height);
+      showToast(only);
+      return;
+   }
+
+   setPreferredMaxHeight(target ? 1080 : 720);
+   state.switchTarget = target;
+   state.switchPending = 1;
+   state.switchReverting = 0;
+   state.switchWasPaused = isVideoPaused(state.player);
+   state.switchStartSec = getVideoPositionSeconds(state.player);
+
+   char label[16];
+   snprintf(label, sizeof label, "%dp", targetTier->height);
+   showToast(label);
+
+   // free the current tier before building the new one; both sets of frame buffers will not fit at once
+   finishGfx();   // the RSX may still be sampling the current frame buffer
+   destroyVideoPlayer(state.player);
+   state.player = NULL;
+   state.firstFrameSeen = 0;
+   state.stage = STAGE_LOADING;
+
+   startSwitchWorker();
+   if (!state.threadActive) { state.switchPending = 0; fail("switch failed"); }
 }
 
 // a bare 11-char videoId (not a typed url) is what SponsorBlock and history key on; typed urls no-op.
@@ -370,6 +481,8 @@ static void handlePlaybackInput(void)
 
    if (state.isLive) return;   // a live stream has no seek index; scrubbing would break the segment stream
 
+   if (isPadButtonPressed(PAD_BTN_SQUARE)) { toggleResolution(); showControls(); }
+
    static ButtonRepeat seekRepeat;
    if (isRepeatDue(&seekRepeat, getPadButtonState(PAD_BTN_RIGHT)))     nudgeSeek(+SEEK_STEP_SECONDS, nowUs);
    else if (isRepeatDue(&seekRepeat, getPadButtonState(PAD_BTN_LEFT))) nudgeSeek(-SEEK_STEP_SECONDS, nowUs);
@@ -504,16 +617,32 @@ static void updatePlay(void)
       if (isPadButtonPressed(PAD_BTN_START) && state.stage == STAGE_PLAYING && state.player) openChapters();
    }
 
-   // reap the worker once it's done; adopt the player it built
+   // reap the worker once it's done; adopt the player it built (initial open or resolution switch, both
+   // leave state.player NULL until here). a switch that failed to build has nothing playing, so rebuild the
+   // tier it came from once; if that fails too, fall through to the failure message.
    if (state.workerDone && state.threadActive) {
       joinThread(state.workerTid);
       state.threadActive = 0;
       if (state.pendingPlayer) {
          state.player = state.pendingPlayer;
          state.pendingPlayer = NULL;
+         if (state.switchPending) {
+            setVideoPaused(state.player, state.switchWasPaused);   // keep the pre-switch paused state
+            state.currentTier = state.switchTarget;
+            state.switchPending = 0;
+         }
          setAudioPcmFeedVolume(getVolumeMeterFraction(&volumeMeter));
          setLabelText(&titleLabel, state.title);   // rasterise once, off the draw path
          state.stage = STAGE_PLAYING;
+      } else if (state.switchPending && !state.switchReverting) {
+         state.switchReverting = 1;   // build failed after the old player was freed; go back to what we had
+         state.switchTarget = state.currentTier;
+         setPreferredMaxHeight(state.currentTier ? 1080 : 720);   // keep the preference on the tier that stays
+         startSwitchWorker();
+         if (!state.threadActive) { state.switchPending = 0; fail("switch failed"); }
+      } else if (state.switchPending) {
+         state.switchPending = 0;
+         fail("switch failed");
       }
    }
 
@@ -595,16 +724,21 @@ static void updateStatLabels(void)
    int rate = 0, channels = 0;
    getAudioTrackInfo(state.player, &rate, &channels);
    float pos = getVideoPositionSeconds(state.player), duration = getVideoDurationSeconds(state.player);
+   const VideoTier *cur = &state.tier[state.currentTier];
 
-   snprintf(line, sizeof line, "Video  itag %d   %dx%d   H.264", state.vidItag, state.vidW, state.vidH);
+   snprintf(line, sizeof line, "Video  itag %d   %dx%d   H.264", cur->itag, cur->width, cur->height);
    setLabelText(&statLabels[0], line);
-   snprintf(line, sizeof line, "FPS  %d   (target %d)", state.measuredFps, state.vidFps);
+   snprintf(line, sizeof line, "FPS  %d   (target %d)", state.measuredFps, cur->fps);
    setLabelText(&statLabels[1], line);
    if (state.audItag) snprintf(line, sizeof line, "Audio  itag %d   AAC %d Hz   %d ch", state.audItag, rate, channels);
    else               strCopy(line, sizeof line, "Audio  none");
    setLabelText(&statLabels[2], line);
    snprintf(line, sizeof line, "Time  %d:%02d / %d:%02d", (int)pos / 60, (int)pos % 60, (int)duration / 60, (int)duration % 60);
    setLabelText(&statLabels[3], line);
+   // integer math: this toolchain's snprintf drops %f, so build the one-decimal Mbps by hand
+   int mbpsTenths = (cur->bitrate + 50000) / 100000;   // round to 0.1 Mbps
+   snprintf(line, sizeof line, "Bitrate  %d.%d Mbps", mbpsTenths / 10, mbpsTenths % 10);
+   setLabelText(&statLabels[4], line);
 }
 
 static void drawStatsOverlay(void)
@@ -795,6 +929,7 @@ static void termPlay(void)
    if (state.chThreadActive) { joinThread(state.chWorkerTid); state.chThreadActive = 0; }
    free(state.subtitleTrack);
    state.subtitleTrack = NULL;
+   savePreferredMaxHeight();   // persist a resolution the user changed during this video, once, off the hot path
    // save the resume position on the way out; a finished video is saved as 0 so it restarts next time.
    // only once a frame has actually played: a failed open or a resume seek that never landed must not
    // clobber a good saved position with 0. storage ignores non-id keys, so typed urls no-op.

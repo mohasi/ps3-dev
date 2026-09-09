@@ -12,7 +12,7 @@ static int decodableVideo(const StreamFormat *format)
    return 0;
 }
 
-const StreamFormat *pickBestVideo(const StreamInfo *info)
+const StreamFormat *pickBestVideo(const StreamInfo *info, int maxHeight)
 {
    const StreamFormat *best = NULL;
    for (int i = 0; i < info->formatCount; i++) {
@@ -20,9 +20,11 @@ const StreamFormat *pickBestVideo(const StreamInfo *info)
       if (!format->hasVideo || format->needsCipher || !format->url[0]) continue;
       if (strcmp(format->container, "mp4") != 0) continue;   // mp4 == avc1 for these itags
       if (!decodableVideo(format)) continue;
+      if (maxHeight > 0 && format->height > maxHeight) continue;
       if (!best || format->height > best->height || (format->height == best->height && format->fps > best->fps))
          best = format;
    }
+   if (!best && maxHeight > 0) return pickBestVideo(info, 0);   // preferred tier missing: take the best there is
    return best;
 }
 

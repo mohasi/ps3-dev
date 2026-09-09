@@ -199,6 +199,7 @@ static void parseFormatArray(const char *arrayStart, const char *regionEnd, int 
       jsonInt(object, objectEnd, "width", &format->width);
       jsonInt(object, objectEnd, "height", &format->height);
       jsonInt(object, objectEnd, "fps", &format->fps);
+      jsonInt(object, objectEnd, "bitrate", &format->bitrate);
       format->needsCipher = !jsonString(object, objectEnd, "url", format->url, sizeof format->url);
 
       // mimeType is like: video/mp4; codecs="avc1.640028". only mark a stream playable when its codec is

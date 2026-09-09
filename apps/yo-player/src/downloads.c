@@ -2,6 +2,7 @@
 
 #include "downloads.h"
 #include "stream-select.h"      // pickBestVideo / pickBestAudio
+#include "settings.h"          // getPreferredMaxHeight (download uses the same resolution as playback)
 #include "mux-mp4.h"
 #include "demux.h"              // VideoDemuxer + readVideoAu / readAudioAu
 #include "extractor.h"
@@ -119,7 +120,7 @@ static void runOneDownload(const QueueItem *item)
       return;
    }
 
-   const StreamFormat *video = pickBestVideo(info);
+   const StreamFormat *video = pickBestVideo(info, getPreferredMaxHeight());
    const StreamFormat *audio = (video && !video->hasAudio) ? pickBestAudio(info) : NULL;
    if (!video) { logError("[dl] no downloadable video for %s\n", item->videoId); free(info); return; }
    if (video->isLiveSegmented) { logInfo("[dl] %s is a live stream, not downloadable\n", item->videoId); free(info); return; }

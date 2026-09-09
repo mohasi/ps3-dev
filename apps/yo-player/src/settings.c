@@ -17,9 +17,15 @@ static const char *DEFAULT_SETTINGS =
    "\n"
    "theme=youtube\n"
    "# which colour theme to start in - one of the [Name] blocks in themes.txt (lower case,\n"
-   "# spaces become hyphens). the shipped one is youtube.\n";
+   "# spaces become hyphens). the shipped one is youtube.\n"
+   "\n"
+   "resolution=720p\n"
+   "# preferred video resolution, 720p or 1080p. Square toggles it during playback and the choice\n"
+   "# is saved here. 1080p looks better but buffers more on a slow connection.\n";
 
 static SponsorblockMode sponsorblockMode = SPONSORBLOCK_ADS;
+static int preferredMaxHeight = 720;
+static int preferredMaxHeightDirty = 0;   // changed in memory but not yet written to disk
 
 void loadSettings(void)
 {
@@ -34,6 +40,26 @@ void loadSettings(void)
       else if (settingValueEquals(mode, "all")) sponsorblockMode = SPONSORBLOCK_ALL;
       else logWarn("[settings] unknown sponsorblock-mode value, using ads\n");
    }
+
+   const char *resolution = findSettingValue(text, "resolution");
+   if (resolution) preferredMaxHeight = settingValueEquals(resolution, "1080p") ? 1080 : 720;
 }
 
 SponsorblockMode getSponsorblockMode(void) { return sponsorblockMode; }
+
+int getPreferredMaxHeight(void) { return preferredMaxHeight; }
+
+// keep the choice in memory during playback; savePreferredMaxHeight writes it on the way out, so a
+// resolution switch does not touch the filesystem on every Square press.
+void setPreferredMaxHeight(int height)
+{
+   int clamped = height >= 1080 ? 1080 : 720;
+   if (clamped != preferredMaxHeight) { preferredMaxHeight = clamped; preferredMaxHeightDirty = 1; }
+}
+
+void savePreferredMaxHeight(void)
+{
+   if (!preferredMaxHeightDirty) return;
+   rewriteSettingKey(SETTINGS_PATH, "resolution", preferredMaxHeight == 1080 ? "1080p" : "720p");
+   preferredMaxHeightDirty = 0;
+}

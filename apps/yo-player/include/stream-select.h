@@ -5,10 +5,11 @@
 
 #include "extractor.h"   // StreamInfo / StreamFormat
 
-// best decodable H.264/mp4 video stream: highest resolution the PS3 decoder can keep up with, and at a
-// given resolution the higher frame rate. favours the adaptive (video-only) streams over the 360p muxed
-// one. NULL if none is usable.
-const StreamFormat *pickBestVideo(const StreamInfo *info);
+// best decodable H.264/mp4 video stream at or below maxHeight (720 or 1080; 0 = no cap): the highest
+// resolution the PS3 decoder can keep up with, and at a given resolution the higher frame rate. favours
+// the adaptive (video-only) streams over the 360p muxed one. when nothing fits under the cap it falls
+// back to the highest decodable stream, so a video that lacks the preferred tier still plays. NULL if none.
+const StreamFormat *pickBestVideo(const StreamInfo *info, int maxHeight);
 
 // the AAC/mp4 audio-only stream to pair with a video-only pick, preferring itag 140. NULL if none.
 const StreamFormat *pickBestAudio(const StreamInfo *info);

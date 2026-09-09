@@ -58,6 +58,21 @@ static const char *WEB_UA =
 // player body: the client + the minted visitorData, then the video id. two %s: visitorData, videoId.
 static const char *PLAYER_BODY_FMT =
    "{\"context\":{\"client\":{" PLAYER_CLIENT ",\"visitorData\":\"%s\"}},\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true}";
+
+// live streams need the ANDROID_VR client: VISIONOS returns only an HLS manifest for them, which the live
+// path can't read, while ANDROID_VR still returns the DASH manifest it needs. Live fetches discrete
+// segments, so the ~60s cap that pushed VOD off ANDROID_VR does not apply here.
+#define LIVE_VERSION "1.65.10"
+#define LIVE_CLIENT \
+   "\"clientName\":\"ANDROID_VR\",\"clientVersion\":\"" LIVE_VERSION "\"," \
+   "\"deviceMake\":\"Oculus\",\"deviceModel\":\"Quest 3\",\"androidSdkVersion\":32," \
+   "\"osName\":\"Android\",\"osVersion\":\"12L\",\"hl\":\"en\",\"gl\":\"US\"," \
+   "\"timeZone\":\"UTC\",\"utcOffsetMinutes\":0"
+static const char *LIVE_UA =
+   "com.google.android.apps.youtube.vr.oculus/1.65.10 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip";
+static const char *LIVE_BODY_FMT =
+   "{\"context\":{\"client\":{" LIVE_CLIENT ",\"visitorData\":\"%s\"}},\"videoId\":\"%s\",\"contentCheckOk\":true,\"racyCheckOk\":true}";
+
 static const char *VISITOR_BODY   = WEB_CONTEXT "}";   // WEB_CONTEXT leaves the root object open; close it
 // search params combine the "Videos" filter (drops the Shorts shelf, channels and playlists) with a sort
 // order. index by SortOrder. canonical values from youtube's own filter menu. two %s: escaped query, params.
@@ -385,6 +400,28 @@ static void parseLiveManifest(const char *resp, const char *end, StreamInfo *out
    free(mpd);
 }
 
+// POST the player endpoint with one client identity, into resp. 0 on a 200 with a body, else negative.
+static int fetchPlayer(const char *bodyFmt, const char *userAgent, const char *clientName,
+                       const char *clientVersion, const char *videoId, char *resp, int *respLen)
+{
+   char body[1024];
+   int bodyLen = snprintf(body, sizeof body, bodyFmt, visitorData, videoId);
+   HttpHeader headers[] = {
+      { "Content-Type", "application/json" },
+      { "User-Agent", userAgent },
+      { "X-YouTube-Client-Name", clientName },
+      { "X-YouTube-Client-Version", clientVersion },
+      { "X-Goog-Visitor-Id", visitorData },
+      { "Origin", "https://www.youtube.com" },
+      { "Accept-Encoding", "identity" },
+   };
+   int status = 0;
+   int rc = fetchHttp("POST", PLAYER_URL, headers, 7, body, bodyLen, resp, RESP_CAP, respLen, &status);
+   if (rc < 0)        { logError("[yt] player POST failed rc=%d\n", rc); return rc; }
+   if (status != 200) { logError("[yt] player POST status=%d respLen=%d\n", status, *respLen); return -status; }
+   return 0;
+}
+
 static int extract(const char *input, StreamInfo *out)
 {
    memset(out, 0, sizeof *out);
@@ -393,49 +430,38 @@ static int extract(const char *input, StreamInfo *out)
    if (!extractVideoId(input, videoId, sizeof videoId)) return -1;
    if (ensureVisitorData() != 0) return -1;
 
-   char body[1024];
-   int bodyLen = snprintf(body, sizeof body, PLAYER_BODY_FMT, visitorData, videoId);
-
-   HttpHeader headers[] = {
-      { "Content-Type", "application/json" },
-      { "User-Agent", PLAYER_UA },
-      { "X-YouTube-Client-Name", "101" },
-      { "X-YouTube-Client-Version", PLAYER_VERSION },
-      { "X-Goog-Visitor-Id", visitorData },
-      { "Origin", "https://www.youtube.com" },
-      { "Accept-Encoding", "identity" },
-   };
-
    char *resp = malloc(RESP_CAP);
    if (!resp) return -1;
 
-   int respLen = 0, status = 0;
-   int rc = fetchHttp("POST", PLAYER_URL, headers, 7, body, bodyLen, resp, RESP_CAP, &respLen, &status);
-   if (rc < 0)        { logError("[yt] player POST failed rc=%d\n", rc); free(resp); return rc; }
-   if (status != 200) { logError("[yt] player POST status=%d respLen=%d\n", status, respLen); free(resp); return -status; }
+   int respLen = 0;
+   int rc = fetchPlayer(PLAYER_BODY_FMT, PLAYER_UA, "101", PLAYER_VERSION, videoId, resp, &respLen);
+   if (rc != 0) { free(resp); return rc; }
    const char *end = resp + respLen;
 
-   // metadata
+   // metadata, copied into out so it survives a live re-fetch overwriting resp below
    const char *details = strstr(resp, "\"videoDetails\"");
    jsonString(details ? details : resp, end, "title", out->title, sizeof out->title);
    jsonString(details ? details : resp, end, "shortDescription", out->description, sizeof out->description);
    char lenText[16];
    if (jsonString(details ? details : resp, end, "lengthSeconds", lenText, sizeof lenText))
       out->durationSeconds = atoi(lenText);
-
    parseCaptionTracks(resp, end, out);
-   parseFormats(resp, end, out);
 
-   // a currently-live stream (isLive:true) is a rolling DVR window, so the init/moov at byte 0 may have
-   // rolled off - it needs the DASH manifest's explicit init + segment template rather than a static open.
-   {
-      int liveNow      = strstr(resp, "\"isLive\":true") != NULL;
-      const char *dash = strstr(resp, "\"dashManifestUrl\"");
-      out->isLive = liveNow;
-      if (liveNow) {
-         logInfo("[yt] live stream (dash=%d formats=%d dur=%d)\n", dash ? 1 : 0, out->formatCount, out->durationSeconds);
-         parseLiveManifest(resp, end, out);
-      }
+   // a live stream (isLive:true) is a rolling DVR window played from the DASH manifest's segment template.
+   // VISIONOS only returns an HLS manifest for live, so re-resolve with ANDROID_VR for the DASH one before
+   // parsing formats.
+   int liveNow = strstr(resp, "\"isLive\":true") != NULL;
+   if (liveNow && !strstr(resp, "\"dashManifestUrl\"")) {
+      if (fetchPlayer(LIVE_BODY_FMT, LIVE_UA, "28", LIVE_VERSION, videoId, resp, &respLen) == 0)
+         end = resp + respLen;
+   }
+
+   parseFormats(resp, end, out);
+   out->isLive = liveNow;
+   if (liveNow) {
+      logInfo("[yt] live stream (dash=%d formats=%d dur=%d)\n",
+              strstr(resp, "\"dashManifestUrl\"") ? 1 : 0, out->formatCount, out->durationSeconds);
+      parseLiveManifest(resp, end, out);
    }
 
    if (out->formatCount == 0) {

@@ -160,3 +160,14 @@ simple-lib-core/
 Most utilities are `static inline` headers that compile straight into the consumer. The compiled
 units are the ones listed under `src/` above. The library depends on nothing above it —
 `simple-lib-plugin` and `simple-lib-app` depend on it, never the other way around.
+
+## Credits
+
+- **miniz 3.1.2** (MIT) by RAD Game Tools, Valve Software, Rich Geldreich and Tenacious Software LLC.
+  Vendored into `src/zip.c` and `include/zip.h`, trimmed and partly renamed, with our own VFS
+  bridging appended. It is what reads and writes zip archives and decodes the console's glyph art.
+- **FatFs** by ChaN. `exfat.c` is hand-written from Microsoft's exFAT specification, but its entry-set
+  layout, timestamps and cluster maths were cross-checked against FatFs, the library it replaced.
+- **libfsntfs** by Joachim Metz. `ntfs.c` is hand-written from the on-disk specification, with its
+  read path cross-checked against libfsntfs.
+- The lv2 syscall numbers and structures come from the in-tree homebrew references under `hb-apps/`.

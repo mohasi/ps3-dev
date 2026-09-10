@@ -107,22 +107,9 @@ static const char *actionNames[SHORTCUT_COUNT] = {
    "Input mode", "Streaming mode", "Stats", "Custom 1", "Custom 2", "Custom 3", "Custom 4"
 };
 
-// display name per PadButton, indexed by the enum in pad.h
-static const char *buttonDisplayNames[] = {
-   "D-Up", "D-Down", "D-Left", "D-Right", "Cross", "Circle", "Square", "Triangle",
-   "L1", "R1", "L2", "R2", "Start", "Select", "L3", "R3"
-};
-
 const char *getShortcutActionName(ShortcutAction action)
 {
    return action >= 0 && action < SHORTCUT_COUNT ? actionNames[action] : "";
-}
-
-const char *getShortcutButtonName(ShortcutAction action)
-{
-   if (action < 0 || action >= SHORTCUT_COUNT) return "-";
-   PadButton button = triggerButton[action];
-   return button == SHORTCUT_UNBOUND ? "-" : buttonDisplayNames[button];
 }
 
 PadButton getShortcutButton(ShortcutAction action)

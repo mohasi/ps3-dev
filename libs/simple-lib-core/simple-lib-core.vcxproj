@@ -33,6 +33,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
    <ClCompile Include="src\ftp.c" />
+   <ClCompile Include="src\json.c" />
    <ClCompile Include="src\dbg.c" />
    <ClCompile Include="src\network.c" />
    <ClCompile Include="src\printf.c" />
@@ -53,6 +54,8 @@
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\ftp.h" />
+   <ClInclude Include="include\hmac-sha1.h" />
+   <ClInclude Include="include\json.h" />
    <ClInclude Include="include\printf.h" />
    <ClInclude Include="include\dbg.h" />
    <ClInclude Include="include\path.h" />

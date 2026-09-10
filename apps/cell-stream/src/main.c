@@ -12,7 +12,6 @@
 #include "dbg.h"
 #include "thread.h"
 #include "bridge-client.h"
-#include "net-common.h"
 #include "stream.h"
 #include "shortcuts.h"
 #include "toast.h"
@@ -22,6 +21,9 @@
 #include "shortcut-hint.h"
 #include "frametime-graph.h"
 #include "frame-timing.h"
+#include "mode-select.h"
+#include "xcloud-screen.h"
+#include "http.h"
 #include "cell-stream-settings.h"
 #include "settings-file.h"
 
@@ -51,7 +53,10 @@ static const char *statFieldNames[STAT_LINES] = {
    "Present:", "Display:", "Pipeline:", "Lost:", "Behind:"
 };
 
-#define PAD_SEND_INTERVAL_US   4000   // 250Hz, the standard USB gamepad rate: a press waits ~2ms for its slot, not ~8ms
+// 250Hz. the pad itself only refreshes every 10ms wired and 11.25ms over bluetooth (SDK, cellPadGetData),
+// so this reads faster than the data changes; the cost is small and it means a press is never held an extra
+// slot. do not raise it expecting lower latency - the pad's own refresh is the floor.
+#define PAD_SEND_INTERVAL_US   4000
 #define PAD_MODE_INTERVAL_US   1000000
 
 // what the pad drives on the PC. SELECT+input-mode cycles through these; controller forwards a virtual
@@ -146,9 +151,6 @@ static void formatStatValues(const StreamStats *s, char values[][STAT_VALUE_MAX]
    snprintf(values[10], STAT_VALUE_MAX, "%d", s->framesDroppedBehind);
 }
 
-// while streaming every button belongs to the PC - a game needs all of them. so the app keeps nothing
-// for itself and uses SELECT as a modifier instead: the combos below. the buttons of a combo are held
-// back from the PC, so the game never sees a stray press when one is used.
 #define PAD_BIT(button) (1u << (button))
 
 // the render loop publishes these for the pad thread; the thread never reads UI state directly
@@ -157,7 +159,8 @@ static volatile int padForwardGamepad = 1;                 // 1 = drive the virt
 static volatile int padForwardStop = 0;                    // tells the pad thread to exit
 static sys_ppu_thread_t padForwardThreadId;
 
-// forwards the live controller to the PC, minus the buttons we keep for ourselves. the SELECT-combo
+// forwards the live controller to the PC, minus the buttons we keep for ourselves. a game needs every
+// button, so the app keeps none of them and uses SELECT as a modifier instead. the SELECT-combo
 // hold-back is worked out here from the live pad so a combo button never leaks a frame to the PC; the
 // keyboard hold-back is published by the render loop (it changes rarely, so a little lag is fine).
 static void sendPadStateToServer(void)
@@ -211,11 +214,11 @@ int main(int argc, char **argv)
 
    int netRc = initNet();
    logInfo("[cst] initNet rc=0x%x\n", netRc);
+   initModernHttp();   // the console's own TLS is too old for the Microsoft sign-in endpoints
    registerWithBridge("app", "cell-stream");   // live logs in the bridge client's Logs tab
    logBuildVersion();   // after registration, so the build line also reaches the Logs tab
 
-   // a decoded picture goes to the screen the moment it is ready, never waiting for the display's next
-   // refresh - that wait costs ~8ms and buys us nothing here (measured; see the README)
+   // a starting value only: applyStreamMode below sets the real one from the saved stream mode
    if (initGfx(GFX_VSYNC_OFF) != 0) return 1;
    if (initFont() != 0) return 1;
    initPad();
@@ -237,8 +240,6 @@ int main(int argc, char **argv)
       }
    }
    applyStreamMode(streamMode);
-
-   initStream();   // finds the server and keeps a stream up by itself, for as long as the app runs
 
    Font font = openSystemFont(FONT_SANS);
 
@@ -263,9 +264,30 @@ int main(int argc, char **argv)
    int exitRequested = 0, statsVisible = 0;   // stats overlay off by default; the stats shortcut shows it
    int wasLive = 0, framesUntilBufferRelease = 0, hintPending = 0;
 
-   spawnJoinableThread(&padForwardThreadId, padForwardThread, 0, THREAD_PRIORITY_HIGH, THREAD_STACK_SIZE_8KB, "cst-pad");
+   // The menu picks the service, and both paths come back to it: Xbox Cloud when its screen is
+   // left, PC streaming when Circle is pressed before a stream is up. So the whole of the work
+   // below sits in a loop, and the stream is built and torn down once per visit.
+   StreamSource streamSource;
+   int backToMenu;
+   do {
+      backToMenu = 0;
 
-   while (!appExitRequested && !exitRequested) {
+      do {
+         streamSource = runModeSelectScreen(&font);
+         if (streamSource == STREAM_SOURCE_XBOX_CLOUD) runXcloudScreen(&font);
+      } while (streamSource == STREAM_SOURCE_XBOX_CLOUD);
+
+      if (streamSource == STREAM_SOURCE_NONE) { exitRequested = 1; break; }
+
+      initStream();   // finds the server and keeps a stream up by itself
+      wasLive = 0;
+      framesUntilBufferRelease = 0;
+      hintPending = 0;
+
+      padForwardStop = 0;
+      spawnJoinableThread(&padForwardThreadId, padForwardThread, 0, THREAD_PRIORITY_HIGH, THREAD_STACK_SIZE_8KB, "cst-pad");
+
+   while (!appExitRequested && !exitRequested && !backToMenu) {
       appPoll();
       updatePadEdges();   // the pad thread owns the hardware read (pollPad); we only derive our UI edges
       updateToast();
@@ -327,7 +349,10 @@ int main(int argc, char **argv)
             else if (isPadButtonPressed(PAD_BTN_TRIANGLE)) openKeyboard(onKeyboardKey);
          }
       } else {
+         // nothing is streaming yet, so these are ours: START leaves the app, Circle goes back to
+         // the menu for anyone who picked this by mistake
          if (isPadButtonPressed(PAD_BTN_START)) exitRequested = 1;
+         if (isPadButtonPressed(PAD_BTN_CIRCLE)) backToMenu = 1;
       }
 
       // hand the pad thread what to forward; it samples and sends on its own steady clock
@@ -414,6 +439,8 @@ int main(int argc, char **argv)
    }
    releaseStreamBuffers();
 
+   } while (backToMenu);
+
    termKeyboard();
    freeToast();
    freeShortcutHint();
@@ -423,6 +450,7 @@ int main(int argc, char **argv)
    termFont();
    termAudio();
    termGfx();
+   shutdownHttp();
    shutdownVfs();
    return 0;
 }

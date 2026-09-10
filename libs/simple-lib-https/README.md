@@ -5,6 +5,9 @@ as an alternative transport behind the shared http client (`http.h` in simple-li
 that opts in gets every `fetchHttp` / `getHttp` / `openHttpStream` call routed over BearSSL instead
 of the firmware stack.
 
+It also carries the same exchange run over datagrams, for peer-to-peer connections that have no
+server and no certificate authority. The name is narrower than what is in here now.
+
 ## Why it exists
 
 The PS3's system TLS (`cellHttp` / `cellSsl`, an OpenSSL 0.9.8-era library) only offers
@@ -72,6 +75,18 @@ open a fresh HTTP/1.1 connection and follow redirects.
 - `src/trust-anchors.c` — the bundled root authorities as BearSSL structs (generated from root PEMs).
 - `include/tls-transport.h` — the plumbing API shared between the two source files above
   (`openTlsConn`, `sendTlsRequest`, `readTlsHead`, `recvTls`, connection-reuse helpers, …).
+- `src/dtls.c` / `include/dtls.h` — the same TLS 1.2 exchange run over datagrams instead of a
+  stream, for peer-to-peer connections. BearSSL does not do this, so the exchange is written here
+  and only its cryptography borrowed. Four functions: start it, feed it arriving datagrams, send
+  again what went unanswered, and read the media keys it agreed.
+- `src/srtp.c` / `include/srtp.h` — the cipher the picture and sound travel under, keyed by the
+  exchange above. Receiving only: nothing on the console sends media. Its key working-out is
+  checked against the published example at startup, which is how a wrong starting block was caught
+  before any packet was tried.
+- `src/dtls-certificate.c` / `include/dtls-certificate.h` — the console's own self-signed ECDSA
+  P-256 certificate and its SHA-256 fingerprint, for peer-to-peer connections that identify each end
+  by fingerprint rather than by a certificate authority. Three functions: make it, read it, read the
+  fingerprint.
 
 The linker pulls only the BearSSL object files a TLS 1.2 client actually needs; the rest of the
 vendored tree never reaches the binary.
@@ -81,4 +96,19 @@ vendored tree never reaches the binary.
 `trust-anchors.c` is generated. To add or refresh a root, drop its PEM in and regenerate the BearSSL
 `br_x509_trust_anchor` structs (the generator reads the subject name and public key out of the
 cert). The current set: **GTS Root R1** (RSA), **GTS Root R4** (EC P-384), **ISRG Root X1** (RSA),
-**ISRG Root X2** (EC P-384) — i.e. Google Trust Services and Let's Encrypt, both RSA and ECDSA.
+**ISRG Root X2** (EC P-384) — i.e. Google Trust Services and Let's Encrypt, both RSA and ECDSA —
+plus **Microsoft TLS RSA Root G2** and **DigiCert Global Root G2** for Xbox Live and the Microsoft
+sign-in endpoints.
+
+One host can need more than one root. `login.microsoftonline.com` answers from several front ends,
+and they do not all present the same chain: some end at the Microsoft root, others at the DigiCert
+one. Adding only the root seen in one handshake left the console failing against the other with
+`BR_ERR_X509_NOT_TRUSTED` (62). Check a few handshakes before deciding a host is covered.
+
+## Credits
+
+- **BearSSL** (MIT) by Thomas Pornin. Vendored under `bearssl/` and the reason this library exists:
+  the console's own TLS is too old for the endpoints we have to reach. Every primitive here is
+  BearSSL's, and it stays behind this library's own API rather than being exposed to apps.
+- DTLS 1.2, SRTP/SRTCP and the console's self-signed certificate are written here from RFC 6347,
+  RFC 3711 and RFC 5280, on top of those primitives. No code was taken from another implementation.

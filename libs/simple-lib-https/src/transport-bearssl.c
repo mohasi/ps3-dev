@@ -8,8 +8,8 @@
 // HTTP/1.1 on its own connection, held open across many reads. Every other request is one-shot: HTTP/1.0
 // keep-alive on a pooled connection to the same host, so a screen full of thumbnails - or a file
 // downloaded a megabyte at a time - costs a handful of TLS handshakes instead of one per request.
-// HTTP/1.0 keeps the response un-chunked; the hosts we talk to answer a Range request with 206 +
-// Content-Length, so no chunked decoding is needed either way.
+// HTTP/1.0 keeps the response un-chunked and a Range request comes back as 206 + Content-Length,
+// so most bodies are length-delimited; tls-transport decodes chunked bodies for the rest.
 
 #include "http-transport.h"
 #include "tls-transport.h"
@@ -22,6 +22,11 @@
 #define MAX_REDIRECTS 5   // googlevideo 302s fresh connections to rebalance across its rrN servers
 #define URL_MAX       2048
 #define POOL_SIZE     8   // idle keep-alive connections kept for reuse (covers the concurrent thumbnail workers)
+// all request headers together. 2 KB was enough until Xbox Live: its bearer token measured 1337
+// bytes on the console, and the device-info header it wants alongside is another 600, which together
+// overflowed the old size. this sits on the calling thread's stack, and every thread that fetches
+// here has 64 KB, so it is raised to the measured need rather than to the largest token imaginable.
+#define HEADER_BLOCK_MAX 4096
 
 // section: connection pool - idle keep-alive connections held for reuse, keyed by host. one-shot requests
 // (thumbnails, api) hand a connection back here on close instead of tearing down its TLS handshake, and
@@ -92,7 +97,7 @@ static void *openBearssl(const char *method, const char *url, const HttpHeader *
 
    // format the caller's headers into one block; it is reused unchanged across redirects, so a Range
    // asks the server we are redirected to for the same byte range.
-   char headerBlock[2048];
+   char headerBlock[HEADER_BLOCK_MAX];
    int length = 0;
    for (int i = 0; i < headerCount; i++) {
       int written = snprintf(headerBlock + length, sizeof headerBlock - length, "%s: %s\r\n", headers[i].name, headers[i].value);

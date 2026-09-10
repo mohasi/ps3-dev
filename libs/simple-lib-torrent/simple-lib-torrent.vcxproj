@@ -33,7 +33,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
    <ClCompile Include="src\bencode.c" />
-   <ClCompile Include="src\json.c" />
    <ClCompile Include="src\magnet.c" />
    <ClCompile Include="src\peer.c" />
    <ClCompile Include="src\sha1.c" />
@@ -48,7 +47,6 @@
   </ItemGroup>
   <ItemGroup>
    <ClInclude Include="include\bencode.h" />
-   <ClInclude Include="include\json.h" />
    <ClInclude Include="include\magnet.h" />
    <ClInclude Include="include\peer.h" />
    <ClInclude Include="include\sha1.h" />

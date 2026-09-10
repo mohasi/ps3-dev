@@ -9,28 +9,17 @@
 // Instead decodeAuH264 just feeds (reporting BUSY back to the caller), isAuConsumedH264 tells the
 // caller when the AU buffer may be reused, and the caller keeps pulling pictures in between.
 #include "decode-h264.h"
-#include "thread.h"             // createLock / lock / sleepMs
+#include "thread.h"             // createLock / lock / sleepMs / getTimeUs
 #include "dbg.h"                // logInfo / logError
 #include <cell/codec/vdec.h>
 #include <cell/codec/vdec_avc.h>
 #include <cell/sysmodule.h>
 #include <sys/spu_initialize.h>
-#include <sys/sys_time.h>       // sys_time_get_current_time (diagnostic: decoder own-latency split)
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 
 #define PICOUT_TIME_RING 32     // power of two: masks the write/read counters
-
-// microseconds on the SAME wall clock the caller stamps its feed time with (cell-stream's getTimeUs),
-// so the two can be subtracted. must NOT use sys_time_get_system_time - that is a different epoch.
-static uint64_t nowUs(void)
-{
-   sys_time_sec_t seconds;
-   sys_time_nsec_t nanoseconds;
-   sys_time_get_current_time(&seconds, &nanoseconds);
-   return (uint64_t)seconds * 1000000ull + nanoseconds / 1000;
-}
 
 // cellVdec resource tuning (from the SDK pamf_dmux sample): AVC uses 4 SPUs.
 #define VDEC_SPU_COUNT       4
@@ -80,7 +69,7 @@ static uint32_t vdecCallback(CellVdecHandle handle, CellVdecMsgType type, int32_
          }
          break;
       case CELL_VDEC_MSG_TYPE_PICOUT:
-         decoder->picoutUs[decoder->picoutWrite & (PICOUT_TIME_RING - 1)] = nowUs();
+         decoder->picoutUs[decoder->picoutWrite & (PICOUT_TIME_RING - 1)] = getTimeUs();
          decoder->picoutWrite++;
          decoder->picPending++;
          break;

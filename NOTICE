@@ -6,9 +6,16 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 This repository also includes third-party components that are distributed under
 their own licenses, which continue to apply to those components:
 
-  - BearSSL (libs/simple-lib-https/bearssl) - MIT License,
+  - BearSSL (libs/simple-lib-https/bearssl) - MIT License, by Thomas Pornin,
     see libs/simple-lib-https/bearssl/LICENSE.txt
-  - Ogg Vorbis headers (libs/simple-lib-av) - BSD License, by Xiph.Org
+  - libopus 1.5.2 (libs/simple-lib-av/opus) - BSD 3-Clause License, by Xiph.Org,
+    Skype Limited, Octasic, Jean-Marc Valin, Timothy B. Terriberry, CSIRO,
+    Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozilla and Amazon,
+    see libs/simple-lib-av/opus/COPYING
+  - stb_vorbis v1.22 (libs/simple-lib-av/include/vorbis.h) - public domain,
+    by Sean Barrett
+  - miniz 3.1.2 (libs/simple-lib-core/src/zip.c and zip.h) - MIT License,
+    by RAD Game Tools, Valve Software, Rich Geldreich and Tenacious Software LLC
 
 The Cell SDK under sdk/ is Sony's own material and is not covered by this
 license.

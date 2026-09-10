@@ -28,35 +28,66 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|PS3'">
    <ClCompile>
-     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-app\include;$(SolutionDir)libs\simple-lib-av\include;$(SolutionDir)libs\simple-lib-core\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+     <AdditionalIncludeDirectories>include;$(SolutionDir)libs\simple-lib-app\include;$(SolutionDir)libs\simple-lib-av\include;$(SolutionDir)libs\simple-lib-core\include;$(SolutionDir)libs\simple-lib-https\include;$(SCE_PS3_ROOT)\target\ppu\include;$(SCE_PS3_ROOT)\target\common\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
      <PreprocessorDefinitions>SN_TARGET_PS3;NDEBUG;__GCC__;%(PreprocessorDefinitions)</PreprocessorDefinitions>
    </ClCompile>
    <Link>
      <AdditionalDependencies>-lsysmodule_stub;-lsysutil_stub;-lsysutil_game_stub;-lgcm_cmd;-lgcm_sys_stub;-lresc_stub;-lio_stub;-lpngdec_stub;-ljpgdec_stub;-laudio_stub;-lfs_stub;-lfont_stub;-lfontFT_stub;-lfreetype_stub;-lrtc_stub;-lnet_stub;-lnetctl_stub;-lvdec_stub;-llv2_stub;%(AdditionalDependencies)</AdditionalDependencies>
-     <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-av\bin\$(Configuration)" -lsimple-lib-av -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core -Wl,--strip-unused-data</AdditionalOptions>
+     <AdditionalOptions>-L"$(SolutionDir)libs\simple-lib-app\bin\$(Configuration)" -lsimple-lib-app -L"$(SolutionDir)libs\simple-lib-av\bin\$(Configuration)" -lsimple-lib-av -L"$(SolutionDir)libs\simple-lib-https\bin\$(Configuration)" -lsimple-lib-https -L"$(SolutionDir)libs\simple-lib-core\bin\$(Configuration)" -lsimple-lib-core -Wl,--strip-unused-data</AdditionalOptions>
      <GccOutputFormat>ELFFile</GccOutputFormat>
    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
    <ClCompile Include="src\main.c" />
-   <ClCompile Include="src\net-common.c" />
    <ClCompile Include="src\stream.c" />
    <ClCompile Include="src\shortcuts.c" />
+   <ClCompile Include="src\title-select.c" />
    <ClCompile Include="src\toast.c" />
    <ClCompile Include="src\companion-prompt.c" />
    <ClCompile Include="src\shortcut-hint.c" />
+   <ClCompile Include="src\frame-arena.c" />
    <ClCompile Include="src\frametime-graph.c" />
+   <ClCompile Include="src\mode-select.c" />
+   <ClCompile Include="src\picture-pool.c" />
+   <ClCompile Include="src\rtp-h264.c" />
+   <ClCompile Include="src\rtcp.c" />
+   <ClCompile Include="src\sctp.c" />
+   <ClCompile Include="src\stun.c" />
+   <ClCompile Include="src\xcloud-api.c" />
+   <ClCompile Include="src\xcloud-auth.c" />
+   <ClCompile Include="src\xcloud-catalog.c" />
+   <ClCompile Include="src\xcloud-channels.c" />
+   <ClCompile Include="src\xcloud-ice.c" />
+   <ClCompile Include="src\xcloud-input.c" />
+   <ClCompile Include="src\xcloud-media.c" />
+   <ClCompile Include="src\xcloud-screen.c" />
   </ItemGroup>
   <ItemGroup>
-   <ClInclude Include="include\net-common.h" />
    <ClInclude Include="include\stream.h" />
    <ClInclude Include="include\shortcuts.h" />
    <ClInclude Include="include\cell-stream-settings.h" />
+   <ClInclude Include="include\title-select.h" />
    <ClInclude Include="include\toast.h" />
    <ClInclude Include="include\companion-prompt.h" />
    <ClInclude Include="include\shortcut-hint.h" />
    <ClInclude Include="include\qr-code.h" />
+   <ClInclude Include="include\frame-arena.h" />
    <ClInclude Include="include\frametime-graph.h" />
+   <ClInclude Include="include\mode-select.h" />
+   <ClInclude Include="include\screen-chrome.h" />
+   <ClInclude Include="include\picture-pool.h" />
+   <ClInclude Include="include\rtp-h264.h" />
+   <ClInclude Include="include\rtcp.h" />
+   <ClInclude Include="include\sctp.h" />
+   <ClInclude Include="include\stun.h" />
+   <ClInclude Include="include\xcloud-api.h" />
+   <ClInclude Include="include\xcloud-auth.h" />
+   <ClInclude Include="include\xcloud-catalog.h" />
+   <ClInclude Include="include\xcloud-channels.h" />
+   <ClInclude Include="include\xcloud-ice.h" />
+   <ClInclude Include="include\xcloud-input.h" />
+   <ClInclude Include="include\xcloud-media.h" />
+   <ClInclude Include="include\xcloud-screen.h" />
   </ItemGroup>
   <ItemGroup>
    <None Include="cell-stream.conf" />

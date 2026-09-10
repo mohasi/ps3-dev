@@ -9,9 +9,56 @@ controller.** Games are playable.
 
 ## Using it
 
-Start the server (`cell-stream-server.exe`), then launch the app. The server is an appliance with
-baked-in settings (720p60, 10 Mbit/s, intra refresh) and no arguments. **There is nothing to press.**
-The app finds the server by itself (the server broadcasts a beacon), connects, and streams. If the
+The app opens on a two-choice screen: **PC Streaming** and **Xbox Cloud**.
+
+**Xbox Cloud** signs in to a Microsoft account, trades that through Xbox Live for a streaming pass
+and the address of the regional server, and loads the list of titles the account can play. It then
+starts a session, works out how the console and the machine can reach each other, opens an
+encrypted connection, and asks the machine to start. The game then appears on screen at 1280x720
+and the controller works.
+
+Sound arrives and is decrypted but is not played yet.
+
+Every button belongs to the game while it is streaming, so leaving takes **Start and Select
+together**. That drops back to this screen, where Circle hands the session back.
+
+Sign-in shows a code to enter at microsoft.com/link on a phone; after that the console signs itself
+in on every later launch, and Circle goes back to the menu.
+
+Leave with Circle rather than closing the app another way: that is what hands the session back. A
+session left running keeps a machine busy, and a few of those in a row turn an instant start into
+a wait of several minutes.
+
+There is no dashboard to stream on Xbox Cloud: a session is always started for one named title, so
+the title list is what a session is picked from. (Streaming your own Xbox console does show its
+dashboard, but that is a different service and not what this does.)
+
+### What the machine answers with
+
+Measured on 9 September 2026 by offering a connection to a real session and keeping the reply. These
+decide the shape of the connection code, and none of them could be known without asking:
+
+- **One connection carries everything.** Video, sound and the controller channel share a single
+  address, a single set of credentials and a single encryption session (`BUNDLE`, `rtcp-mux`). There
+  is one socket to open, not three.
+- **The server takes the passive side of the encryption handshake** (`a=setup:passive`), so the
+  console starts it. That is the simpler half to write.
+- **Addresses arrive separately.** The reply carries none; they are traded through the session's own
+  `ice` endpoint afterwards (`a=ice-options:trickle`).
+- **Video is H.264 constrained baseline, level 4.2** (`profile-level-id=42e02a`), which is what the
+  console's decoder handles best. The server picked the level, not us.
+- **Sound is Opus, 48 kHz stereo.** Nothing else was offered back.
+- The controller, control and message channels negotiated versions 9, 3 and 1.
+- The reply arrives wrapped twice: a JSON object holding a JSON string, with the description inside
+  that. The sign-in token is kept in `/dev_hdd0/tmp/cell-stream/xbox-token.txt`
+in the clear, because the console has no key store to protect it with. Delete that file to sign out.
+
+Everything below is PC Streaming.
+
+Start the server (`cell-stream-server.exe`), then launch the app and pick PC Streaming. The server is
+an appliance with baked-in settings (720p60, 10 Mbit/s, intra refresh) and no arguments. **After that
+there is nothing to press.** The app finds the server by itself (the server broadcasts a beacon),
+connects, and streams. If the
 server goes away it says "waiting for server ..." and reconnects on its own when it comes back. Either
 side can be started first.
 
@@ -207,6 +254,25 @@ buttons are listed under "Using it" above.
 
 ## Credits
 
-- **miniz / tinfl** (public domain) — the inflate used to decode the console's button glyphs.
-- **segno** (BSD) — generated the waiting-screen QR code data at build time.
-- On-screen button glyphs are the PS3's own system font art, decoded at runtime — not shipped by us.
+The Xbox Cloud mode:
+
+- **[GreenVita](https://github.com/Day-OS/green-vita)** (MPL 2.0) by Day-OS - Xbox Cloud Gaming on
+  the PS Vita, and the reference that showed this was possible on hardware of this age. It was read
+  for the shape of the sign-in and session flow; it is Rust and this is C, so no code was taken.
+- **[Greenlight](https://github.com/unknownskl/greenlight)** and
+  **[xbox-xcloud-player](https://github.com/unknownskl/xbox-xcloud-player)** by unknownskl - where
+  the protocol knowledge originates, by way of GreenVita, which credits them the same way.
+- The WebRTC pieces here (STUN, SCTP, DTLS, SRTP, RTP/RTCP) are written from their RFCs against
+  BearSSL's primitives. See `libs/simple-lib-https/README.md`.
+
+The rest:
+
+- **miniz** (MIT) - RAD Game Tools and Rich Geldreich. The inflate used to decode the console's
+  button glyphs, via `simple-lib-core`.
+- **libopus** (BSD) - Xiph.Org and others, via `simple-lib-av`. The Xbox Cloud sound.
+- **segno** (BSD) - generated the waiting-screen QR code data at build time.
+- On-screen button glyphs are the PS3's own system font art, decoded at runtime, not shipped by us.
+- H.264 decoding is cellVdec, Sony's decoder on the SPUs.
+
+cell-stream is independent homebrew. It is not affiliated with or endorsed by Microsoft, Xbox, Sony
+or PlayStation.

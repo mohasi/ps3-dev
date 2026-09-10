@@ -281,8 +281,30 @@ cursors and menu sounds into a `.p3t`, with a live preview that plays the scene 
 self-contained one-file projects, worked script examples, and FTP deploy. See
 `tools/theme-studio/README.md`.
 
+## Credits
+
+This repository stands on other people's work. The vendored libraries are listed with their licenses
+in [NOTICE](NOTICE); each project's own README credits what that project was written from. The rest:
+
+- **scetool 0.2.9** by naehrwert, with NP local license handling by flatz - signs every EBOOT during
+  an app build (`common/npdrm.targets`). Redistributed under `tools/scetool/`.
+- **pkg_custom** - wraps the signed stage into a .pkg, which Sony's own `make_package_npdrm` will not
+  do for a pre-encrypted SELF. A PS3 scene tool; its author is not recorded here, and a pointer would
+  be welcome.
+- **IRISMAN** - a working EBOOT from it was dumped with `scetool -i` and matched field for field to
+  work out the signing values an app needs to run privileged. Nothing was copied; it was the oracle.
+- **webMAN MOD** and **Cobra** - the VSH plugin conventions this repo follows come from reading them:
+  the 0x400 thread priority, and that `_start` must leave through the raw thread-exit syscall rather
+  than returning, which is what stopped HEN 4.93 hard-locking on plugin load.
+- The homebrew under `hb-apps/` is kept as reference material for lv2 syscall numbers, argument order
+  and device structures, all of which are undocumented outside it.
+- The Cell SDK, its samples and its documentation under `sdk/` are Sony's.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Vendored third-party components
-(BearSSL, Ogg Vorbis) keep their own licenses.
+keep their own licenses: BearSSL (MIT, Thomas Pornin), libopus (BSD, Xiph.Org and others),
+stb_vorbis (public domain, Sean Barrett) and miniz (MIT, RAD Game Tools and Rich Geldreich).
+NOTICE lists them with their paths. Each project's own README credits the work it was written
+from, and the SDK under `sdk/` is Sony's.
 

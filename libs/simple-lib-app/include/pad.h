@@ -50,6 +50,14 @@ int isPadButtonPressed(PadButton button);   // the frame it went down
 int isPadButtonHeld(PadButton button);      // frames after that, NOT the frame it went down
 int isPadButtonDown(PadButton button);      // down right now, however long it has been: pressed or held
 int isPadButtonReleased(PadButton button);
+
+#define PAD_PRESSURE_MAX 255
+
+// How hard a button is held, 0 when it is not. The dpad, the face buttons and the four shoulders
+// report the real range; START, SELECT and the stick clicks have no sensor and answer the maximum
+// while down, so this can be used in place of isPadButtonDown for any button.
+int getPadButtonPressure(PadButton button);
+
 unsigned getPadDownButtons(void);           // buttons down right now as a mask (1u << PadButton), for forwarding
 Stick getPadLeftStick(void);
 Stick getPadRightStick(void);

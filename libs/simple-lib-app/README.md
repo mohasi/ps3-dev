@@ -73,7 +73,9 @@ widgets expose a `retheme*` call to recolour on a live theme switch.
 
 - `pad`: poll the controller once per frame (`updatePad`), then query per-button state —
   `isPadButtonPressed` (the frame it went down), `isPadButtonHeld`, `isPadButtonDown`,
-  `isPadButtonReleased`, plus analog sticks.
+  `isPadButtonReleased`, plus analog sticks and `getPadButtonPressure` (0-255, how hard a button is
+  held; the d-pad, face buttons and shoulders have a sensor, START/SELECT/L3/R3 report full while
+  down). Press mode is switched on per port as it connects, so pressure needs no setup.
 - `button-repeat`: turns a held button into an accelerating repeat signal (`isRepeatDue`) for scrolling.
 
 ### App framework
@@ -139,3 +141,13 @@ this library — consuming apps do not need their own shader build steps.
   depends on `simple-lib-core` for cross-context primitives (printf, dbg, file, thread, string
   utilities, wire, log-backlog, bridge-client) and does **not** depend on `simple-lib-plugin`
   (PRX-only extras).
+
+## Credits
+
+- Image encoding mirrors the call order in the SDK's own sample, `sdk/samples/codec/png_enc`, which
+  is the only place the required setup is written down. The decoders and encoders themselves are
+  Sony's (cellPngDec, cellJpgDec, cellPngEnc).
+- The console button glyphs are the PS3's own system font art, read out of `imagefont.bin` at
+  runtime and decoded with miniz (see `simple-lib-core`). Nothing is redrawn or shipped by us.
+- The RSX, pad, audio and dialog code is written against the SDK headers and its samples under
+  `sdk/samples/`.

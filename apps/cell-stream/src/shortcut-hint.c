@@ -7,7 +7,7 @@
 #include "ui/button-hints.h"
 #include "ui/console-glyphs.h"
 #include "gfx.h"
-#include "net-common.h"   // getTimeUs
+#include "thread.h"   // getTimeUs
 
 #define HINT_HOLD_US   10000000
 #define GLYPH_HEIGHT   30

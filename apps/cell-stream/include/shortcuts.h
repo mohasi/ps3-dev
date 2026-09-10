@@ -29,10 +29,8 @@ ShortcutAction firedShortcut(void);
 // PC - the streamed game must never see a stray press from one of our combos.
 unsigned getShortcutHeldBackMask(void);
 
-// display strings for the on-screen shortcut hint. SELECT is the shared modifier, so the
-// button name is what you press with it; "-" when the action has no combo bound.
+// the action's display name, for the on-screen shortcut hint.
 const char *getShortcutActionName(ShortcutAction action);
-const char *getShortcutButtonName(ShortcutAction action);
 
 // the button an action is bound to (for mapping to a controller glyph); PAD_BTN_SELECT when unbound
 PadButton getShortcutButton(ShortcutAction action);

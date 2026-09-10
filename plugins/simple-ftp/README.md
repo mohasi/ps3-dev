@@ -61,3 +61,8 @@ Build and deploy through the ps3 MCP tool (`build` kind `plugins`, name `simple-
 Anything unusual — bind conflicts, accept errors, malformed commands, failed mounts — is logged via `dbg.h` (`logInfo` / `logWarn` / `logError`), one timestamped, level-prefixed line per event.
 
 Every line is written to `/dev_hdd0/tmp/dbg.txt` and, if `simple-debug-bridge` is installed, forwarded live to the `debug-bridge-client` Logs tab on the PC. The plugin registers with the bridge from `_start()`, so startup chatter is buffered locally and sent as soon as the bridge link comes up — even early-boot races reach the host.
+
+## Credits
+
+Written from RFC 959, with the passive-mode and listing behaviour checked against what FileZilla and
+WinSCP actually send. No code was taken from another PS3 FTP server.

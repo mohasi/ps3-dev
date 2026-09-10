@@ -13,7 +13,7 @@ decoders, so playback is real-time without pegging the main CPU.
   YouTube serves) are handled.
 - Sources: a local file, an `http(s)://` URL (streamed as it downloads), or a YouTube-style live
   segment stream. The demuxers don't care where the bytes come from.
-- What it will NOT play: HEVC, 10-bit video, Opus/E-AC3/DTS audio. The probe below reports these
+- What it will NOT play: HEVC, 10-bit video, E-AC3/DTS audio. Opus is decoded (see `opus/`), but only through `decode-opus.h` for a live stream, not by the file player below. The probe below reports these
   up front with a reason to show the user.
 
 **Audio (standalone mixer)**
@@ -95,3 +95,13 @@ those as the alloc/free hooks for true zero-copy.
 
 The audio decoders are vendored single-header libraries pulled straight into `audio.c` (not compiled
 separately): `vorbis.h` (stb_vorbis) and `mp3.h` / `flac.h` / `wav.h` (the dr_libs).
+
+## Credits
+
+- **libopus 1.5.2** (BSD 3-clause) by Xiph.Org, Skype Limited, Octasic, Jean-Marc Valin, Timothy B.
+  Terriberry, CSIRO, Gregory Maxwell, Mark Borgerding, Erik de Castro Lopo, Mozilla and Amazon.
+  Vendored under `opus/`, decoder only. This is the Xbox Cloud sound path.
+- **stb_vorbis v1.22** (public domain) by Sean Barrett, originally sponsored by RAD Game Tools.
+- **dr_mp3 / dr_flac / dr_wav** (public domain or MIT-0) by David Reid.
+- H.264 and AAC decoding is cellVdec and cellAdec, Sony's own decoders on the SPUs. This library
+  wraps them; it does not implement them.

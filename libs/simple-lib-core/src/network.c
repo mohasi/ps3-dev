@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <netex/net.h>
 #include <sys/socket.h>
+#include <sys/time.h>   // struct timeval, for setReceiveTimeout
 
 #include "string-utilities.h"
 
@@ -50,4 +51,12 @@ int isNetworkAvailable(void)
 {
    uint32_t ip;
    return getLocalIpv4(&ip) == 0;
+}
+
+void setReceiveTimeout(int socketValue, int milliseconds)
+{
+   struct timeval timeout;
+   timeout.tv_sec = milliseconds / 1000;
+   timeout.tv_usec = (milliseconds % 1000) * 1000;
+   setsockopt(socketValue, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout);
 }

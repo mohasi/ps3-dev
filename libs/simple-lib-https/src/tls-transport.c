@@ -16,7 +16,7 @@
 #include <sys/sys_time.h>     // sys_time_get_current_time (wall clock for cert-date validation)
 #include <sys/random_number.h>
 
-// the bundled root CAs (Google Trust Services + Let's Encrypt), generated in trust-anchors.c
+// the bundled root CAs, generated in trust-anchors.c
 extern const br_x509_trust_anchor TLS_TRUST_ANCHORS[];
 extern const size_t TLS_TRUST_ANCHORS_COUNT;
 

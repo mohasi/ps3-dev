@@ -25,9 +25,14 @@
 #include "audio.h"
 #include "decode-h264.h"
 #include "h264.h"
-#include "net-common.h"
+#include "frame-arena.h"
+#include "picture-pool.h"
+#include "network.h"
 #include "stream.h"
 
+#define SERVER_PORT            38310   // cell-stream-server listens here
+#define CLIENT_PORT            38311   // we bind here; server beacons broadcast to this port
+#define PACKET_MAX             1500
 #define BEACON_WAIT_MS         2000    // one look for a server before going round again
 #define RECONNECT_DELAY_MS     500
 #define SERVER_TIMEOUT_MS      2000    // once video has flowed, no video for this long = the server is gone
@@ -41,12 +46,83 @@
 #define TIME_SYNC_SAMPLES      10
 #define FRAGMENT_HEADER_BYTES  20
 #define FRAGMENT_PAYLOAD_BYTES 1300
-#define FRAME_MAX_BYTES        (1024 * 1024)   // a keyframe at a high bitrate is far bigger than a normal frame; generous headroom
-#define FRAGMENT_MAX_COUNT     (FRAME_MAX_BYTES / FRAGMENT_PAYLOAD_BYTES + 1)
+#define FRAGMENT_MAX_COUNT     (FRAME_ARENA_SLOT_BYTES / FRAGMENT_PAYLOAD_BYTES + 1)
 #define FEED_TIME_RING         32
 #define DECODE_BUSY_TRIES      200   // 1ms apart; give up feeding an AU after this
-#define YUV_BUFFER_COUNT       5     // enough that a write target is never published, previously published, or recently drawn
-#define AU_SLOT_COUNT          6     // queue between the receive and decode threads (also the decoder's no-touch window)
+
+// section: socket plumbing
+
+static void drainSocket(int socketValue)   // discard queued packets so an earlier session can't pollute this one
+{
+   char discard[PACKET_MAX];
+   setReceiveTimeout(socketValue, 50);
+   while (recv(socketValue, discard, sizeof discard, 0) > 0) ;
+}
+
+static int openClientSocket(void)
+{
+   int socketValue = socket(AF_INET, SOCK_DGRAM, 0);
+   if (socketValue < 0) return -1;
+
+   int receiveBufferBytes = 1024 * 1024;   // absorb a keyframe burst even if the reader hiccups
+   int bufferRc = setsockopt(socketValue, SOL_SOCKET, SO_RCVBUF, &receiveBufferBytes, sizeof receiveBufferBytes);
+   static int bufferWarned;   // sockets reopen every reconnect attempt; one line per run is plenty
+   if (bufferRc != 0 && !bufferWarned) { logWarn("[cst] SO_RCVBUF 1MB failed rc=%d\n", bufferRc); bufferWarned = 1; }
+
+   struct sockaddr_in localAddress;
+   memset(&localAddress, 0, sizeof localAddress);
+   localAddress.sin_family = AF_INET;
+   localAddress.sin_port = htons(CLIENT_PORT);
+   localAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+   if (bind(socketValue, (struct sockaddr *)&localAddress, sizeof localAddress) < 0) {
+      socketclose(socketValue);
+      return -1;
+   }
+   return socketValue;
+}
+
+// waits for the server's CELLSTREAM beacon; fills serverAddress. 1 on success, 0 on timeout.
+static int discoverServer(int socketValue, struct sockaddr_in *serverAddress, int timeoutMs)
+{
+   setReceiveTimeout(socketValue, 500);
+   uint64_t deadlineUs = getTimeUs() + (uint64_t)timeoutMs * 1000;
+   while (getTimeUs() < deadlineUs) {
+      char packet[PACKET_MAX];
+      struct sockaddr_in fromAddress;
+      socklen_t fromLength = sizeof fromAddress;
+      int length = recvfrom(socketValue, packet, sizeof packet - 1, 0, (struct sockaddr *)&fromAddress, &fromLength);
+      if (length <= 0) continue;
+      packet[length] = 0;
+      if (strncmp(packet, "CELLSTREAM", 10) == 0) { *serverAddress = fromAddress; return 1; }
+   }
+   return 0;
+}
+
+// parses the unsigned integer that follows `prefix` in `text`; -1 when the prefix doesn't match
+static long parseNumberAfter(const char *text, const char *prefix)
+{
+   if (strncmp(text, prefix, strlen(prefix)) != 0) return -1;
+   const char *cursor = text + strlen(prefix);
+   if (*cursor < '0' || *cursor > '9') return -1;
+
+   long value = 0;
+   while (*cursor >= '0' && *cursor <= '9') value = value * 10 + (*cursor++ - '0');
+   return value;
+}
+
+// same, but for numbers too big for a long - `long` is only 32 bits here, and the server's clock is
+// microseconds since 2020, which is far past what that holds. parsing it as a long came out negative and
+// silently failed every clock sync.
+static long long parseBigNumberAfter(const char *text, const char *prefix)
+{
+   if (strncmp(text, prefix, strlen(prefix)) != 0) return -1;
+   const char *cursor = text + strlen(prefix);
+   if (*cursor < '0' || *cursor > '9') return -1;
+
+   long long value = 0;
+   while (*cursor >= '0' && *cursor <= '9') value = value * 10 + (*cursor++ - '0');
+   return value;
+}
 
 // section: state shared with the UI thread
 
@@ -58,15 +134,9 @@ static volatile int stopRequested;    // the app is exiting: end the connect loo
 static volatile int sessionAbort;     // THIS session has failed: drop it and reconnect
 static volatile int buffersInUse;     // pictures allocated; only the draw thread may free them
 
-// latest decoded picture. the RSX reads a drawn buffer asynchronously (up to ~2 flips later),
-// so the decoder must never write into the published, previously published, or two most
-// recently DRAWN buffers - if it decodes several frames between two draws, published moves on
-// while the RSX is still scanning an older buffer (reusing it showed as screen tearing).
-static void *yuvBuffers[YUV_BUFFER_COUNT];
-static int publishedIndex = -1, previousPublishedIndex = -1;
-static int drawnIndex = -1, previousDrawnIndex = -1;
+static PicturePool picturePool;
 static int publishedWidth, publishedHeight;
-static uint64_t bufferCaptureUs[YUV_BUFFER_COUNT], bufferDecodedUs[YUV_BUFFER_COUNT];   // per buffer, for present/total timings
+static uint64_t bufferCaptureUs[PICTURE_POOL_SIZE], bufferDecodedUs[PICTURE_POOL_SIZE];   // per buffer, for present/total timings
 static sys_lwmutex_t frameLock;
 
 // one-frame buffer mode: instead of showing the newest picture the instant it decodes, present on the
@@ -126,15 +196,14 @@ typedef struct {
    uint64_t captureUs, completeUs;
 } AuSlot;
 
-static uint8_t auBuffers[AU_SLOT_COUNT][FRAME_MAX_BYTES];
-static AuSlot auSlots[AU_SLOT_COUNT];
+static AuSlot auSlots[FRAME_ARENA_SLOTS];
 static volatile int auWriteSlot, auReadSlot;
 static sys_lwmutex_t queueLock;
 
 static int getQueuedAuCount(void)
 {
    lock(&queueLock);
-   int count = (auWriteSlot - auReadSlot + AU_SLOT_COUNT) % AU_SLOT_COUNT;
+   int count = (auWriteSlot - auReadSlot + FRAME_ARENA_SLOTS) % FRAME_ARENA_SLOTS;
    unlock(&queueLock);
    return count;
 }
@@ -167,26 +236,17 @@ static void setStreamError(const char *message)
 
 // section: decoded-frame publishing
 
-static int getNextWriteIndex(void)
-{
-   lock(&frameLock);
-   int i;
-   for (i = 0; i < YUV_BUFFER_COUNT; i++) {
-      if (i == publishedIndex || i == previousPublishedIndex || i == drawnIndex || i == previousDrawnIndex) continue;
-      break;
-   }
-   unlock(&frameLock);
-   return i < YUV_BUFFER_COUNT ? i : 0;   // 5 buffers vs at most 4 exclusions: always found
-}
-
 static void drainDecodedFrames(void)
 {
    if (!decoder) return;   // the decoder only exists once the first keyframe has described the stream
    for (;;) {
-      int writeIndex = getNextWriteIndex();
+      lock(&frameLock);
+      int writeIndex = getFreePicture(&picturePool);
+      unlock(&frameLock);
+
       int width, height;
       uint64_t pts;
-      int rc = getFrameH264(decoder, yuvBuffers[writeIndex], &width, &height, &pts);
+      int rc = getFrameH264(decoder, picturePool.buffers[writeIndex], &width, &height, &pts);
       if (rc != 1) break;
 
       // pictures come out in feed order, so this frame's timings are the decodedCount'th we fed
@@ -208,8 +268,8 @@ static void drainDecodedFrames(void)
       decodedCount++;
 
       lock(&frameLock);
-      previousPublishedIndex = publishedIndex;
-      publishedIndex = writeIndex;
+      picturePool.previouslyPublished = picturePool.published;
+      picturePool.published = writeIndex;
       publishedWidth = width;
       publishedHeight = height;
       bufferCaptureUs[writeIndex] = timing->captureUs;
@@ -236,20 +296,9 @@ static int openDecoderForStream(const uint8_t *keyframe, int bytes)
    logInfo("[cst] stream codes %dx%d, level %d, %d ref frames\n", info.codedWidth, info.codedHeight,
            info.level, info.maxRefFrames);
 
+   if (hasPicturePoolBuffers(&picturePool)) { setStreamError("previous buffers not yet released"); return -1; }
    size_t yuvBytes = ((size_t)info.codedWidth * info.codedHeight * 3 / 2 + 127) & ~(size_t)127;
-   int i;
-   for (i = 0; i < YUV_BUFFER_COUNT; i++) {
-      if (yuvBuffers[i]) { setStreamError("previous buffers not yet released"); return -1; }
-      yuvBuffers[i] = allocGfxVideoBuffer(yuvBytes);
-      if (!yuvBuffers[i]) {
-         // free the ones we just got before bailing - they were never published, so the RSX never saw
-         // them. leaving them behind would leak forever (buffersInUse is still 0, so releaseStreamBuffers
-         // skips them) and wedge every future session on the "previous buffers not yet released" guard.
-         setStreamError("video buffer alloc failed");
-         while (i-- > 0) { freeGfxVideoBuffer(yuvBuffers[i]); yuvBuffers[i] = NULL; }
-         return -1;
-      }
-   }
+   if (allocPicturePool(&picturePool, yuvBytes) != 0) { setStreamError("video buffer alloc failed"); return -1; }
    buffersInUse = 1;
 
    decoder = createH264Decoder(info.codedWidth, info.codedHeight, info.level, info.maxRefFrames);
@@ -310,7 +359,7 @@ static void handleFragment(const uint8_t *packet, int packetBytes)
    for (i = 0; i < 8; i++) captureUs = (captureUs << 8) | packet[12 + i];
 
    if (fragCount <= 0 || fragCount > FRAGMENT_MAX_COUNT || fragIndex >= fragCount) return;
-   if ((long)(fragCount - 1) * FRAGMENT_PAYLOAD_BYTES + payloadBytes > FRAME_MAX_BYTES) return;
+   if ((long)(fragCount - 1) * FRAGMENT_PAYLOAD_BYTES + payloadBytes > FRAME_ARENA_SLOT_BYTES) return;
 
    AuSlot *slot = &auSlots[auWriteSlot];
 
@@ -334,7 +383,7 @@ static void handleFragment(const uint8_t *packet, int packetBytes)
    if (assemblyFragSeen[fragIndex]) return;
    assemblyFragSeen[fragIndex] = 1;
    assemblyFragsReceived++;
-   memcpy(auBuffers[auWriteSlot] + (long)fragIndex * FRAGMENT_PAYLOAD_BYTES, packet + FRAGMENT_HEADER_BYTES, payloadBytes);
+   memcpy(getFrameArenaSlot(auWriteSlot) + (long)fragIndex * FRAGMENT_PAYLOAD_BYTES, packet + FRAGMENT_HEADER_BYTES, payloadBytes);
    if (fragIndex == fragCount - 1) assemblyLastFragBytes = payloadBytes;
    windowBytes += packetBytes;
 
@@ -346,7 +395,7 @@ static void handleFragment(const uint8_t *packet, int packetBytes)
    assemblyFrameId = -1;
 
    lock(&queueLock);
-   int nextSlot = (auWriteSlot + 1) % AU_SLOT_COUNT;
+   int nextSlot = (auWriteSlot + 1) % FRAME_ARENA_SLOTS;
    if (nextSlot == auReadSlot) {
       // decoder is a whole queue behind - drop this frame rather than stall the receive thread
       unlock(&queueLock);
@@ -616,7 +665,7 @@ static int requestPlay(int socketValue, struct sockaddr_in *serverAddress, long 
 
 #define PAD_PACKET_BYTES 20
 
-static int padSocket = -1;                  // the live session's socket, or -1 between sessions
+static volatile int padSocket = -1;                  // the live session's socket, or -1 between sessions
 static struct sockaddr_in padServerAddress;
 static uint32_t padPacketId;
 
@@ -688,11 +737,11 @@ static void runDecodeThread(uint64_t argument)
          sleepMs(1);
          continue;
       }
-      feedAu(&auSlots[auReadSlot], auBuffers[auReadSlot]);
+      feedAu(&auSlots[auReadSlot], getFrameArenaSlot(auReadSlot));
       drainDecodedFrames();
 
       lock(&queueLock);
-      auReadSlot = (auReadSlot + 1) % AU_SLOT_COUNT;
+      auReadSlot = (auReadSlot + 1) % FRAME_ARENA_SLOTS;
       unlock(&queueLock);
    }
    exitThread();
@@ -844,8 +893,7 @@ cleanup:
    logSessionDetail = fedCount > 0;   // a session that streamed earns the next connect its log lines back
    closeAudioFeed();
    lock(&frameLock);
-   publishedIndex = previousPublishedIndex = -1;
-   drawnIndex = previousDrawnIndex = -1;
+   resetPicturePool(&picturePool);
    publishSeq = presentSeq = 0;
    unlock(&frameLock);
    if (decoder) {
@@ -872,6 +920,7 @@ static void runStreamThread(uint64_t argument)
       if (!stopRequested) sleepMs(RECONNECT_DELAY_MS);
    }
    logInfo("[cst] stream: connect loop exit\n");
+   releaseFrameArena();
    streamRunning = 0;
    exitThread();
 }
@@ -881,10 +930,7 @@ static void runStreamThread(uint64_t argument)
 void releaseStreamBuffers(void)
 {
    if (streamLive || !buffersInUse) return;   // only ever between sessions
-   int i;
-   for (i = 0; i < YUV_BUFFER_COUNT; i++) {
-      if (yuvBuffers[i]) { freeGfxVideoBuffer(yuvBuffers[i]); yuvBuffers[i] = NULL; }
-   }
+   freePicturePool(&picturePool);
    buffersInUse = 0;   // the next session may now allocate its own
    logInfo("[cst] stream: buffers released\n");
 }
@@ -893,10 +939,17 @@ void releaseStreamBuffers(void)
 
 void initStream(void)
 {
-   createLock(&statsLock);
-   createLock(&frameLock);
-   createLock(&queueLock);
+   // the locks outlive any one stream: this runs again each time the menu is left, and making
+   // them a second time would abandon the first set
+   static int locksMade;
+   if (!locksMade) {
+      createLock(&statsLock);
+      createLock(&frameLock);
+      createLock(&queueLock);
+      locksMade = 1;
+   }
 
+   claimFrameArena("pc");
    streamRunning = 1;
    stopRequested = 0;
    sys_ppu_thread_t threadId;
@@ -933,8 +986,8 @@ void setStreamBuffered(int on)
 // reserve is always in hand. presentSeq is advanced here only, and only when a frame is actually taken.
 static int nextDrawIndexLocked(void)
 {
-   if (publishedIndex < 0) return -1;
-   if (!bufferOneFrame) return publishedIndex != drawnIndex ? publishedIndex : -1;
+   if (picturePool.published < 0) return -1;
+   if (!bufferOneFrame) return picturePool.published != picturePool.drawn ? picturePool.published : -1;
 
    uint64_t target;
    if (presentSeq == 0) {                       // prime: need one decoded reserve before the first show
@@ -946,7 +999,7 @@ static int nextDrawIndexLocked(void)
       if (target < publishSeq - 1) target = publishSeq - 1;   // only the newest two are kept; skip stale ones
    }
    presentSeq = target;
-   return target >= publishSeq ? publishedIndex : previousPublishedIndex;
+   return target >= publishSeq ? picturePool.published : picturePool.previouslyPublished;
 }
 
 // true when nextDrawIndexLocked would take a frame. straight mode: a newer picture exists; buffered mode:
@@ -958,8 +1011,8 @@ int isNewStreamPictureReady(void)
 {
    lock(&frameLock);
    int ready;
-   if (publishedIndex < 0) ready = 0;
-   else if (!bufferOneFrame) ready = publishedIndex != drawnIndex;
+   if (picturePool.published < 0) ready = 0;
+   else if (!bufferOneFrame) ready = picturePool.published != picturePool.drawn;
    else if (presentSeq == 0) ready = publishSeq >= 2;
    else ready = presentSeq + 1 <= publishSeq;
    unlock(&frameLock);
@@ -970,21 +1023,18 @@ void drawStreamFrame(void)
 {
    lock(&frameLock);
    int index = nextDrawIndexLocked();
-   if (index < 0) index = drawnIndex;   // nothing new: redraw whatever is on screen
+   if (index < 0) index = picturePool.drawn;   // nothing new: redraw whatever is on screen
    if (index >= 0) {
-      // letterbox: scale to fit the screen preserving aspect ratio
-      int screenWidth = getGfxScreenWidth(), screenHeight = getGfxScreenHeight();
-      int drawWidth = screenWidth, drawHeight = publishedHeight * screenWidth / publishedWidth;
-      if (drawHeight > screenHeight) { drawHeight = screenHeight; drawWidth = publishedWidth * screenHeight / publishedHeight; }
-      drawGfxYuvFrame((screenWidth - drawWidth) / 2, (screenHeight - drawHeight) / 2, drawWidth, drawHeight,
-                      yuvBuffers[index], publishedWidth, publishedHeight);
+      int atX, atY, drawWidth, drawHeight;
+      getGfxLetterboxRect(publishedWidth, publishedHeight, &atX, &atY, &drawWidth, &drawHeight);
+      drawGfxYuvFrame(atX, atY, drawWidth, drawHeight, picturePool.buffers[index], publishedWidth, publishedHeight);
 
       // time only the first draw of each new picture: that's when it is handed to the RSX. the wait for
       // the display is NOT part of this - it is timed separately (see noteStreamFlipWait) because it
       // happens inside the next endGfxFrame, and folding it in here would credit it to the wrong frame.
-      if (drawnIndex != index) {
-         previousDrawnIndex = drawnIndex;
-         drawnIndex = index;
+      if (picturePool.drawn != index) {
+         picturePool.previouslyDrawn = picturePool.drawn;
+         picturePool.drawn = index;
          uint64_t now = getTimeUs();
          windowPresentUs += now - bufferDecodedUs[index];
          windowTotalUs += now - bufferCaptureUs[index];

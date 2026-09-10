@@ -309,6 +309,9 @@
    <ClCompile Include="bearssl\src\x509\x509_knownkey.c" />
    <ClCompile Include="bearssl\src\x509\x509_minimal.c" />
    <ClCompile Include="bearssl\src\x509\x509_minimal_full.c" />
+   <ClCompile Include="src\dtls-certificate.c" />
+   <ClCompile Include="src\dtls.c" />
+   <ClCompile Include="src\srtp.c" />
    <ClCompile Include="src\tls-transport.c" />
    <ClCompile Include="src\transport-bearssl.c" />
    <ClCompile Include="src\trust-anchors.c" />
@@ -329,6 +332,9 @@
    <ClInclude Include="bearssl\inc\bearssl_x509.h" />
    <ClInclude Include="bearssl\src\config.h" />
    <ClInclude Include="bearssl\src\inner.h" />
+   <ClInclude Include="include\dtls-certificate.h" />
+   <ClInclude Include="include\dtls.h" />
+   <ClInclude Include="include\srtp.h" />
    <ClInclude Include="include\tls-transport.h" />
   </ItemGroup>
   <ItemGroup>

@@ -127,3 +127,9 @@ dictionary alone rather than from the whole document.
 
 A fetched torrent is checked against the feed that led to it: the hash computed from the file has to
 be the one the feed advertised, which is what says the whole chain arrived intact.
+
+## Credits
+
+Written from the specifications, not from another client: the BitTorrent protocol and its extensions
+(BEP 3, 9, 10, 15 and 23), and RFC 3174 for SHA-1, whose own test vectors are what `sha1.c` checks
+itself against at launch. No code was taken from libtorrent or from the mainline client.

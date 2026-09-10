@@ -5,7 +5,7 @@
 #include "ui/label.h"
 #include "gfx.h"
 #include "colors.h"
-#include "net-common.h"   // getTimeUs
+#include "thread.h"   // getTimeUs
 
 #define TOAST_SIZE       26
 #define TOAST_MARGIN     30

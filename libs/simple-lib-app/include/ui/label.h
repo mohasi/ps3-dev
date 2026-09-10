@@ -49,6 +49,12 @@ void drawLabelAlpha(const Label *l, int alpha);
 // moves then draws in one call - handy when a label is repositioned every frame.
 static inline void drawLabelAt(Label *l, int x, int y) { moveLabel(l, x, y); drawLabel(l); }
 
+// as drawLabelAt, with the label's own text centred horizontally on centerX.
+static inline void drawLabelCentered(Label *l, int centerX, int y)
+{
+   drawLabelAt(l, centerX - (int)measureFontText(l->font, l->size, l->text) / 2, y);
+}
+
 // the Y to draw a label at so its actual rendered glyph height is centred within a
 // rowHeight-tall row starting at rowY - the font's line-box height isn't the label's point
 // size, so this reads the real rendered texture height rather than assuming one. the +3 is a

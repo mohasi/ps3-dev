@@ -1,4 +1,4 @@
-// json - reading a search site's answer, which is an array of objects and nothing more elaborate.
+// json - reading a web API's answer, which is an object or an array of them and nothing more elaborate.
 
 #include "json.h"
 
@@ -95,6 +95,16 @@ int findJsonArray(const char *text, int length, const char *key, int *start, int
    return *end > *start ? 0 : -1;
 }
 
+int getJsonObject(const char *text, int length, const char *key, int *objectStart, int *objectEnd)
+{
+   int offset = findMember(text, length, key);
+   if (offset < 0 || text[offset] != '{') return -1;
+
+   *objectStart = offset + 1;
+   *objectEnd = skipValue(text, length, offset) - 1;
+   return *objectEnd > *objectStart ? 0 : -1;
+}
+
 int readJsonObject(const char *text, int end, int offset, int *objectStart, int *objectEnd)
 {
    while (offset < end && text[offset] != '{') offset++;
@@ -114,7 +124,7 @@ int getJsonText(const char *object, int length, const char *key, char *out, int 
 
    int written = 0;
 
-   // a string, with the escapes a search result actually carries turned back
+   // a string, with the escapes these answers actually carry turned back
    if (object[offset] == '"') {
       for (offset++; offset < length && object[offset] != '"' && written < capacity - 1; offset++) {
          char character = object[offset];

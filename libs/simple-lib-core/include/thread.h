@@ -10,6 +10,7 @@
 #include <sys/ppu_thread.h>
 #include <sys/synchronization.h>
 #include <sys/timer.h>
+#include <sys/sys_time.h>   // getTimeUs
 
 #include "syscall.h"   // scCall1, for the raw thread-exit in exitLoaderThread
 
@@ -82,6 +83,17 @@ static inline int unlock(sys_lwmutex_t *m)      { return sys_lwmutex_unlock(m); 
 static inline void exitThread(void)     { sys_ppu_thread_exit(0); }
 static inline void sleepMs(unsigned ms) { sys_timer_usleep(ms * 1000); }
 static inline void yieldThread(void)    { sys_ppu_thread_yield(); }
+
+// Microseconds on a clock that keeps running, for measuring how long something took and for
+// pacing work that must not depend on how often a loop happens to come round. Not the same epoch
+// as sys_time_get_system_time, so do not mix readings from the two.
+static inline uint64_t getTimeUs(void)
+{
+   sys_time_sec_t seconds;
+   sys_time_nsec_t nanoseconds;
+   sys_time_get_current_time(&seconds, &nanoseconds);
+   return (uint64_t)seconds * 1000000ull + nanoseconds / 1000;
+}
 
 // end a module's _start/_stop. the kernel runs the entry on a loader thread and
 // joins on it; HEN 4.93 hard-locks the console if that thread returns normally

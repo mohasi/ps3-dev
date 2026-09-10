@@ -64,3 +64,10 @@ All activity is logged via `dbg.h` (`logInfo` / `logWarn` / `logError`) with `[s
 
 - Cobra CFW (EVILNAT or equivalent) — needed for the disc-mount syscalls
 - No other plugin using `127.0.0.1:8947` — if that port is taken, the listener can't start
+
+## Credits
+
+The mount itself is **Cobra**'s: this plugin only calls the syscall Cobra already provides on CFW and
+HEN, and waits for the XMB to notice. The plugin conventions it follows (thread priority, and leaving
+`_start` through the raw thread-exit syscall) come from reading **webMAN MOD** and Cobra, as noted in
+the repository README.

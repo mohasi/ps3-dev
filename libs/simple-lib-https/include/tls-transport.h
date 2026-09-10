@@ -2,10 +2,8 @@
 
 // tls-transport - the BearSSL HTTPS plumbing behind the modern http transport (transport-bearssl). One
 // connection = one TCP socket + one BearSSL client engine; a request runs on it, then the response head is
-// parsed and the body is read incrementally. HTTP/1.1 + "Connection: close" (or HTTP/1.0) means the body
-// is delimited by
-// Content-Length or by the peer closing - there is no chunked decoding to get wrong for the hosts we talk
-// to (googlevideo answers a Range request with 206 + Content-Length).
+// parsed and the body is read incrementally. A body is delimited by Content-Length, by the peer closing,
+// or by chunk sizes, and all three are handled here so callers never see the framing.
 
 #include <stdint.h>
 

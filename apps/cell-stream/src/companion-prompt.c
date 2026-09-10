@@ -6,10 +6,9 @@
 #include "ui/label.h"
 #include "gfx.h"
 #include "colors.h"
+#include "screen-chrome.h"
 #include "qr-code.h"
 
-#define TITLE_Y      90          // the big title stays put near the top (matches the bottom bar's margin)
-#define TITLE_SIZE   48
 #define HINT_SIZE    24
 #define URL_SIZE     26
 #define QR_GAP       48          // breathing room between the QR and the text above/below it
@@ -18,18 +17,14 @@
 #define QUIET_MODULES 4          // light border so the code scans
 #define QR_PANEL      (QR_SIZE * MODULE_PIXELS + 2 * QUIET_MODULES * MODULE_PIXELS)
 
-#define TEXT_DIM  0xFFB0B0B0
-
 static const char *TITLE = "Waiting for server...";
 static const char *HINT  = "To start, run the companion server on Windows®. Don't have it? Scan the code:";
 static const char *URL   = "github.com/mohasi/ps3-dev/releases/latest";
 
-static Font *promptFont;
 static Label title, hint, url;
 
 void initCompanionPrompt(Font *font)
 {
-   promptFont = font;
    initLabelRaw(&title, font, 0, 0, AUTO, AUTO, TITLE_SIZE, COLOR_WHITE, TEXT_NOWRAP, TITLE);
    initLabelRaw(&hint, font, 0, 0, AUTO, AUTO, HINT_SIZE, TEXT_DIM, TEXT_NOWRAP, HINT);
    initLabelRaw(&url, font, 0, 0, AUTO, AUTO, URL_SIZE, COLOR_WHITE, TEXT_NOWRAP, URL);
@@ -49,27 +44,20 @@ static void drawQr(int centerX, int topY)
             fillGfxRectangle(originX + col * MODULE_PIXELS, originY + row * MODULE_PIXELS, MODULE_PIXELS, MODULE_PIXELS, COLOR_BLACK);
 }
 
-static void drawCenteredLabel(Label *label, int size, const char *text, int centerX, int y)
-{
-   label->x = centerX - (int)measureFontText(promptFont, size, text) / 2;
-   label->y = y;
-   drawLabel(label);
-}
-
 void drawCompanionPrompt(void)
 {
    int centerX = getGfxScreenWidth() / 2;
 
-   drawCenteredLabel(&title, TITLE_SIZE, TITLE, centerX, TITLE_Y);
+   drawLabelCentered(&title, centerX, TITLE_Y);
 
    // the message + QR + url sit as one block, centred vertically on the screen
    int blockHeight = HINT_SIZE + QR_GAP + QR_PANEL + QR_GAP + URL_SIZE;
    int y = (getGfxScreenHeight() - blockHeight) / 2;
-   drawCenteredLabel(&hint, HINT_SIZE, HINT, centerX, y);
+   drawLabelCentered(&hint, centerX, y);
    y += HINT_SIZE + QR_GAP;
    drawQr(centerX, y);
    y += QR_PANEL + QR_GAP;
-   drawCenteredLabel(&url, URL_SIZE, URL, centerX, y);
+   drawLabelCentered(&url, centerX, y);
 }
 
 void freeCompanionPrompt(void)

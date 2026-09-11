@@ -122,28 +122,17 @@ int getJsonText(const char *object, int length, const char *key, char *out, int 
    int offset = findMember(object, length, key);
    if (offset < 0) return -1;
 
-   int written = 0;
-
-   // a string, with the escapes these answers actually carry turned back
+   // a string. its callers put the result straight on screen, where a control character draws as a
+   // box, so every one becomes a space.
    if (object[offset] == '"') {
-      for (offset++; offset < length && object[offset] != '"' && written < capacity - 1; offset++) {
-         char character = object[offset];
-
-         if (character == '\\' && offset + 1 < length) {
-            offset++;
-            character = object[offset];
-            if (character == 'n' || character == 't' || character == 'r') character = ' ';
-            if (character == 'u') { offset += 4; character = '?'; }   // anything not ascii, in one character
-         }
-
-         out[written++] = character;
-      }
-
-      out[written] = 0;
+      decodeJsonString(object + offset + 1, length - offset - 1, out, capacity);
+      for (char *character = out; *character; character++)
+         if ((unsigned char)*character < ' ') *character = ' ';
       return 0;
    }
 
    // a number or a word, copied as it was written
+   int written = 0;
    while (offset < length && written < capacity - 1 && object[offset] != ',' && object[offset] != '}' &&
           object[offset] != ']')
       out[written++] = object[offset++];
@@ -167,4 +156,72 @@ int64_t getJsonNumber(const char *object, int length, const char *key)
    while (text[index] >= '0' && text[index] <= '9') value = value * 10 + (text[index++] - '0');
 
    return isNegative ? -value : value;
+}
+
+// the four hex digits of a \u escape, or -1 when they are not all there
+static int readHex4(const char *text, int length)
+{
+   if (length < 4) return -1;
+   int value = 0;
+   for (int i = 0; i < 4; i++) {
+      int digit = hexDigit(text[i]);
+      if (digit < 0) return -1;
+      value = value * 16 + digit;
+   }
+   return value;
+}
+
+// the two halves JSON splits a character above U+FFFF into
+static int isHighSurrogate(int code) { return code >= 0xD800 && code <= 0xDBFF; }
+static int isLowSurrogate(int code)  { return code >= 0xDC00 && code <= 0xDFFF; }
+
+static int utf8SequenceLength(unsigned char lead)
+{
+   if ((lead & 0xE0) == 0xC0) return 2;
+   if ((lead & 0xF0) == 0xE0) return 3;
+   if ((lead & 0xF8) == 0xF0) return 4;
+   return 1;
+}
+
+void decodeJsonString(const char *text, int length, char *out, int capacity)
+{
+   if (capacity <= 0) return;
+
+   int offset = 0, written = 0;
+   while (offset < length && text[offset] != '"' && written < capacity - 1) {
+      // a plain character is copied whole, so the capacity never splits one
+      if (text[offset] != '\\') {
+         int bytes = utf8SequenceLength((unsigned char)text[offset]);
+         if (written + bytes > capacity - 1) break;
+         while (bytes-- > 0 && offset < length) out[written++] = text[offset++];
+         continue;
+      }
+
+      if (++offset >= length) break;
+      char escape = text[offset++];
+      switch (escape) {
+         case 'n': out[written++] = '\n'; break;
+         case 't': out[written++] = '\t'; break;
+         case 'r': out[written++] = '\r'; break;
+         case 'b': out[written++] = '\b'; break;
+         case 'f': out[written++] = '\f'; break;
+         case 'u': {
+            int code = readHex4(text + offset, length - offset);
+            if (code < 0) break;   // malformed escape: dropped
+            offset += 4;
+            // a high surrogate followed by a low one is a single character above U+FFFF
+            if (isHighSurrogate(code) && offset + 6 <= length && text[offset] == '\\' && text[offset + 1] == 'u') {
+               int low = readHex4(text + offset + 2, length - offset - 2);
+               if (isLowSurrogate(low)) { code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00); offset += 6; }
+            }
+            int bytes = encodeUtf8(out + written, capacity - 1 - written, (unsigned)code);
+            if (bytes == 0) goto full;   // no room for it: stop rather than skip it and keep going
+            written += bytes;
+            break;
+         }
+         default: out[written++] = escape; break;   // \" \\ \/ and anything else: kept as is
+      }
+   }
+full:
+   out[written] = 0;
 }

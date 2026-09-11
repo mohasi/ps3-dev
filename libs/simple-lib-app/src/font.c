@@ -86,11 +86,13 @@ Font openSystemFont(int type)
 
    int fontType;
    switch (type) {
-      case FONT_POP:       fontType = CELL_FONT_TYPE_DEFAULT_GOTHIC_LATIN_SET; break;
+      // the LATIN2 sets add the eastern european letters (polish, czech, hungarian, romanian, turkish,
+      // greek) that the plain LATIN sets do not carry. SDK doc 02323_DOC: ISO 8859-1/2/5/7/9/15/16.
+      case FONT_POP:       fontType = CELL_FONT_TYPE_GOTHIC_JAPANESE_LATIN2_SET; break;
       case FONT_GOTHIC_JP: fontType = CELL_FONT_TYPE_DEFAULT_GOTHIC_JP_SET; break;
       case FONT_SANS:      fontType = CELL_FONT_TYPE_DEFAULT_SANS_SERIF; break;
       case FONT_SERIF:     fontType = CELL_FONT_TYPE_DEFAULT_SERIF; break;
-      default:             fontType = CELL_FONT_TYPE_DEFAULT_GOTHIC_LATIN_SET; break;
+      default:             fontType = CELL_FONT_TYPE_GOTHIC_JAPANESE_LATIN2_SET; break;
    }
 
    CellFontType ft;

@@ -22,8 +22,13 @@ int readJsonObject(const char *text, int end, int offset, int *objectStart, int 
 // of the text handed in, so this is how a nested value is reached.
 int getJsonObject(const char *text, int length, const char *key, int *objectStart, int *objectEnd);
 
-// A member of one object, as text. Numbers come back as they were written. Returns 0, or -1 when the
-// object has no such member.
+// A member of one object, as text. Numbers come back as they were written. Newlines and tabs in a
+// string become spaces. Returns 0, or -1 when the object has no such member.
 int getJsonText(const char *object, int length, const char *key, char *out, int capacity);
+
+// The body of one string, text pointing just past its opening quote, up to the closing quote or
+// length bytes. Escapes are turned back and \uXXXX becomes UTF-8 (a surrogate pair becomes its one
+// character). Never cuts a multi-byte character at the capacity.
+void decodeJsonString(const char *text, int length, char *out, int capacity);
 
 int64_t getJsonNumber(const char *object, int length, const char *key);   // 0 when it is not there

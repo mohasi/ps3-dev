@@ -6,8 +6,8 @@
 #include "string-utilities.h"   // startsWith
 
 // decode &amp; &lt; &gt; &quot; &apos; and numeric &#N; / &#xN; in place. numeric code points are
-// re-encoded as UTF-8 (up to 3 bytes; astral code points and unknown entities are dropped). one
-// pass; returns 1 if anything changed, so a caller can repeat it for double-escaped text.
+// re-encoded as UTF-8 (unknown entities are dropped). one pass; returns 1 if anything changed,
+// so a caller can repeat it for double-escaped text.
 static inline int decodeXmlEntities(char *text)
 {
    int changed = 0, j = 0;
@@ -37,11 +37,9 @@ static inline int decodeXmlEntities(char *text)
          }
       } else { text[j++] = text[i++]; continue; }
 
-      // utf-8 encode the code point (0 = unrecognised entity, dropped)
-      if      (code == 0)      {}
-      else if (code < 0x80)    text[j++] = (char)code;
-      else if (code < 0x800)   { text[j++] = (char)(0xC0 | (code >> 6));  text[j++] = (char)(0x80 | (code & 0x3F)); }
-      else if (code < 0x10000) { text[j++] = (char)(0xE0 | (code >> 12)); text[j++] = (char)(0x80 | ((code >> 6) & 0x3F)); text[j++] = (char)(0x80 | (code & 0x3F)); }
+      // 0 = unrecognised entity, dropped. the bound is the unread input: an entity is never shorter
+      // than the bytes it decodes to, so this always fits.
+      if (code) j += encodeUtf8(text + j, semi + 1 - j, code);
       i = semi + 1;
       changed = 1;
    }

@@ -183,9 +183,9 @@ static void fail(const char *reason)
    state.stage = STAGE_FAILED;
 }
 
-// only languages FONT_POP renders reliably (hardware-checked: western/central europe + japanese fine,
-// vietnamese diacritics broken). prefix match, so "en-GB" passes as "en". extend after testing a new
-// language on the console.
+// only languages FONT_POP renders reliably. central europe needs the LATIN2 fontset openSystemFont picks,
+// so this list and that choice go together; vietnamese diacritics are broken either way. prefix match, so
+// "en-GB" passes as "en". extend after testing a new language on the console.
 static int isRenderableSubtitleLanguage(const char *code)
 {
    static const char *supported[] = { "en", "es", "pt", "fr", "de", "it", "nl", "sv", "da", "no", "fi",

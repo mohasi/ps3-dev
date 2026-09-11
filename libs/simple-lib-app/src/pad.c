@@ -30,17 +30,28 @@ static const struct { int word; uint16_t bit; int press; } padControlBits[PAD_BU
 
 // BD / TV (HDMI-CEC) remote: cellPad reports one key code at CELL_PAD_BTN_OFFSET_BD_CODE instead of the
 // digital bitmasks a controller uses. map each code onto the same button bits so the remote drives the app
-// through the existing pipeline. only the keys a Bravia CEC remote reliably sends are mapped: dpad for
-// navigation, enter/return for confirm/back, play/pause, and fast-forward/rewind for seek.
+// through the existing pipeline. the SDK defines a code per controller button and the PS3 BD remote has a
+// key for each, so those map one to one. that half is untested, nobody here has the remote; an unmapped
+// code logs, which is how to check. the transport and CEC keys alias onto the button doing the same job.
 static const struct { uint16_t code; int word; uint16_t bit; } remoteCodeBits[] = {
    { CELL_PAD_BTN_CODE_BD_UP,        1, CELL_PAD_CTRL_UP },
    { CELL_PAD_BTN_CODE_BD_DOWN,      1, CELL_PAD_CTRL_DOWN },
    { CELL_PAD_BTN_CODE_BD_LEFT,      1, CELL_PAD_CTRL_LEFT },
    { CELL_PAD_BTN_CODE_BD_RIGHT,     1, CELL_PAD_CTRL_RIGHT },
-   { CELL_PAD_BTN_CODE_BD_ENTER,     2, CELL_PAD_CTRL_CROSS },    // confirm
    { CELL_PAD_BTN_CODE_BD_CROSS,     2, CELL_PAD_CTRL_CROSS },
-   { CELL_PAD_BTN_CODE_BD_RETURN,    2, CELL_PAD_CTRL_CIRCLE },   // back
    { CELL_PAD_BTN_CODE_BD_CIRCLE,    2, CELL_PAD_CTRL_CIRCLE },
+   { CELL_PAD_BTN_CODE_BD_SQUARE,    2, CELL_PAD_CTRL_SQUARE },
+   { CELL_PAD_BTN_CODE_BD_TRIANGLE,  2, CELL_PAD_CTRL_TRIANGLE },
+   { CELL_PAD_BTN_CODE_BD_L1,        2, CELL_PAD_CTRL_L1 },
+   { CELL_PAD_BTN_CODE_BD_R1,        2, CELL_PAD_CTRL_R1 },
+   { CELL_PAD_BTN_CODE_BD_L2,        2, CELL_PAD_CTRL_L2 },
+   { CELL_PAD_BTN_CODE_BD_R2,        2, CELL_PAD_CTRL_R2 },
+   { CELL_PAD_BTN_CODE_BD_L3,        1, CELL_PAD_CTRL_L3 },
+   { CELL_PAD_BTN_CODE_BD_R3,        1, CELL_PAD_CTRL_R3 },
+   { CELL_PAD_BTN_CODE_BD_START,     1, CELL_PAD_CTRL_START },
+   { CELL_PAD_BTN_CODE_BD_SELECT,    1, CELL_PAD_CTRL_SELECT },
+   { CELL_PAD_BTN_CODE_BD_ENTER,     2, CELL_PAD_CTRL_CROSS },    // confirm on a CEC remote with no cross key
+   { CELL_PAD_BTN_CODE_BD_RETURN,    2, CELL_PAD_CTRL_CIRCLE },   // back
    { CELL_PAD_BTN_CODE_BD_PLAY,      2, CELL_PAD_CTRL_CROSS },    // cross toggles pause during playback
    { CELL_PAD_BTN_CODE_BD_PAUSE,     2, CELL_PAD_CTRL_CROSS },
    { CELL_PAD_BTN_CODE_BD_SCAN_FWD,  1, CELL_PAD_CTRL_RIGHT },    // seek: left/right nudge in playback

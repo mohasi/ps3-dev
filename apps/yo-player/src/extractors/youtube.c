@@ -12,6 +12,7 @@
 #include "extractor.h"
 #include "http.h"               // fetchHttp
 #include "string-utilities.h"   // strCopy
+#include "json.h"               // decodeJsonString
 #include "dbg.h"                // logInfo (resolve diagnostics)
 #include "vfs.h"                // readFile/writeFile/deleteFile (persist the visitor session)
 
@@ -87,23 +88,7 @@ static const char *SEARCH_BODY_FMT = WEB_CONTEXT ",\"query\":\"%s\",\"params\":\
 static const char *TRENDING_BODY_FMT = WEB_CONTEXT ",\"browseId\":\"%s\",\"params\":\"%s\"}";
 static const char *CONTINUATION_BODY_FMT = WEB_CONTEXT ",\"continuation\":\"%s\"}";   // next page of any feed
 
-static int hex4(const char *p)
-{
-   int value = 0;
-   for (int i = 0; i < 4; i++) {
-      char c = p[i], digit;
-      if (c >= '0' && c <= '9') digit = c - '0';
-      else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
-      else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
-      else return -1;
-      value = value * 16 + digit;
-   }
-   return value;
-}
-
-// copy the json string value of "key" found within [from,end), unescaping the
-// usual escapes plus \uXXXX (ascii only - urls and titles are ascii; higher
-// code points are dropped). returns 1 if the key was found.
+// copy the json string value of "key" found within [from,end). returns 1 if the key was found.
 static int jsonString(const char *from, const char *end, const char *key, char *out, int cap)
 {
    char pat[48];
@@ -111,29 +96,7 @@ static int jsonString(const char *from, const char *end, const char *key, char *
    const char *p = from ? strstr(from, pat) : NULL;
    if (!p || p >= end) { if (cap) out[0] = 0; return 0; }
    p += patLen;
-
-   int i = 0;
-   while (p < end && *p && *p != '"' && i < cap - 1) {
-      if (*p != '\\') { out[i++] = *p++; continue; }
-      if (++p >= end) break;                       // consume backslash
-      char c = *p++;
-      switch (c) {
-         case 'n': out[i++] = '\n'; break;
-         case 't': out[i++] = '\t'; break;
-         case 'r': out[i++] = '\r'; break;
-         case 'b': out[i++] = '\b'; break;
-         case 'f': out[i++] = '\f'; break;
-         case 'u': {
-            if (p + 4 > end) { p = end; break; }
-            int value = hex4(p);
-            p += 4;
-            if (value >= 0 && value <= 0x7F) out[i++] = (char)value;   // ascii only
-            break;
-         }
-         default: out[i++] = c; break;              // \/ \\ \" and any other: keep literal
-      }
-   }
-   out[i] = 0;
+   decodeJsonString(p, (int)(end - p), out, cap);
    return 1;
 }
 

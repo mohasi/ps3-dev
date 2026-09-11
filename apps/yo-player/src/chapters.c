@@ -3,6 +3,8 @@
 
 #include "chapters.h"
 #include "string-utilities.h"   // truncateUtf8
+#include "text-sanitize.h"      // flattenWhitespace
+#include "json.h"               // decodeJsonString
 #include "http.h"
 #include "dbg.h"
 #include <string.h>
@@ -90,33 +92,6 @@ int parseChapters(const char *description, ChapterList *out)
 static const char *NEXT_BODY_FMT =
    "{\"context\":{\"client\":{\"clientName\":\"WEB\",\"clientVersion\":\"2.20240726.00.00\"}},\"videoId\":\"%s\"}";
 
-// decode a JSON string value (src points just past its opening quote) into dest: handles
-// \" \\ \/ and \uXXXX (re-encoded as UTF-8); stops at the closing quote.
-static void copyJsonString(char *dest, int cap, const char *src)
-{
-   int j = 0;
-   while (*src && *src != '"' && j < cap - 4) {
-      if (*src != '\\') { dest[j++] = *src++; continue; }
-      src++;
-      if (*src == 'u' && src[1] && src[2] && src[3] && src[4]) {
-         unsigned code = 0;
-         for (int k = 1; k <= 4; k++) {
-            char c = src[k];
-            code = code * 16 + (unsigned)(c >= '0' && c <= '9' ? c - '0' : (c | 32) - 'a' + 10);
-         }
-         src += 5;
-         if      (code < 0x80)  dest[j++] = (char)code;
-         else if (code < 0x800) { dest[j++] = (char)(0xC0 | (code >> 6)); dest[j++] = (char)(0x80 | (code & 0x3F)); }
-         else { dest[j++] = (char)(0xE0 | (code >> 12)); dest[j++] = (char)(0x80 | ((code >> 6) & 0x3F)); dest[j++] = (char)(0x80 | (code & 0x3F)); }
-      } else if (*src) {
-         dest[j++] = *src == 'n' ? ' ' : *src;   // a newline in a title reads fine as a space
-         src++;
-      }
-   }
-   dest[j] = 0;
-   truncateUtf8(dest, cap - 1);   // the loop can clip a plain-copied multi-byte character at the cap
-}
-
 int fetchChapters(const char *videoId, ChapterList *out)
 {
    out->count = 0;
@@ -145,7 +120,9 @@ int fetchChapters(const char *videoId, ChapterList *out)
       if (out->count && start <= out->chapters[out->count - 1].start) break;
       Chapter *chapter = &out->chapters[out->count];
       chapter->start = start;
-      copyJsonString(chapter->title, CHAPTER_TITLE_MAX, title + 14);
+      const char *titleText = title + 14;   // past the "simpleText":" it was found by
+      decodeJsonString(titleText, (int)(resp + respLen - titleText), chapter->title, CHAPTER_TITLE_MAX);
+      flattenWhitespace(chapter->title);   // a newline in a title reads fine as a space
       if (chapter->title[0]) out->count++;
    }
 

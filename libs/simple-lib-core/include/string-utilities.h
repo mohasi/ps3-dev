@@ -61,6 +61,27 @@ static inline void truncateUtf8(char *text, int maxBytes)
    text[maxBytes] = 0;
 }
 
+// writes one code point as UTF-8 and returns the bytes written, or 0 if `cap` cannot hold the whole
+// sequence (nothing is written then, so a truncated buffer never ends mid-character). surrogates and
+// out-of-range values become U+FFFD. does not terminate; the caller owns the trailing 0.
+static inline int encodeUtf8(char *out, int cap, unsigned codePoint)
+{
+   if (codePoint > 0x10FFFF || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) codePoint = 0xFFFD;
+
+   int length = codePoint < 0x80 ? 1 : codePoint < 0x800 ? 2 : codePoint < 0x10000 ? 3 : 4;
+   if (cap < length) return 0;
+
+   switch (length) {
+      case 1: out[0] = (char)codePoint; break;
+      case 2: out[0] = (char)(0xC0 | (codePoint >> 6)); break;
+      case 3: out[0] = (char)(0xE0 | (codePoint >> 12)); break;
+      default: out[0] = (char)(0xF0 | (codePoint >> 18)); break;
+   }
+   for (int i = length - 1, shift = 0; i >= 1; i--, shift += 6)
+      out[i] = (char)(0x80 | ((codePoint >> shift) & 0x3F));
+   return length;
+}
+
 // Normalizes a slash-separated path in place: ensures a leading '/',
 // collapses repeated '/', and resolves '.' / '..' segments within cap.
 // cap is BOTH the work bound and the size of `path`: pass cap == sizeof(path).

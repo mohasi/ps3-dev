@@ -17,6 +17,7 @@
 #include "http.h"
 #include "settings-file.h"
 #include "string-utilities.h"
+#include "json.h"               // decodeJsonString
 #include "gdrive-crypto.h"
 #include "thread.h"            // one lock: ops run from the UI thread and copy/paste task threads
 #include "dbg.h"
@@ -77,7 +78,8 @@ static const char *getDrivePath(const char *native)
 // section: JSON helpers
 
 // extracts the string value of "key":"..." from a JSON body into out. 1 if found, 0 if not.
-// minimal unescape (tokens/urls need no \uXXXX); operates on [json, json+jsonLength).
+// operates on [json, json+jsonLength). drive returns file names here, so the decoding is the shared
+// one and accented names come back whole.
 static int getJsonString(const char *json, int jsonLength, const char *key, char *out, int cap)
 {
    char needle[80];
@@ -94,17 +96,7 @@ static int getJsonString(const char *json, int jsonLength, const char *key, char
    if (p >= end || *p != '"') { out[0] = '\0'; return 0; }
    p++;
 
-   int o = 0;
-   while (p < end && *p != '"' && o < cap - 1) {
-      if (*p == '\\' && p + 1 < end) {
-         p++;
-         out[o++] = (*p == 'n') ? '\n' : (*p == 't') ? '\t' : *p;
-      } else {
-         out[o++] = *p;
-      }
-      p++;
-   }
-   out[o] = '\0';
+   decodeJsonString(p, (int)(end - p), out, cap);
    return 1;
 }
 

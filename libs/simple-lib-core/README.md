@@ -21,10 +21,10 @@ never calls them never drags the heap in. Each entry below says which side it is
 ### Text and formatting (header-only, PRX-safe)
 
 - **string-utilities.h** — the replacement for `string.h`. Length, bounded copy, memory copy/set,
-  equality and case-insensitive compare, prefix/suffix tests, upper/lower, UTF-8 truncation, path
-  normalisation, byte search, URL encode/decode, XML escaping, integer/IPv4/date formatting, and
-  UTF-8 ↔ UTF-16 conversion. Always reach for this before writing your own — check here first to
-  avoid duplicates.
+  equality and case-insensitive compare, prefix/suffix tests, upper/lower, UTF-8 encoding
+  (`encodeUtf8`) and truncation, path normalisation, byte search, URL encode/decode, XML escaping,
+  integer/IPv4/date formatting, and UTF-8 ↔ UTF-16 conversion. Always reach for this before writing
+  your own — check here first to avoid duplicates.
 - **path.h** — path helpers: `joinPath`, `toParentPath`, `getParentPath`, `getBaseName`,
   `getExtension`, `deviceRootOf`, `isValidFileName`, plus `MAX_PATH_LEN`.
 - **format.h** — human-readable byte sizes (`formatSize`, `formatSizeApprox`).
@@ -88,6 +88,13 @@ never calls them never drags the heap in. Each entry below says which side it is
   `Range` header. YouTube's media hosts no longer answer that (the reply is a redirect whose target is
   refused), so for those it asks for one window at a time as a `&range=start-end` query parameter, sized
   and paced from the stream's own byte rate because they only serve so far ahead of playback.
+- **json.h** — just enough JSON to read a web API's answer: walk an array of objects
+  (`findJsonArray`, `readJsonObject`), reach a nested one (`getJsonObject`), and pull a member out as
+  text or a number (`getJsonText`, `getJsonNumber`). It builds no tree and allocates nothing, it walks
+  the text the caller already holds, and a document it cannot make sense of yields nothing rather than
+  an error. `decodeJsonString` is the string decoder on its own, for a caller that found its own
+  string: it turns the escapes back, re-encodes `\uXXXX` as UTF-8 (joining a surrogate pair), and
+  never cuts a character in half at the buffer's end.
 - **network.h** — `getLocalIpv4()` resolves the console's primary IPv4 address.
 - **ftp.h / ftp.c** — the shared anonymous FTP server, run as a singleton (`startFtpServer`,
   `stopFtpServer`, `isFtpServerRunning`, `isFtpPortAvailable`). Usable from both apps and plugins;
@@ -139,6 +146,7 @@ simple-lib-core/
    ├── transport-cellhttp.c # firmware-TLS transport backend
    ├── cellhttp-stack.c     # one-time firmware http/ssl/https bringup
    ├── ftp.c                # shared FTP server
+   ├── json.c               # reading a web API's answer (no tree, no allocation)
    ├── network.c            # local IPv4 lookup
    ├── dir-playlist.c       # folder listing + step
    ├── tree-walk.c          # recursive directory walk

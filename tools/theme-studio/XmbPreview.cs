@@ -142,8 +142,12 @@ namespace ThemeStudio
 
       private static void drawBackground(Canvas canvas, ThemeProject project, UIElement scene)
       {
+         // black, because that is what the console shows behind a theme's background. measured off
+         // a capture of a 3D theme running on the console on 12 September 2026: every pixel the
+         // scene does not cover reads 0,0,0. this used to be a dark navy, which was invented here
+         // and made the preview look nothing like the TV for any scene with space around it.
          Background background = project.Backgrounds.Count > 0 ? project.Backgrounds[0] : null;
-         canvas.Background = new SolidColorBrush(Color.FromRgb(0x10, 0x14, 0x20));
+         canvas.Background = Brushes.Black;
 
          if (background == null) return;   // just the empty backdrop, no note
          if (background.IsProjectScene) {

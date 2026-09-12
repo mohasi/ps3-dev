@@ -87,8 +87,8 @@ namespace ThemeStudio
          showCamera();
       }
 
-      // a script can move a light, recolour it and change how fast it falls off. wpf has no
-      // attenuation to match the console's, so that one moves the value but not the picture.
+      // a script can move a light, recolour it and change how fast it falls off. wpf divides a
+      // light's strength by the same three numbers the console does, so all three carry over.
       private void showLights()
       {
          foreach (var pair in view.LightById) {
@@ -101,6 +101,9 @@ namespace ThemeStudio
             var point = pair.Value as PointLight;
             PsjsVector position = thing.Get("position");
             if (point != null && position != null) point.Position = new Point3D(position.X, position.Y, position.Z);
+
+            PsjsVector attenuation = thing.Get("attenuation");
+            if (point != null && attenuation != null) ScenePreview.setAttenuation(point, attenuation.ToVec3());
 
             GeometryModel3D marker;
             if (!view.MarkerByLightId.TryGetValue(pair.Key, out marker)) continue;

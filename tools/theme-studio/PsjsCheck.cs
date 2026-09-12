@@ -18,11 +18,9 @@ namespace ThemeStudio
          if (!File.Exists(ScriptCompilerExe)) { message = "raf_script.exe not found"; return false; }
          if (!File.Exists(scriptPath)) { message = "script not found"; return false; }
 
-         // compile a copy: raf_script writes its output beside the input, and the project
-         // folder should not collect build leftovers.
-         string workDir = Path.Combine(ThemeBuild.OutputDir, "scriptcheck");
-         if (Directory.Exists(workDir)) Directory.Delete(workDir, true);
-         Directory.CreateDirectory(workDir);
+         // compile a copy: raf_script writes its output beside the input, and the project folder
+         // should not collect leftovers from a check that is not even a build
+         string workDir = ToolRun.MakeScratchDir("scriptcheck");
 
          string copyPath = Path.Combine(workDir, Path.GetFileName(scriptPath));
          File.Copy(scriptPath, copyPath, true);

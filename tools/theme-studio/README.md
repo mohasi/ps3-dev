@@ -20,12 +20,20 @@ Saving over an existing project is refused while any file it points at is missin
 project is usually the only one left, and a save would write the reference without the file, after
 which nothing can tell one was ever meant to be there. Saving to a new file is still allowed.
 
-`ThemeBuild` checks every referenced file exists **before** writing anything, stages the assets into a
-folder named after the theme (renaming each staged copy to letters, digits, dots and dashes — these
+`ThemeBuild` checks every referenced file exists **before** writing anything, stages the assets
+(renaming each staged copy to letters, digits, dots and dashes — these
 tools build their child command lines unquoted, so one space in a file name splits the path and
-raf_geom answers `Loading have...` to a model called `what have i done.dae`), runs p3tcompiler and
-leaves the `.p3t` there — one folder per theme, so
-projects sharing a directory never overwrite each other. `Ps3Deploy` uploads over FTP; Deploy builds
+raf_geom answers `Loading have...` to a model called `what have i done.dae`), builds the 3D scene,
+runs p3tcompiler, then copies the finished `.p3t` next to the project under the theme's own name and
+deletes everything else. The theme's name keeps two projects in one folder from overwriting each
+other. The whole build happens in a scratch folder (`ToolRun.MakeScratchDir`) rather than beside the
+project, for the same reason the staged copies are renamed: a path with a space in it splits, and the
+folder holding a project is one the user chose. That folder is the temporary folder, except when the
+Windows account name has a space and the temporary folder inherits it, where it is `ProgramData`
+instead. The scratch folder is kept when a build fails, because the failure report names it and lists
+what reached it. It must never be the project's *content* folder, which is the unpacked
+`.themeproj`: staging there packed every intermediate back into the saved project and turned a 3MB
+project into 59MB. `Ps3Deploy` uploads over FTP; Deploy builds
 first, since there is no telling whether the last build still matches the project. It lists the
 console's theme folder before sending: the XMB shows **at most 100 themes**, and the ones past that are
 not refused, they simply never appear — so a deploy that would add a 101st is stopped and says why
@@ -69,9 +77,19 @@ silently (`ScenePlacement`).
 Blender (and some other editors) export COLLADA that `raf_compiler` rejects two ways: the model is
 Z-up when the compiler only accepts Y-up, and the mesh names no material when the compiler needs one
 to hang the texture on. `DaeCompatibility` mends both into a compiler-ready copy during the build —
-it hangs the scene under one node that turns it upright, and adds a plain white material with the
-texture-coordinate binding. The user's own `.dae` is never touched, and each mend is reported in the
-build log. The theme's real effect and texture still come from the scene, not from the added material.
+it rotates the model's own positions and normals so it stands up, and adds a plain white material
+with the texture-coordinate binding. The user's own `.dae` is never touched, and each mend is
+reported in the build log. The theme's real effect and texture still come from the scene, not from
+the added material.
+
+The rotation has to be applied to the vertices because **`raf_geom` reads neither `up_axis` nor the
+node transforms** — it bakes the raw arrays and ignores the rest of the file. This was found by
+converting one model four ways (Z-up; the same file relabelled Y-up; hung under a rotating node; and
+that node's rotation removed) and getting four byte-identical `.edge` files. Turning the model with a
+node, which is what this used to do, therefore did nothing at all: every Blender export reached the
+console lying on its side while the preview stood it up, and the two disagreed about every imported
+model. The turn matches `DaeFile.turnUpright`, so the preview and the console now agree by
+construction.
 
 `DaePlacement` works out where a model's geometry actually sits, which is not optional detail: a `.dae`
 stores its shape wherever it sat in the artist's scene and places it with a scene-graph transform. The
@@ -156,7 +174,13 @@ show.
 the top right — no theme can move or hide it, so the only reason to draw it is the one that matters
 here: it says which corner is already taken. When the background is the project's 3D scene,
 `ScenePreview` renders it with WPF 3D and composites the icons on top. It is a
-likeness, not a facsimile: placement, size, texture and motion are faithful, shading is not. Point
+likeness, not a facsimile: placement, size, texture and motion are faithful, shading is not. The one
+shading difference worth knowing is edge lighting. `basic_lighting_edge_lit` throws white light along
+an object's edges, which on the console washes the lit parts out to near-white (bright pixels average
+R190 G192 B192 on a capture of the shard model, against R130 G156 B164 here, still the texture's own
+cyan). WPF's fixed materials have no edge lighting; a specular highlight is the nearest thing and is
+what the preview uses, so bright surfaces keep their colour here where the console bleaches them.
+Point
 lights draw a small coloured dot at their position (toggle with "Show lights"); the camera cannot
 appear in its own view, so it is reported in words. An object it cannot draw — its model file gone, or
 a `.dae` the reader does not understand — is named in the log and marked red in the object list, since
@@ -182,7 +206,12 @@ others and is bundled unchanged:
 - **Sony's RAF toolchain** (`raf_compiler.exe`, `raf_geom.exe`, `raf_anim.exe`, `raf_script.exe`,
   `raf_pack.exe`) — the Rich Appearance Format compiler chain from Sony's PS3 theme SDK. It turns the
   scene XML, `.dae` models and PSJS scripts into the console's geometry/animation/script binaries.
-  `raf_compiler.inf` is Sony's own build recipe, kept verbatim.
+  `raf_compiler.inf` is Sony's own build recipe, kept as shipped except for one line. The script
+  step was the only line asking for two commands, joined by a semicolon, and splitting it is where
+  `raf_compiler` reads memory it does not own and dies: a scene with a script built once in six
+  attempts. The same two steps run through the command prompt keep it to one command, and built
+  sixteen times out of sixteen, byte for byte the same `.raf`. The original line is kept in a
+  comment above the replacement.
 - **p3tcompiler** (`p3tcompiler.exe`) — Sony's PS3 theme (`.p3t`) packager, also from the theme SDK.
 - **dds2gtf / gtf2dds** (`dds2gtf.exe`, `gtf2dds.exe`) — Sony's SDK converters between DDS and the
   PS3's GTF texture format.

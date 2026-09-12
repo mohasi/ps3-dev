@@ -81,7 +81,7 @@ namespace ThemeStudio
          foreach (SceneLight light in scene.Lights) {
             Color colour = ToColor(light.Color);
             Light made = light.Type == "ambient" ? (Light)new AmbientLight(colour)
-                                                 : new PointLight(colour, toPoint(light.Position));
+                                                 : makePointLight(colour, light);
             view.Root.Children.Add(made);
             view.LightById[light.Id] = made;
 
@@ -90,6 +90,25 @@ namespace ThemeStudio
          }
          // without a light every actor renders black, which would read as a broken model
          if (scene.Lights.Count == 0) view.Root.Children.Add(new AmbientLight(Colors.White));
+      }
+
+      // the console divides a light's strength by (first + second x distance + third x distance
+      // squared), and wpf divides by exactly the same three, so the scene's own numbers carry over.
+      // they were being left at wpf's default of 1, which burns a light the scene asked to be
+      // dimmed: Sony's usual 1.7 means a point light should reach 59% of full, and at full strength
+      // the bright parts of a texture came out far brighter here than on the console.
+      public static PointLight makePointLight(Color colour, SceneLight light)
+      {
+         var made = new PointLight(colour, toPoint(light.Position));
+         setAttenuation(made, light.Attenuation);
+         return made;
+      }
+
+      public static void setAttenuation(PointLight light, Vec3 attenuation)
+      {
+         light.ConstantAttenuation = attenuation.X;
+         light.LinearAttenuation = attenuation.Y;
+         light.QuadraticAttenuation = attenuation.Z;
       }
 
       // a small ball at the light's position, glowing its own colour. emissive so it stays visible
@@ -174,9 +193,13 @@ namespace ThemeStudio
       // than it sounds: several of Sony's parts are plain discs whose entire detail -- a clock
       // face, an eye, nostrils -- lives in the texture, so untextured they read as blank circles.
       //
-      // the effect decides how it is shaded: a "pure_texture" surface ignores the lights entirely
-      // and shows its picture at full brightness, so shading it here would darken things the
-      // console draws bright, and the preview would disagree about the one thing it is for.
+      // every surface is drawn the same way, whatever its effect. an unlit "pure_texture" surface
+      // used to be drawn with wpf's EmissiveMaterial, on the reasoning that it ignores the lights
+      // the way the console does. that material ADDS its colour to whatever is already drawn and
+      // writes no depth, so a closed shape came out see-through -- the back of the box reading
+      // through the front, every colour washed pale -- where the console draws it solid. wpf lights
+      // are global, so there is no way to leave one object unlit and light the rest, and being
+      // solid and slightly dark is far closer to the console than being bright and transparent.
       private static Material makeMaterial(SceneProject scene, SceneActor actor, string projectDir,
                                            Dictionary<string, Brush> brushCache)
       {
@@ -192,12 +215,36 @@ namespace ThemeStudio
             }
 
          if (surface == null) surface = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xC8));
-         return isUnlit(material) ? (Material)new EmissiveMaterial(surface) : new DiffuseMaterial(surface);
+         if (!isLit(material)) return new DiffuseMaterial(surface);
+
+         // a lit surface catches highlights on the console that flat shading has none of, and on a
+         // model made of shards there are a great many of them. the sdk describes
+         // "basic_lighting_edge_lit" as throwing light on an object's edges on top of basic
+         // lighting; wpf has no edge lighting, and a highlight is the nearest thing it offers.
+         var group = new MaterialGroup();
+         group.Children.Add(new DiffuseMaterial(surface));
+         group.Children.Add(new SpecularMaterial(EdgeHighlight, EdgeHighlightSharpness));
+         return group;
       }
 
-      private static bool isUnlit(SceneMaterial material)
+      // faint and tight, so small faces catch a glint rather than a broad patch of the model
+      // washing out. both numbers were measured against a capture of the console and neither is
+      // Sony's. at full white and a wide spread the middle of the model became one bright blob the
+      // console never shows; at 0xB0 the whole model brightened (pixels above a quarter brightness
+      // went from 10.7% to 15.2% of it, against the console's 11.6%) without making the bright
+      // parts any whiter. 0x30 is the closest this gets.
+      //
+      // it does not reproduce what the console does, and turning it up will not. the console blows
+      // the shard edges to near-white (its bright pixels average R190 G192 B192, against R130 G156
+      // B164 here, which is still the texture's cyan); that is edge lighting, adding white light
+      // along an edge, and wpf's fixed materials have no such thing. a highlight is the nearest
+      // available and leaves the bright parts of a model tinted where the console washes them out.
+      private static readonly Brush EdgeHighlight = new SolidColorBrush(Color.FromRgb(0x30, 0x30, 0x30));
+      private const double EdgeHighlightSharpness = 60;
+
+      private static bool isLit(SceneMaterial material)
       {
-         return material != null && SceneEffects.IsUnlit(material.Effect);
+         return material != null && SceneEffects.IsLit(material.Effect);
       }
 
       // scale, then rotate, then move -- the order the console applies them. one matrix rather than

@@ -18,6 +18,22 @@ namespace ThemeStudio
 
       public static string Find(string exeName) { return Path.Combine(ToolsDir, exeName); }
 
+      // these tools build their child command lines without quoting them, so one space anywhere in
+      // a path they are handed splits it and they read the wrong thing. that rules out building
+      // beside the project, whose folder the user chooses. the temp folder is the private place to
+      // work, except when the windows account name has a space in it and the temp folder inherits
+      // it; ProgramData never does. comes back empty.
+      public static string MakeScratchDir(string name)
+      {
+         string temp = Path.GetTempPath();
+         string root = temp.IndexOf(' ') < 0 ? temp : Path.Combine(Path.GetPathRoot(temp), "ProgramData");
+         string scratchDir = Path.Combine(root, "theme-studio", name);
+
+         if (Directory.Exists(scratchDir)) Directory.Delete(scratchDir, true);
+         Directory.CreateDirectory(scratchDir);
+         return scratchDir;
+      }
+
       public static string Run(string exe, string arguments, out int exitCode)
       {
          var settings = new ProcessStartInfo(exe, arguments) {

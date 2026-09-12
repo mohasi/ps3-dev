@@ -19,5 +19,9 @@ cp [INFILE] [OUTFILE]
 [BIN]dds2gtf.exe [IN].dds -o [OUT].gtf
 
 # Script
-[BIN]raf_script.exe [IN].js ; mv [IN].jsx [OUT].jsx
+# Sony's own line here was "[BIN]raf_script.exe [IN].js ; mv [IN].jsx [OUT].jsx". it is the only
+# line that asks for two commands, and splitting it is where raf_compiler reads memory it does not
+# own and dies -- it built 1 scene in 6 here. running the same two steps through the command
+# prompt instead keeps it to one command, and built 16 out of 16, byte for byte the same .raf.
+cmd.exe /c [BIN]raf_script.exe [IN].js && move [IN].jsx [OUT].jsx
 

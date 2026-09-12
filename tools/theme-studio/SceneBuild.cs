@@ -49,7 +49,11 @@ namespace ThemeStudio
    {
       public static string RafCompilerExe { get { return ToolRun.Find("raf_compiler.exe"); } }
 
-      public static SceneBuildResult Build(SceneProject scene, string contentDir, string sceneName, Action<string> log)
+      // stageDir is the theme's own build folder, beside the project, so one build leaves its work
+      // in one place. it must not be the project's content folder: staging there packed every
+      // intermediate into the saved .themeproj and turned a 3MB project into 59MB.
+      public static SceneBuildResult Build(SceneProject scene, string contentDir, string sceneName,
+                                           string stageDir, Action<string> log)
       {
          var result = new SceneBuildResult();
          if (!File.Exists(RafCompilerExe)) {
@@ -63,12 +67,8 @@ namespace ThemeStudio
             return result;
          }
 
-         // stage: the compiler resolves every asset relative to the scene xml and writes its
-         // intermediates beside it, so this goes in the program's own scratch folder. staging it
-         // in the project's content folder packed all of that into the saved .themeproj, which
-         // turned one 3MB project into 59MB and carried a second copy of every model.
-         string stageDir = Path.Combine(ThemeBuild.OutputDir, sceneName + "_scene");
-         if (Directory.Exists(stageDir)) Directory.Delete(stageDir, true);
+         // the compiler resolves every asset relative to the scene xml and writes its intermediates
+         // beside it, so the whole scene build happens wherever the caller points it
          Directory.CreateDirectory(stageDir);
 
          string xmlPath = Path.Combine(stageDir, sceneName + ".xml");
@@ -83,7 +83,7 @@ namespace ThemeStudio
 
          string producedPath = Path.ChangeExtension(xmlPath, ".raf");
          if (!File.Exists(producedPath)) {
-            reportFailure(output, log);
+            reportFailure(output, exitCode, stageDir, log);
             return result;
          }
 
@@ -141,27 +141,72 @@ namespace ThemeStudio
          return -1;
       }
 
-      // raf_compiler ends on "RAF Compiler Failed", which says nothing. why it failed is in the
-      // "error:" lines above that, so those are what gets reported. reporting only the last line
-      // is what left "the 3D scene failed to build" as the whole of the answer.
-      private static void reportFailure(string output, Action<string> log)
+      // raf_compiler ends on "RAF Compiler Failed", which says nothing, and when it stops part way
+      // through it says nothing at all: no "error:" line, and everything it had not yet written out
+      // goes with it. one line of its output is never enough to tell what happened, so a failure
+      // reports what it complained about, how it ended, everything it did say, and what it had
+      // managed to write to disk.
+      private static void reportFailure(string output, int exitCode, string stageDir, Action<string> log)
       {
+         // what it complained about
          bool anyReported = false;
          double worstOverBudget = 0;
-         foreach (string line in output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)) {
+         foreach (string line in splitLines(output)) {
             string complaint = line.Trim();
             if (!complaint.StartsWith("error", StringComparison.OrdinalIgnoreCase)) continue;
             log(complaint);
             anyReported = true;
             worstOverBudget = Math.Max(worstOverBudget, getTimesOverBudget(complaint));
          }
+         // a compiler that ran to the end and refused says why in its last line. one that crashed
+         // stopped mid-sentence, so its last line is whatever it happened to be printing, and
+         // saying how it ended is the honest answer instead.
+         if (!anyReported && exitCode >= 0) log(lastMeaningfulLine(output));
 
-         if (!anyReported) log(lastMeaningfulLine(output));
          if (worstOverBudget > 1)
             log("this scene is " + worstOverBudget.ToString("0.#", CultureInfo.InvariantCulture) +
                 " times the size the console allows -- a model straight out of a modelling program " +
                 "usually is. reduce its triangles there and import it again.");
+
+         // how it ended, and everything it said on the way
+         log(describeExit(exitCode));
+         log("raf_compiler said:");
+         foreach (string line in splitLines(output))
+            log("   " + line.TrimEnd());
+
+         reportProgress(stageDir, log);
          log("scene build failed");
+      }
+
+      // a tool that dies rather than returning leaves a windows exception code behind, and that is
+      // the only sign it crashed -- it writes no error line of its own. 0xC0000005 is by far the
+      // most common: the program read or wrote memory it does not own.
+      private static string describeExit(int exitCode)
+      {
+         if (exitCode == 0) return "raf_compiler reported success but wrote no .raf";
+         if (exitCode == -1) return "raf_compiler did not finish";
+         if (exitCode >= 0) return "raf_compiler gave up, exit code " + exitCode;
+
+         string code = "0x" + exitCode.ToString("X8", CultureInfo.InvariantCulture);
+         string kind = exitCode == unchecked((int)0xC0000005) ? " -- it used memory it does not own" : "";
+         return "raf_compiler crashed (" + code + kind + "), so it stopped part way through and " +
+                "whatever it had not written out yet was lost";
+      }
+
+      // a crash takes the compiler's own account of itself with it, but what it had already written
+      // stays on disk, and that says how far it got: .edge is a model converted, .gtf a texture,
+      // .jsx the script, .sxml the last file written before the scene is packed.
+      private static void reportProgress(string stageDir, Action<string> log)
+      {
+         string intermediateDir = Path.Combine(stageDir, "tmp");
+         if (!Directory.Exists(intermediateDir)) {
+            log("it wrote nothing to " + intermediateDir + ", so it stopped before converting anything");
+            return;
+         }
+
+         log("it had written these to " + intermediateDir + " before it stopped:");
+         foreach (string file in Directory.GetFiles(intermediateDir))
+            log("   " + Path.GetFileName(file) + " (" + new FileInfo(file).Length + " bytes)");
       }
 
       // "error: total geometry & script size 4111747 Bytes ( > 1048576)". the limits are the
@@ -178,14 +223,30 @@ namespace ThemeStudio
          return used / allowed;
       }
 
+      // the compiler separates its steps with rows of dashes, which were being reported as the
+      // reason a build failed, so a line has to carry at least one letter or digit to count
       private static string lastMeaningfulLine(string output)
       {
-         string[] lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+         string[] lines = splitLines(output);
          for (int index = lines.Length - 1; index >= 0; index--) {
             string line = lines[index].Trim();
-            if (line.Length > 0 && line.IndexOf("succeeded", StringComparison.OrdinalIgnoreCase) < 0) return line;
+            if (!hasWords(line)) continue;
+            if (line.IndexOf("succeeded", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+            return line;
          }
          return "raf_compiler produced no output";
+      }
+
+      private static string[] splitLines(string output)
+      {
+         return output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+      }
+
+      private static bool hasWords(string line)
+      {
+         foreach (char character in line)
+            if (char.IsLetterOrDigit(character)) return true;
+         return false;
       }
 
       // scene xml

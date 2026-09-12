@@ -11,18 +11,6 @@ namespace ThemeStudio
    // turns a ThemeProject into a .p3t by generating p3tcompiler's input xml and running it.
    public static class ThemeBuild
    {
-      // a scratch place beside the program, for work that is not a theme (checking a script)
-      public static string OutputDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "built");
-
-      // a finished theme goes in its own folder, named after the theme, beside the project it was
-      // made from. one folder per theme, so several projects sharing a folder do not overwrite each
-      // other -- which a single shared "built" folder did.
-      public static string GetOutputDir(string projectDir, string themeFolderName)
-      {
-         string parent = projectDir.Length > 0 ? projectDir : AppDomain.CurrentDomain.BaseDirectory;
-         return Path.Combine(parent, themeFolderName);
-      }
-
       public static string ThemeCompilerExe { get { return ToolRun.Find("p3tcompiler.exe"); } }
 
       public class BuildResult
@@ -56,19 +44,17 @@ namespace ThemeStudio
          stagedNameBySource.Clear();   // names are unique within one build, not across builds
          stagedNamesUsed.Clear();
 
-         // stage: p3tcompiler resolves asset paths relative to the xml, and the raf tools are
-         // reported to break on paths containing spaces -- so build in a private space-free dir.
-         // the theme's own folder is where both the staged files and the finished .p3t go.
-         string themeFolder = MakeFileName(project.Name);
-         string outputDir = GetOutputDir(project.ProjectFolder, themeFolder);
-         string stageDir = outputDir;
-         prepareDirectory(stageDir);
+         // stage: p3tcompiler resolves asset paths relative to the xml, and the raf tools split any
+         // unquoted path at a space, so the whole build happens in a scratch folder that has none.
+         // only the finished .p3t is copied out, beside the project.
+         string themeName = MakeFileName(project.Name);
+         string stageDir = ToolRun.MakeScratchDir(themeName);
 
          // the 3D background, if the project has one, must be compiled before the theme
          string projectScenePath = "";
          if (usesProjectScene(project)) {
             SceneBuildResult scene = SceneBuild.Build(project.Scene, project.ContentDir,
-                                                      MakeFileName(project.Name), log);
+                                                      themeName, stageDir, log);
             if (!scene.Succeeded) {
                result.Log = "the 3D scene failed to build, so the theme was not built";
                log(result.Log);
@@ -93,9 +79,15 @@ namespace ThemeStudio
             return result;
          }
 
-         // name the output after the theme so several themes can coexist on the console
-         string finalPath = Path.Combine(outputDir, themeFolder + ".p3t");
+         // the theme lands beside the project, named after itself so several themes can sit in one
+         // folder and coexist on the console. everything else was working material and goes. a
+         // project not saved anywhere has no folder of its own, so its theme goes beside the program.
+         string outputDir = project.ProjectFolder.Length > 0 ? project.ProjectFolder
+                                                             : AppDomain.CurrentDomain.BaseDirectory;
+         string finalPath = Path.Combine(outputDir, themeName + ".p3t");
          File.Copy(producedPath, finalPath, true);
+         Directory.Delete(stageDir, true);
+
          result.Succeeded = true;
          result.OutputPath = finalPath;
          log("built " + finalPath + " (" + new FileInfo(finalPath).Length + " bytes)");
@@ -324,10 +316,19 @@ namespace ThemeStudio
          if (stagedNameBySource.TryGetValue(source, out alreadyStaged)) return alreadyStaged;
 
          string fileName = makeFreeStagedName(MakeStagedFileName(Path.GetFileName(source)));
-         File.Copy(source, Path.Combine(stageDir, fileName), true);
+         string staged = Path.Combine(stageDir, fileName);
+
+         // the compiled scene is already in the staging folder, having been built there, and
+         // copying a file onto itself throws
+         if (!isSameFile(source, staged)) File.Copy(source, staged, true);
          stagedNameBySource[source] = fileName;
          stagedNamesUsed.Add(fileName);
          return fileName;
+      }
+
+      private static bool isSameFile(string one, string other)
+      {
+         return string.Equals(Path.GetFullPath(one), Path.GetFullPath(other), StringComparison.OrdinalIgnoreCase);
       }
 
       private static string makeFreeStagedName(string wanted)
@@ -339,12 +340,6 @@ namespace ThemeStudio
             string candidate = stem + "_" + suffix + extension;
             if (!stagedNamesUsed.Contains(candidate)) return candidate;
          }
-      }
-
-      private static void prepareDirectory(string path)
-      {
-         if (Directory.Exists(path)) Directory.Delete(path, true);
-         Directory.CreateDirectory(path);
       }
 
       private static void writeIfSet(XmlWriter writer, string name, string value)

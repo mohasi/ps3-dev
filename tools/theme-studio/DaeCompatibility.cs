@@ -1,3 +1,4 @@
+using System;
 using System.Xml;
 
 namespace ThemeStudio
@@ -37,30 +38,85 @@ namespace ThemeStudio
          return changes;
       }
 
-      // up-axis: the compiler wants Y-up. rather than rotate every vertex, the whole scene is hung
-      // under one node that turns it upright -- the compiler bakes that node into the geometry, so
-      // the result is genuinely Y-up. Z-up turns back a quarter about X, X-up a quarter about Z.
+      // up-axis: the console wants Y-up, so the vertices themselves are turned.
+      //
+      // this used to hang the scene under one node that rotated it, which turned nothing at all:
+      // raf_geom reads neither node transforms nor up_axis, it bakes the raw arrays and ignores
+      // the rest of the file. converting one model four ways -- Z_UP, the same file claiming Y_UP,
+      // with the rotating node and with that node's rotation removed -- gave four byte-identical
+      // .edge files (AA7065A5EA49B0CD04B358668723F803, 12 September 2026). so every Blender export
+      // reached the console lying on its side while the preview stood it up, and the two disagreed
+      // about every model a user imported.
+      //
+      // the turn matches the one the preview applies in DaeFile.turnUpright, so they now agree.
       private static bool turnUpright(XmlDocument document, XmlNamespaceManager names)
       {
          XmlElement upAxis = (XmlElement)document.SelectSingleNode("//c:asset/c:up_axis", names);
          string was = upAxis == null ? "Y_UP" : upAxis.InnerText.Trim();
          if (was == "Y_UP") return false;
-         string turn = was == "X_UP" ? "0 0 1 90" : "1 0 0 -90";
 
-         foreach (XmlElement scene in document.SelectNodes("//c:library_visual_scenes/c:visual_scene", names)) {
-            XmlElement wrapper = element(document, "node");
-            wrapper.SetAttribute("id", "yUpCorrection");
-            XmlElement rotate = element(document, "rotate");
-            rotate.SetAttribute("sid", "rotateX");
-            rotate.InnerText = turn;
-            wrapper.AppendChild(rotate);
+         foreach (string sourceId in getVertexSourceIds(document, names))
+            turnFloatArray(document, names, sourceId, was);
 
-            foreach (XmlNode child in list(scene.ChildNodes))
-               if (child.LocalName == "node") wrapper.AppendChild(child);
-            scene.AppendChild(wrapper);
-         }
          upAxis.InnerText = "Y_UP";
          return true;
+      }
+
+      // the ids of the sources holding positions and normals. texture coordinates must be left
+      // alone, so the arrays are found through the inputs that name them rather than by taking
+      // every source in the mesh.
+      private static System.Collections.Generic.List<string> getVertexSourceIds(XmlDocument document,
+                                                                               XmlNamespaceManager names)
+      {
+         var ids = new System.Collections.Generic.List<string>();
+         foreach (XmlElement input in document.SelectNodes(
+                     "//c:library_geometries//c:input[@semantic='POSITION' or @semantic='NORMAL']", names)) {
+            string id = input.GetAttribute("source").TrimStart('#');
+            if (id.Length > 0 && !ids.Contains(id)) ids.Add(id);
+         }
+         return ids;
+      }
+
+      // Z-up turns back a quarter about X, so x stays and (y, z) becomes (z, -y).
+      // X-up turns a quarter about Z, so z stays and (x, y) becomes (-y, x).
+      private static void turnFloatArray(XmlDocument document, XmlNamespaceManager names,
+                                         string sourceId, string was)
+      {
+         XmlElement array = (XmlElement)document.SelectSingleNode(
+            "//c:source[@id='" + sourceId + "']/c:float_array", names);
+         if (array == null) return;
+
+         string[] parts = array.InnerText.Split(new[] { ' ', '\t', '\r', '\n' },
+                                                StringSplitOptions.RemoveEmptyEntries);
+         if (parts.Length % 3 != 0) return;   // not triples, so not something to turn
+
+         var turned = new System.Text.StringBuilder(array.InnerText.Length);
+         for (int at = 0; at < parts.Length; at += 3) {
+            double x = parseNumber(parts[at]), y = parseNumber(parts[at + 1]), z = parseNumber(parts[at + 2]);
+            double newX = was == "X_UP" ? -y : x;
+            double newY = was == "X_UP" ? x : z;
+            double newZ = was == "X_UP" ? z : -y;
+
+            if (at > 0) turned.Append(' ');
+            turned.Append(writeNumber(newX)).Append(' ').Append(writeNumber(newY)).Append(' ').Append(writeNumber(newZ));
+         }
+         array.InnerText = turned.ToString();
+      }
+
+      private static double parseNumber(string text)
+      {
+         double value;
+         double.TryParse(text, System.Globalization.NumberStyles.Float,
+                         System.Globalization.CultureInfo.InvariantCulture, out value);
+         return value;
+      }
+
+      // plain decimals, never exponents. round-tripping a double writes very small numbers as
+      // "5.34E-06", and nothing says the compiler's parser reads that; six places is finer than the
+      // floats the geometry ends up in anyway.
+      private static string writeNumber(double value)
+      {
+         return value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
       }
 
       // material: the compiler needs every shape to name a material, which is where it reads the
@@ -153,12 +209,5 @@ namespace ThemeStudio
          return document.CreateElement(name, Ns);
       }
 
-      // a fixed snapshot, so children can be reparented while iterating
-      private static System.Collections.Generic.List<XmlNode> list(XmlNodeList nodes)
-      {
-         var copy = new System.Collections.Generic.List<XmlNode>();
-         foreach (XmlNode node in nodes) copy.Add(node);
-         return copy;
-      }
    }
 }

@@ -148,12 +148,13 @@ namespace ThemeStudio
          return Default;
       }
 
-      // "No lighting. Display the texture as is." -- the documented behaviour of every
-      // pure_texture effect, and the reason the preview must not shade one
-      public static bool IsUnlit(string effect)
+      // the basic_lighting family takes the scene's lights and catches highlights; the pure_texture
+      // family is "No lighting. Display the texture as is."
+      public static bool IsLit(string effect)
       {
-         return !string.IsNullOrEmpty(effect) && effect.StartsWith("pure_texture", StringComparison.Ordinal);
+         return !string.IsNullOrEmpty(effect) && effect.StartsWith("basic_lighting", StringComparison.Ordinal);
       }
+
    }
 
    // a RAF scene: the animated 3D background. compiled separately from the theme, then
